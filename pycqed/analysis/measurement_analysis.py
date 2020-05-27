@@ -32,12 +32,6 @@ from scipy.constants import *
 from copy import deepcopy
 from pprint import pprint
 from pycqed.measurement import optimization as opt
-try:
-    from pycqed.analysis import machine_learning_toolbox as mlt
-except: #ModuleNotFoundError:
-    log.warning('Machine learning packages not loaded. '
-                   'Run from pycqed.analysis import machine_learning_toolbox '
-                   'to see errors.')
 import pycqed.analysis.tools.plotting as pl_tools
 from pycqed.analysis.tools.plotting import (set_xlabel, set_ylabel,
                                             SI_prefix_and_scale_factor)
