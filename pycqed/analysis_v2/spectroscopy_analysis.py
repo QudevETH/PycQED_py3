@@ -155,7 +155,7 @@ class Spectroscopy(ba.BaseDataAnalysis):
         range_pca = calc_range(pdd['pcas']) if 'pcas' in pdd else (0, 1)
         range_pca = self.get_param_value('range_pca', range_pca)
 
-        fig_title_suffix = ' ' + rdd['measurementstring'] + ' ' + \
+        fig_title_suffix = ' ' + rdd['measurementstring'] + '\n' + \
                            pdd['ts_string']
 
         if plot_lines:
