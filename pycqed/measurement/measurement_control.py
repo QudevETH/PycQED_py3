@@ -86,6 +86,10 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
+        self.add_parameter('clean_interrupt',
+                           vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           initial_value=False)
 
         self.add_parameter(
             'cfg_clipping_mode', vals=vals.Bool(),
@@ -211,6 +215,15 @@ class MeasurementControl(Instrument):
                                      .format(self.mode))
             except KeyboardFinish as e:
                 print(e)
+            except KeyboardInterrupt as e:
+                percentage_done = self.get_percdone()
+                if percentage_done == 0 or not self.clean_interrupt():
+                    raise e
+                self.save_exp_metadata({'percentage_done': percentage_done},
+                                       self.data_object)
+                logging.warning('Caught a KeyboardInterrupt and there is '
+                                'unsaved data. Trying clean exit to save '
+                                'data.')
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc

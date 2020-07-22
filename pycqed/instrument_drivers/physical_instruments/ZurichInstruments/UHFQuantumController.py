@@ -162,7 +162,7 @@ class UHFQC(zibase.ZI_base_instrument):
                  address:                 str  = '127.0.0.1',
                  port:                    int  = 8004,
                  use_dio:                 bool = True,
-                 nr_integration_channels: int  = 9,
+                 nr_integration_channels: int  = 10,
                  server:                  str  = '',
                  **kw) -> None:
         """

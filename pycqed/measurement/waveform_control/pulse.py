@@ -47,9 +47,10 @@ class Pulse:
         self.element_name = element_name
         self.codeword = kw.pop('codeword', 'no_codeword')
 
-        # Set default pulse_params and overwrite with params in keyword argument list if applicable
+        # Set default pulse_params and overwrite with params in keyword argument
+        # list if applicable
         for k, v in self.pulse_params().items():
-            setattr(self, k, (v if k not in kw else kw[k]))
+            setattr(self, k, kw.get(k, v))
 
         self._t0 = None
 

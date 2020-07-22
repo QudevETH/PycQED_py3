@@ -1788,6 +1788,60 @@ def measurement_induced_dephasing_seq(
         phases, pihalf_spacing=pihalf_spacing, prep_params=prep_params,
         cal_points=cal_points, sequence_name=sequence_name, upload=upload)
 
+
+def drive_cancellation_seq(
+        drive_op_code, ramsey_qubit_names, operation_dict,
+        sweep_points, n_pulses=1, pihalf_spacing=None, prep_params=None,
+        cal_points=None, upload=True, sequence_name='drive_cancellation_seq'):
+    """
+    Sweep pulse cancellation parameters and measure Ramsey on qubits the
+    cancellation is for.
+
+    Args:
+        drive_op_code: Operation code for the pulse to be cancelled, including
+            the qubit name.
+        ramsey_qubit_names: A list of qubit names corresponding to the
+            undesired targets of the pulse that is being cancelled.
+        sweep_points: A SweepPoints object that describes the pulse
+            parameters to sweep. The sweep point keys should be of the form
+            `qb.param`, where `qb` is the name of the qubit the cancellation
+            is for and `param` is a parameter in the pulses
+            cancellation_params dict. For example to sweep the amplitude of
+            the cancellation pulse on qb1, you could configure the sweep
+            points as `SweepPoints('qb1.amplitude', np.linspace(0, 1, 21))`.
+            The Ramsey phases must be given in the second sweep dimension with
+            sweep name 'phases'.
+        n_pulses: Number of pulse repetitions done between the Ramsey
+            pulses. Useful for amplification of small errors. Defaults to 1.
+    Rest of the arguments are passed down to
+        interleaved_pulse_list_list_equatorial_seq
+    """
+
+    len_sweep = len(list(sweep_points[0].values())[0][0])
+    # create len_sweep instances of n pulses, where the n references correspond
+    # to the same dictionary instance
+    interleaved_pulse_list_list = \
+        [n_pulses*[deepcopy(operation_dict[drive_op_code])]
+         for _ in range(len_sweep)]
+    for key, (values, unit, label) in sweep_points[0].items():
+        assert len(values) == len_sweep
+        tqb, param = key.split('.')
+        iq = operation_dict[f'X180 {tqb}']['I_channel'], \
+             operation_dict[f'X180 {tqb}']['Q_channel']
+        for pulse_list, value in zip(interleaved_pulse_list_list, values):
+            # since all n pulses in pulse_list are the same dict. we only need
+            # to modify the first element.
+            pulse_list[0]['cancellation_params'][iq][param] = value
+    # make last segment a calibration segment
+    interleaved_pulse_list_list[-1][0]['amplitude'] = 0
+
+    return interleaved_pulse_list_list_equatorial_seq(
+        ramsey_qubit_names, operation_dict, interleaved_pulse_list_list,
+        sweep_points[1]['phase'][0], pihalf_spacing=pihalf_spacing,
+        prep_params=prep_params, cal_points=cal_points,
+        sequence_name=sequence_name, upload=upload)
+
+
 def multi_parity_multi_round_seq(ancilla_qubit_names,
                                  data_qubit_names,
                                  parity_map,

@@ -1,7 +1,7 @@
 import logging
 log = logging.getLogger(__name__)
 from collections import OrderedDict
-
+from copy import deepcopy
 
 class SweepPoints(list):
     """
@@ -44,14 +44,13 @@ class SweepPoints(list):
         'V', 'Pulse amplitude, $A$')
     """
     def __init__(self, param_name=None, values=None, unit='', label=None,
-                 from_dict_list=None):
+                 dimension=-1, from_dict_list=None, min_length=0):
         super().__init__()
         if param_name is not None and values is not None:
-            if label is None:
-                label = param_name
-            self.append({param_name: (values, unit, label)})
+            self.add_sweep_parameter(param_name, values, unit, label,
+                                     dimension)
         elif from_dict_list is not None:
-            for d in from_dict_list:
+            for d in deepcopy(from_dict_list):
                 if len(d) == 0 or isinstance(list(d.values())[0], tuple):
                     # assume that dicts have the same format as this class
                     self.append(d)
@@ -61,14 +60,30 @@ class SweepPoints(list):
                                      v.get('unit',''),
                                      v.get('label', k))
                                  for k, v in d.items()})
+        while len(self) < min_length:
+            self.add_sweep_dimension()
 
-    def add_sweep_parameter(self, param_name, values, unit='', label=None):
+    def add_sweep_parameter(self, param_name, values, unit='', label=None,
+                            dimension=-1):
+        """
+        Adds sweep points to a given dimension.
+        :param param_name: (str) parameter name
+        :param values: (list or numpy array) sweep values
+        :param unit: (optional str) unit of the values (default: '')
+        :param label: (optional str) label e.g. for plots (default: param_name)
+        :dim: the dimension to which the point should be added (default:
+            last dimension)
+        """
         if label is None:
             label = param_name
-        if len(self) == 0:
-            self.append({param_name: (values, unit, label)})
-        else:
-            self[-1].update({param_name: (values, unit, label)})
+        assert self.find_parameter(param_name) is None, \
+            f'A sweep parameter with name "{param_name}" already exists.'
+        while len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
+            self.add_sweep_dimension()
+        assert self.length(dimension) in [0, len(values)], \
+            'Number of values has to match the length of existing sweep ' \
+            'points.'
+        self[dimension].update({param_name: (values, unit, label)})
 
     def add_sweep_dimension(self):
         self.append(dict())
@@ -76,30 +91,31 @@ class SweepPoints(list):
     def get_sweep_dimension(self, dimension='all'):
         """
         Returns the sweep dict of the sweep dimension specified by dimension.
-        :param dimension: int > 0 specifying a sweep dimension or
+        :param dimension: int specifying a sweep dimension or
             the string 'all'
-        :return: self if dimension == 'all', else self[dimension-1]
+        :return: self if dimension == 'all', else self[dimension]
         """
         if dimension == 'all':
             return self
         else:
-            assert dimension > 0, 'Dimension must be > 0.'
             if len(self) < dimension:
                 raise ValueError(f'Dimension {dimension} not found.')
-            return self[dimension-1]
+            return self[dimension]
 
     def get_sweep_params_description(self, param_names, dimension='all'):
         """
         Get the sweep tuples for the sweep parameters param_names if they are
         found in the sweep dimension dict specified by dimension.
         :param param_names: string or list of strings corresponding to keys in
-            the dictionaries in self
-        :param dimension: see docstring for get_sweep_dimension
+            the dictionaries in self. Can also be 'all'
+        :param dimension: 'all' or int specifying a sweep dimension
         :return:
             If the param_names are found in self or self[dimension]:
+            if param_names == 'all': list with all the sweep tuples
+                in the sweep dimension dict specified by dimension.
             if param_names is string: string with the sweep tuples of each
                 param_names in the sweep dimension dict specified by dimension.
-            if param_names is list: list with the property of each
+            if param_names is list: list with the sweep tuples of each
                 param_names in the sweep dimension dict specified by dimension.
             if param_names is None: string corresponding to the
                 first sweep parameter in the sweep dimension dict
@@ -107,19 +123,26 @@ class SweepPoints(list):
         """
         sweep_points_dim = self.get_sweep_dimension(dimension)
         is_list = True
-        if not isinstance(param_names, list):
+        if param_names != 'all' and not isinstance(param_names, list):
             param_names = [param_names]
             is_list = False
+
         sweep_param_values = []
         if isinstance(sweep_points_dim, list):
             for sweep_dim_dict in sweep_points_dim:
-                for pn in param_names:
-                    if pn in sweep_dim_dict:
-                        sweep_param_values += [sweep_dim_dict[pn]]
+                if param_names == 'all':
+                    sweep_param_values += list(sweep_dim_dict.values())
+                else:
+                    for pn in param_names:
+                        if pn in sweep_dim_dict:
+                            sweep_param_values += [sweep_dim_dict[pn]]
         else:  # it is a dict
-            for pn in param_names:
-                if pn in sweep_points_dim:
-                    sweep_param_values += [sweep_points_dim[pn]]
+            if param_names == 'all':
+                sweep_param_values += list(sweep_points_dim.values())
+            else:
+                for pn in param_names:
+                    if pn in sweep_points_dim:
+                        sweep_param_values += [sweep_points_dim[pn]]
 
         if len(sweep_param_values) == 0:
             s = "sweep points" if dimension == "all" else f'sweep dimension ' \
@@ -136,48 +159,146 @@ class SweepPoints(list):
         Get a property of the sweep parameters param_names in self.
         :param property: str with the name of a sweep param property. Can be
             "values", "unit", "label."
-        :param dimension: int > 0 specifying a sweep dimension
+        :param dimension: 'all' or int specifying a sweep dimension
         :param param_names: None, or string or list of strings corresponding to
-            keys in the sweep dimension specified by dimension
+            keys in the sweep dimension specified by dimension.
+            Can also be 'all'
         :return:
-            if param_names is string: string with the property of each
+            if param_names == 'all': list with the property of all
                 param_names in the sweep dimension dict specified by dimension.
+            if param_names is string: the property of the sweep parameter
+                specified in param_names in the sweep dimension dict specified
+                by dimension.
             if param_names is list: list with the property of each
                 param_names in the sweep dimension dict specified by dimension.
-            if param_names is None: string corresponding to the
+            if param_names is None: property corresponding to the
                 first sweep parameter in the sweep dimension dict
         """
-        assert isinstance(dimension, int), 'Dimension must be an integer > 0.'
         properties_dict = {'values': 0, 'unit': 1, 'label': 2}
-        if param_names is None:
-            return next(iter(self.get_sweep_dimension(
-                dimension).values()))[properties_dict[property]]
-        else:
-            if isinstance(param_names, list):
-                return [pnd[properties_dict[property]] for pnd in
-                        self.get_sweep_params_description(param_names,
-                                                          dimension)]
-            else:
-                return self.get_sweep_params_description(
-                    param_names, dimension)[properties_dict[property]]
+        sweep_points_dim = self.get_sweep_dimension(dimension)
 
-    def get_meas_obj_sweep_points_map(self, measured_objects):
+        if param_names is None:
+            if isinstance(sweep_points_dim, list):
+                for sweep_dim_dict in sweep_points_dim:
+                    if len(sweep_dim_dict) == 0:
+                        return [] if property == 'values' else ''
+                    else:
+                        return next(iter(sweep_dim_dict.values()))[
+                            properties_dict[property]]
+            else:
+                if len(sweep_points_dim) == 0:
+                    return [] if property == 'values' else ''
+                else:
+                    return next(iter(sweep_points_dim.values()))[
+                        properties_dict[property]]
+        elif param_names == 'all' or isinstance(param_names, list):
+            return [pnd[properties_dict[property]] for pnd in
+                    self.get_sweep_params_description(param_names,
+                                                      dimension)]
+        else:
+            return self.get_sweep_params_description(
+                param_names, dimension)[properties_dict[property]]
+
+    def get_meas_obj_sweep_points_map(self, measurement_objects):
         """
-        Assumes the order of params in each sweep dimension corresponds to
-        the order of keys in keys_list
+        Constructs the measurement-objects-sweep-points map as the dict
+        {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
+
+        If a sweep dimension has only one sweep parameter name (dict with only
+        one key), then it assumes all mobjs use that sweep parameter name.
+
+        If the sweep dimension has more than one sweep parameter name (dict with
+        several keys), then:
+            - first tries to add to the list for each mobj only those sweep
+            param names that contain the mobj_name.
+            - If it can't find the mobj_name in the sweep param name, assumes
+            there is only one param per mobj in each sweep dimension, and that
+            the order of params in each sweep dimension corresponds to the
+            order of keys in keys_list.
+            I.e. key_i in sweep_points[0] contains the sweep information for
+            measured_objects[i].
 
         :param measured_objects: list of strings to be used as keys in the
             returned dictionary. These are the measured object names
-        :return: {keys[k]: list(d)[k] for d in self for k in measured_objects}
+        :return: dict of the form
+         {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
-
-        if len(measured_objects) != len(self[0]):
-            raise ValueError('The number of keys and number of sweep '
-                             'parameters do not match.')
+        if not isinstance(measurement_objects, list):
+            measurement_objects = [measurement_objects]
+        for i, mobj in enumerate(measurement_objects):
+            if hasattr(mobj, 'name'):
+                measurement_objects[i] = mobj.name
 
         sweep_points_map = OrderedDict()
-        for i, key in enumerate(measured_objects):
-            sweep_points_map[key] = [list(d)[i] for d in self]
-
+        for i, mobjn in enumerate(measurement_objects):
+            sweep_points_map[mobjn] = []
+            for dim, d in enumerate(self):
+                if len(d) == 1:
+                    # assume all mobjs use the same param_name
+                    sweep_points_map[mobjn] += [next(iter(d))]
+                elif mobjn in list(d)[i]:
+                    sweep_points_map[mobjn] += [list(d)[i]]
+                else:
+                    if len(d) != len(measurement_objects):
+                        raise ValueError(
+                            f'{len(measurement_objects)} measurement objects '
+                            f'were given but there are {len(d)} '
+                            f'sweep parameters in dimension {dim}.')
+                    sweep_points_map[mobjn] += [list(d)[i]]
         return sweep_points_map
 
+    def length(self, dimension='all'):
+        """
+        Returns the number of sweep points in a given sweep dimension (after a
+        sanity checking).
+
+        :param dimension: ('all' or int) sweep dimension (default: 'all').
+
+        :return: (int) number of sweep points in the given dimension
+        """
+
+        if dimension == 'all':
+            return [self.length(d) for d in range(len(self))]
+
+        if len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
+            return 0
+        n = 0
+        for p in self[dimension].values():
+            if n == 0:
+                n = len(p[0])
+            elif n != len(p[0]):
+                raise ValueError('The lengths of the sweep points are not '
+                                 'consistent.')
+        return n
+
+    def update(self, sweep_points):
+        """
+        Updates the sweep dictionaries of all dimensions with the sweep
+        dictionaries passed as sweep_points. Non-exisiting
+        parameters and required additional dimensions are added if needed.
+
+        :param sweep_points: (SweepPoints) a SweepPoints object containing
+            the sweep points to be updated.
+
+        :return:
+        """
+        while len(self) < len(sweep_points):
+            self.add_sweep_dimension()
+        for d, u in zip(self, sweep_points):
+            d.update(u)
+
+    def find_parameter(self, param_name):
+        """
+        Returns the index of the first dimension in which a given sweep
+        parameter is found.
+
+        :param param_name: (str) name of the sweep parameter
+
+        :return: (int or None) the index of the first dimension in which the
+            parameter if found or None if no parameter with the given name
+            exists.
+        """
+        for dim in range(len(self)):
+            if param_name in self[dim]:
+                return dim
+        return None

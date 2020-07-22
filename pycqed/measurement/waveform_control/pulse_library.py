@@ -52,8 +52,8 @@ class SSB_DRAG_pulse(pulse.Pulse):
     @classmethod
     def pulse_params(cls):
         """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
-        super().__init__ method.
+        Returns a dictionary of pulse parameters and initial values. These
+        parameters are set upon calling the super().__init__ method.
         """
         params = {
             'pulse_type': 'SSB_DRAG_pulse',
@@ -111,6 +111,113 @@ class SSB_DRAG_pulse(pulse.Pulse):
                 self.algorithm_time() + self.nr_sigma * self.sigma / 2)
         hashlist += [self.alpha, self.phi_skew, phase]
         return hashlist
+
+
+class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
+    """
+    SSB Drag pulse with copies with scaled amp. and offset phase on extra
+    channels intended for interferometrically cancelling on-device crosstalk.
+
+    Args:
+        name (str): Name of the pulse, used for referencing to other pulses in a
+            sequence. Typically generated automatically by the `Segment` class.
+        element_name (str): Name of the element the pulse should be played in.
+        I_channel (str): In-phase output channel name.
+        Q_channel (str): Quadrature output channel name.
+        codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
+            Defaults to 'no_codeword'.
+        amplitude (float): Pulse amplitude in Volts. Defaults to 0.1 V.
+        sigma (float): Pulse width standard deviation in seconds. Defaults to
+            250 ns.
+        nr_sigma (float): Pulse clipping length in units of pulse sigma. Total
+            pulse length will be `nr_sigma*sigma`. Defaults to 4.
+        motzoi (float): Amplitude of the derivative quadrature in units of
+            pulse sigma. Defautls to 0.
+        mod_frequency (float): Pulse modulation frequency in Hz. Defaults to
+            1 MHz.
+        phase (float): Pulse modulation phase in degrees. Defaults to 0.
+        phaselock (bool): The phase reference time is the start of the algorithm
+            if True and the middle of the pulse otherwise. Defaults to True.
+        alpha (float): Ratio of the I_channel and Q_channel output. Defaults to
+            1.
+        phi_skew (float): Phase offset between I_channel and Q_channel, in
+            addition to the nominal 90 degrees. Defaults to 0.
+        cancellation_params (dict): a parameter dictionary for cancellation
+            drives. The keys of the dictionary should be tuples of I- and Q-
+            channel names for the cancellation and the values should be
+            dictionaries of parameter values. Possible parameters to override
+            are 'amplitude', 'phase', 'delay', 'mod_frequency', 'phi_skew',
+            'alpha' and 'phaselock'. Cancellation amplitude is a scaling factor
+            for the main pulse amplitude and phase is a phase offset. The delay
+            is relative to the main pulse.
+    """
+
+    @classmethod
+    def pulse_params(cls):
+        params = super().pulse_params()
+        params.update({'cancellation_params': {}})
+        return params
+
+    @property
+    def channels(self):
+        channels = super().channels
+        for i, q in self.cancellation_params.keys():
+            channels += [i, q]
+        return channels
+
+    def chan_wf(self, channel, tvals):
+        if channel in [self.I_channel, self.Q_channel]:
+            return super().chan_wf(channel, tvals)
+        iq_idx = -1
+        for (i, q), p in self.cancellation_params.items():
+            if channel in [i, q]:
+                iq_idx = [i, q].index(channel)
+                cpars = p
+                break
+        if iq_idx == -1:
+            return np.zeros_like(tvals)
+
+        half = self.nr_sigma * self.sigma / 2
+        tc = self.algorithm_time() + half + cpars.get('delay', 0.0)
+
+        gauss_env = np.exp(-0.5 * (tvals - tc) ** 2 / self.sigma ** 2)
+        gauss_env -= np.exp(-0.5 * half ** 2 / self.sigma ** 2)
+        gauss_env *= self.amplitude * (tvals - tc >= -half) * (
+                tvals - tc < half)
+        gauss_env *= cpars.get('amplitude', 1.0)
+        deriv_gauss_env = -self.motzoi * (tvals - tc) * gauss_env / self.sigma
+
+        return apply_modulation(
+            gauss_env, deriv_gauss_env, tvals,
+            cpars.get('mod_frequency', self.mod_frequency),
+            phase=self.phase + cpars.get('phase', 0.0),
+            phi_skew=cpars.get('phi_skew', self.phi_skew),
+            alpha=cpars.get('alpha', self.alpha),
+            tval_phaseref=0 if cpars.get('phaselock', self.phaselock)
+                else tc)[iq_idx]
+
+    def hashables(self, tstart, channel):
+        if channel in [self.I_channel, self.Q_channel]:
+            return super().hashables(tstart, channel)
+        for (i, q), cpars in self.cancellation_params.items():
+            if channel != i and channel != q:
+                continue
+            hashlist = [type(self), self.algorithm_time() - tstart]
+            hashlist += [channel == i]
+            hashlist += [self.amplitude*cpars.get('amplitude', 1.0)]
+            hashlist += [self.sigma]
+            hashlist += [self.nr_sigma, self.motzoi]
+            hashlist += [cpars.get('mod_frequency', self.mod_frequency)]
+            phase = self.phase + cpars.get('phase', 0)
+            phase += 360 * cpars.get('phaselock', self.phaselock) * \
+                     cpars.get('mod_frequency', self.mod_frequency) * (
+                        self.algorithm_time() + self.nr_sigma * self.sigma / 2 +
+                        + cpars.get('delay', 0.0))
+            hashlist += [cpars.get('alpha', self.alpha)]
+            hashlist += [cpars.get('phi_skew', self.phi_skew), phase]
+            hashlist += [cpars.get('delay', 0)]
+            return hashlist
+        return []
 
 
 class BufferedSquarePulse(pulse.Pulse):

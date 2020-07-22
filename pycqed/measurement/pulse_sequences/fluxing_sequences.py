@@ -392,7 +392,7 @@ def chevron_seqs(qbc_name, qbt_name, qbr_name, hard_sweep_dict, soft_sweep_dict,
 
 def fluxpulse_scope_sequence(
         delays, freqs, qb_name, operation_dict, cz_pulse_name,
-        ro_pulse_delay=100e-9, cal_points=None, prep_params=None, upload=True):
+        ro_pulse_delay=None, cal_points=None, prep_params=None, upload=True):
     '''
     Performs X180 pulse on top of a fluxpulse
 
@@ -401,9 +401,16 @@ def fluxpulse_scope_sequence(
        |          ----------           |X180|  ----------------------------  |RO|
        |        ---      | --------- fluxpulse ---------- |
                          <-  delay  ->
+
+        :param ro_pulse_delay: Can be 'auto' to start out the readout after
+            the end of the flux pulse or a delay in seconds to start a fixed
+            amount of time after the drive pulse. If not provided or set to
+            None, a default fixed delay of 100e-9 is used.
     '''
     if prep_params is None:
         prep_params = {}
+    if ro_pulse_delay is None:
+        ro_pulse_delay = 100e-9
 
     seq_name = 'Fluxpulse_scope_sequence'
     ge_pulse = deepcopy(operation_dict['X180 ' + qb_name])
@@ -421,6 +428,11 @@ def fluxpulse_scope_sequence(
     ro_pulse['ref_pulse'] = 'FPS_Pi'
     ro_pulse['ref_point'] = 'end'
     ro_pulse['pulse_delay'] = ro_pulse_delay
+    if ro_pulse_delay == 'auto':
+        ro_pulse['ref_point'] = 'middle'
+        ro_pulse['pulse_delay'] = flux_pulse['pulse_length'] - np.min(delays) + \
+                                  flux_pulse.get('buffer_length_end', 0)
+
 
     pulses = [ge_pulse, flux_pulse, ro_pulse]
     swept_pulses = sweep_pulse_params(

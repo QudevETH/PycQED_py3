@@ -6625,7 +6625,8 @@ class FluxPulse_Scope_Analysis(MeasurementAnalysis):
         if len(self.exp_metadata) != 0:
             try:
                 self.delays = self.exp_metadata['sweep_points_dict'][self.qb_name]
-                self.freqs = self.exp_metadata['sweep_points_dict_2D'][self.qb_name]
+                self.freqs = self.exp_metadata['sweep_points_dict_2D'][
+                    self.qb_name][:len(self.sweep_points_2D)]
                 cp = self.exp_metadata.get('cal_points', None)
                 if cp is not None:
                     cp = CalibrationPoints.from_string(cp)

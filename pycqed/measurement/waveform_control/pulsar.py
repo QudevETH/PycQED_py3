@@ -46,7 +46,7 @@ class UHFQCPulsar:
     _supportedAWGtypes = (UHFQC, dummy_UHFQC)
     
     _uhf_sequence_string_template = (
-        "const WINT_EN   = 0x01ff0000;\n"
+        "const WINT_EN   = 0x03ff0000;\n"
         "const WINT_TRIG = 0x00000010;\n"
         "const IAVG_TRIG = 0x00000020;\n"
         "var RO_TRIG;\n"
@@ -82,6 +82,13 @@ class UHFQCPulsar:
                                      "memory by repeating specific sequence "
                                      "patterns (eg. readout) passed in "
                                      "'repeat dictionary'")
+        self.add_parameter('{}_enforce_single_element'.format(awg.name),
+                           initial_value=False, vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           docstring="Group all the pulses on this AWG into "
+                                     "a single element. Useful for making sure "
+                                     "that the master AWG has only one waveform"
+                                     " per segment.")
         self.add_parameter('{}_granularity'.format(awg.name),
                            get_cmd=lambda: 16)
         self.add_parameter('{}_element_start_granularity'.format(awg.name),
@@ -353,6 +360,13 @@ class HDAWG8Pulsar:
                                      "memory by repeating specific sequence "
                                      "patterns (eg. readout) passed in "
                                      "'repeat dictionary'")
+        self.add_parameter('{}_enforce_single_element'.format(awg.name),
+                           initial_value=False, vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           docstring="Group all the pulses on this AWG into "
+                                     "a single element. Useful for making sure "
+                                     "that the master AWG has only one waveform"
+                                     " per segment.")
         self.add_parameter('{}_granularity'.format(awg.name),
                            get_cmd=lambda: 16)
         self.add_parameter('{}_element_start_granularity'.format(awg.name),
@@ -681,6 +695,13 @@ class AWG5014Pulsar:
                                      "memory by repeating specific sequence "
                                      "patterns (eg. readout) passed in "
                                      "'repeat dictionary'")
+        self.add_parameter('{}_enforce_single_element'.format(awg.name),
+                           initial_value=False, vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           docstring="Group all the pulses on this AWG into "
+                                     "a single element. Useful for making sure "
+                                     "that the master AWG has only one waveform"
+                                     " per segment.")
         self.add_parameter('{}_granularity'.format(awg.name),
                            get_cmd=lambda: 4)
         self.add_parameter('{}_element_start_granularity'.format(awg.name),
@@ -1333,39 +1354,45 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
     def _zi_playback_string(self, name, device, wave, acq=False, codeword=False):
         playback_string = []
         w1, w2 = self._zi_waves_to_wavenames(wave)
-        if not codeword:
+        if (not codeword) and (not acq):
             if w1 is None and w2 is not None:
-                # This hack is needed due to a bug on the HDAWG. 
+                # This hack is needed due to a bug on the HDAWG.
                 # Remove this if case once the bug is fixed.
-                if not acq:
-                    playback_string.append(
-                        f'prefetch(zeros(1) + marker(1, 0), {w2});')
+                playback_string.append(f'prefetch(marker(1,0)*0*{w2}, {w2});')
+            elif w1 is not None and w2 is None:
+                # This hack is needed due to a bug on the HDAWG.
+                # Remove this if case once the bug is fixed.
+                playback_string.append(f'prefetch({w1}, marker(1,0)*0*{w1});')
             elif w1 is not None or w2 is not None:
-                if not acq:
-                    playback_string.append('prefetch({});'.format(', '.join(
-                            [wn for wn in [w1, w2] if wn is not None])))
-        
+                playback_string.append('prefetch({});'.format(', '.join(
+                    [wn for wn in [w1, w2] if wn is not None])))
+
         trig_source = self.get('{}_trigger_source'.format(name))
         if trig_source == 'Dig1':
             playback_string.append(
                 'waitDigTrigger(1{});'.format(', 1' if device == 'uhf' else ''))
         elif trig_source == 'Dig2':
             if device == 'hdawg':
-                raise ValueError('ZI HDAWG does not support having Dig2 as trigger source.')
+                raise ValueError(
+                    'ZI HDAWG does not support having Dig2 as trigger source.')
             playback_string.append('waitDigTrigger(2,1);')
         elif trig_source == 'DIO':
             playback_string.append('waitDIOTrigger();')
         else:
-            raise ValueError('Trigger source for {} has to be "Dig1", "Dig2" or "DIO"!')
-        
+            raise ValueError(
+                'Trigger source for {} has to be "Dig1", "Dig2" or "DIO"!')
+
         if codeword:
             playback_string.append('playWaveDIO();')
         else:
             if w1 is None and w2 is not None:
-                # This hack is needed due to a bug on the HDAWG. 
+                # This hack is needed due to a bug on the HDAWG.
                 # Remove this if case once the bug is fixed.
-                playback_string.append(
-                    f'playWave(zeros(1) + marker(1, 0), {w2});')
+                playback_string.append(f'playWave(marker(1,0)*0*{w2}, {w2});')
+            elif w1 is not None and w2 is None:
+                # This hack is needed due to a bug on the HDAWG.
+                # Remove this if case once the bug is fixed.
+                playback_string.append(f'playWave({w1}, marker(1,0)*0*{w1});')
             elif w1 is not None or w2 is not None:
                 playback_string.append('playWave({});'.format(
                     _zi_wavename_pair_to_argument(w1, w2)))
