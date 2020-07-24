@@ -627,6 +627,33 @@ class CircuitBuilder:
 
         return Block(block_name, pulses, pulse_modifs)
 
+    def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
+                            block_align='end', segment_prefix='calibration_',
+                            **kw):
+
+        if ro_kwargs is None:
+            ro_kwargs = {}
+
+        segments = []
+        for i, seg_states in enumerate(cal_points.states):
+            cal_ops = [[f'{p}{qbn}' for p in cal_points.pulse_label_map[s]]
+                       for s, qbn in zip(seg_states, cal_points.qb_names)]
+            qb_blocks = [self.block_from_ops(
+                f'body_block_{i}_{o}', ops) for
+                o, ops in enumerate(cal_ops)]
+            parallel_qb_block = self.simultaneous_blocks(
+                f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
+
+            prep = self.initialize(init_state=init_state,
+                                   qb_names=cal_points.qb_names)
+            ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
+            cal_state_block = self.sequential_blocks(
+                f'cal_states_{i}', [prep, parallel_qb_block, ro])
+            seg = Segment(segment_prefix + f'{i}', cal_state_block.build())
+            segments.append(seg)
+
+        return segments
+
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
         """
@@ -896,8 +923,8 @@ class CircuitBuilder:
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
-                seq.extend(cal_points.create_segments(self.operation_dict,
-                                                      **self.get_prep_params()))
+                seq.extend(self.seg_from_cal_points(cal_points, init_state,
+                                                    ro_kwargs, **kw))
             seqs.append(seq)
 
         if return_segments:

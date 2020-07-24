@@ -401,7 +401,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(self.sweep_points,
                                 body_block=self.all_main_blocks,
-                                cal_points=self.cal_points, **kw)
+                                cal_points=self.cal_points,
+                                block_align=block_align,  # for cal points seg
+                                **kw)
 
     @staticmethod
     def find_qubits_in_tasks(qubits, task_list, search_in_operations=True):
