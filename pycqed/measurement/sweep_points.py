@@ -325,7 +325,7 @@ class SweepPoints(list):
                         # Append found sweep param names to the sweep_points_map
                         # for this mobj
                         sweep_points_map[mobjn] += pars
-                        
+
                     # Collect all found pars, to be used below
                     all_pars += pars
 
@@ -448,6 +448,23 @@ class SweepPoints(list):
             if param_name in self[dim]:
                 return dim
         return None
+
+    def get_values(self, param_name):
+        """
+        Wraps get_sweep_params_property to get values of a specific
+        parameter name
+        Uses find_parameter to find the dimension of the specified parameter
+        Args:
+
+            param_name (string): parameter name from which values should
+                be retrieved
+
+        Returns:
+
+        """
+        dim = self.find_parameter(param_name)
+        return self.get_sweep_params_property('values', dim, param_names=param_name)
+
 
     def subset(self, i, dimension=0):
         """
