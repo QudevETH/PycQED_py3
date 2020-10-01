@@ -1334,6 +1334,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # (shot0_ssp0, shot0_ssp1, ... , shot1_ssp0, shot1_ssp1, ...)
         shots_per_qb = self._get_single_shots_per_qb()
 
+        # save single shots in proc_data_dict, as they will be overwritten in
+        # 'meas_results_per_qb' with their averaged values for the rest of the
+        # analysis to work.
+        self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
+
         # determine number of shots
         n_shots = self.get_param_value("n_shots")
         if n_shots is None:
@@ -1407,9 +1412,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' a different number of channels than in the'
                               f' current measurement): {e}')
                     raise e
-                if not 'meas_results_per_qb_probs' in self.proc_data_dict:
-                    self.proc_data_dict['meas_results_per_qb_probs'] = {}
-                self.proc_data_dict['meas_results_per_qb_probs'][qbn] = shots
+                if not 'single_shots_per_qb_probs' in self.proc_data_dict:
+                    self.proc_data_dict['single_shots_per_qb_probs'] = {}
+                self.proc_data_dict['single_shots_per_qb_probs'][qbn] = shots
 
 
             # TODO: Nathan: if predict_proba is activated then we should
