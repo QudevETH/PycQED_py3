@@ -264,6 +264,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names, [task]))
         prefix += ('_' if prefix[-1] != '_' else '')
         task['prefix'] = prefix
+
         # Get measure objects needed involved in this task. Will be used
         # below to generate entries for the meas_obj_sweep_points_map.
         mo = self.get_meas_objs_from_task(task)
@@ -275,8 +276,20 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Start with sweep points valid for all tasks
         current_sweep_points = SweepPoints(sweep_points)
-        # generate kw sweep points for the task
+
+        # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
+
+        # Check and update transition name
+        transition_name = task.pop('transition_name', None)
+        if transition_name is not None:
+            task['transition_name_input'] = transition_name
+            if '_' not in transition_name:
+                transition_name = f'_{transition_name}'
+            if transition_name == '_ge':
+                transition_name = ''
+            task['transition_name'] = transition_name
+
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point
         # valid for all tasks, the task-specific one is used for this task.
