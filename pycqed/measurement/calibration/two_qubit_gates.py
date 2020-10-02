@@ -402,7 +402,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         return self.sweep_n_dim(self.sweep_points,
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points,
-                                block_align=block_align,  # for cal points seg
+                                block_align=block_align[0],  # for cal points seg
                                 **kw)
 
     @staticmethod
