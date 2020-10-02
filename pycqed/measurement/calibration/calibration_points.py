@@ -17,7 +17,8 @@ class CalibrationPoints:
     def __init__(self, qb_names, states, **kwargs):
         self.qb_names = qb_names
         self.states = states
-        default_map = dict(g=['I '], e=["X180 "], f=['X180 ', "X180_ef "])
+        default_map = dict(g=['I '], e=["X180 "], f=['X180 ', "X180_ef "],
+                           h=['X180 ', "X180_ef ", "X180_fh "])
         self.pulse_label_map = kwargs.get("pulse_label_map", default_map)
         self.pulse_modifs = kwargs.get('pulse_modifs', None)
 
@@ -184,7 +185,7 @@ class CalibrationPoints:
 
         for i, qbn in enumerate(qb_names):
             # get unique states in reversed alphabetical order: g, [e, f]
-            order = {"g": 0, "e": 1, "f": 2}
+            order = {"g": 0, "e": 1, "f": 2, "h": 3}
             unique = list(np.unique(states[qbn]))
             unique.sort(key=lambda s: order[s])
             if len(unique) == 3 and enforce_two_cal_states:
