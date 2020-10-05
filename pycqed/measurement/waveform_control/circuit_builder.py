@@ -925,8 +925,10 @@ class CircuitBuilder:
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
-                seq.extend(self.seg_from_cal_points(cal_points, init_state,
-                                                    ro_kwargs, **kw))
+                block_align_cal_pts = kw.get('block_align_cal_pts', 'end')
+                seq.extend(self.seg_from_cal_points(
+                    cal_points, init_state, ro_kwargs,
+                    block_align=block_align_cal_pts, **kw))
             seqs.append(seq)
 
         if return_segments:
