@@ -279,11 +279,30 @@ class CalibrationPoints:
             .format(self.qb_names, self.states, self.pulse_label_map)
 
     @staticmethod
-    def guess_cal_states(cal_states, for_ef=False):
+    def guess_cal_states(cal_states, for_ef=False, transition_names='ge', **kw):
+        """
+        Generate calibration states to be passed to CalibrationPoints
+        :param cal_states: str or list of str with state names. If 'auto', it
+            will generate default states based on for_ef and transition_names.
+        :param for_ef: bool specifying whether to add the 'f' state.
+            This flag is here for legacy reasons (Steph, 07.10.2020).
+        :param transition_names: str or list of str specifying the name(s) of
+            the transition(s) involved in the measurement.
+        :return: tuple of calibration states or cal_states from the user
+        """
         if cal_states == "auto":
-            cal_states = ('g', 'e')
+            if isinstance(transition_names, str):
+                transition_names = [transition_names]
+            cal_states_temp = [s for s in ''.join(transition_names)]
             if for_ef:
-                cal_states += ('f',)
+                cal_states_temp += ['f']
+            cal_states = []
+            unique_cs = set()
+            for cs in cal_states_temp:
+                if cs not in unique_cs:
+                    cal_states += [cs]
+                unique_cs.add(cs)
+            cal_states = tuple(cal_states)
         return cal_states
 
 
