@@ -158,7 +158,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         super().run_measurement(**kw)
 
     def create_cal_points(self, n_cal_points_per_state=1, cal_states='auto',
-                          for_ef=False, **kw):
+                          transition_names='ge', **kw):
         """
         Creates a CalibrationPoints object based on the given parameters and
             saves it to self.cal_points.
@@ -167,13 +167,19 @@ class MultiTaskingExperiment(QuantumExperiment):
             calibration state
         :param cal_states: str or tuple of str; the calibration states
             to measure
-        :param for_ef: bool indicating whether to measure the |f> calibration
-            state for each qubit
+        :param transition_names: str or list of str specifying the name(s) of
+            the transition(s) involved in the measurement.
         :param kw: keyword arguments (to allow pass through kw even if it
             contains entries that are not needed)
         """
+        # check for transition_name inside tasks
+        task_transition_names = [task.get('transition_name', '') for task in
+                                 self.task_list]
+        if len(''.join(task_transition_names)):
+            transition_names = task_transition_names
+
         self.cal_states = CalibrationPoints.guess_cal_states(
-            cal_states, for_ef=for_ef)
+            cal_states, transition_names=transition_names)
         self.cal_points = CalibrationPoints.multi_qubit(
             self.meas_obj_names, self.cal_states,
             n_per_state=n_cal_points_per_state)
@@ -738,7 +744,7 @@ class CPhase(CalibBuilder):
                     task['prefix'] = f"{task['qbl']}{task['qbr']}_"
 
             # By default, include f-level cal points (for measuring leakage).
-            kw['for_ef'] = kw.get('for_ef', True)
+            kw['cal_states'] = kw.get('cal_states', 'gef')
 
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 
