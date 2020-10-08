@@ -94,13 +94,19 @@ class QuDev_transmon(Qubit):
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T1_ef', label='Qubit relaxation', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T1_fh', label='Qubit relaxation', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2', label='Qubit dephasing Echo', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_ef', label='Qubit dephasing Echo', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T2_fh', label='Qubit dephasing Echo', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_star', label='Qubit dephasing', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_star_ef', label='Qubit dephasing', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T2_star_fh', label='Qubit dephasing', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('anharmonicity', label='Qubit anharmonicity',
                            unit='Hz', initial_value=0,
