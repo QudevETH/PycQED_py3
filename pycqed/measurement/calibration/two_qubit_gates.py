@@ -147,7 +147,10 @@ class MultiTaskingExperiment(QuantumExperiment):
             'ro_qubits': self.meas_obj_names,
             'data_to_fit': self.data_to_fit,
         })
-        if self.task_list is not None:
+        if kw.get('store_preprocessed_task_list', False) and hasattr(
+                self, 'preprocessed_task_list'):
+            self.exp_metadata.update({'task_list': self.preprocessed_task_list})
+        elif self.task_list is not None:
             tl = [copy(t) for t in self.task_list]
             for t in tl:
                 for k, v in t.items():
