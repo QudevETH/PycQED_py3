@@ -257,7 +257,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         super().extract_data()
 
         if self.qb_names is None:
-            self.qb_names = self.get_param_value('ro_qubits')
+            self.qb_names = self.get_param_value(
+                'ro_qubits', default_value=self.get_param_value('qb_names'))
             if self.qb_names is None:
                 raise ValueError('Provide the "qb_names."')
         self.measurement_strings = {
@@ -285,8 +286,20 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if len(self.channel_map) == 0:
             raise ValueError('No qubit RO channels have been found.')
 
+        self.data_to_fit = deepcopy(self.get_param_value('data_to_fit', {}))
+
         # creates self.sp
         self.get_sweep_points()
+
+        # add extra parameters from file that children might need
+        self.get_params_from_file()
+
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if numeric_params is None:
+            numeric_params = {}
+        if params_dict is not None:
+            self.raw_data_dict.update(
+                self.get_data_from_timestamp_list(params_dict, numeric_params))
 
     def get_sweep_points(self):
         self.sp = self.get_param_value('sweep_points')
@@ -1057,6 +1070,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     one_coord=one_coord)
 
         return rotated_data_dict, zero_coord, one_coord
+
+    def get_transition_name(self, qb_name):
+        task_list = self.get_param_value('task_list')
+        trans_name = self.get_param_value('transition_name')
+        if task_list is not None:
+            task = [t for t in task_list if t['qb'] == qb_name][0]
+            trans_name = task.get('transition_name_input', None)
+        if trans_name is None:
+            if 'h' in self.data_to_fit[qb_name]:
+                trans_name = 'fh'
+            elif 'f' in self.data_to_fit[qb_name]:
+                trans_name = 'ef'
+            else:
+                trans_name = 'ge'
+        return trans_name
 
     def get_xaxis_label_unit(self, qb_name):
         hard_sweep_params = self.get_param_value('hard_sweep_params')
@@ -4890,20 +4918,14 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
-        params_dict = kwargs.get('params_dict', {})
-        pd = {}
-        for qbn in qb_names:
+    def get_params_from_file(self):
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            for trans_name in ['ge', 'ef']:
-                pd[f'{trans_name}_amp180_'+qbn] = \
-                    s+f'.{trans_name}_amp180'
-                pd[f'{trans_name}_amp90scale_'+qbn] = \
-                    s+f'.{trans_name}_amp90_scale'
-        params_dict.update(pd)
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(pd)
-        super().__init__(qb_names, *args, **kwargs)
+            params_dict[f'{trans_name}_amp180_'+qbn] = s+f'.{trans_name}_amp180'
+            params_dict[f'{trans_name}_amp90scale_'+qbn] = s+f'.{trans_name}_amp90_scale'
+        super().get_params_from_file(params_dict, list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5172,7 +5194,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xmax': sweep_points[-1],
                     'colors': 'gray'}
 
-                trans_name = 'ef' if 'f' in self.data_to_fit[qbn] else 'ge'
+                trans_name = self.get_transition_name(qbn)
                 old_pipulse_val = self.raw_data_dict[
                     f'{trans_name}_amp180_'+qbn]
                 if old_pipulse_val != old_pipulse_val:
@@ -5406,16 +5428,14 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
+    def get_params_from_file(self):
         params_dict = {}
-        for qbn in qb_names:
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            for trans_name in ['ge', 'ef']:
-                params_dict[f'{trans_name}_T1_'+qbn] = s+'.T1{}'.format(
-                    '_ef' if trans_name == 'ef' else '')
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        super().__init__(qb_names, *args, **kwargs)
+            params_dict[f'{trans_name}_T1_'+qbn] = \
+                s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
+        super().get_params_from_file(params_dict, list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5478,7 +5498,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                trans_name = 'ef' if 'f' in self.data_to_fit[qbn] else 'ge'
+                trans_name = self.get_transition_name(qbn)
                 old_T1_val = self.raw_data_dict[f'{trans_name}_T1_'+qbn]
                 if old_T1_val != old_T1_val:
                     old_T1_val = 0
@@ -5500,15 +5520,13 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
+    def get_params_from_file(self):
         params_dict = {}
-        for qbn in qb_names:
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            for trans_name in ['ge', 'ef']:
-                params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        super().__init__(qb_names, *args, **kwargs)
+            params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
+        super().get_params_from_file(params_dict, list(params_dict))
 
     def prepare_fitting(self):
         if self.options_dict.get('fit_gaussian_decay', True):
@@ -5570,7 +5588,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     if fit_res.params[par].stderr is None:
                         fit_res.params[par].stderr = 0
 
-                trans_name = 'ef' if 'f' in self.data_to_fit[qbn] else 'ge'
+                trans_name = self.get_transition_name(qbn)
                 old_qb_freq = self.raw_data_dict[f'{trans_name}_freq_'+qbn]
                 if old_qb_freq != old_qb_freq:
                     old_qb_freq = 0
@@ -5708,16 +5726,15 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
-    def __init__(self, qb_names, *args, **kwargs):
+
+    def get_params_from_file(self):
         params_dict = {}
-        for qbn in qb_names:
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            for trans_name in ['ge', 'ef']:
-                params_dict[f'{trans_name}_qscale_'+qbn] = \
-                    s+f'.{trans_name}_motzoi'
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        super().__init__(qb_names, *args, **kwargs)
+            params_dict[f'{trans_name}_qscale_'+qbn] = \
+                s+f'.{trans_name}_motzoi'
+        super().get_params_from_file(params_dict, list(params_dict))
 
     def process_data(self):
         super().process_data()
@@ -5902,7 +5919,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'legend_bbox_to_anchor': (1, 0.5),
                         'legend_pos': 'center left'}
 
-                    trans_name = 'ef' if 'f' in self.data_to_fit[qbn] else 'ge'
+                    trans_name = self.get_transition_name(qbn)
                     old_qscale_val = self.raw_data_dict[
                         f'{trans_name}_qscale_'+qbn]
                     if old_qscale_val != old_qscale_val:
