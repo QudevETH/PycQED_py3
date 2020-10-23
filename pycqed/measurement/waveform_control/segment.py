@@ -178,7 +178,7 @@ class Segment:
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
-                p1.pulse_obj.element_name = f'default_{self.name}'
+                p1.pulse_obj.element_name = f'default_ese_{self.name}'
                 p1.pulse_obj.channel_mask = ch_mask
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
