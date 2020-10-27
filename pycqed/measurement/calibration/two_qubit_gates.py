@@ -556,25 +556,27 @@ class MultiTaskingExperiment(QuantumExperiment):
         for k, sp_dict_list in self.kw_for_sweep_points.items():
             if isinstance(sp_dict_list, dict):
                 sp_dict_list = [sp_dict_list]
-            # This loop can create  multiple sweep points based on a single
+            # This loop can create multiple sweep points based on a single
             # keyword argument.
             for v in sp_dict_list:
                 # copy to allow popping the values_func, which should not be
                 # passed to SweepPoints.add_sweep_parameter
                 v = copy(v)
                 values_func = v.pop('values_func', None)
+
+                k_list = k.split(',')
                 # if the respective task parameter (or keyword argument) exists
-                if k in task and task[k] is not None:
+                if k_list[0] in task and task[k_list[0]] is not None:
                     if values_func is not None:
-                        values = values_func(task[k])
-                    elif isinstance(task[k], int):
+                        values = values_func(*[task[key] for key in k_list])
+                    elif isinstance(task[k_list[0]], int):
                         # A single int N as sweep value will be interpreted as
                         # a sweep over N indices.
-                        values = np.arange(task[k])
+                        values = np.arange(task[k_list[0]])
                     else:
-                        # Othervise it is assumed that list-like sweep
+                        # Otherwise it is assumed that list-like sweep
                         # values are provided.
-                        values = task[k]
+                        values = task[k_list[0]]
                     task['sweep_points'].add_sweep_parameter(
                         values=values, **v)
 
