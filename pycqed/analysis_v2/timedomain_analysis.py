@@ -6263,12 +6263,16 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
                                                   'plotfn': self.plot_text}
 
 
+class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
-
-class OverUnderRotationAnalysis(MultiQubit_TimeDomain_Analysis):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def get_params_from_file(self):
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
+            params_dict[f'{trans_name}_amp180_'+qbn] = \
+                s+f'.{trans_name}_amp180'
+        super().get_params_from_file(params_dict, list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -6292,16 +6296,11 @@ class OverUnderRotationAnalysis(MultiQubit_TimeDomain_Analysis):
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
-            try:
-                old_amp180 = a_tools.get_instr_setting_value_from_file(
-                    file_path=self.raw_data_dict['folder'][0],
-                    instr_name=qbn, param_name='amp180{}'.format(
-                        '_ef' if 'f' in self.data_to_fit[qbn] else ''))
-            except KeyError:
-                old_amp180 = a_tools.get_instr_setting_value_from_file(
-                    file_path=self.raw_data_dict['folder'][0],
-                    instr_name=qbn, param_name='{}_amp180'.format(
-                        'ef' if 'f' in self.data_to_fit[qbn] else 'ge'))
+            trans_name = self.get_transition_name(qbn)
+            old_amp180 = self.raw_data_dict[
+                f'{trans_name}_amp180_'+qbn]
+            if old_amp180 != old_amp180:
+                old_amp180 = 0
 
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn][
@@ -6339,16 +6338,11 @@ class OverUnderRotationAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                try:
-                    old_amp180 = a_tools.get_instr_setting_value_from_file(
-                        file_path=self.raw_data_dict['folder'][0],
-                        instr_name=qbn, param_name='amp180{}'.format(
-                            '_ef' if 'f' in self.data_to_fit[qbn] else ''))
-                except KeyError:
-                    old_amp180 = a_tools.get_instr_setting_value_from_file(
-                        file_path=self.raw_data_dict['folder'][0],
-                        instr_name=qbn, param_name='{}_amp180'.format(
-                            'ef' if 'f' in self.data_to_fit[qbn] else 'ge'))
+                trans_name = self.get_transition_name(qbn)
+                old_amp180 = self.raw_data_dict[
+                    f'{trans_name}_amp180_'+qbn]
+                if old_amp180 != old_amp180:
+                    old_amp180 = 0
                 correction_dict = self.proc_data_dict['analysis_params_dict']
                 fit_res = self.fit_dicts['fit_' + qbn]['fit_res']
                 textstr = '$\pi$-Amp = {:.4f} mV'.format(
