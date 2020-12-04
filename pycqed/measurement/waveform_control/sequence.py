@@ -237,7 +237,7 @@ class Sequence:
                 segment_counter += seq.n_segments()
 
                 # update name of merged seq
-                merged_seqs[-1].name += "+" + seq.name
+                merged_seqs[-1].rename(merged_seqs[-1].name + Sequence.RENAMING_SEPARATOR + seq.name)
                 if merge_repeat_patterns:
                     for ch_name, pattern in seq.repeat_patterns.items():
                         # if channel is already present, update number of
@@ -262,7 +262,11 @@ class Sequence:
                         else:
                             merged_seqs[-1].repeat_patterns.update(
                                 {ch_name: pattern})
-
+        # compress names
+        for ms in merged_seqs:
+            name_parts = ms.name.split(Sequence.RENAMING_SEPARATOR)
+            if len(name_parts) > 1:
+                ms.rename(f"compressed_{name_parts[0]}-{name_parts[-1]}")
         return merged_seqs
 
     @staticmethod
@@ -358,6 +362,10 @@ class Sequence:
             soft_sp_ind = np.arange(len(compressed_2D_sweep))
 
         return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+
+    def rename(self, new_name):
+        self.name = new_name
+        self.timer.name = new_name
 
     def __repr__(self):
         string_repr = f"####### {self.name} #######\n"
