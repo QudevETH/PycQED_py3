@@ -92,10 +92,13 @@ class SSB_DRAG_pulse(pulse.Pulse):
                 tvals - tc < half)
         deriv_gauss_env = -self.motzoi * (tvals - tc) * gauss_env / self.sigma
 
-        I_mod, Q_mod = apply_modulation(
-            gauss_env, deriv_gauss_env, tvals, self.mod_frequency,
-            phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
-            tval_phaseref=0 if self.phaselock else tc)
+        if self.mod_frequency is not None:
+            I_mod, Q_mod = apply_modulation(
+                gauss_env, deriv_gauss_env, tvals, self.mod_frequency,
+                phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
+                tval_phaseref=0 if self.phaselock else tc)
+        else:
+            I_mod, Q_mod = gauss_env, gauss_env
 
         if channel == self.I_channel:
             return I_mod
