@@ -215,7 +215,8 @@ class T1FrequencySweep(CalibBuilder):
 
 
 class ParallelLOSweepExperiment(CalibBuilder):
-    def __init__(self, task_list, sweep_points=None, **kw):
+    def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
+                 **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -224,7 +225,9 @@ class ParallelLOSweepExperiment(CalibBuilder):
 
         super().__init__(task_list, sweep_points=sweep_points, **kw)
         self.lo_offsets = {}
+        self.lo_qubits = {}
         self.lo_sweep_points = []
+        self.allowed_lo_freqs = allowed_lo_freqs
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -249,27 +252,62 @@ class ParallelLOSweepExperiment(CalibBuilder):
                         'without checking for ge_mod_freq corrections.')
         else:
             temp_vals = []
+            f_start = {}
             for task in self.task_list:
                 qb = self.get_qubits(task['qb'])[0][0]
                 sp = self.exp_metadata['meas_obj_sweep_points_map'][qb.name]
                 freq_sp = [s for s in sp if s.endswith(freq_sp_suffix)][0]
-                f_start = self.sweep_points.get_sweep_params_property(
+                f_start[qb] = self.sweep_points.get_sweep_params_property(
                     'values', 1, freq_sp)[0]
                 lo = qb.instr_ge_lo.get_instr()
-                if lo not in self.lo_offsets:
-                    self.lo_offsets[lo] = f_start - qb.ge_mod_freq()
+                if lo not in self.lo_qubits:
+                    self.lo_qubits[lo] = [qb]
                 else:
+                    self.lo_qubits[lo] += [qb]
+
+            for lo, qbs in self.lo_qubits.items():
+                for qb in qbs:
+                    if lo not in self.lo_offsets:
+                        if kw.get('optimize_mod_freqs', False):
+                            fs = [f_start[qb] for qb in self.lo_qubits[lo]]
+                            self.lo_offsets[lo] = 1 / 2 * (max(fs) + min(fs))
+                        else:
+                            self.lo_offsets[lo] = f_start[qb] \
+                                                  - qb.ge_mod_freq()
                     temp_vals.append(
-                        (qb.ge_mod_freq, f_start - self.lo_offsets[lo]))
+                        (qb.ge_mod_freq, f_start[qb] - self.lo_offsets[lo]))
 
             with temporary_value(*temp_vals):
                 self.update_operation_dict()
+
+        if self.allowed_lo_freqs is not None:
+            for task in self.preprocessed_task_list:
+                task['pulse_modifs'] = {'attr=mod_frequency': None}
 
     def run_measurement(self, **kw):
         name = 'Drive frequency shift'
         sweep_functions = [swf.Offset_Sweep(
             lo.frequency, offset, name=name, parameter_name=name, unit='Hz')
             for lo, offset in self.lo_offsets.items()]
+        if self.allowed_lo_freqs is not None:
+            minor_sweep_functions = []
+            for lo, qbs in self.lo_qubits.items():
+                qb_sweep_functions = []
+                for qb in qbs:
+                    mod_freq = self.get_pulse(f"X180 {qb.name}")[
+                        'mod_frequency']
+                    pulsar = qb.instr_pulsar.get_instr()
+                    param = pulsar.parameters[f'{qb.ge_I_channel()}_mod_freq']
+                    qb_sweep_functions.append(
+                        swf.Offset_Sweep(param, mod_freq))
+                minor_sweep_functions.append(swf.multi_sweep_function(
+                    qb_sweep_functions))
+            sweep_functions = [
+                swf.MajorMinorSweep(majsp, minsp,
+                                    np.array(self.allowed_lo_freqs) - offset)
+                for majsp, minsp, offset in zip(
+                    sweep_functions, minor_sweep_functions,
+                    self.lo_offsets.values())]
         self.sweep_functions = [
             self.sweep_functions[0], swf.multi_sweep_function(
                 sweep_functions, name=name, parameter_name=name)]
