@@ -283,8 +283,10 @@ class ParallelLOSweepExperiment(CalibBuilder):
         if self.allowed_lo_freqs is not None:
             for task in self.preprocessed_task_list:
                 task['pulse_modifs'] = {'attr=mod_frequency': None}
+            self.cal_points.pulse_modifs = {'*.mod_frequency': [None]}
 
     def run_measurement(self, **kw):
+        temp_vals = []
         name = 'Drive frequency shift'
         sweep_functions = [swf.Offset_Sweep(
             lo.frequency, offset, name=name, parameter_name=name, unit='Hz')
@@ -298,6 +300,10 @@ class ParallelLOSweepExperiment(CalibBuilder):
                         'mod_frequency']
                     pulsar = qb.instr_pulsar.get_instr()
                     param = pulsar.parameters[f'{qb.ge_I_channel()}_mod_freq']
+                    # The following temporary value ensures that HDAWG
+                    # modulation is set back to its previous state after the end
+                    # of the modulation frequency sweep.
+                    temp_vals.append((param, None))
                     qb_sweep_functions.append(
                         swf.Offset_Sweep(param, mod_freq))
                 minor_sweep_functions.append(swf.multi_sweep_function(
@@ -312,7 +318,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
             self.sweep_functions[0], swf.multi_sweep_function(
                 sweep_functions, name=name, parameter_name=name)]
         self.mc_points[1] = self.lo_sweep_points
-        super().run_measurement(**kw)
+        with temporary_value(*temp_vals):
+            super().run_measurement(**kw)
 
     def get_meas_objs_from_task(self, task):
         return [task['qb']]
