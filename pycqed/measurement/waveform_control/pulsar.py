@@ -548,6 +548,14 @@ class HDAWG8Pulsar:
                                                vals.Lists(vals.Ints())),
                            parameter_class=ManualParameter)
 
+        for awg_nr in range(4):
+            self.add_parameter(f'{awg.name}_awgs_{awg_nr}_mod_freq',
+                               unit='Hz',
+                               initial_value=None,
+                               set_cmd=self._hdawg_mod_setter(awg, awg_nr),
+                               get_cmd=self._hdawg_mod_getter(awg, awg_nr),
+                               )
+
         group = []
         for ch_nr in range(8):
             id = 'ch{}'.format(ch_nr + 1)
@@ -605,7 +613,11 @@ class HDAWG8Pulsar:
         self.add_parameter('{}_internal_modulation'.format(name), 
                            initial_value=False, vals=vals.Bool(),
                            parameter_class=ManualParameter)
-    
+        cmd = self.parameters[
+            f'{awg.name}_awgs_{int((int(id[2:]) - 1) / 2)}_mod_freq']
+        self.add_parameter('{}_mod_freq'.format(name),
+                           unit='Hz', set_cmd=cmd, get_cmd=cmd)
+
     def _hdawg_create_marker_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
         self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
@@ -659,7 +671,47 @@ class HDAWG8Pulsar:
                 return lambda: 1
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g 
+        return g
+
+    @staticmethod
+    def _hdawg_mod_setter(obj, awg_nr):
+        def s(val):
+            print(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
+            if val == None:
+                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
+                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
+            else:
+                # FIXME: implement SSB
+                sideband = np.sign(val)
+                freq = np.abs(val)
+                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
+                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
+                obj.set(f'sines_{awg_nr * 2}_oscselect', awg_nr * 4)
+                obj.set(f'sines_{awg_nr * 2 + 1}_oscselect', awg_nr * 4)
+                obj.set(f'sines_{awg_nr * 2}_phaseshift', 0)
+                obj.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
+                obj.set(f'oscs_{awg_nr * 4}_freq', freq)
+        return s
+
+    @staticmethod
+    def _hdawg_mod_getter(obj, awg_nr):
+        def g():
+            m0 = obj.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
+            m1 = obj.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
+            if m0 == 0 and m1 == 0:
+                return None
+            elif m0 == 1 and m1 == 2:
+                osc0 = obj.get(f'sines_{awg_nr * 2}_oscselect')
+                osc1 = obj.get(f'sines_{awg_nr * 2 + 1}_oscselect')
+                if osc0 == osc1:
+                    sideband = np.sign(obj.get(
+                        f'sines_{awg_nr * 2 + 1}_phaseshift'))
+                    return sideband * obj.get(f'oscs_{osc0}_freq')
+            log.warning('The current modulation configuration is not '
+                        'supported by pulsar. Cannot retrieve modulation '
+                        'frequency.')
+            return None
+        return g
 
     def get_divisor(self, chid, awg):
         '''
