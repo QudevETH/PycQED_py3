@@ -170,7 +170,7 @@ class Segment:
                     self.pulsar.get(f'{ch_awg}_enforce_single_element'))
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
-                p.pulse_obj.element_name = f'default_{self.name}'
+                p.pulse_obj.element_name = f'default_ese_{self.name}'
                 self.resolved_pulses.append(p)
             elif any(ch_mask):
                 p0 = deepcopy(p)
