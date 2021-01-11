@@ -589,6 +589,12 @@ class HDAWG8Pulsar:
                             set_cmd=self._hdawg_setter(awg, id, 'amp'),
                             get_cmd=self._hdawg_getter(awg, id, 'amp'),
                             vals=vals.Numbers(0.01, 5.0))
+        self.add_parameter(
+            '{}_amplitude_scaling'.format(name),
+            set_cmd=self._hdawg_setter(awg, id, 'amplitude_scaling'),
+            get_cmd=self._hdawg_getter(awg, id, 'amplitude_scaling'),
+            vals=vals.Numbers(min_value=0.0, max_value=1.0),
+            initial_value=1.0)
         self.add_parameter('{}_distortion'.format(name),
                             label='{} distortion mode'.format(name),
                             initial_value='off',
@@ -647,6 +653,12 @@ class HDAWG8Pulsar:
                     obj.set('sigouts_{}_range'.format(int(id[2])-1), 2*val)
             else:
                 s = None
+        elif par == 'amplitude_scaling' and id[-1] != 'm':
+            awg = int((int(id[2:]) - 1) / 2)
+            output = (int(id[2:]) - 1) - 2 * awg
+            def s(val):
+                obj.set(f'awgs_{awg}_outputs_{output}_amplitude', val)
+                print(f'awgs_{awg}_outputs_{output}_amplitude: {val}')
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
         return s
@@ -669,6 +681,11 @@ class HDAWG8Pulsar:
                             .format(int(id[2])-1))/2
             else:
                 return lambda: 1
+        elif par == 'amplitude_scaling' and id[-1] != 'm':
+            awg = int((int(id[2:]) - 1) / 2)
+            output = (int(id[2:]) - 1) - 2 * awg
+            def g():
+                return obj.get(f'awgs_{awg}_outputs_{output}_amplitude')
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
         return g
