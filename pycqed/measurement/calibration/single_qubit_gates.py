@@ -216,7 +216,7 @@ class T1FrequencySweep(CalibBuilder):
 
 class ParallelLOSweepExperiment(CalibBuilder):
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
-                 **kw):
+                 adapt_drive_amp=False, **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -228,6 +228,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.lo_qubits = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
+        self.adapt_drive_amp = adapt_drive_amp
+        self.drive_amp_adaptation = {}
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -247,11 +249,11 @@ class ParallelLOSweepExperiment(CalibBuilder):
             "all qubits."
         self.lo_sweep_points = all_freqs[0] - all_freqs[0][0]
 
+        temp_vals = []
         if self.qubits is None:
             log.warning('No qubit objects provided. Creating the sequence '
                         'without checking for ge_mod_freq corrections.')
         else:
-            temp_vals = []
             f_start = {}
             for task in self.task_list:
                 qb = self.get_qubits(task['qb'])[0][0]
@@ -277,13 +279,33 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     temp_vals.append(
                         (qb.ge_mod_freq, f_start[qb] - self.lo_offsets[lo]))
 
-            with temporary_value(*temp_vals):
-                self.update_operation_dict()
-
         if self.allowed_lo_freqs is not None:
             for task in self.preprocessed_task_list:
                 task['pulse_modifs'] = {'attr=mod_frequency': None}
             self.cal_points.pulse_modifs = {'*.mod_frequency': [None]}
+
+        if self.adapt_drive_amp and self.qubits is None:
+            log.warning('No qubit objects provided. Creating the sequence '
+                        'without adapting drive amp.')
+        elif self.adapt_drive_amp:
+            for task in self.task_list:
+                qb = self.get_qubits(task['qb'])[0][0]
+                sp = self.exp_metadata['meas_obj_sweep_points_map'][qb.name]
+                freq_sp = [s for s in sp if s.endswith(freq_sp_suffix)][0]
+                f = self.sweep_points.get_sweep_params_property(
+                    'values', 1, freq_sp)
+                amps = qb.get_ge_amp180_from_ge_freq(np.array(f))
+                if amps is None:
+                    continue
+                max_amp = np.max(amps)
+                temp_vals.append((qb.ge_amp180, max_amp))
+                self.drive_amp_adaptation[qb] = (
+                    lambda x, qb=qb, s=max_amp,
+                           o=f[0] - self.lo_sweep_points[0] :
+                    qb.get_ge_amp180_from_ge_freq(x + o) / s)
+
+        with temporary_value(*temp_vals):
+            self.update_operation_dict()
 
     def run_measurement(self, **kw):
         temp_vals = []
@@ -314,6 +336,19 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 for majsp, minsp, offset in zip(
                     sweep_functions, minor_sweep_functions,
                     self.lo_offsets.values())]
+        for qb, adaptation in self.drive_amp_adaptation.items():
+            adapt_name = f'Drive amp adaptation freq {qb.name}'
+            pulsar = qb.instr_pulsar.get_instr()
+            for quad in ['I', 'Q']:
+                ch = qb.get(f'ge_{quad}_channel')
+                param = pulsar.parameters[f'{ch}_amplitude_scaling']
+                sweep_functions += [swf.Transformed_Sweep(
+                    param, transformation=adaptation,
+                    name=adapt_name, parameter_name=adapt_name, unit='Hz')]
+                # The following temporary value ensures that HDAWG
+                # amplitude scaling is set back to its previous state after the
+                # end of the sweep.
+                temp_vals.append((param, 1.0))
         self.sweep_functions = [
             self.sweep_functions[0], swf.multi_sweep_function(
                 sweep_functions, name=name, parameter_name=name)]
