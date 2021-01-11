@@ -224,7 +224,45 @@ class two_par_joint_sweep(Soft_Sweep):
         self.par_B.set(val * self.par_ratio)
 
 
-class Offset_Sweep(Soft_Sweep):
+class Transformed_Sweep(Soft_Sweep):
+    """A sweep soft sweep function that calls an other sweep function with
+    a transformation applied."""
+
+    def __init__(self,
+                 sweep_function,
+                 transformation,
+                 name=None,
+                 parameter_name=None,
+                 unit=None):
+        super().__init__()
+        if isinstance(sweep_function, qcodes.Parameter):
+            sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
+                sweep_function)
+        if sweep_function.sweep_control != 'soft':
+            raise ValueError(f'{self.__class__.__name__}: Only software '
+                             f'sweeps supported')
+        self.sweep_function = sweep_function
+        self.transformation = transformation
+        self.sweep_control = sweep_function.sweep_control
+        self.name = self.sweep_function.name if name is None else name
+        self.unit = self.sweep_function.unit if unit is None else unit
+        self.parameter_name = self.default_param_name() \
+            if parameter_name is None else parameter_name
+
+    def default_param_name(self):
+        return f'transformation of {self.sweep_function.parameter_name}'
+
+    def prepare(self, *args, **kwargs):
+        self.sweep_function.prepare(*args, **kwargs)
+
+    def finish(self, *args, **kwargs):
+        self.sweep_function.finish(*args, **kwargs)
+
+    def set_parameter(self, val):
+        self.sweep_function.set_parameter(self.transformation(val))
+
+
+class Offset_Sweep(Transformed_Sweep):
     """A sweep soft sweep function that calls an other sweep function with
     an offset."""
 
@@ -234,34 +272,12 @@ class Offset_Sweep(Soft_Sweep):
                  name=None,
                  parameter_name=None,
                  unit=None):
-        super().__init__()
-        if isinstance(sweep_function, qcodes.Parameter):
-            sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
-                sweep_function)
-        if sweep_function.sweep_control != 'soft':
-            raise ValueError('Offset_Sweep: Only software sweeps supported')
-        self.sweep_function = sweep_function
+
         self.offset = offset
-        self.sweep_control = sweep_function.sweep_control
-        if parameter_name is None:
-            self.parameter_name = sweep_function.parameter_name + \
-                ' {:+} {}'.format(-offset, sweep_function.unit)
-        else:
-            self.parameter_name = parameter_name
-        if name is None:
-            self.name = sweep_function.name
-        else:
-            self.name = name
-        if unit is None:
-            self.unit = sweep_function.unit
-        else:
-            self.unit = unit
+        super().__init__(sweep_function,
+                 transformation=lambda x, o=offset : x + o,
+                 name=name, parameter_name=parameter_name, unit=unit)
 
-    def prepare(self, *args, **kwargs):
-        self.sweep_function.prepare(*args, **kwargs)
-
-    def finish(self, *args, **kwargs):
-        self.sweep_function.finish(*args, **kwargs)
-
-    def set_parameter(self, val):
-        self.sweep_function.set_parameter(val + self.offset)
+    def default_param_name(self):
+        return self.sweep_function.parameter_name + \
+               ' {:+} {}'.format(-self.offset, self.sweep_function.unit)
