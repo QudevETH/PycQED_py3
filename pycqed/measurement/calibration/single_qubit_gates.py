@@ -223,7 +223,11 @@ class ParallelLOSweepExperiment(CalibBuilder):
             if not 'prefix' in task:
                 task['prefix'] = f"{task['qb']}_"
 
-        super().__init__(task_list, sweep_points=sweep_points, **kw)
+        # Passing keyword arguments to the super class (even if they are not
+        # needed there) makes sure that they are stored in the metadata.
+        super().__init__(task_list, sweep_points=sweep_points,
+                         allowed_lo_freqs=allowed_lo_freqs,
+                         adapt_drive_amp=adapt_drive_amp, **kw)
         self.lo_offsets = {}
         self.lo_qubits = {}
         self.lo_sweep_points = []
