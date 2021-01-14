@@ -307,6 +307,13 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     lambda x, qb=qb, s=max_amp,
                            o=f[0] - self.lo_sweep_points[0] :
                     qb.get_ge_amp180_from_ge_freq(x + o) / s)
+                if not kw.get('adapt_cal_point_drive_amp', False):
+                    if self.cal_points.pulse_modifs is None:
+                        self.cal_points.pulse_modifs = {}
+                    self.cal_points.pulse_modifs.update(
+                        {f'e_X180 {qb.name}*.amplitude': [
+                            qb.ge_amp180() / (qb.get_ge_amp180_from_ge_freq(
+                                qb.ge_freq()) / max_amp)]})
 
         with temporary_value(*temp_vals):
             self.update_operation_dict()
