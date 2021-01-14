@@ -64,7 +64,7 @@ class Block:
             (ref)pulse name (before a potential change in a previous build())
             matches.
 
-            'attr=X, key_1=val_1, ..., key_N=val_N, occurence=i'
+            'attr=X, key_1=val_1, ..., key_N=val_N, occurrence=i'
             Sweep the attribute only for the ith pulse matching the
             criteria, where i is an integer (zero-indexed)
 
