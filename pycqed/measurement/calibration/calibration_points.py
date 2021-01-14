@@ -47,7 +47,9 @@ class CalibrationPoints:
                     if k == 0:
                         pulse['ref_pulse'] = 'segment_start'
                     if len(pulse_modifs) > 0:
-                        pulse = sweep_pulse_params([pulse], pulse_modifs)[0][0]
+                        pulse = sweep_pulse_params(
+                            [pulse], pulse_modifs,
+                            pulse_not_found_warning=False)[0][0]
                         # reset the name as sweep_pulse_params deletes it
                         pulse['name'] = f"{seg_states[j]}_{pulse_name + qbn}_" \
                                         f"{cal_pt_idx}"
