@@ -4878,8 +4878,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
+        def add_fit_dict(qbn, data, key):
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
@@ -4894,20 +4893,30 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             guess_pars['phase'].vary = True
             self.set_user_guess_pars(guess_pars)
 
-            key = 'cos_fit_' + qbn
             self.fit_dicts[key] = {
                 'fit_fn': fit_mods.CosFunc,
                 'fit_xvals': {'t': sweep_points},
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                for i, data in enumerate(all_data):
+                    key = f'cos_fit_{qbn}_{i}'
+                    add_fit_dict(qbn, data, key)
+            else:
+                add_fit_dict(qbn, all_data, 'cos_fit_' + qbn)
+
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            fit_res = self.fit_dicts['cos_fit_' + qbn]['fit_res']
+        for k, fit_dict in self.fit_dicts.items():
+            k = k.replace('cos_fit_', '')
+            qbn, i = (k + '_').split('_')[:2]
+            fit_res = fit_dict['fit_res']
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
-            self.proc_data_dict['analysis_params_dict'][qbn] = \
+            self.proc_data_dict['analysis_params_dict'][k] = \
                 self.get_amplitudes(fit_res=fit_res, sweep_points=sweep_points)
         self.save_processed_data(key='analysis_params_dict')
 
@@ -5024,16 +5033,21 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
         super().prepare_plots()
 
         if self.do_fitting:
-            for qbn in self.qb_names:
-                base_plot_name = 'Rabi_' + qbn
+            for k, fit_dict in self.fit_dicts.items():
+                k = k.replace('cos_fit_', '')
+                qbn, i = (k + '_').split('_')[:2]
+                fit_res = fit_dict['fit_res']
+                base_plot_name = 'Rabi_' + k
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
+                    data=dtf[int(i)] if i != '' else dtf,
                     plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=i
+                )
 
-                fit_res = self.fit_dicts['cos_fit_' + qbn]['fit_res']
-                self.plot_dicts['fit_' + qbn] = {
+                self.plot_dicts['fit_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
                     'fit_res': fit_res,
@@ -5045,12 +5059,12 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper right'}
 
                 rabi_amplitudes = self.proc_data_dict['analysis_params_dict']
-                self.plot_dicts['piamp_marker_' + qbn] = {
+                self.plot_dicts['piamp_marker_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': np.array([rabi_amplitudes[qbn]['piPulse']]),
+                    'xvals': np.array([rabi_amplitudes[k]['piPulse']]),
                     'yvals': np.array([fit_res.model.func(
-                        rabi_amplitudes[qbn]['piPulse'],
+                        rabi_amplitudes[k]['piPulse'],
                         **fit_res.best_values)]),
                     'setlabel': '$\pi$-Pulse amp',
                     'color': 'r',
@@ -5062,11 +5076,11 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                self.plot_dicts['piamp_hline_' + qbn] = {
+                self.plot_dicts['piamp_hline_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
                     'y': [fit_res.model.func(
-                        rabi_amplitudes[qbn]['piPulse'],
+                        rabi_amplitudes[k]['piPulse'],
                         **fit_res.best_values)],
                     'xmin': self.proc_data_dict['sweep_points_dict'][qbn][
                         'sweep_points'][0],
@@ -5074,12 +5088,12 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                         'sweep_points'][-1],
                     'colors': 'gray'}
 
-                self.plot_dicts['pihalfamp_marker_' + qbn] = {
+                self.plot_dicts['pihalfamp_marker_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': np.array([rabi_amplitudes[qbn]['piHalfPulse']]),
+                    'xvals': np.array([rabi_amplitudes[k]['piHalfPulse']]),
                     'yvals': np.array([fit_res.model.func(
-                        rabi_amplitudes[qbn]['piHalfPulse'],
+                        rabi_amplitudes[k]['piHalfPulse'],
                         **fit_res.best_values)]),
                     'setlabel': '$\pi /2$-Pulse amp',
                     'color': 'm',
@@ -5091,11 +5105,11 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                self.plot_dicts['pihalfamp_hline_' + qbn] = {
+                self.plot_dicts['pihalfamp_hline_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
                     'y': [fit_res.model.func(
-                        rabi_amplitudes[qbn]['piHalfPulse'],
+                        rabi_amplitudes[k]['piHalfPulse'],
                         **fit_res.best_values)],
                     'xmin': self.proc_data_dict['sweep_points_dict'][qbn][
                         'sweep_points'][0],
@@ -5115,18 +5129,18 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 old_pihalfpulse_val *= old_pipulse_val
 
                 textstr = ('  $\pi-Amp$ = {:.3f} V'.format(
-                    rabi_amplitudes[qbn]['piPulse']) +
+                    rabi_amplitudes[k]['piPulse']) +
                            ' $\pm$ {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piPulse_stderr']) +
+                    rabi_amplitudes[k]['piPulse_stderr']) +
                            '\n$\pi/2-Amp$ = {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piHalfPulse']) +
+                    rabi_amplitudes[k]['piHalfPulse']) +
                            ' $\pm$ {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piHalfPulse_stderr']) +
+                    rabi_amplitudes[k]['piHalfPulse_stderr']) +
                            '\n  $\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pipulse_val) +
                            '\n$\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pihalfpulse_val))
-                self.plot_dicts['text_msg_' + qbn] = {
+                self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': 0,
