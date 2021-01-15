@@ -1204,3 +1204,30 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
         for qb in self.meas_obj_names:
             qb.fit_ge_freq_from_flux_pulse_amp(
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
+
+
+class RabiFrequencySweep(ParallelLOSweepExperiment):
+    kw_for_sweep_points = {
+        'freqs': dict(param_name='freq', unit='Hz',
+                      label=r'drive frequency, $f_d$',
+                      dimension=1),
+        'amps': dict(param_name='amplitude', unit='V',
+                       label=r'drive pulse amplitude',
+                       dimension=0),
+    }
+
+    def __init__(self, task_list, sweep_points=None, **kw):
+        try:
+            self.experiment_name = 'RabiFrequencySweep'
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+            self.autorun(**kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, **kw):
+        b = self.block_from_ops(f'ge {qb}', [f'X180 {qb}'])
+        b.pulses[0]['amplitude'] = ParametricValue('amplitude')
+        self.data_to_fit.update({qb: 'pe'})
+        return b
