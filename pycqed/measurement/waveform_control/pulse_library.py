@@ -98,6 +98,8 @@ class SSB_DRAG_pulse(pulse.Pulse):
                 phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
                 tval_phaseref=0 if self.phaselock else tc)
         else:
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
             I_mod, Q_mod = gauss_env, gauss_env
 
         if channel == self.I_channel:

@@ -698,7 +698,13 @@ class HDAWG8Pulsar:
                 obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
                 obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
             else:
-                # FIXME: implement SSB
+                # FIXME: this currently only works for real-valued baseband
+                # signals (zero Q component), and it assumes that the the I
+                # component gets programmed to both channels, see the case
+                # of mod_frequency=None in
+                # pulse_library.SSB_DRAG_pulse.chan_wf.
+                # In the future, we should extended this to support general
+                # IQ modulation and adapt the pulse library accordingly.
                 sideband = np.sign(val)
                 freq = np.abs(val)
                 obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
