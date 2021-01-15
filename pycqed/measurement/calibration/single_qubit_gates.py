@@ -230,6 +230,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                          adapt_drive_amp=adapt_drive_amp, **kw)
         self.lo_offsets = {}
         self.lo_qubits = {}
+        self.qb_offsets = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
         self.adapt_drive_amp = adapt_drive_amp
@@ -265,6 +266,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 freq_sp = [s for s in sp if s.endswith(freq_sp_suffix)][0]
                 f_start[qb] = self.sweep_points.get_sweep_params_property(
                     'values', 1, freq_sp)[0]
+                self.qb_offsets[qb] = f_start[qb] - self.lo_sweep_points[0]
                 lo = qb.instr_ge_lo.get_instr()
                 if lo not in self.lo_qubits:
                     self.lo_qubits[lo] = [qb]
@@ -305,7 +307,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 temp_vals.append((qb.ge_amp180, max_amp))
                 self.drive_amp_adaptation[qb] = (
                     lambda x, qb=qb, s=max_amp,
-                           o=f[0] - self.lo_sweep_points[0] :
+                           o=self.qb_offsets[qb] :
                     qb.get_ge_amp180_from_ge_freq(x + o) / s)
                 if not kw.get('adapt_cal_point_drive_amp', False):
                     if self.cal_points.pulse_modifs is None:
@@ -360,6 +362,20 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 # amplitude scaling is set back to its previous state after the
                 # end of the sweep.
                 temp_vals.append((param, 1.0))
+        for task in self.task_list:
+            if 'fluxline' not in task:
+                continue
+            qb = self.get_qubits(task['qb'])[0][0]
+            # offs = self.lo_offsets[[lo for lo, qbs in self.lo_qubits.items()
+            #                         if qb in qbs][0]]
+            dc_amp = (
+                lambda x, o=self.qb_offsets[qb],
+                       vfc=qb.fit_ge_freq_from_dc_offset() :
+                fit_mods.Qubit_freq_to_dac_res(np.array([x + o]), **vfc)[0])
+            sweep_functions += [swf.Transformed_Sweep(
+                task['fluxline'], transformation=dc_amp,
+                name=f'DC Offset {qb.name}',
+                parameter_name=f'Parking freq {qb.name}', unit='Hz')]
         self.sweep_functions = [
             self.sweep_functions[0], swf.multi_sweep_function(
                 sweep_functions, name=name, parameter_name=name)]
