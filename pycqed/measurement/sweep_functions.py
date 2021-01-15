@@ -181,7 +181,9 @@ class multi_sweep_function(Soft_Sweep):
                  name=None,
                  **kw):
         self.set_kw()
-        self.sweep_functions = sweep_functions
+        self.sweep_functions = [mc_parameter_wrapper.wrap_par_to_swf(s)
+                                if isinstance(s, qcodes.Parameter) else s
+                                for s in sweep_functions]
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
         self.unit = sweep_functions[0].unit
