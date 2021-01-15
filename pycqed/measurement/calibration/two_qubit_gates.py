@@ -16,6 +16,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
+import qcodes
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -147,7 +148,12 @@ class MultiTaskingExperiment(QuantumExperiment):
             'data_to_fit': self.data_to_fit,
         })
         if self.task_list is not None:
-            self.exp_metadata.update({'task_list': self.task_list})
+            tl = [copy(t) for t in self.task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
 
