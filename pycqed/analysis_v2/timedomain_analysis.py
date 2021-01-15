@@ -1262,7 +1262,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
-            do_legend_cal_states=True):
+            do_legend_cal_states=True, TwoD=None):
 
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -1326,7 +1326,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
         xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
-        if self.get_param_value('TwoD', default_value=False):
+        if TwoD is None:
+            TwoD = self.get_param_value('TwoD', default_value=False)
+        if TwoD:
             if self.sp is None:
                 soft_sweep_params = self.get_param_value(
                     'soft_sweep_params')
