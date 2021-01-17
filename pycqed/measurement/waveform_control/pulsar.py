@@ -549,12 +549,17 @@ class HDAWG8Pulsar:
                            parameter_class=ManualParameter)
 
         for awg_nr in range(4):
-            self.add_parameter(f'{awg.name}_awgs_{awg_nr}_mod_freq',
+            param_name = f'{awg.name}_awgs_{awg_nr}_mod_freq'
+            self.add_parameter(param_name,
                                unit='Hz',
                                initial_value=None,
                                set_cmd=self._hdawg_mod_setter(awg, awg_nr),
                                get_cmd=self._hdawg_mod_getter(awg, awg_nr),
                                )
+            # qcodes will not set the initial value if it is None, so we set it
+            # manually here to ensure that internal modulation gets switched off
+            # in the init.
+            self.set(f'{awg.name}_awgs_{awg_nr}_mod_freq', None)
 
         group = []
         for ch_nr in range(8):
