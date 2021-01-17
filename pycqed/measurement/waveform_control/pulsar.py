@@ -705,6 +705,8 @@ class HDAWG8Pulsar:
                 # pulse_library.SSB_DRAG_pulse.chan_wf.
                 # In the future, we should extended this to support general
                 # IQ modulation and adapt the pulse library accordingly.
+                # Also note that we here assume that the I (Q) channel is the
+                # first (second) channel of a pair.
                 sideband = np.sign(val)
                 freq = np.abs(val)
                 obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
