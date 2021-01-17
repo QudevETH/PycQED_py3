@@ -243,13 +243,14 @@ class ParallelLOSweepExperiment(CalibBuilder):
             self.preprocessed_task_list, self.sweep_block, **kw)
 
     def resolve_lo_sweep_points(self, freq_sp_suffix='freq', **kw):
-        all_freqs = self.sweep_points.get_sweep_params_property('values', 1,
-                                                                'all')
+        all_freqs = np.array(
+            self.sweep_points.get_sweep_params_property('values', 1, 'all'))
         if np.ndim(all_freqs) == 1:
             all_freqs = [all_freqs]
         all_diffs = [np.diff(freqs) for freqs in all_freqs]
-        assert all([np.mean(abs(diff - all_diffs[0]) / all_diffs[0]) < 1e-10
-                    for diff in all_diffs]), \
+        assert all([len(d) == 0 for d in all_diffs]) or \
+            all([np.mean(abs(diff - all_diffs[0]) / all_diffs[0]) < 1e-10
+                 for diff in all_diffs]), \
             "The steps between frequency sweep points must be the same for " \
             "all qubits."
         self.lo_sweep_points = all_freqs[0] - all_freqs[0][0]
