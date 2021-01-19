@@ -777,13 +777,16 @@ def configure_qubit_feedback_params(qubits, for_ef=False):
         raise NotImplementedError('for_ef feedback_params')
     for qb in qubits:
         ge_ch = qb.ge_I_channel()
+        acq_ch = qb.acq_I_channel()
         pulsar = qb.instr_pulsar.get_instr()
         AWG = qb.find_instrument(pulsar.get(f'{ge_ch}_awg'))
-        vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
-        acq_ch = qb.acq_I_channel()
-        AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
-        AWG.set(f'awgs_{vawg}_dio_mask_value', 1)
+        if len(pulsar.get(f'{AWG.name}_trigger_channels')) > 0:
+            AWG.dios_0_mode(1)
+            vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
+            AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
+            AWG.set(f'awgs_{vawg}_dio_mask_value', 1)
         UHF = qb.instr_uhf.get_instr()
+        UHF.dios_0_mode(2)
         threshs = qb.acq_classifier_params()
         if threshs is not None:
             threshs = threshs.get('thresholds', None)
