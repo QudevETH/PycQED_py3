@@ -8311,8 +8311,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         # reshape data per prepared state before reset for each pg, pe, (pf),
         # for the projected data dict and possibly the readout-corrected version
         pdd = 'projected_data_dict'
-        self.proc_data_dict[pdd]["qb10"]["pe"] = self.proc_data_dict[pdd]["qb10"]["pe"].T
-        self.proc_data_dict[pdd]["qb10"]["pg"] = (1 - self.proc_data_dict[pdd]["qb10"]["pe"])
+        # self.proc_data_dict[pdd]["qb10"]["pe"] = self.proc_data_dict[pdd]["qb10"]["pe"].T
+        # self.proc_data_dict[pdd]["qb10"]["pg"] = (1 - self.proc_data_dict[pdd]["qb10"]["pe"])
         for suffix in ["", "_corrected"]:
             projdd_per_prep_state = \
                 deepcopy(self.proc_data_dict.get(pdd + suffix, {}))
@@ -8455,7 +8455,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'ylabel': 'Population, $P$',
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
-                                'setlabel': self._get_pop_label(state, seq_nr, k),
+                                'setlabel': self._get_pop_label(state, k,
+                                                                not self._has_reset_pulses(seq_nr),
+                                                                ),
                                 'title': self.raw_data_dict['timestamp'] + ' ' +
                                          self.raw_data_dict['measurementstring']
                                          + " " + prep_state,
@@ -8493,7 +8495,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'fig_id': fig_key,
                                     'xvals': np.arange(len(pop)),
                                     'yvals': p_therm * np.ones_like(pop),
-                                    'setlabel': "__None__", #"$P_\mathrm{therm}$",
+                                    'setlabel': "$P_\mathrm{therm}$",
                                     'linestyle': '--',
                                     'marker': "",
                                     'color': 'k',
@@ -8533,7 +8535,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'title': self.raw_data_dict['timestamp'] + ' ' +
                                              f"Reset rates {qbn}{keys[k]}",
                                     'color': f'C{j}',
-                                    'alpha': 0.5 if seq_nr == 0 else 1,
+                                    'alpha': 1 if self._has_reset_pulses(seq_nr) else 0.5,
                                     'do_legend': seq_nr in [0, 1],
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
@@ -8552,15 +8554,20 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'ylabel': 'Excited Pop., $P_\mathrm{exc}$',
                                     'yunit': '',
                                     'setlabel':
-                                        f'data NR' if seq_nr == 0 else "data",
+                                        "data" if
+                                        self._has_reset_pulses(seq_nr)
+                                        else "data NR",
                                     'linestyle': 'none',
                                     'color': f'C{j}',
-                                    'alpha': 0.5 if seq_nr == 0 else 1,
+                                    'alpha': 1 if self._has_reset_pulses(seq_nr) else 0.5,
                                     "do_legend": True,
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
                                     }
+
+    def _has_reset_pulses(self, seq_nr):
+        return not self.sp.get_values('pulse_off')[seq_nr]
 
 
     def plot(self, **kw):
@@ -8640,8 +8647,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         return str
 
     @staticmethod
-    def _get_pop_label(state, seq_nr, key):
-        superscript = "{NR}" if seq_nr == 0 else "{c}" \
+    def _get_pop_label(state, key, no_reset=False):
+        superscript = "{NR}" if no_reset else "{c}" \
             if "corrected" in key else "{}"
         return f'$P_{state[-1]}^{superscript}$'
 
