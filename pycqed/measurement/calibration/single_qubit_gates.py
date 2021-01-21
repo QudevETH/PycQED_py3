@@ -1440,8 +1440,10 @@ class ActiveReset(CalibBuilder):
         self.set_thresholds = set_thresholds
         self.recalibrate_ro = recalibrate_ro
         # force resetting of thresholds if recalibrating readout
-        if self.recalibrate_ro:
-            self.set_thresholds = True
+        if self.recalibrate_ro and not self.set_thresholds:
+            log.warning(f"recalibrate_ro=True but set_threshold=False,"
+                        f" the latest thresholds from the recalibration"
+                        f" won't be uploaded to the UHF.")
         self.prep_states = prep_states
         self.reset_reps = reset_reps
         self.n_shots = n_shots
@@ -1557,6 +1559,9 @@ class ActiveReset(CalibBuilder):
     def run_analysis(self, analysis_class=None, **kwargs):
 
         self.analysis = tda.MultiQutritActiveResetAnalysis(**kwargs)
+
+    def run_update(self, **kw):
+        print('Update')
 
     @staticmethod
     def _set_thresholds(qubits, clf_params=None):
