@@ -559,10 +559,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         probas_corrected = probas_corrected.reshape(sh)
                     else:
                         probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
-                    for state_prob in ['pg', 'pe', 'pf']:
-                        self.proc_data_dict['projected_data_dict_corrected'][
-                            qbn].update({state_prob: data for key, data in
-                             zip(["pg", "pe", "pf"], probas_corrected)})
+                    self.proc_data_dict['projected_data_dict_corrected'][
+                        qbn] = {key: data for key, data in
+                                zip(["pg", "pe", "pf"], probas_corrected)}
 
         # get data_to_fit
         suffix = "_corrected" if self.get_param_value("correction_matrix")\
