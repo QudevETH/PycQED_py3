@@ -382,7 +382,7 @@ class BaseDataAnalysis(object):
                         raw_data_dict_ts[save_par] = \
                             raw_data_dict_ts[save_par][0]
                 for par_name in raw_data_dict_ts:
-                    if par_name in self.numeric_params:
+                    if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
             except Exception as e:
