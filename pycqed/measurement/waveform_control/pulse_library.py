@@ -119,7 +119,7 @@ class SSB_DRAG_pulse(pulse.Pulse):
         if self.mod_frequency is not None:
             phase += 360 * self.phaselock * self.mod_frequency * (
                     self.algorithm_time() + self.nr_sigma * self.sigma / 2)
-        hashlist += [self.alpha, self.phi_skew, phase]
+            hashlist += [self.alpha, self.phi_skew, phase]
         return hashlist
 
 
