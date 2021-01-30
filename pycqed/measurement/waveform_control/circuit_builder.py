@@ -670,7 +670,8 @@ class CircuitBuilder:
         return seq
 
     def simultaneous_blocks(self, block_name, blocks, block_align='start',
-                            set_end_after_all_pulses=False):
+                            set_end_after_all_pulses=False,
+                            disable_block_counter=False):
         """
         Creates a block with name :block_name: that consists of the parallel
         execution of the given :blocks:. Ensures that any pulse or block
@@ -693,6 +694,8 @@ class CircuitBuilder:
                 block relative to the duration the block). Default: 'start'
             set_end_after_all_pulses (bool, default False): in all
                 blocks, correct the end pulse to happen after the last pulse.
+            disable_block_counter (bool, default False): prevent block.build
+                from appending a counter to the block name.
         """
 
         simultaneous = Block(block_name, [])
@@ -704,7 +707,8 @@ class CircuitBuilder:
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
             simultaneous.extend(block.build(
-                ref_pulse=f"start", block_start=dict(block_align=block_align)))
+                ref_pulse=f"start", block_start=dict(block_align=block_align),
+                name=block.name if disable_block_counter else None))
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
@@ -718,7 +722,8 @@ class CircuitBuilder:
         return simultaneous
 
     def sequential_blocks(self, block_name, blocks,
-                          set_end_after_all_pulses=False):
+                          set_end_after_all_pulses=False,
+                          disable_block_counter=False):
         """
         Creates a block with name :block_name: that consists of the serial
         execution of the given :blocks:.
@@ -736,13 +741,16 @@ class CircuitBuilder:
                 to be executed one after another.
             set_end_after_all_pulses (bool, default False): in all
                 blocks, correct the end pulse to happen after the last pulse.
+            disable_block_counter (bool, default False): prevent block.build
+                from appending a counter to the block name.
         """
 
         sequential = Block(block_name, [])
         for block in blocks:
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
-            sequential.extend(block.build())
+            sequential.extend(block.build(
+                name=block.name if disable_block_counter else None))
         return sequential
 
     def sweep_n_dim(self, sweep_points, body_block=None, body_block_func=None,
@@ -854,7 +862,8 @@ class CircuitBuilder:
                         qb_names=all_ro_qubits, **final_kwargs)
 
                 segblock = self.sequential_blocks(
-                        'segblock', [prep, this_body_block, final, ro])
+                    'segblock', [prep, this_body_block, final, ro],
+                    disable_block_counter=True)
                 seg = Segment(f'seg{j}', segblock.build(
                     sweep_dicts_list=sweep_points, sweep_index_list=[j, i]))
                 # apply Segment sweep points
