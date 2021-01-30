@@ -726,15 +726,16 @@ class HDAWG8Pulsar:
                 
             if not any([ch_has_waveforms[ch] 
                     for ch in [ch1id, ch1mid, ch2id, ch2mid]]):
-                awg_str = "while(1){wait(200);}"
-            else:
-                awg_str = self._hdawg_sequence_string_template.format(
-                    wave_definitions='\n'.join(wave_definitions+interleaves),
-                    codeword_table_defs='\n'.join(codeword_table_defs),
-                    playback_string='\n  '.join(playback_strings))
+                # prevent ZI_base_instrument.start() from starting this sub AWG
+                obj._awg_program[awg_nr] = None
+                continue
 
-            # Hack needed to pass the sanity check of the ZI_base_instrument
-            # class in 
+            awg_str = self._hdawg_sequence_string_template.format(
+                wave_definitions='\n'.join(wave_definitions+interleaves),
+                codeword_table_defs='\n'.join(codeword_table_defs),
+                playback_string='\n  '.join(playback_strings))
+
+            # tell ZI_base_instrument.start() to start this sub AWG
             obj._awg_needs_configuration[awg_nr] = False
             obj._awg_program[awg_nr] = True
 
