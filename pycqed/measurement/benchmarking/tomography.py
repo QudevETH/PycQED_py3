@@ -76,6 +76,19 @@ class Tomography(CalibBuilder):
                 if 'prefix' not in task:
                     task['prefix'] = ''.join(task['qubits']) + "_"
 
+            state_tomo = True
+            if init_rots_basis != ('I',):
+                state_tomo = False
+            for task in task_list:
+                if task.get('init_rots_basis', ('I',)) != ('I',):
+                    state_tomo = False
+            if state_tomo:
+                self.experiment_name = \
+                    f'{kw.get("state_name", "")}StateTomography'
+            else:
+                self.experiment_name = \
+                    f'{kw.get("process_name", "")}ProcessTomography'
+
             super().__init__(task_list,
                              pulses=pulses,
                              init_rots_basis=init_rots_basis,
