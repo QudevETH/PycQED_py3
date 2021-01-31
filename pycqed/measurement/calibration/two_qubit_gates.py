@@ -626,7 +626,7 @@ class CalibBuilder(MultiTaskingExperiment):
                 max_length = max(p.pulse_obj.length, max_length)
         return max_length
 
-    def prepend_pulses_block(self, prepend_pulse_dicts):
+    def prepend_pulses_block(self, prepend_pulse_dicts, block_name='prepend'):
         """
         Generates a list of prepended pulses to run a calibration under the
         influence of previous operations (e.g.,  charge in the fluxlines).
@@ -647,7 +647,7 @@ class CalibBuilder(MultiTaskingExperiment):
                 # pulse parameters that overwrite the default values
                 prepend_pulse.update(pp)
                 prepend_pulses += [prepend_pulse]
-        return Block('prepend', prepend_pulses)
+        return Block(block_name, prepend_pulses)
 
     @staticmethod
     def add_default_ramsey_sweep_points(sweep_points, tile=2,
