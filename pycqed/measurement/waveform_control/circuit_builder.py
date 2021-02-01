@@ -205,7 +205,8 @@ class CircuitBuilder:
         op_name = op_info[0][1:] if op_info[0][0] == 's' else op_info[0]
         op = op_name + ' ' + ' '.join(op_info[1:])
 
-        if op_name.startswith('CZ'):
+        if op_info[0].rstrip('0123456789.') == 'CZ' or \
+                op_info[0].startswith('CZ:'):
             operation = self.get_cz_operation_name(op_info[1], op_info[2])
             p = deepcopy(self.operation_dict[operation])
         elif parse_rotation_gates and op not in self.operation_dict:
