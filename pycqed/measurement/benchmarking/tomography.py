@@ -90,6 +90,14 @@ class Tomography(CalibBuilder):
                              optimize_identity=optimize_identity,
                              **kw)
 
+            # update measurement object to only read out tomography qubits
+            self.meas_obj_names = []
+            for task in self.task_list:
+                for qbn in task['qubits']:
+                    if qbn not in self.meas_obj_names:
+                        self.meas_obj_names.append(qbn)
+            self.meas_objs, _ = self.get_qubits(self.meas_obj_names)
+
             self.optimize_identity = optimize_identity
             self.global_prepend_block = None
             self.global_initializations = None
@@ -154,7 +162,7 @@ class Tomography(CalibBuilder):
             if task['prepend_pulses'] is not None:
                 prepend_block_list.append(self.block_from_anything(
                     task['prepend_pulses'], 'PrependPulses'))
-        for qb in self.qb_names:
+        for qb in self.meas_obj_names:
             if qb not in initializations_map:
                 initializations_map[qb] = []
             if qb not in finalizations_map:
@@ -168,12 +176,12 @@ class Tomography(CalibBuilder):
         self.global_initializations = []
         for i in range(nr_inits):
             self.global_initializations += [[]]
-            for qb in self.qb_names:
+            for qb in self.meas_obj_names:
                 self.global_initializations[-1] += [initializations_map[qb][i]]
         self.global_finalizations = []
         for i in range(nr_finals):
             self.global_finalizations += [[]]
-            for qb in self.qb_names:
+            for qb in self.meas_obj_names:
                 self.global_finalizations[-1] += [finalizations_map[qb][i]]
         if len(prepend_block_list) > 0:
             self.global_prepend_block = self.simultaneous_blocks(
