@@ -159,7 +159,7 @@ class Tomography(CalibBuilder):
             finalizations_map, nr_finals, task['final_rots_basis'] = \
                 process_tomo(task['qubits'], task['final_rots_basis'],
                              task['final_all_rots'])
-            if task['prepend_pulses'] is not None:
+            if task.get('prepend_pulses', None) is not None:
                 prepend_block_list.append(self.block_from_anything(
                     task['prepend_pulses'], 'PrependPulses'))
         for qb in self.meas_obj_names:
