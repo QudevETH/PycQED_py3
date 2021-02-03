@@ -663,7 +663,7 @@ class HDAWG8Pulsar:
             output = (int(id[2:]) - 1) - 2 * awg
             def s(val):
                 obj.set(f'awgs_{awg}_outputs_{output}_amplitude', val)
-                print(f'awgs_{awg}_outputs_{output}_amplitude: {val}')
+                log.debug(f'awgs_{awg}_outputs_{output}_amplitude: {val}')
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
         return s
@@ -698,7 +698,7 @@ class HDAWG8Pulsar:
     @staticmethod
     def _hdawg_mod_setter(obj, awg_nr):
         def s(val):
-            print(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
+            log.debug(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
             if val == None:
                 obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
                 obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
