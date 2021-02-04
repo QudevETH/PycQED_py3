@@ -5218,7 +5218,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
             ampls = deepcopy(self.proc_data_dict['analysis_params_dict'][
                 'amplitudes'][qbn])
             if len(excl_idxs):
-                mask = np.arange(len(freqs)) == excl_idxs
+                mask = np.array([i in excl_idxs for i in np.arange(len(freqs))])
                 ampls = ampls[np.logical_not(mask)]
                 freqs = freqs[np.logical_not(mask)]
 
