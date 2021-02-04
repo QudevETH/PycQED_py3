@@ -1475,17 +1475,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
                 if isinstance(corr_data, dict):
                     for data_key, data in corr_data.items():
+                        fn = f'{fig_name}_{data_key}'
                         if not self.rotate:
                             data_label = data_key
                             plot_name_suffix = data_key
                             plot_cal_points = False
                             data_axis_label = 'Population'
                         else:
-                            fn = f'{fig_name}_{data_key}'
+
                             data_label = 'Data'
                             plot_name_suffix = ''
-                            tf = f'{data_key}_{title_suf}' if \
-                                len(title_suf) else data_key
+
                             plot_cal_points = (
                                 not self.options_dict.get('TwoD', False))
                             data_axis_label = \
@@ -1493,6 +1493,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 'pca' in self.rotation_type.lower() else \
                                 '{} state population'.format(
                                 self.get_latex_prob_label(data_key))
+                        tf = f'{data_key}_{title_suf}' if \
+                            len(title_suf) else data_key
                         self.prepare_projected_data_plot(
                             fn, data, qb_name=qb_name,
                             data_label=data_label,
