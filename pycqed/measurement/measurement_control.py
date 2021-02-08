@@ -386,7 +386,9 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure_hard(self):
+        self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
+        self.detector_function.progress_callback = None
 
         ###########################
         # Shape determining block #
@@ -446,7 +448,7 @@ class MeasurementControl(Instrument):
         if self.mode == '2D':
             self.update_plotmon_2D_hard()
         self.iteration += 1
-        self.print_progress(stop_idx)
+        self.print_progress()
         return new_data
 
     def measurement_function(self, x):
@@ -527,7 +529,7 @@ class MeasurementControl(Instrument):
             self.update_plotmon_adaptive()
         self.iteration += 1
         if self.mode != 'adaptive':
-            self.print_progress(stop_idx)
+            self.print_progress()
         return vals
 
     def optimization_function(self, x):
@@ -1673,21 +1675,23 @@ class MeasurementControl(Instrument):
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
 
-    def get_percdone(self):
-        percdone = self.total_nr_acquired_values / (
+    def get_percdone(self, current_acq=0):
+        percdone = (self.total_nr_acquired_values + current_acq) / (
             np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
         return percdone
 
-    def print_progress(self, stop_idx=None):
+    def print_progress(self, current_acq=0):
         if self.verbose():
             acquired_points = self.dset.shape[0]
             total_nr_pts = len(self.get_sweep_points())
-            percdone = self.get_percdone()
+            percdone = self.get_percdone(current_acq=current_acq)
             elapsed_time = time.time() - self.begintime
             # The trailing spaces are to overwrite some characters in case the
             # previous progress message was longer.
-            progress_message = "\r {percdone}% completed \telapsed time: "\
-                "{t_elapsed}s \ttime left: {t_left}s     ".format(
+            progress_message = (
+                "\r{timestamp} - {percdone}% completed \telapsed time: "
+                "{t_elapsed}s \ttime left: {t_left}s     ").format(
+                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
                     percdone=int(percdone),
                     t_elapsed=round(elapsed_time, 1),
                     t_left=round((100.-percdone)/(percdone) *
