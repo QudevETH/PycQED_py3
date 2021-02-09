@@ -1689,7 +1689,7 @@ class MeasurementControl(Instrument):
             # The trailing spaces are to overwrite some characters in case the
             # previous progress message was longer.
             progress_message = (
-                "\r{timestamp} - {percdone}% completed \telapsed time: "
+                "\r{timestamp}\t{percdone}% completed \telapsed time: "
                 "{t_elapsed}s \ttime left: {t_left}s     ").format(
                     timestamp=time.strftime('%H:%M:%S', time.localtime()),
                     percdone=int(percdone),
