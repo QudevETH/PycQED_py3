@@ -574,6 +574,8 @@ class UHFQC_Base(Hard_Detector):
                           and self.nr_averages is not None)
         if print_progress:
             t_callback = time.time()
+            n_acq_last = [0] * len(self.UHFs)
+            n_acq_add = [0] * len(self.UHFs)
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
         while accumulated_time < self.UHFs[0].timeout() and \
                 not all(np.concatenate(list(gotem.values()))):
@@ -595,25 +597,37 @@ class UHFQC_Base(Hard_Detector):
             accumulated_time += 0.01 * len(self.UHFs)
             if print_progress:
                 t_now = time.time()
-                try:
-                    if t_now - t_callback > self.progress_callback_interval:
+                if t_now - t_callback > self.progress_callback_interval:
+                    try:
                         if self.ro_mode == 'rl':
                             n_acq = [UHF.qas_0_result_acquired() for UHF in
                                      self.UHFs]
                         else:
                             n_acq = [UHF.qas_0_monitor_acquired() for UHF in
                                      self.UHFs]
+                        # FIXME: This workaround is needed because the
+                        #  UHF truncates qas_0_result_acquired at 2**18.
+                        #  Moreover, it reports 0 when it is done. In this case,
+                        #  we keep the old value during data transfer,
+                        #  and MC will update the progress after data transfer.
+                        n_acq_add = [
+                            n_add + (2 ** 18 if n < n_last else 0) if n > 0
+                            else n_add + n_last
+                            for n, n_last, n_add in zip(n_acq, n_acq_last,
+                                                        n_acq_add)]
+                        n_acq_last = n_acq
+                        n_acq = np.array(n_acq) + np.array(n_acq_add)
                         if any([n > 0 for n in n_acq]):
                             # the following calculation works both if
                             # self.nr_averages is a vector/list or a scalar
                             progress = np.mean(np.multiply(
                                 n_acq, 1 / np.array(self.nr_averages)))
                             self.progress_callback(progress)
-                except Exception as e:
-                    # printing progress is optional
-                    log.debug(f'poll_data: Could not print progress: {e}')
+                    except Exception as e:
+                        # printing progress is optional
+                        log.debug(f'poll_data: Could not print progress: {e}')
+                    t_callback = t_now
 
-                t_callback = t_now
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.end")
 
         if not all(np.concatenate(list(gotem.values()))):
