@@ -1466,6 +1466,9 @@ class Segment:
                             f'current element name when renaming '
                             f'the segment.')
         self.acquisition_elements = new_acq_elements
+        # enforce that start and end times get recalculated using the new
+        # element names
+        self.element_start_end = {}
 
         # rename segment name
         self.name = new_name
