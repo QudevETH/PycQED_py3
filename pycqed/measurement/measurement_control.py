@@ -1998,17 +1998,30 @@ class MeasurementControl(Instrument):
         self._analysis_display = ad
 
     def log_to_slack(self, message):
-        # The webhook is a property and not a node, to avoid that it gets
-        # stored in the instruments settings snapshot.
+        """
+        Send a message to Slack. If self.slack_webhook is not set,
+        the message is only logged in the logger with loglevel INFO.
+        If self.slack_channel is not set, the default channel of the webhook
+        is used.
+
+        :param message: The message that should be logged to slack.
+
+        Note: The webhook and the channel are properties and not parameters,
+        to avoid that they get stored in the instruments settings snapshot.
+        """
+        # The webhook and the channel are properties and not parameters,
+        # to avoid that they get stored in the instruments settings snapshot.
+        # If no channel is provided, the default channel of the webhook is used
         log.info(f'MC: {message}')
         if not hasattr(self, 'slack_webhook'):
             log.info(f'MC: Not logging to slack because slack_webhook is not '
                      f'defined.')
             return
         try:
-            res = requests.post(self.slack_webhook, json={
-                "text": message
-            })
+            payload = {"text": message}
+            if hasattr(self, 'slack_channel'):
+                payload["channel"] = self.slack_channel
+            res = requests.post(self.slack_webhook, json=payload)
             res_text = res.text
         except Exception as e:
             res_text = repr(e)
