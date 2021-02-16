@@ -7,6 +7,7 @@ log = logging.getLogger(__name__)
 import time
 from copy import deepcopy
 import traceback
+import requests
 
 import numpy as np
 import numbers
@@ -1971,6 +1972,24 @@ class MeasurementControl(Instrument):
 
     def analysis_display(self, ad):
         self._analysis_display = ad
+
+    def log_to_slack(self, message):
+        # The webhook is a property and not a node, to avoid that it gets
+        # stored in the instruments settings snapshot.
+        log.info(f'MC: {message}')
+        if not hasattr(self, 'slack_webhook'):
+            log.info(f'MC: Not logging to slack because slack_webhook is not '
+                     f'defined.')
+            return
+        try:
+            res = requests.post(self.slack_webhook, json={
+                "text": message
+            })
+            res_text = res.text
+        except Exception as e:
+            res_text = repr(e)
+        if res_text != 'ok':
+            log.warning(f'MC: Error while logging to slack: {res_text}')
 
 
 class KeyboardFinish(KeyboardInterrupt):
