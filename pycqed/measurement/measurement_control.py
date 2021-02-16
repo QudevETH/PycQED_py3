@@ -137,6 +137,9 @@ class MeasurementControl(Instrument):
         self.exp_metadata = {}
         self._plotmon_axes_info = None
         self._persist_plotmon_axes_info = None
+        self._last_percdone_value = 0
+        self._last_percdone_change_time = 0
+        self._last_percdone_log_time = 0
 
     ##############################################
     # Functions used to control the measurements #
@@ -190,6 +193,9 @@ class MeasurementControl(Instrument):
         '''
 
         self.timer = Timer("MeasurementControl")
+        self._last_percdone_value = 0
+        self._last_percdone_change_time = time.time()
+        self._last_percdone_log_time = self._last_percdone_change_time
         # Setting to zero at the start of every run, used in soft avg
         self.soft_iteration = 0
         self.set_measurement_name(name)
@@ -1679,6 +1685,24 @@ class MeasurementControl(Instrument):
     def get_percdone(self, current_acq=0):
         percdone = (self.total_nr_acquired_values + current_acq) / (
             np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
+        try:
+            if percdone != self._last_percdone_value:
+                self._last_percdone_value = percdone
+                self._last_percdone_change_time = time.time()
+                log.debug(f'MC: percdone = {self._last_percdone_value} at '
+                          f'{self._last_percdone_change_time}')
+            else:
+                now = time.time()
+                no_prog_inter = getattr(self, 'no_progess_interval', 600)
+                if now - self._last_percdone_change_time > no_prog_inter \
+                        and now - self._last_percdone_log_time > no_prog_inter:
+                    no_prog_min = (now - self._last_percdone_change_time) / 60
+                    self.log_to_slack(f'The current measurement has not made'
+                                      f'any progress for '
+                                      f'{no_prog_min: .01f} minutes.')
+                    self._last_percdone_log_time = now
+        except Exception as e:
+            log.debug(f'MC: error while checking progress: {repr(e)}')
         return percdone
 
     def print_progress(self, current_acq=0):
