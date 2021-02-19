@@ -815,33 +815,7 @@ class QuDev_transmon(Qubit):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
-        # set awg channel dc offsets
-        offset_list = [('ro_I_channel', 'ro_I_offset'),
-                       ('ro_Q_channel', 'ro_Q_offset')]
-        if drive == 'timedomain':
-            if self.ge_lo_leakage_cal()['mode'] == 'fixed':
-                offset_list += [('ge_I_channel', 'ge_I_offset'),
-                                ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
-                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
-                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
-                # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
-                #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
-                lo_cal = ge_lo.get_instr().lo_cal_data()
-                qb_lo_cal = self.ge_lo_leakage_cal()
-                pulsar = self.instr_pulsar.get_instr()
-                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
-                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
-                lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
-                                            qb_lo_cal['I_offsets'])
-                lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
-                                            qb_lo_cal['Q_offsets'])
-
-        for channel_par, offset_par in offset_list:
-            self.instr_pulsar.get_instr().set(
-                self.get(channel_par) + '_offset', self.get(offset_par))
-
+        self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
         if ro_lo() is not None:
             ro_lo.get_instr().pulsemod_state('Off')
@@ -4167,7 +4141,62 @@ class QuDev_transmon(Qubit):
 
         ma.MeasurementAnalysis(TwoD=True)
 
-    def set_distortion_in_pulsar(self, pulsar=None, datadir=None):
+    def configure_pulsar(self):
+        """
+        Configure qubit-specific settings in pulsar:
+        - Reset modulation frequency and amplitude scaling
+        - set AWG channel DC offsets and switch sigouts on,
+           see configure_offsets
+        - set flux distortion, see set_distortion_in_pulsar
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        # make sure that some settings are reset to their default values
+        pulsar.parameters[self.get('ge_I_channel') + '_mod_freq'] = None
+        pulsar.parameters[self.get('ge_I_channel') + '_amplitude_scaling'] = 1
+        pulsar.parameters[self.get('ge_Q_channel') + '_amplitude_scaling'] = 1
+        # set offsets and turn on AWG outputs
+        self.configure_offsets()
+        # set flux distortion
+        self.set_distortion_in_pulsar()
+
+    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True):
+        """
+        Set AWG channel DC offsets and switch sigouts on.
+
+        :param set_ro_offsets: whether to set offsets for RO channels
+        :param set_ge_offsets: whether to set offsets for drive channels
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        offset_list = []
+        if set_ro_offsets:
+            offset_list += [('ro_I_channel', 'ro_I_offset'),
+                           ('ro_Q_channel', 'ro_Q_offset')]
+        if set_ge_offsets:
+            ge_lo = self.instr_ge_lo
+            if self.ge_lo_leakage_cal()['mode'] == 'fixed':
+                offset_list += [('ge_I_channel', 'ge_I_offset'),
+                                ('ge_Q_channel', 'ge_Q_offset')]
+                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
+            else:
+                # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
+                #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
+                lo_cal = ge_lo.get_instr().lo_cal_data()
+                qb_lo_cal = self.ge_lo_leakage_cal()
+                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
+                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
+                lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
+                                            qb_lo_cal['I_offsets'])
+                lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
+                                            qb_lo_cal['Q_offsets'])
+
+        for channel_par, offset_par in offset_list:
+            ch = self.get(channel_par)
+            pulsar.set(ch + '_offset', self.get(offset_par))
+            pulsar.sigout_on(ch)
+
+    def set_distortion_in_pulsar(self, datadir=None):
         """
         Configures the fluxline distortion in a pulsar object according to the
         settings in the parameter flux_distortion of the qubit object.
@@ -4178,8 +4207,7 @@ class QuDev_transmon(Qubit):
             self.find_instrument is used to find an obejct called 'MC' and
             the datadir of MC is used.
         """
-        if pulsar is None:
-            pulsar = self.find_instrument('Pulsar')
+        pulsar = self.instr_pulsar.get_instr()
         if datadir is None:
             datadir = self.find_instrument('MC').datadir()
         flux_distortion = deepcopy(self.DEFAULT_FLUX_DISTORTION)
