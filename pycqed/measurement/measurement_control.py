@@ -1697,7 +1697,7 @@ class MeasurementControl(Instrument):
                 if now - self._last_percdone_change_time > no_prog_inter \
                         and now - self._last_percdone_log_time > no_prog_inter:
                     no_prog_min = (now - self._last_percdone_change_time) / 60
-                    self.log_to_slack(f'The current measurement has not made'
+                    self.log_to_slack(f'The current measurement has not made '
                                       f'any progress for '
                                       f'{no_prog_min: .01f} minutes.')
                     self._last_percdone_log_time = now
