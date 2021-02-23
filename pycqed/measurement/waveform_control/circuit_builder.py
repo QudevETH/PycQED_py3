@@ -220,6 +220,8 @@ class CircuitBuilder:
             if op_name[0] not in ['X', 'Y', 'Z']:
                 raise KeyError(f'Gate "{op}" not found.')
             angle, qbn = op_name[1:], op_info[1]
+            if angle[-1] == 's':
+                angle = angle[:-1]
             param = None
             if angle[0] == ':':  # angle depends on a parameter
                 angle = angle[1:]
@@ -611,7 +613,6 @@ class CircuitBuilder:
             pulse_modifs = {}
         if isinstance(operations, str):
             operations = [operations]
-
         pulses = [self.get_pulse(op_format(op, **fill_values), True)
                   for op in operations]
 
