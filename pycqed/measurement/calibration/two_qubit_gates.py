@@ -563,6 +563,9 @@ class MultiTaskingExperiment(QuantumExperiment):
                 # passed to SweepPoints.add_sweep_parameter
                 v = copy(v)
                 values_func = v.pop('values_func', None)
+                if isinstance(values_func, str):
+                    # assumes the string is the name of a self method
+                    values_func = getattr(self, values_func, None)
 
                 k_list = k.split(',')
                 # if the respective task parameter (or keyword argument) exists
