@@ -567,7 +567,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # get data_to_fit
         self.proc_data_dict['data_to_fit'] = OrderedDict()
         for qbn, prob_data in self.proc_data_dict[
-                'projected_data_dict'].items():
+                'projected_data_dict_corrected'].items():
             if qbn in self.data_to_fit:
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
@@ -8265,7 +8265,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'sample_0' : index of first sample (ground-state)
             'sample_1' : index of second sample (first excited-state)
             'max_datapoints' : maximum amount of datapoints for culumative fit
-            'log_hist' : use log scale for the y-axis of the 1D histograms
+            'hist_scale' : scale for the y-axis of the 1D histograms: "linear" or "log"
             'verbose' : see BaseDataAnalysis
             'presentation_mode' : see BaseDataAnalysis
             'classif_method': how to classify the data.
