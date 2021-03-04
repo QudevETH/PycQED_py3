@@ -548,7 +548,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         data_dict[k] for k in data_dict for state_prob in
                         ['pg', 'pe', 'pf'] if state_prob in k])
                     corr_mtx = self.get_param_value("correction_matrix")[qbn]
-                    probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
+
+                    if np.ndim(probas_raw) == 3:
+                        assert self.get_param_value("TwoD", False) == True, \
+                            "'TwoD' is False but data seems to be 2D"
+                        # temporarily put 2D sweep into 1d for readout correction
+                        sh = probas_raw.shape
+                        probas_raw = probas_raw.reshape(sh[0], -1)
+                        probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
+                        probas_corrected = probas_corrected.reshape(sh)
+                    else:
+                        probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
                     for state_prob in ['pg', 'pe', 'pf']:
                         self.proc_data_dict['projected_data_dict_corrected'][
                             qbn].update({state_prob: data for key, data in
