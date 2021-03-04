@@ -542,7 +542,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     OrderedDict()
                 for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
-                    self.proc_data_dict['projected_data_dict'][qbn] = \
+                    self.proc_data_dict['projected_data_dict_corrected'][qbn] = \
                         OrderedDict()
                     probas_raw = np.asarray([
                         data_dict[k] for k in data_dict for state_prob in
