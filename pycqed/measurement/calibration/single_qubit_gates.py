@@ -1494,9 +1494,13 @@ class ActiveReset(CalibBuilder):
 
         if self.recalibrate_ro:
             self.analysis = mqm.measure_ssro(self.dev, self.qubits, self.prep_states,
-                                             update=True)
+                                             update=True,
+                                             n_shots=self.n_shots,
+                                             analysis_kwargs=dict(
+                                                 options_dict=dict(
+                                                 hist_scale="log")))
             # reanalyze to get thresholds
-            options_dict = dict(classif_method="threshold")
+            options_dict = dict(classif_method="threshold", hist_scale="log")
             a = tda.MultiQutrit_Singleshot_Readout_Analysis(qb_names=self.qb_names,
                                                             options_dict=options_dict)
             for qb in self.qubits:

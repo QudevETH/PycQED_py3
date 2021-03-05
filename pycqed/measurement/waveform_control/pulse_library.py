@@ -422,6 +422,7 @@ class BufferedSquarePulse(pulse.Pulse):
             'buffer_length_start': 0,
             'buffer_length_end': 0,
             'gaussian_filter_sigma': 0,
+            'mirror_pattern': None
         }
         return params
 
@@ -489,6 +490,7 @@ class BufferedCZPulse(pulse.Pulse):
             'buffer_length_end': 0,
             'extra_buffer_aux_pulse': 5e-9,
             'gaussian_filter_sigma': 0,
+            'mirror_pattern': None,
         }
         return params
 
@@ -971,6 +973,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
+            'mirror_pattern': None,
         }
         return params
 
@@ -1013,6 +1016,9 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         phase += 360 * self.phase_lock * self.mod_frequency \
                  * self.algorithm_time()
         hashlist += [self.alpha, self.phi_skew, phase]
+        # if self.mirror_pattern is not None:
+        #     print("here")
+        #     hashlist += [self.mirror_pattern]
         return hashlist
 
 
@@ -1029,6 +1035,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                          element_name,
                          name=name,
                          **kw)
+        # print(kw)
         self.flux_channel = flux_channel
         self.channels.append(flux_channel)
         self.flux_pulse_length = self.pulse_length + self.flux_extend_start + self.flux_extend_end
@@ -1040,7 +1047,9 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       pulse_length=self.flux_pulse_length,
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
-                                      gaussian_filter_sigma=self.flux_gaussian_filter_sigma)
+                                      gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
+                                      mirror_pattern=kw.get("mirror_pattern",
+                                                            None))
 
     @classmethod
     def pulse_params(cls):

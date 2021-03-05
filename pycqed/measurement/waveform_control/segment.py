@@ -862,12 +862,20 @@ class Segment:
             mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
             if mirror_correction is None:
                 mirror_correction = {}
-            for k in p.pulse_obj.__dict__:
-                if 'amplitude' in k:
-                    amp = -getattr(p.pulse_obj, k)
-                    if k in mirror_correction:
-                        amp += mirror_correction[k]
-                    setattr(p.pulse_obj, k, amp)
+            if "fp" in p.pulse_obj.__dict__:
+                for kk in p.pulse_obj.fp.__dict__:
+                    if 'amplitude' in kk:
+                        amp = - p.pulse_obj.flux_amplitude
+                        if kk in mirror_correction:
+                            amp += mirror_correction[kk]
+                        setattr(p.pulse_obj.fp, kk, amp)
+            else:
+                for k in p.pulse_obj.__dict__:
+                    if 'amplitude' in k:
+                        amp = -getattr(p.pulse_obj, k)
+                        if k in mirror_correction:
+                            amp += mirror_correction[k]
+                        setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """

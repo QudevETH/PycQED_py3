@@ -1347,7 +1347,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                 alpha=kwargs.get('alpha', 0.6))
             if plot_fitting and kwargs.get('means', None) is not None and \
                     kwargs.get('std', None) is not None:
-                means = list(kwargs['means'].values())
+                means = kwargs['means']
                 fit_plot_values = np.linspace(*binr_range, 200)
                 y = stats.norm.pdf(fit_plot_values, means[i],
                                    kwargs['std'][i]).flatten()
@@ -1357,6 +1357,10 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         ax.set_xlabel(kwargs.get("xlabel", 'integration unit 1, $u_1$'))
         ax.set_ylabel('Counts, $n$')
         ax.set_yscale(kwargs.get('scale', "log"))
+        ylim = kwargs.get('ylim',
+                          ax.get_ylim() if kwargs.get('scale', "log") == "linear"
+                          else [0.1] +[ax.get_ylim()[1]])
+        ax.set_ylim(ylim)
         if kwargs.get('legend', False):
             ax.legend()
         return fig, ax
