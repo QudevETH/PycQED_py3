@@ -1122,8 +1122,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             return 'gray'
         elif cal_state_label == 'f' or cal_state_label == r'$|f\rangle$':
             return 'C8'
+        elif cal_state_label == 'h' or cal_state_label == r'$|h\rangle$':
+            return 'C5'
         else:
-            return 'C4'
+            return 'C6'
 
     @staticmethod
     def get_latex_prob_label(prob_label):
