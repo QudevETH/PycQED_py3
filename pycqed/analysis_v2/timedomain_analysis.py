@@ -4882,10 +4882,12 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
         def add_fit_dict(qbn, data, key):
-            sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
-                'msmt_sweep_points']
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
+            reduction_arr = np.invert(np.isnan(data))
+            data = data[reduction_arr]
+            sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                'msmt_sweep_points'][reduction_arr]
             cos_mod = lmfit.Model(fit_mods.CosFunc)
             guess_pars = fit_mods.Cos_guess(
                 model=cos_mod, t=sweep_points, data=data)
