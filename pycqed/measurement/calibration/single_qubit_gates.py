@@ -494,13 +494,16 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     mod_freq = self.get_pulse(f"X180 {qb.name}")[
                         'mod_frequency']
                     pulsar = qb.instr_pulsar.get_instr()
-                    param = pulsar.parameters[f'{qb.ge_I_channel()}_mod_freq']
                     # Pulsar assumes that the first channel in a pair is the
                     # I component. If this is not the case, the following
-                    # workaround swaps the sign of the modulation frequency
-                    # to get the correct sideband.
+                    # workaround finds the correct channel to configure
+                    # and swaps the sign of the modulation frequency to get
+                    # the correct sideband.
                     iq_swapped = (int(qb.ge_I_channel()[-1:])
                                   > int(qb.ge_Q_channel()[-1:]))
+                    param = pulsar.parameters[
+                        f'{qb.ge_Q_channel()}_mod_freq' if iq_swapped else
+                        f'{qb.ge_I_channel()}_mod_freq']
                     # The following temporary value ensures that HDAWG
                     # modulation is set back to its previous state after the end
                     # of the modulation frequency sweep.

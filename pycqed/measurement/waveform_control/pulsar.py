@@ -548,19 +548,6 @@ class HDAWG8Pulsar:
                                                vals.Lists(vals.Ints())),
                            parameter_class=ManualParameter)
 
-        for awg_nr in range(4):
-            param_name = f'{awg.name}_awgs_{awg_nr}_mod_freq'
-            self.add_parameter(param_name,
-                               unit='Hz',
-                               initial_value=None,
-                               set_cmd=self._hdawg_mod_setter(awg, awg_nr),
-                               get_cmd=self._hdawg_mod_getter(awg, awg_nr),
-                               )
-            # qcodes will not set the initial value if it is None, so we set it
-            # manually here to ensure that internal modulation gets switched off
-            # in the init.
-            self.set(f'{awg.name}_awgs_{awg_nr}_mod_freq', None)
-
         group = []
         for ch_nr in range(8):
             id = 'ch{}'.format(ch_nr + 1)
@@ -624,10 +611,20 @@ class HDAWG8Pulsar:
         self.add_parameter('{}_internal_modulation'.format(name), 
                            initial_value=False, vals=vals.Bool(),
                            parameter_class=ManualParameter)
-        cmd = self.parameters[
-            f'{awg.name}_awgs_{int((int(id[2:]) - 1) / 2)}_mod_freq']
-        self.add_parameter('{}_mod_freq'.format(name),
-                           unit='Hz', set_cmd=cmd, get_cmd=cmd)
+        if (int(id[2:]) - 1) % 2  == 0:  # first channel of a pair
+            awg_nr = int((int(id[2:]) - 1) / 2)
+            param_name = '{}_mod_freq'.format(name)
+            self.add_parameter(param_name,
+                               unit='Hz',
+                               initial_value=None,
+                               set_cmd=self._hdawg_mod_setter(awg, awg_nr),
+                               get_cmd=self._hdawg_mod_getter(awg, awg_nr),
+                               )
+            # qcodes will not set the initial value if it is None, so we set
+            # it manually here to ensure that internal modulation gets
+            # switched off in the init.
+            self.set(param_name, None)
+
 
     def _hdawg_create_marker_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
