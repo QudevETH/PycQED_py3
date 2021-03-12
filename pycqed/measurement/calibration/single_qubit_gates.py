@@ -254,6 +254,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
             "The steps between frequency sweep points must be the same for " \
             "all qubits."
         self.lo_sweep_points = all_freqs[0] - all_freqs[0][0]
+        self.exp_metadata['lo_sweep_points'] = self.lo_sweep_points
 
         temp_vals = []
         if self.qubits is None:
@@ -285,6 +286,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
                                                   - qb.ge_mod_freq()
                     temp_vals.append(
                         (qb.ge_mod_freq, f_start[qb] - self.lo_offsets[lo]))
+            self.exp_metadata['lo_offsets'] = {
+                k.name: v for k, v in self.lo_offsets.items()}
 
         if self.allowed_lo_freqs is not None:
             for task in self.preprocessed_task_list:
@@ -317,6 +320,9 @@ class ParallelLOSweepExperiment(CalibBuilder):
                         {f'e_X180 {qb.name}*.amplitude': [
                             qb.ge_amp180() / (qb.get_ge_amp180_from_ge_freq(
                                 qb.ge_freq()) / max_amp)]})
+            self.exp_metadata['drive_amp_adaptation'] = {
+                qb.name: fnc(self.lo_sweep_points)
+                for qb, fnc in self.drive_amp_adaptation.items()}
 
         with temporary_value(*temp_vals):
             self.update_operation_dict()
