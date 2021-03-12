@@ -5070,6 +5070,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 k = k.replace('cos_fit_', '')
                 qbn, i = (k + '_').split('_')[:2]
+                if len(i):
+                    label, unit, vals = self.get_first_sweep_param(
+                        qbn, dimension=1)
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x : f'{x:0.4f}')))
+                else:
+                    title_suffix = ''
                 fit_res = fit_dict['fit_res']
                 base_plot_name = 'Rabi_' + k
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
@@ -5078,7 +5086,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     data=dtf[int(i)] if i != '' else dtf,
                     plot_name_suffix=qbn+'fit',
                     qb_name=qbn, TwoD=False,
-                    title_suffix=i
+                    title_suffix=title_suffix
                 )
 
                 self.plot_dicts['fit_' + k] = {
