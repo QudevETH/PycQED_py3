@@ -1388,6 +1388,28 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     plot_dict_cal = self.plot_dicts.pop(plot_name)
                     self.plot_dicts[plot_name] = plot_dict_cal
 
+    def get_first_sweep_param(self, qbn=None, dimension=0):
+        """
+        Get properties of the first sweep param in the given dimension
+        (potentially for the given qubit).
+        :param qbn: (str) qubit name. If None, all sweep params are considered.
+        :param dimension: (float, default: 0) sweep dimension to be considered.
+        :return: a 3-tuple of label, unit, and array of values
+        """
+        if qbn is None:
+            param_name = [p for v in self.mospm.values() for p in v
+                          if self.sp.find_parameter(p) == 1][0]
+        else:
+            param_name = [p for p in self.mospm[qbn]
+                          if self.sp.find_parameter(p)][0]
+        label = self.sp.get_sweep_params_property(
+            'label', dimension=dimension, param_names=param_name)
+        unit = self.sp.get_sweep_params_property(
+            'unit', dimension=dimension, param_names=param_name)
+        vals = self.sp.get_sweep_params_property(
+            'values', dimension=dimension, param_names=param_name)
+        return label, unit, vals
+
 
 class Idling_Error_Rate_Analyisis(ba.BaseDataAnalysis):
 
