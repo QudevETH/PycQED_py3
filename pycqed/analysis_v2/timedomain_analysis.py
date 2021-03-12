@@ -5204,6 +5204,15 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         kwargs['params_dict'] = params_dict
         super().__init__(qb_names, *args, **kwargs)
 
+    def extract_data(self):
+        super().extract_data()
+        # Set some default values specific to RabiFrequencySweepAnalysis if the
+        # respective options have not been set by the user or in the metadata.
+        # (We do not do this in the init since we have to wait until
+        # metadata has been extracted.)
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
     def analyze_fit_results(self):
         super().analyze_fit_results()
         amplitudes = {qbn: np.array([[
