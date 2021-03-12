@@ -5323,7 +5323,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'yvals': fit_dict['fit_yvals']['data'],
                     'ylabel': '$\\pi$-pulse amplitude, $A$',
                     'yunit': 'V',
-                    'setlabel': f'LSB, LO at {np.max(lo_freqsX)/1e9:.3f} GHz',
+                    'setlabel': f'USB, LO at {np.min(lo_freqsX)/1e9:.3f} GHz',
                     'title': title,
                     'linestyle': 'none',
                     'do_legend': False,
@@ -5337,14 +5337,14 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
                     'fit_res': fit_res,
-                    'setlabel': 'LSB quadratic fit',
+                    'setlabel': 'USB quadratic fit',
                     'color': 'C0',
                     'do_legend': True,
                     # 'legend_ncol': 2,
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                # plot upper sideband
+                # plot lower sideband
                 fit_dict = self.fit_dicts[f'amplitude_fit_right_{qbn}']
                 fit_res = fit_dict['fit_res']
                 xmax = max(fit_dict['fit_xvals']['x'])
@@ -5357,7 +5357,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'yvals': fit_dict['fit_yvals']['data'],
                     'ylabel': '$\\pi$-pulse amplitude, $A$',
                     'yunit': 'V',
-                    'setlabel': f'USB, LO at {np.min(lo_freqsX)/1e9:.3f} GHz',
+                    'setlabel': f'LSB, LO at {np.max(lo_freqsX)/1e9:.3f} GHz',
                     'title': title,
                     'linestyle': 'none',
                     'do_legend': False,
@@ -5371,7 +5371,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
                     'fit_res': fit_res,
-                    'setlabel': 'USB quadratic fit',
+                    'setlabel': 'LSB quadratic fit',
                     'color': 'C1',
                     'do_legend': True,
                     'legend_ncol': 2,
