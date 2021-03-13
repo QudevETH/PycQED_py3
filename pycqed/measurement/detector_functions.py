@@ -11,6 +11,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.timer import Timer
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
+from pycqed.measurement.measurement_control import NoProgressError
 import logging
 log = logging.getLogger(__name__)
 
@@ -623,6 +624,8 @@ class UHFQC_Base(Hard_Detector):
                             progress = np.mean(np.multiply(
                                 n_acq, 1 / np.array(self.nr_averages)))
                             self.progress_callback(progress)
+                    except NoProgressError:
+                        raise
                     except Exception as e:
                         # printing progress is optional
                         log.debug(f'poll_data: Could not print progress: {e}')
