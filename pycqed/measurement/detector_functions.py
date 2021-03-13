@@ -11,7 +11,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.timer import Timer
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
-from pycqed.measurement.measurement_control import NoProgressError
+from pycqed.utilities.errors import NoProgressError
 import logging
 log = logging.getLogger(__name__)
 

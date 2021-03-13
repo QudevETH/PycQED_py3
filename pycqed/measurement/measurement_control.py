@@ -32,6 +32,7 @@ from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 from qcodes.plots.colors import color_cycle
 
+from pycqed.utilities.errors import NoProgressError
 
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -2074,7 +2075,3 @@ class KeyboardFinish(KeyboardInterrupt):
     """
     pass
 
-
-class NoProgressError(Exception):
-    """Exception raised when a measurement does not make progress."""
-    pass
