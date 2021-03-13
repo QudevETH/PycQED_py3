@@ -1726,6 +1726,8 @@ class MeasurementControl(Instrument):
                 no_prog_inter2 = getattr(self, 'no_progress_kill_interval',
                                          np.inf)
                 no_prog_min = (now - self._last_percdone_change_time) / 60
+                log.debug(f'MC: no_prog_min = {no_prog_min}, '
+                          f'percdone = {percdone}')
                 msg = f'The current measurement has not made any progress ' \
                       f'for {no_prog_min: .01f} minutes.'
                 if now - self._last_percdone_change_time > no_prog_inter \
@@ -1733,6 +1735,7 @@ class MeasurementControl(Instrument):
                     self.log_to_slack(msg)
                     self._last_percdone_log_time = now
                 if now - self._last_percdone_change_time > no_prog_inter2:
+                    log.debug(f'MC: raising NoProgressError')
                     raise NoProgressError(msg)
         except NoProgressError:
             raise
