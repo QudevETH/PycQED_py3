@@ -238,6 +238,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.adapt_ro_freq = adapt_ro_freq
         self.drive_amp_adaptation = {}
         self.ro_freq_adaptation = {}
+        self.ro_flux_amp_adaptation = {}
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -349,6 +350,31 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 mwg.name: fnc(self.lo_sweep_points)
                 for mwg, fnc in self.ro_freq_adaptation.items()}
 
+        for task in self.task_list:
+            if 'fp_assisted_ro_calib_flux' in task and 'fluxline' in task:
+                qb = self.get_qubits(task['qb'])[0][0]
+                if qb.ro_pulse_type() != 'GaussFilteredCosIQPulseWithFlux':
+                    continue
+                sp = self.exp_metadata['meas_obj_sweep_points_map'][qb.name]
+                freq_sp = [s for s in sp if s.endswith(freq_sp_suffix)][0]
+                f = self.sweep_points.get_sweep_params_property(
+                    'values', 1, freq_sp)
+                ro_fp_amp = lambda x, qb=qb, cal_flux=task[
+                    'fp_assisted_ro_calib_flux'] : qb.ro_flux_amplitude() - (
+                        qb.calculate_flux_voltage(x) -
+                        qb.calculate_voltage_from_flux(cal_flux)) \
+                        * qb.flux_amplitude_bias_ratio()
+                amps = ro_fp_amp(f)
+                max_amp = np.max(np.abs(amps))
+                temp_vals.append((qb.ro_flux_amplitude, max_amp))
+                self.ro_flux_amp_adaptation[qb] = (
+                    lambda x, fnc=ro_fp_amp, s=max_amp, o=self.qb_offsets[qb]:
+                    fnc(x + o) / s)
+                if 'ro_flux_amp_adaptation' not in self.exp_metadata:
+                    self.exp_metadata['ro_flux_amp_adaptation'] = {}
+                self.exp_metadata['ro_flux_amp_adaptation'][qb.name] = \
+                    amps / max_amp
+
         with temporary_value(*temp_vals):
             self.update_operation_dict()
 
@@ -405,6 +431,23 @@ class ParallelLOSweepExperiment(CalibBuilder):
         for mwg, adaptation in self.ro_freq_adaptation.items():
             adapt_name = f'RO freq adaptation freq {mwg.name}'
             param = mwg.frequency
+            sweep_functions += [swf.Transformed_Sweep(
+                param, transformation=adaptation,
+                name=adapt_name, parameter_name=adapt_name, unit='Hz')]
+            temp_vals.append((param, param()))
+        for qb, adaptation in self.ro_flux_amp_adaptation.items():
+            adapt_name = f'RO flux amp adaptation freq {qb.name}'
+            pulsar = qb.instr_pulsar.get_instr()
+            ch = qb.get(f'ro_flux_channel')
+            for seg in self.sequences[0].segments.values():
+                for p in seg.unresolved_pulses:
+                    if (ch in p.pulse_obj.channels and
+                        p.pulse_obj.pulse_type
+                            != 'GaussFilteredCosIQPulseWithFlux'):
+                        raise NotImplementedError(
+                            'RO flux amp adaptation cannot be used when the '
+                            'sequence contains other flux pulses.')
+            param = pulsar.parameters[f'{ch}_amplitude_scaling']
             sweep_functions += [swf.Transformed_Sweep(
                 param, transformation=adaptation,
                 name=adapt_name, parameter_name=adapt_name, unit='Hz')]
