@@ -598,7 +598,7 @@ class HDAWG8Pulsar:
             '{}_amplitude_scaling'.format(name),
             set_cmd=self._hdawg_setter(awg, id, 'amplitude_scaling'),
             get_cmd=self._hdawg_getter(awg, id, 'amplitude_scaling'),
-            vals=vals.Numbers(min_value=0.0, max_value=1.0),
+            vals=vals.Numbers(min_value=-1.0, max_value=1.0),
             initial_value=1.0)
         self.add_parameter('{}_distortion'.format(name),
                             label='{} distortion mode'.format(name),
