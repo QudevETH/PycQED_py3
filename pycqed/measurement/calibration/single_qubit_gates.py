@@ -216,7 +216,7 @@ class T1FrequencySweep(CalibBuilder):
 
 class ParallelLOSweepExperiment(CalibBuilder):
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
-                 adapt_drive_amp=False, **kw):
+                 adapt_drive_amp=False, adapt_ro_freq=False, **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -227,14 +227,17 @@ class ParallelLOSweepExperiment(CalibBuilder):
         # needed there) makes sure that they are stored in the metadata.
         super().__init__(task_list, sweep_points=sweep_points,
                          allowed_lo_freqs=allowed_lo_freqs,
-                         adapt_drive_amp=adapt_drive_amp, **kw)
+                         adapt_drive_amp=adapt_drive_amp,
+                         adapt_ro_freq=adapt_ro_freq, **kw)
         self.lo_offsets = {}
         self.lo_qubits = {}
         self.qb_offsets = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
         self.adapt_drive_amp = adapt_drive_amp
+        self.adapt_ro_freq = adapt_ro_freq
         self.drive_amp_adaptation = {}
+        self.ro_freq_adaptation = {}
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -324,6 +327,28 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 qb.name: fnc(self.lo_sweep_points)
                 for qb, fnc in self.drive_amp_adaptation.items()}
 
+        if self.adapt_ro_freq and self.qubits is None:
+            log.warning('No qubit objects provided. Creating the sequence '
+                        'without adapting RO freq.')
+        elif self.adapt_ro_freq:
+            for task in self.task_list:
+                qb = self.get_qubits(task['qb'])[0][0]
+                if qb.get_ro_freq_from_ge_freq(qb.ge_freq()) is None:
+                    continue
+                ro_mwg = qb.instr_ro_lo.get_instr()
+                if ro_mwg in self.ro_freq_adaptation:
+                    raise NotImplementedError(
+                        f'RO adaptation for {qb.name} with LO {ro_mwg.name}: '
+                        f'Parallel RO frequency adaptation for qubits '
+                        f'sharing an LO is not implemented.')
+                self.ro_freq_adaptation[ro_mwg] = (
+                    lambda x, mwg=ro_mwg, o=self.qb_offsets[qb],
+                           f_mod=qb.ro_mod_freq():
+                    qb.get_ro_freq_from_ge_freq(x + o) - f_mod)
+            self.exp_metadata['ro_freq_adaptation'] = {
+                mwg.name: fnc(self.lo_sweep_points)
+                for mwg, fnc in self.ro_freq_adaptation.items()}
+
         with temporary_value(*temp_vals):
             self.update_operation_dict()
 
@@ -377,6 +402,13 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 # amplitude scaling is set back to its previous state after the
                 # end of the sweep.
                 temp_vals.append((param, 1.0))
+        for mwg, adaptation in self.ro_freq_adaptation.items():
+            adapt_name = f'RO freq adaptation freq {mwg.name}'
+            param = mwg.frequency
+            sweep_functions += [swf.Transformed_Sweep(
+                param, transformation=adaptation,
+                name=adapt_name, parameter_name=adapt_name, unit='Hz')]
+            temp_vals.append((param, param()))
         for task in self.task_list:
             if 'fluxline' not in task:
                 continue
