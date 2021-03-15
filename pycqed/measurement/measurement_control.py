@@ -200,8 +200,7 @@ class MeasurementControl(Instrument):
 
         self.timer = Timer("MeasurementControl")
         self._last_percdone_value = 0
-        self._last_percdone_change_time = time.time()
-        self._last_percdone_log_time = self._last_percdone_change_time
+        self._last_percdone_change_time = 0
         # Setting to zero at the start of every run, used in soft avg
         self.soft_iteration = 0
         self.set_measurement_name(name)
@@ -1716,13 +1715,17 @@ class MeasurementControl(Instrument):
         percdone = (self.total_nr_acquired_values + current_acq) / (
             np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
         try:
+            now = time.time()
             if percdone != self._last_percdone_value:
                 self._last_percdone_value = percdone
-                self._last_percdone_change_time = time.time()
+                self._last_percdone_change_time = now
                 log.debug(f'MC: percdone = {self._last_percdone_value} at '
                           f'{self._last_percdone_change_time}')
+            elif self._last_percdone_change_time == 0:
+                # first progress check: initialize _last_percdone_change_time
+                self._last_percdone_change_time = now
+                self._last_percdone_log_time = self._last_percdone_change_time
             else:
-                now = time.time()
                 no_prog_inter = getattr(self, 'no_progress_interval', 600)
                 no_prog_inter2 = getattr(self, 'no_progress_kill_interval',
                                          np.inf)
