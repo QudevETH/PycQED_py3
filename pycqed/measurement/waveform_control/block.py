@@ -25,12 +25,13 @@ class Block:
         self.pulses = deepcopy(pulse_list)
         self.block_start = kw.get('block_start', {})
         self.block_end = kw.get('block_end', {})
+        self.destroyed = False
         if pulse_modifs is not None:
             self.pulses = self.pulses_sweepcopy([pulse_modifs], [None])
 
     def build(self, ref_point="end", ref_point_new="start",
               ref_pulse='previous_pulse', block_delay=0, name=None,
-              sweep_dicts_list=None, sweep_index_list=None,
+              sweep_dicts_list=None, sweep_index_list=None, destroy=False,
                **kwargs):
         """
         Adds the block shell recursively through the pulse list.
@@ -72,9 +73,14 @@ class Block:
             sweep. Determines for which sweep points from sweep_dicts_list
             the block should be build. Only used if also a sweep_dicts_list
             is provided.
-
+        :param destroy: (bool) can be set to True for faster processing
+            (avoid copying) if the block will not be needed anymore afterwards.
         :return:
         """
+        if self.destroyed:
+            raise ValueError('This block has already been destroyed.')
+        if destroy:
+            self.destroyed = True
         if ref_point_new != "start":
             raise NotImplementedError("For now can only refer blocks to 'start'")
         if name is None:
@@ -92,6 +98,8 @@ class Block:
         block_end.update(kwargs.get("block_end", self.block_end))
         if sweep_dicts_list is not None and sweep_index_list is not None:
             pulses_built = self.pulses_sweepcopy(sweep_dicts_list, sweep_index_list)
+        elif destroy:
+            pulses_built = self.pulses
         else:
             pulses_built = deepcopy(self.pulses)
 
