@@ -20,14 +20,16 @@ class Block:
     INSIDE_BLOCKINFO_NAME = "BlockInfo"
 
     def __init__(self, block_name, pulse_list:list, pulse_modifs=None,
-                 **kw):
+                 copy_pulses=True, **kw):
         self.name = block_name
-        self.pulses = deepcopy(pulse_list)
         self.block_start = kw.get('block_start', {})
         self.block_end = kw.get('block_end', {})
         self.destroyed = False
-        if pulse_modifs is not None:
+        if pulse_modifs is not None and len(pulse_modifs):
+            self.pulses = pulse_list  # will be copied in sweep_copy
             self.pulses = self.pulses_sweepcopy([pulse_modifs], [None])
+        else:
+            self.pulses = deepcopy(pulse_list) if copy_pulses else pulse_list
 
     def build(self, ref_point="end", ref_point_new="start",
               ref_pulse='previous_pulse', block_delay=0, name=None,
