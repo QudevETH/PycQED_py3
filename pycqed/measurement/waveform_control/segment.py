@@ -36,7 +36,7 @@ class Segment:
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
 
-    def __init__(self, name, pulse_pars_list=[]):
+    def __init__(self, name, pulse_pars_list=[], fast_mode=False):
         self.name = name
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
@@ -69,6 +69,7 @@ class Segment:
         self.acquisition_elements = set()
         self.timer = Timer(self.name)
         self.pulse_pars = []
+        self.fast_mode = fast_mode
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -79,8 +80,11 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
-        self.pulse_pars.append(deepcopy(pulse_pars))
-        pars_copy = deepcopy(pulse_pars)
+        if self.fast_mode:
+            pars_copy = pulse_pars
+        else:
+            self.pulse_pars.append(deepcopy(pulse_pars))
+            pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
         if pars_copy.get('name') in self._pulse_names:
