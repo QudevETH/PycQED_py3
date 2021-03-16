@@ -351,7 +351,8 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                             self.simultaneous_blocks(
                                 f'blk{k}_{j}', [
                             self.block_from_ops(f'blk{k}_{j}_{qbn}', gates)
-                                    for qbn, gates in single_qb_gates.items()]))
+                                    for qbn, gates in single_qb_gates.items()],
+                            destroy=self.fast_mode))
                         single_qb_gates = {qb_1: [], qb_2: []}
                         # if idx == interleaved_gate:
                         #     pulse_modifs = {0: {'amplitude': 0.05,
@@ -374,12 +375,14 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                 self.simultaneous_blocks(
                     f'blk{i}', [
                         self.block_from_ops(f'blk{i}{qbn}', gates)
-                        for qbn, gates in single_qb_gates.items()]))
+                        for qbn, gates in single_qb_gates.items()],
+                    destroy=self.fast_mode))
             rb_block_list += [self.sequential_blocks(
-                f'rb_block{i}', seq_blocks)]
+                f'rb_block{i}', seq_blocks, destroy=self.fast_mode)]
 
         return self.simultaneous_blocks(
-            f'sim_rb_{sp2d_idx}_{sp1d_idx}', rb_block_list, block_align='end')
+            f'sim_rb_{sp2d_idx}_{sp1d_idx}', rb_block_list, block_align='end',
+            destroy=self.fast_mode)
 
 
 class SingleQubitXEB(MultiTaskingExperiment):
