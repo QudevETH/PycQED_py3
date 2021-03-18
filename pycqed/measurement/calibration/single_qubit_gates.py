@@ -73,7 +73,7 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
-            self.add_amplitude_sweep_points()
+            self.add_amplitude_sweep_points(**kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.sequences, self.mc_points = \
@@ -94,7 +94,7 @@ class T1FrequencySweep(CalibBuilder):
             self.exception = x
             traceback.print_exc()
 
-    def add_amplitude_sweep_points(self, task_list=None):
+    def add_amplitude_sweep_points(self, task_list=None, **kw):
         """
         If flux pulse amplitudes are not in the sweep_points in each task, but
         qubit frequencies are, then amplitudes will be calculated based on
@@ -126,19 +126,12 @@ class T1FrequencySweep(CalibBuilder):
                                    'but no qubit objects available, so that '
                                    'the corresponding amplitudes cannot be '
                                    'computed.')
-                this_qb = qubits[0]
-                fit_paras = deepcopy(this_qb.fit_ge_freq_from_flux_pulse_amp())
-                if len(fit_paras) == 0:
-                    raise ValueError(
-                        f'fit_ge_freq_from_flux_pulse_amp is empty'
-                        f' for {this_qb.name}. Cannot calculate '
-                        f'amplitudes from qubit frequencies.')
-                amplitudes = np.array(fit_mods.Qubit_freq_to_dac(
-                    qubit_freqs, **fit_paras))
-                if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-                    amplitudes -= fit_paras['V_per_phi0']
-                elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-                    amplitudes += fit_paras['V_per_phi0']
+                qb = qubits[0]
+                amplitudes = qb.calculate_flux_voltage(
+                    frequency=qubit_freqs,
+                    flux=qb.flux_parking(),
+                    **kw.get('vfc_kwargs', {})
+                )
                 if np.any(np.isnan(amplitudes)):
                     raise ValueError('Specified frequencies resulted in nan '
                                      'amplitude. Check frequency range!')
