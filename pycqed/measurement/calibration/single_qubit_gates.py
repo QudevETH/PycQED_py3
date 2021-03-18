@@ -119,8 +119,24 @@ class T1FrequencySweep(CalibBuilder):
                 qubit_freqs = self.sweep_points[1]['qubit_freqs'][0]
             else:
                 qubit_freqs = None
-            if qubit_freqs is not None:
-                qubits, _ = self.get_qubits(task['qb'])
+            if 'amplitude' in sweep_points[1]:
+                amplitudes = sweep_points[1]['amplitude'][0]
+            elif len(self.sweep_points) >= 2 and \
+                    'amplitude' in self.sweep_points[1]:
+                amplitudes = self.sweep_points[1]['amplitude'][0]
+            else:
+                amplitudes = None
+            qubits, _ = self.get_qubits(task['qb'])
+            if qubit_freqs is None and qubits is not None:
+                qb = qubits[0]
+                qubit_freqs = qb.calculate_frequency(
+                    amplitude=amplitudes,
+                    **kw.get('vfc_kwargs', {})
+                )
+                freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
+                                                'Hz', 'Qubit frequency')
+                sweep_points.update([{}] + freq_sweep_points)
+            if amplitudes is None:
                 if qubits is None:
                     raise KeyError('qubit_freqs specified in sweep_points, '
                                    'but no qubit objects available, so that '
