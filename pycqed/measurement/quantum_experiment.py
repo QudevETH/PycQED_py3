@@ -339,12 +339,12 @@ class QuantumExperiment(CircuitBuilder):
             except (Exception, KeyboardInterrupt) as e:
                 self.save_timers()
                 raise e
-        if self.analyze:
-            self.run_analysis(**kw)
-        if self.callback is not None and self.callback_condition():
-            self.callback(**kw)
-        if self.measure: # for now store timers only if creating new file
-            self.save_timers()
+            # analyze and call callback only when measuring
+            if self.analyze:
+                self.run_analysis(**kw)
+            if self.callback is not None and self.callback_condition():
+                self.callback(**kw)
+            self.save_timers()  # for now store timers only if creating new file
         return self
 
     def serialize(self, omitted_attrs=('MC', 'device', 'qubits')):
