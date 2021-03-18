@@ -352,6 +352,10 @@ class ParallelLOSweepExperiment(CalibBuilder):
 
         for task in self.task_list:
             if 'fp_assisted_ro_calib_flux' in task and 'fluxline' in task:
+                if self.qubits is None:
+                    log.warning('No qubit objects provided. Creating the '
+                                'sequence without RO flux amplitude.')
+                    break
                 qb = self.get_qubits(task['qb'])[0][0]
                 if qb.ro_pulse_type() != 'GaussFilteredCosIQPulseWithFlux':
                     continue
