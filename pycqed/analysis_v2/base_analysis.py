@@ -1692,7 +1692,6 @@ class BaseDataAnalysis(object):
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
 
-
         if self.tight_fig:
             axs.figure.tight_layout()
 
