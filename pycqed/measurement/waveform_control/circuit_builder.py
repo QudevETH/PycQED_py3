@@ -220,7 +220,8 @@ class CircuitBuilder:
             if op_name[0] not in ['X', 'Y', 'Z']:
                 raise KeyError(f'Gate "{op}" not found.')
             angle, qbn = op_name[1:], op_info[1]
-            if angle[-1] == 's':
+            if angle[-1] == 's' and angle[:-1].isnumeric():
+                op_info[0] = 's' + op_info[0]
                 angle = angle[:-1]
             param = None
             if angle[0] == ':':  # angle depends on a parameter
