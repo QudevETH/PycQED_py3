@@ -1071,16 +1071,20 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def chan_wf(self, chan, tvals, **kw):
         if chan == self.I_channel or chan == self.Q_channel:
             return super().chan_wf(chan, tvals, **kw)
-        if chan == self.flux_channel:
+        elif chan == self.flux_channel:
             self.fp.algorithm_time(self.algorithm_time())
             return self.fp.chan_wf(chan, tvals)
+        else:
+            return {}
 
     def hashables(self, tstart, channel):
         if channel == self.I_channel or channel == self.Q_channel:
             return super().hashables(tstart, channel)
-        if channel == self.flux_channel:
+        elif channel == self.flux_channel:
             self.fp.algorithm_time(self.algorithm_time())
             return self.fp.hashables(tstart, channel)
+        else:
+            return []  # empty list if neither of the conditions is satisfied
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
