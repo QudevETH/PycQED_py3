@@ -1753,17 +1753,21 @@ class MeasurementControl(Instrument):
             total_nr_pts = len(self.get_sweep_points())
             percdone = self.get_percdone(current_acq=current_acq)
             elapsed_time = time.time() - self.begintime
+            t_left = round((100. - percdone) / (percdone) *
+                           elapsed_time, 1) if percdone != 0 else '??'
+            t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
+                                  + t_left)) if percdone != 0 else '??'
             # The trailing spaces are to overwrite some characters in case the
             # previous progress message was longer.
             progress_message = (
                 "\r{timestamp}\t{percdone}% completed \telapsed time: "
-                "{t_elapsed}s \ttime left: {t_left}s     ").format(
+                "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
+                "").format(
                     timestamp=time.strftime('%H:%M:%S', time.localtime()),
                     percdone=int(percdone),
                     t_elapsed=round(elapsed_time, 1),
-                    t_left=round((100.-percdone)/(percdone) *
-                                 elapsed_time, 1) if
-                    percdone != 0 else '')
+                    t_left=t_left,
+                    t_end=t_end,)
 
             if percdone != 100:
                 end_char = ''
