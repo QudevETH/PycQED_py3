@@ -139,7 +139,8 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
                                  initial_value=None, vals=vals.Strings())
         self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
-                                 initial_value=None, vals=vals.Strings())
+                                 initial_value=None, vals=vals.MultiType(
+                                     vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
