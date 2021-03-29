@@ -103,7 +103,8 @@ class CircuitBuilder:
             qb_names = [qb_names]
 
         # test if qubit objects have been provided instead of names
-        qb_names = [qb if isinstance(qb, str) else qb.name for qb in qb_names]
+        qb_names = [qb if isinstance(qb, str) or isinstance(qb, int)
+                    else qb.name for qb in qb_names]
         # test if qubit indices have been provided instead of names
         try:
             ind = [int(i) for i in qb_names]
