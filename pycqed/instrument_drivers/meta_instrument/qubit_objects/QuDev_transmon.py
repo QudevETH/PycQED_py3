@@ -688,6 +688,7 @@ class QuDev_transmon(Qubit):
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0
+        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
         if self.ef_freq() == 0:
             operation_dict['X180_ef ' + self.name]['mod_frequency'] = None
