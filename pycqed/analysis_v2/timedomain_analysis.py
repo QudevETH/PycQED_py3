@@ -6512,7 +6512,7 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
         for qbn in self.qb_names:
-            data = self.proc_data_dict['projected_data_dict'][qbn]
+            data = self.proc_data_dict['data_to_fit'][qbn]
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
