@@ -498,7 +498,8 @@ class BaseDataAnalysis(object):
             elif sweep_points is not None:
                 # deal with hybrid measurements
                 sp = SweepPoints(sweep_points)
-                if mc_points.shape[0] == 1 and len(sp) > 1:
+                if mc_points.shape[0] == 1 and (len(sp) > 1 and
+                                                'dummy' not in list(sp[1])[0]):
                     hybrid_measurement = True
                     if prep_params is None:
                         prep_params = dict()
