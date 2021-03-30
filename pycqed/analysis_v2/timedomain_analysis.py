@@ -6164,7 +6164,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
                     self.plot_dicts['text_msg_' + qbn] = {
                         'fig_id': base_plot_name,
-                        'ypos': -0.175,
+                        'ypos': -0.225,
                         'xpos': 0.5,
                         'horizontalalignment': 'center',
                         'verticalalignment': 'top',
