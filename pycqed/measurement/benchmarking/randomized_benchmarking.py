@@ -264,7 +264,8 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
             for i, task in enumerate(self.preprocessed_task_list)]
 
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
-                                        rb_block_list, block_align='end')
+                                        rb_block_list, block_align='end',
+                                        destroy=self.fast_mode)
 
 
 class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
@@ -517,7 +518,8 @@ class SingleQubitXEB(MultiTaskingExperiment):
             for i, task in enumerate(self.preprocessed_task_list)]
 
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
-                                        rb_block_list, block_align='end')
+                                        rb_block_list, block_align='end',
+                                        destroy=self.fast_mode)
 
     def add_processing_pipeline(self, **kw):
         """
@@ -706,7 +708,8 @@ class TwoQubitXEB(MultiTaskingExperiment):
             for i, task in enumerate(self.preprocessed_task_list)]
 
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
-                                        rb_block_list, block_align='end')
+                                        rb_block_list, block_align='end',
+                                        destroy=self.fast_mode)
 
     def add_processing_pipeline(self, **kw):
         """
