@@ -1293,7 +1293,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
-            do_legend_cal_states=True, TwoD=None):
+            do_legend_cal_states=True, TwoD=None, yrange=None):
 
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -1332,7 +1332,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'legend_pos': 'center left',
                     'linestyle': 'none',
                     'line_kws': {'color': self.get_cal_state_color(
-                        list(self.cal_states_dict)[i])}}
+                        list(self.cal_states_dict)[i])},
+                    'yrange': yrange,
+                }
 
                 self.plot_dicts[plot_dict_name_cal+'_line'] = {
                     'fig_id': fig_name,
