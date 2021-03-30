@@ -107,14 +107,18 @@ def scale_and_negate_IIR(filter_coeffs, scale):
     filter_coeffs[1][0] /= scale
 
 
-def combine_FIR_filters(kernels):
+def combine_FIR_filters(kernels, FIR_n_force_zero_coeffs=None):
     if hasattr(kernels[0], '__iter__'):
         kernel_combined = kernels[0]
         for kernel in kernels[1:]:
             kernel_combined = np.convolve(kernel, kernel_combined)
-        return kernel_combined
-    else:
-        return kernels
+        kernels = kernel_combined
+    elif FIR_n_force_zero_coeffs is not None:
+        kernels = deepcopy(kernels)  # make sure that we do not modify user input
+    if FIR_n_force_zero_coeffs is not None:
+        kernels[:FIR_n_force_zero_coeffs] = 0
+        kernels /= np.sum(kernels)
+    return kernels
 
 
 def convert_expmod_to_IIR(expmod, dt, inverse_IIR=True, direct=False):
@@ -313,8 +317,10 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
             filterCoeffs[fclass].append(coeffs)
 
     if len(filterCoeffs['FIR']) > 0:
-        filterCoeffs['FIR'] = [
-            combine_FIR_filters(filterCoeffs['FIR'])]
+        filterCoeffs['FIR'] = [combine_FIR_filters(
+            filterCoeffs['FIR'],
+            FIR_n_force_zero_coeffs=flux_distortion.get(
+                'FIR_n_force_zero_coeffs', None))]
     else:
         del filterCoeffs['FIR']
     if len(filterCoeffs['IIR']) > 0:
