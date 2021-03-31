@@ -10,6 +10,7 @@ import os
 import logging
 import numpy as np
 import pycqed
+import json
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibase
 
@@ -72,6 +73,7 @@ class ZI_PQSC(zibase.ZI_base_instrument):
             interface=interface,
             server=server,
             port=port,
+            awg_module=False,
             **kw)
 
         t1 = time.time()
@@ -135,16 +137,18 @@ class ZI_PQSC(zibase.ZI_base_instrument):
 
     # FIXME: put in correct clock_freq
     def clock_freq(self):
-        return 1.8e9
+        return 300e6
 
     ##########################################################################
     # 'public' functions:
     ##########################################################################
 
-    def check_errors(self) -> None:
+    def check_errors(self, errors_to_ignore=None) -> None:
         """
         Checks the instrument for errors.
         """
+        errors = json.loads(self.getv('raw/error/json/errors'))
+
         # If this is the first time we are called, log the detected errors,
         # but don't raise any exceptions
         if self._errors is None:
@@ -153,48 +157,44 @@ class ZI_PQSC(zibase.ZI_base_instrument):
         else:
             raise_exceptions = True
 
-        # Stores the errors before processing
-        errors = {'messages': []}
-
         # Asserted in case errors were found
         found_errors = False
+
+        # Combine errors_to_ignore with commandline
+        _errors_to_ignore = self._errors_to_ignore
+        if errors_to_ignore is not None:
+            _errors_to_ignore += errors_to_ignore
 
         # Go through the errors and update our structure, raise exceptions if
         # anything changed
         for m in errors['messages']:
-            code = m['code']
-            count = m['count']
+            code     = m['code']
+            count    = m['count']
             severity = m['severity']
-            message = m['message']
+            message  = m['message']
 
             if not raise_exceptions:
                 self._errors[code] = {
-                    'count': count,
+                    'count'   : count,
                     'severity': severity,
-                    'message': message
-                }
-                log.warning('{}: Code {}: "{}" ({})'.format(
-                    self.devname, code, message, severity))
+                    'message' : message}
+                log.warning(f'{self.devname}: Code {code}: "{message}" ({severity})')
             else:
-                # Optionally skip the error completely
-                if code in self._errors_to_ignore:
-                    continue
-
                 # Check if there are new errors
-                if code not in self._errors or count > self._errors[code][
-                        'count']:
-                    log.error('{}: {} ({}/{})'.format(self.devname, message,
-                                                      code, severity))
-                    found_errors = True
+                if code not in self._errors or count > self._errors[code]['count']:
+                    if code in _errors_to_ignore:
+                        log.info(f'{self.devname}: {message} ({code}/{severity})')
+                    else:
+                        log.error(f'{self.devname}: {message} ({code}/{severity})')
+                        found_errors = True
 
                 if code in self._errors:
                     self._errors[code]['count'] = count
                 else:
                     self._errors[code] = {
-                        'count': count,
+                        'count'   : count,
                         'severity': severity,
-                        'message': message
-                    }
+                        'message' : message}
 
         if found_errors:
             raise zibase.ziRuntimeError('Errors detected during run-time!')
@@ -220,3 +220,23 @@ class ZI_PQSC(zibase.ZI_base_instrument):
         '''Prints a progress bar.'''
 
         # TODO
+
+    def start(self):
+        log.info(f"{self.devname}: Starting '{self.name}'")
+        self.check_errors()
+
+        # Start the execution unit
+        self.set('execution_enable', 1)
+        
+        log.info(f"{self.devname}: Started '{self.name}'")
+
+    def stop(self):
+        log.info('Stopping {}'.format(self.name))
+
+        # Stop the execution unit
+        self.set('execution_enable', 0)
+
+        self.check_errors()
+        
+    def clear_errors(self):
+        self.seti('raw/error/clear', 1)

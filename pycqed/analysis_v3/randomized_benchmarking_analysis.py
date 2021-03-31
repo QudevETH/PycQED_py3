@@ -62,7 +62,7 @@ def pipeline_single_qubit_rb_ssro(meas_obj_names, mospm, sweep_points,
         sweep_type = {'cliffords': 0, 'seeds': 1}
     slow_cliffords = sweep_type['cliffords'] == 1
 
-    sweep_points = sp_mod.SweepPoints.cast_init(sweep_points)
+    sweep_points = sp_mod.SweepPoints(sweep_points)
     if cal_points is None:
         num_cal_states = 0
     else:
@@ -192,7 +192,7 @@ def pipeline_interleaved_rb_irb_classif(meas_obj_names, mospm, sweep_points,
         sweep_type = {'cliffords': 0, 'seeds': 1}
     slow_cliffords = sweep_type['cliffords'] == 1
 
-    sweep_points = sp_mod.SweepPoints.cast_init(sweep_points)
+    sweep_points = sp_mod.SweepPoints(sweep_points)
     if cal_points is None:
         num_cal_states = 0
     else:
@@ -322,7 +322,7 @@ def pipeline_ssro_measurement(meas_obj_names, mospm, sweep_points, n_shots,
         sweep_type = {'cliffords': 0, 'seeds': 1}
     slow_cliffords = sweep_type['cliffords'] == 1
 
-    sweep_points = sp_mod.SweepPoints.cast_init(sweep_points)
+    sweep_points = sp_mod.SweepPoints(sweep_points)
     if cal_points is None:
         num_cal_states = 0
     else:
@@ -505,7 +505,7 @@ def combine_datafiles_split_by_seeds(data_dict, keys_in, keys_out,
                                       raise_error=True, **params)
     sp_list = [hlp_mod.get_param('sweep_points', mdl, raise_error=True)
                for mdl in metadata_list]
-    sp0 = sp_mod.SweepPoints.cast_init(sp_list[0])
+    sp0 = sp_mod.SweepPoints(sp_list[0])
 
     nr_segments = sp0.length(0) + len(cp.states)
     nr_uploads = sp0.length(1)
@@ -535,7 +535,7 @@ def combine_datafiles_split_by_seeds(data_dict, keys_in, keys_out,
                         in range(len(sp0.get_sweep_dimension(0)))]
 
     for i, sp in enumerate(sp_list):
-        sp = sp_mod.SweepPoints.cast_init(sp)
+        sp = sp_mod.SweepPoints(sp)
         sp_vals_list = sp.get_sweep_params_property('values', 0, 'all')
         for j, sp_vals in enumerate(sp_vals_list):
             sp_all_vals_list[j][i::nr_exp] = sp_vals

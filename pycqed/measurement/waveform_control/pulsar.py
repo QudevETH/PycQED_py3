@@ -631,7 +631,8 @@ class HDAWG8Pulsar:
 
                     if not internal_mod:
                         playback_strings += self._zi_playback_string(name=obj.name,
-                            device='hdawg', wave=wave, codeword=(nr_cw != 0))
+                            device='hdawg', wave=wave, codeword=(nr_cw != 0),
+                            append_zeros=self.append_zeros())
                     else:
                         pb_string, interleave_string = \
                             self._zi_interleaved_playback_string(name=obj.name, 
@@ -1070,6 +1071,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            get_cmd=self._get_inter_element_spacing)
         self.add_parameter('reuse_waveforms', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool())
+        self.add_parameter('append_zeros', initial_value=0, vals=vals.Ints(),
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool())
         self.add_parameter('flux_channels', initial_value=[],
@@ -1374,21 +1377,10 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     defined_waves.add(wc)
         return wave_definition
 
-    def _zi_playback_string(self, name, device, wave, acq=False, codeword=False):
+    def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
+                            append_zeros=0):
         playback_string = []
         w1, w2 = self._zi_waves_to_wavenames(wave)
-        if (not codeword) and (not acq):
-            if w1 is None and w2 is not None:
-                # This hack is needed due to a bug on the HDAWG.
-                # Remove this if case once the bug is fixed.
-                playback_string.append(f'prefetch(marker(1,0)*0*{w2}, {w2});')
-            elif w1 is not None and w2 is None:
-                # This hack is needed due to a bug on the HDAWG.
-                # Remove this if case once the bug is fixed.
-                playback_string.append(f'prefetch({w1}, marker(1,0)*0*{w1});')
-            elif w1 is not None or w2 is not None:
-                playback_string.append('prefetch({});'.format(', '.join(
-                    [wn for wn in [w1, w2] if wn is not None])))
 
         trig_source = self.get('{}_trigger_source'.format(name))
         if trig_source == 'Dig1':
@@ -1422,6 +1414,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         if acq:
             playback_string.append('setTrigger(RO_TRIG);')
             playback_string.append('setTrigger(WINT_EN);')
+        if append_zeros:
+            playback_string.append(f'playZero({append_zeros});')
         return playback_string
 
     def _zi_interleaved_playback_string(self, name, device, counter, 

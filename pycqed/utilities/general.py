@@ -20,6 +20,10 @@ import operator
 import string
 from collections import OrderedDict  # for eval in load_settings
 log = logging.getLogger(__name__)
+try:
+    import msvcrt  # used on windows to catch keyboard input
+except:
+    pass
 
 digs = string.digits + string.ascii_letters
 
@@ -147,7 +151,7 @@ def to_hex_string(byteval):
 
 def load_settings(instrument,
                   label: str='', folder: str=None,
-                  timestamp: str=None, **kw):
+                  timestamp: str=None, update=True, **kw):
     '''
     Loads settings from an hdf5 file onto the instrument handed to the
     function. By default uses the last hdf5 file in the datadirectory.
@@ -156,12 +160,15 @@ def load_settings(instrument,
 
     Args:
         instrument (instrument) : instrument onto which settings
-            should be loaded
+            should be loaded. Can be an instrument name (str) if update is
+            set to False.
         label (str)           : label used for finding the last datafile
         folder (str)        : exact filepath of the hdf5 file to load.
             if filepath is specified, this takes precedence over the file
             locating options (label, timestamp etc.).
         timestamp (str)       : timestamp of file in the datadir
+        update (bool, default True): if set to False, the loaded settings
+            will be returned instead of updating them in the instrument.
 
     Kwargs:
         params_to_set (list)    : list of strings referring to the parameters
@@ -173,9 +180,11 @@ def load_settings(instrument,
     else:
         folder_specified = True
 
-    instrument_name = instrument.name
+    if isinstance(instrument, str) and not update:
+        instrument_name = instrument
+    else:
+        instrument_name = instrument.name
     verbose = kw.pop('verbose', True)
-    update = kw.pop('update', True)
     older_than = kw.pop('older_than', None)
     success = False
     count = 0
@@ -657,6 +666,29 @@ class NumpyJsonEncoder(json.JSONEncoder):
             return str(o)
         else:
             return super().default(o)
+
+
+class KeyboardFinish(KeyboardInterrupt):
+    """
+    Indicates that the user safely aborts/finishes the experiment.
+    Used to finish the experiment without raising an exception.
+    """
+
+    pass
+
+
+def check_keyboard_interrupt():
+    try:  # Try except statement is to make it work on non windows pc
+        if msvcrt.kbhit():
+            key = msvcrt.getch()
+            if b"q" in key:
+                # this causes a KeyBoardInterrupt
+                raise KeyboardInterrupt('Human "q" terminated experiment.')
+            elif b"f" in key:
+                # this should not raise an exception
+                raise KeyboardFinish('Human "f" terminated experiment safely.')
+    except Exception:
+        pass
 
 
 

@@ -5,12 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 import re
+from datetime import datetime
 
 from qcodes.instrument.base import Instrument
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
-
-from zlib import crc32
 
 import zhinst.ziPython as zi
 
@@ -19,11 +18,13 @@ log = logging.getLogger(__name__)
 ##########################################################################
 # Module level functions
 ##########################################################################
-    
+
+
 def gen_waveform_name(ch, cw):
     """
-    Returns a standard waveform name based on channel and codeword number.
-    Note the use of 1-based indexing of the channels. To clarify, the 
+    Return a standard waveform name based on channel and codeword number.
+
+    Note the use of 1-based indexing of the channels. To clarify, the
     'ch' argument to this function is 0-based, but the naming of the actual
     waveforms as well as the signal outputs of the instruments are 1-based.
     The function will map 'logical' channel 0 to physical channel 1, and so on.
@@ -31,16 +32,18 @@ def gen_waveform_name(ch, cw):
     """
     return 'wave_ch{}_cw{:03}'.format(ch+1, cw)
 
+
 def gen_partner_waveform_name(ch, cw):
     """
-    Returns a standard waveform name for the partner waveform of a dual-channel
+    Return a standard waveform name for the partner waveform of a dual-channel
     waveform. The physical channel indexing is 1-based where as the logical channel
-    indexing (i.e. the argument to this function) is 0-based. To clarify, the 
+    indexing (i.e. the argument to this function) is 0-based. To clarify, the
     'ch' argument to this function is 0-based, but the naming of the actual
     waveforms as well as the signal outputs of the instruments are 1-based.
     The function will map 'logical' channel 0 to physical channel 1, and so on.
     """
     return gen_waveform_name(2*(ch//2) + ((ch + 1) % 2), cw)
+
 
 def merge_waveforms(chan0=None, chan1=None, marker=None):
     """
@@ -48,8 +51,8 @@ def merge_waveforms(chan0=None, chan1=None, marker=None):
     numpy array suitable for being written to the instrument. Channel 1 and marker
     data is optional. Use named arguments to combine, e.g. channel 0 and marker data.
     """
-    chan0_uint  = None
-    chan1_uint  = None
+    chan0_uint = None
+    chan1_uint = None
     marker_uint = None
 
     # The 'array_format' variable is used internally in this function in order to
@@ -58,33 +61,34 @@ def merge_waveforms(chan0=None, chan1=None, marker=None):
     # mask where each bit indicates which channels/marker values to include in
     # the final array. Bit 0 for chan0 data, 1 for chan1 data and 2 for marker data.
     array_format = 0
-    
+
     if chan0 is not None:
         chan0_uint = np.array((np.power(2, 15)-1)*chan0, dtype=np.uint16)
         array_format += 1
     if chan1 is not None:
         chan1_uint = np.array((np.power(2, 15)-1)*chan1, dtype=np.uint16)
-        array_format += 2 
+        array_format += 2
     if marker is not None:
         marker_uint = np.array(marker, dtype=np.uint16)
         array_format += 4
-    
+
     if array_format == 1:
         return chan0_uint
     elif array_format == 2:
         return chan1_uint
     elif array_format == 3:
-        return np.vstack((chan0_uint, chan1_uint)).reshape((-2,),order='F')
+        return np.vstack((chan0_uint, chan1_uint)).reshape((-2,), order='F')
     elif array_format == 4:
         return marker_uint
     elif array_format == 5:
-        return np.vstack((chan0_uint, marker_uint)).reshape((-2,),order='F')
+        return np.vstack((chan0_uint, marker_uint)).reshape((-2,), order='F')
     elif array_format == 6:
-        return np.vstack((chan1_uint, marker_uint)).reshape((-2,),order='F')
+        return np.vstack((chan1_uint, marker_uint)).reshape((-2,), order='F')
     elif array_format == 7:
-        return np.vstack((chan0_uint, chan1_uint, marker_uint)).reshape((-2,),order='F')
+        return np.vstack((chan0_uint, chan1_uint, marker_uint)).reshape((-2,), order='F')
     else:
         return []
+
 
 def plot_timing_diagram(data, bits, line_length=30):
     """
@@ -109,7 +113,7 @@ def plot_timing_diagram(data, bits, line_length=30):
 
         for n, i in enumerate(reversed(bits)):
             line = [((x >> i) & 1) for x in data]
-            plt.step(t, np.array(line) + 2*n, 'r', linewidth = 2, where='post')
+            plt.step(t, np.array(line) + 2*n, 'r', linewidth=2, where='post')
             plt.text(-0.5, 2*n, str(i))
 
         plt.xlim([t[0], t[-1]])
@@ -127,6 +131,7 @@ def plot_timing_diagram(data, bits, line_length=30):
             data = []
 
         _plot_timing_diagram(d, bits)
+
 
 def plot_codeword_diagram(ts, cws, range=None):
     """
@@ -148,6 +153,7 @@ def plot_codeword_diagram(ts, cws, range=None):
     plt.grid()
     plt.show()
 
+
 def _gen_set_cmd(dev_set_func, node_path: str):
     """
     Generates a set function based on the dev_set_type method (e.g., seti)
@@ -156,6 +162,7 @@ def _gen_set_cmd(dev_set_func, node_path: str):
     def set_cmd(val):
         return dev_set_func(node_path, val)
     return set_cmd
+
 
 def _gen_get_cmd(dev_get_func, node_path: str):
     """
@@ -170,41 +177,51 @@ def _gen_get_cmd(dev_get_func, node_path: str):
 # Exceptions
 ##########################################################################
 
+
 class ziDAQError(Exception):
     """Exception raised when no DAQ has been connected."""
     pass
+
 
 class ziModuleError(Exception):
     """Exception raised when a module generates an error."""
     pass
 
+
 class ziValueError(Exception):
     """Exception raised when a wrong or empty value is returned."""
     pass
+
 
 class ziCompilationError(Exception):
     """Exception raised when an AWG program fails to compile."""
     pass
 
+
 class ziDeviceError(Exception):
     """Exception raised when a class is used with the wrong device type."""
     pass
+
 
 class ziOptionsError(Exception):
     """Exception raised when a device does not have the right options installed."""
     pass
 
+
 class ziVersionError(Exception):
     """Exception raised when a device does not have the right firmware versions."""
     pass
+
 
 class ziReadyError(Exception):
     """Exception raised when a device was started which is not ready."""
     pass
 
+
 class ziRuntimeError(Exception):
     """Exception raised when a device detects an error at runtime."""
     pass
+
 
 class ziConfigurationError(Exception):
     """Exception raised when a wrong configuration is detected."""
@@ -213,6 +230,7 @@ class ziConfigurationError(Exception):
 ##########################################################################
 # Mock classes
 ##########################################################################
+
 
 class MockDAQServer():
     """
@@ -225,9 +243,10 @@ class MockDAQServer():
     just entries in a 'dict') based on the device name that is used when
     connecting to a device. These nodes differ depending on the instrument
     type, which is determined by the number in the device name: dev2XXX are
-    UHFQA instruments, dev8XXX are HDAWG8 instruments and dev0XXX are PQSC
+    UHFQA instruments, dev8XXX are HDAWG8 instruments, dev10XXX are PQSC
     instruments.
     """
+
     def __init__(self, server, port, apilevel, verbose=False):
         self.server = server
         self.port = port
@@ -247,10 +266,12 @@ class MockDAQServer():
 
     def connectDevice(self, device, interface):
         if self.device is not None:
-            raise ziDAQError('Trying to connect to a device that is already connected!')
+            raise ziDAQError(
+                'Trying to connect to a device that is already connected!')
 
         if self.interface is not None and self.interface != interface:
-            raise ziDAQError('Trying to change interface on an already connected device!')
+            raise ziDAQError(
+                'Trying to change interface on an already connected device!')
 
         self.device = device
         self.interface = interface
@@ -259,140 +280,188 @@ class MockDAQServer():
             self.devtype = 'UHFQA'
         elif self.device.lower().startswith('dev8'):
             self.devtype = 'HDAWG8'
-        #FIXME: Change to correct device identifier
-        elif self.device.lower().startswith('dev0'):
+        elif self.device.lower().startswith('dev10'):
             self.devtype = 'PQSC'
 
         # Add paths
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zi_parameter_files', 'node_doc_{}.json'.format(self.devtype))
+        filename = os.path.join(os.path.dirname(os.path.abspath(
+            __file__)), 'zi_parameter_files', 'node_doc_{}.json'.format(self.devtype))
         if not os.path.isfile(filename):
-            raise ziRuntimeError('No parameter file available for devices of type ' + self.devtype)
-        self._load_parameter_file(filename=filename)  # NB: defined in parent class
+            raise ziRuntimeError(
+                'No parameter file available for devices of type ' + self.devtype)
+        # NB: defined in parent class
+        self._load_parameter_file(filename=filename)
 
         # Update connected status
         self.nodes['/zi/devices/connected']['value'] = self.device
-        self.nodes['/' + self.device + '/features/devtype'] = {'type': 'String', 'value': self.devtype}
-        self.nodes['/' + self.device + '/system/fwrevision'] = {'type': 'Integer', 'value': 99999}
-        self.nodes['/' + self.device + '/system/fpgarevision'] = {'type': 'Integer', 'value': 99999}
-        self.nodes['/' + self.device + '/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
+
+        # Set the LabOne revision
+        self.nodes['/zi/about/revision'] = {'type': 'Integer', 'value': 200802104}
+
+        self.nodes[f'/{self.device}/features/devtype'] = {'type': 'String', 'value': self.devtype}
+        self.nodes[f'/{self.device}/system/fwrevision'] = {'type': 'Integer', 'value': 99999}
+        self.nodes[f'/{self.device}/system/fpgarevision'] = {'type': 'Integer', 'value': 99999}
+        self.nodes[f'/{self.device}/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
 
         if self.devtype == 'UHFQA':
-            self.nodes['/' + self.device + '/features/options'] = {'type': 'String', 'value':'QA\nAWG'}
+            self.nodes[f'/{self.device}/features/options'] = {'type': 'String', 'value': 'QA\nAWG'}
             for i in range(16):
-                self.nodes['/' + self.device + '/awgs/0/waveform/waves/' + str(i)] = {'type': 'ZIVectorData', 'value': np.array([])}
+                self.nodes[f'/{self.device}/awgs/0/waveform/waves/{i}'] = {'type': 'ZIVectorData', 'value': np.array([])}
             for i in range(10):
-                self.nodes['/' + self.device + '/qas/0/integration/weights/' + str(i) + '/real'] = {'type': 'ZIVectorData', 'value': np.array([])}
-                self.nodes['/' + self.device + '/qas/0/integration/weights/' + str(i) + '/imag'] = {'type': 'ZIVectorData', 'value': np.array([])}
-                self.nodes['/' + self.device + '/qas/0/result/data/' + str(i) + '/wave'] = {'type': 'ZIVectorData', 'value': np.array([])}
+                self.nodes[f'/{self.device}/qas/0/integration/weights/{i}/real'] = {'type': 'ZIVectorData', 'value': np.array([])}
+                self.nodes[f'/{self.device}/qas/0/integration/weights/{i}/imag'] = {'type': 'ZIVectorData', 'value': np.array([])}
+                self.nodes[f'/{self.device}/qas/0/result/data/{i}/wave'] = {'type': 'ZIVectorData', 'value': np.array([])}
+            self.nodes[f'/{self.device}/raw/dios/0/delay'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/mode'] = {'type': 'Integer', 'value': 0}
         elif self.devtype == 'HDAWG8':
-            self.nodes['/' + self.device + '/features/options']        = {'type': 'String'      , 'value': 'PC\nME'}
-            self.nodes['/' + self.device + '/raw/error/json/errors']   = {'type': 'String'      , 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
-            self.nodes['/' + self.device + '/raw/error/blinkseverity'] = {'type': 'Integer'     , 'value': 0}
-            self.nodes['/' + self.device + '/raw/error/blinkforever']  = {'type': 'Integer'     , 'value': 0}
-            self.nodes['/' + self.device + '/raw/dios/0/extclk']       = {'type': 'Integer'     , 'value': 0}
+            self.nodes[f'/{self.device}/features/options'] = {'type': 'String', 'value': 'PC\nME'}
+            self.nodes[f'/{self.device}/raw/error/json/errors'] = {
+                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+            for i in range(32):
+                self.nodes['/' + self.device +
+                        '/raw/dios/0/delays/' + str(i) + '/value'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/raw/error/blinkseverity'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/raw/error/blinkforever'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
             for awg_nr in range(4):
                 for i in range(32):
-                    self.nodes['/' + self.device + '/awgs/' + str(awg_nr) + '/waveform/waves/' + str(i)] = {'type': 'ZIVectorData', 'value': np.array([])}
-                    self.nodes['/' + self.device + '/awgs/' + str(awg_nr) + '/waveform/waves/' + str(i)] = {'type': 'ZIVectorData', 'value': np.array([])}
-                    self.nodes['/' + self.device + '/awgs/' + str(awg_nr) + '/waveform/waves/' + str(i)] = {'type': 'ZIVectorData', 'value': np.array([])}
-                    self.nodes['/' + self.device + '/awgs/' + str(awg_nr) + '/waveform/waves/' + str(i)] = {'type': 'ZIVectorData', 'value': np.array([])}
+                    self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
+                        'type': 'ZIVectorData', 'value': np.array([])}
+                    self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
+                        'type': 'ZIVectorData', 'value': np.array([])}
+                    self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
+                        'type': 'ZIVectorData', 'value': np.array([])}
+                    self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
+                        'type': 'ZIVectorData', 'value': np.array([])}
             for sigout_nr in range(8):
-                self.nodes['/' + self.device + '/sigouts/' + str(sigout_nr) + '/precompensation/fir/coefficients'] = {'type': 'ZIVectorData', 'value': np.array([])}
+                self.nodes[f'/{self.device}/sigouts/{sigout_nr}/precompensation/fir/coefficients'] = {
+                    'type': 'ZIVectorData', 'value': np.array([])}
+            self.nodes[f'/{self.device}/dios/0/mode'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
+            for dio_nr in range(32):
+                self.nodes[f'/{self.device}/raw/dios/0/delays/{dio_nr}/value'] = {'type': 'Integer', 'value': 0}
+        elif self.devtype == 'PQSC':
+            self.nodes[f'/{self.device}/raw/error/json/errors'] = {
+                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
 
     def listNodesJSON(self, path):
         pass
 
     def getString(self, path):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
         if self.nodes[path]['type'] != 'String':
-            raise ziRuntimeError("Trying to node '" + path + "' as string, but the type is '" + self.nodes[path]['type'] + "'!")
+            raise ziRuntimeError(
+                "Trying to node '" + path + "' as string, but the type is '" + self.nodes[path]['type'] + "'!")
 
         return self.nodes[path]['value']
 
     def getInt(self, path):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
-        
-        if self.verbose: print('getInt', path, int(self.nodes[path]['value']))
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
+
+        if self.verbose:
+            print('getInt', path, int(self.nodes[path]['value']))
 
         return int(self.nodes[path]['value'])
 
     def getDouble(self, path):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
-        if self.verbose: print('getDouble', path, float(self.nodes[path]['value']))
+        if self.verbose:
+            print('getDouble', path, float(self.nodes[path]['value']))
 
         return float(self.nodes[path]['value'])
 
     def setInt(self, path, value):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
-        if self.verbose: print('setInt', path, value)
+        if self.verbose:
+            print('setInt', path, value)
 
         self.nodes[path]['value'] = value
 
     def setDouble(self, path, value):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
-        if self.verbose: print('setDouble', path, value)
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
+        if self.verbose:
+            print('setDouble', path, value)
         self.nodes[path]['value'] = value
 
     def setVector(self, path, value):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
         if self.nodes[path]['type'] != 'ZIVectorData':
-            raise ziRuntimeError("Unable to set node '" + path + "' of type " + self.nodes[path]['type'] + " using setVector!")
+            raise ziRuntimeError("Unable to set node '" + path + "' of type " +
+                                 self.nodes[path]['type'] + " using setVector!")
 
         self.nodes[path]['value'] = value
 
     def setComplex(self, path, value):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
         if not self.nodes[path]['type'].startswith('Complex'):
-            raise ziRuntimeError("Unable to set node '" + path + "' of type " + self.nodes[path]['type'] + " using setComplex!")
+            raise ziRuntimeError("Unable to set node '" + path + "' of type " +
+                                 self.nodes[path]['type'] + " using setComplex!")
 
-        if self.verbose: print('setComplex', path, value)
+        if self.verbose:
+            print('setComplex', path, value)
         self.nodes[path]['value'] = value
 
     def getComplex(self, path):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
         if not self.nodes[path]['type'].startswith('Complex'):
-            raise ziRuntimeError("Unable to get node '" + path + "' of type " + self.nodes[path]['type'] + " using getComplex!")
+            raise ziRuntimeError("Unable to get node '" + path + "' of type " +
+                                 self.nodes[path]['type'] + " using getComplex!")
 
-        if self.verbose: print('getComplex', path, self.nodes[path]['value'])
+        if self.verbose:
+            print('getComplex', path, self.nodes[path]['value'])
         return self.nodes[path]['value']
 
     def get(self, path, flat, flags):
         if path not in self.nodes:
-            raise ziRuntimeError("Unknown node '" + path + "' used with mocked server and device!")
+            raise ziRuntimeError("Unknown node '" + path +
+                                 "' used with mocked server and device!")
 
         return {path: [{'vector': self.nodes[path]['value']}]}
 
     def getAsEvent(self, path):
         self.poll_nodes.append(path)
-        
 
     def poll(self, poll_time, timeout, flags, flat):
         poll_data = {}
-        
+
         for path in self.poll_nodes:
-            if self.verbose: print('poll', path)
+            if self.verbose:
+                print('poll', path)
             m = re.match(r'/(\w+)/qas/0/result/data/(\d+)/wave', path)
             if m:
-                poll_data[path] = [{'vector': np.random.rand(self.getInt('/' + m.group(1) + '/qas/0/result/length'))}]
+                poll_data[path] = [{'vector': np.random.rand(
+                    self.getInt('/' + m.group(1) + '/qas/0/result/length'))}]
                 continue
 
             m = re.match(r'/(\w+)/qas/0/monitor/inputs/(\d+)/wave', path)
             if m:
-                poll_data[path] = [{'vector': np.random.rand(self.getInt('/' + m.group(1) + '/qas/0/monitor/length'))}]
+                poll_data[path] = [{'vector': np.random.rand(
+                    self.getInt('/' + m.group(1) + '/qas/0/monitor/length'))}]
                 continue
 
             m = re.match(r'/(\w+)/awgs/(\d+)/ready', path)
@@ -401,19 +470,27 @@ class MockDAQServer():
                 continue
 
             poll_data[path] = {'value': [0]}
-        
+
         return poll_data
 
     def subscribe(self, path):
-        if self.verbose: print('subscribe', path)
-        
+        if self.verbose:
+            print('subscribe', path)
+
         self.poll_nodes.append(path)
-        
+
     def unsubscribe(self, path):
-        if self.verbose: print('unsubscribe', path)
-        
+        if self.verbose:
+            print('unsubscribe', path)
+
         if path in self.poll_nodes:
             self.poll_nodes.remove(path)
+
+    def sync(self):
+        """The sync method does not need to do anything as there are no
+        device delays to deal with when using the mock server.
+        """
+        pass
 
     def _load_parameter_file(self, filename: str):
         """
@@ -430,11 +507,15 @@ class MockDAQServer():
             if par['Type'].startswith('Integer'):
                 self.nodes[parpath.lower()] = {'type': par['Type'], 'value': 0}
             elif par['Type'].startswith('Double'):
-                self.nodes[parpath.lower()] = {'type': par['Type'], 'value': 0.0}
+                self.nodes[parpath.lower()] = {
+                    'type': par['Type'], 'value': 0.0}
             elif par['Type'].startswith('Complex'):
-                self.nodes[parpath.lower()] = {'type': par['Type'], 'value': 0 + 0j}
+                self.nodes[parpath.lower()] = {
+                    'type': par['Type'], 'value': 0 + 0j}
             elif par['Type'].startswith('String'):
-                self.nodes[parpath.lower()] = {'type': par['Type'], 'value': ''}
+                self.nodes[parpath.lower()] = {
+                    'type': par['Type'], 'value': ''}
+
 
 class MockAwgModule():
     """
@@ -446,6 +527,7 @@ class MockAwgModule():
     the next compilation should be successful or not in order to enable more
     flexibility in the unit tests of the actual drivers.
     """
+
     def __init__(self, daq):
         self._daq = daq
         self._device = None
@@ -457,7 +539,8 @@ class MockAwgModule():
 
     def get_compilation_count(self, index):
         if index not in self._compilation_count:
-            raise ziModuleError('Trying to access compilation count of invalid index ' + str(index) + '!')
+            raise ziModuleError(
+                'Trying to access compilation count of invalid index ' + str(index) + '!')
 
         return self._compilation_count[index]
 
@@ -469,20 +552,25 @@ class MockAwgModule():
             if self._index not in self._compilation_count:
                 self._compilation_count[self._index] = 0
         elif path == 'awgModule/compiler/sourcestring':
+            # The compiled program is stored in _sourcestring
+            self._sourcestring = value
             if self._index not in self._compilation_count:
-                raise ziModuleError('Trying to compile AWG program, but no AWG index has been configured!')
+                raise ziModuleError(
+                    'Trying to compile AWG program, but no AWG index has been configured!')
 
             if self._device is None:
-                raise ziModuleError('Trying to compile AWG program, but no AWG device has been configured!')
+                raise ziModuleError(
+                    'Trying to compile AWG program, but no AWG device has been configured!')
 
             self._compilation_count[self._index] += 1
-            self._daq.setInt('/' + self._device + '/' + 'awgs/' + str(self._index) + '/ready', 1)
-            
+            self._daq.setInt('/' + self._device + '/' +
+                             'awgs/' + str(self._index) + '/ready', 1)
+
     def get(self, path):
         if path == 'awgModule/device':
             value = [self._device]
         elif path == 'awgModule/index':
-            value [self._index]
+            value[self._index]
         elif path == 'awgModule/compiler/statusstring':
             value = ['File successfully uploaded']
         else:
@@ -491,7 +579,7 @@ class MockAwgModule():
         for elem in reversed(path.split('/')[1:]):
             rv = {elem: value}
             value = rv
-        
+
         return rv
 
     def execute(self):
@@ -500,6 +588,7 @@ class MockAwgModule():
 ##########################################################################
 # Class
 ##########################################################################
+
 
 class ZI_base_instrument(Instrument):
     """
@@ -525,14 +614,16 @@ class ZI_base_instrument(Instrument):
     # Constructor
     ##########################################################################
 
-    def __init__(self          , 
-                 name          : str, 
-                 device        : str, 
-                 interface     : str= '1GbE', 
-                 server        : str= 'localhost', 
-                 port          : int= 8004, 
-                 apilevel      : int= 5, 
-                 num_codewords : int= 0, 
+    def __init__(self,
+                 name: str,
+                 device: str,
+                 interface: str= '1GbE',
+                 server: str= 'localhost',
+                 port: int= 8004,
+                 apilevel: int= 5,
+                 num_codewords: int= 0,
+                 awg_module: bool=True,
+                 logfile: str = None,
                  **kw) -> None:
         """
         Input arguments:
@@ -542,15 +633,19 @@ class ZI_base_instrument(Instrument):
             server          (str) the host where the ziDataServer is running
             port            (int) the port to connect to for the ziDataServer (don't change)
             apilevel        (int) the API version level to use (don't change unless you know what you're doing)
+            awg_module      (bool) create an awgModule
             num_codewords   (int) the number of codeword-based waveforms to prepare
+            logfile         (str) file name where all commands should be logged
         """
         t0 = time.time()
         super().__init__(name=name, **kw)
 
         # Decide which server to use based on name
         if server == 'emulator':
+            log.info('Connecting to mock DAQ server')
             self.daq = MockDAQServer(server, port, apilevel)
         else:
+            log.info('Connecting to DAQ server')
             self.daq = zi.ziDAQServer(server, port, apilevel)
 
         if not self.daq:
@@ -561,8 +656,9 @@ class ZI_base_instrument(Instrument):
         # Handle absolute path
         self.use_setVector = "setVector" in dir(self.daq)
 
-        # Connect a device (if not already connected)
+        # Connect a device
         if not self._is_device_connected(device):
+            log.info(f'Connecting to device {device}')
             self.daq.connectDevice(device, interface)
         self.devname = device
         self.devtype = self.gets('features/devtype')
@@ -578,21 +674,23 @@ class ZI_base_instrument(Instrument):
         # add qcodes parameters based on JSON parameter file
         # FIXME: we might want to skip/remove/(add  to _params_to_skip_update) entries like AWGS/*/ELF/DATA,
         #       AWGS/*/SEQUENCER/ASSEMBLY, AWGS/*/DIO/DATA
-        filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zi_parameter_files', 'node_doc_{}.json'.format(self.devtype))
+        filename = os.path.join(os.path.dirname(os.path.abspath(
+            __file__)), 'zi_parameter_files', 'node_doc_{}.json'.format(self.devtype))
         if not os.path.isfile(filename):
-            log.info("{}: creating parameter file {}".format(self.devname, filename))
+            log.info(f"{self.devname}: Parameter file not found, creating  '{filename}''")
             self._create_parameter_file(filename=filename)
 
         try:
-            self._load_parameter_file(filename=filename)  # NB: defined in parent class
+            # NB: defined in parent class
+            log.info(f'{self.devname}: Loading parameter file')
+            self._load_parameter_file(filename=filename)
         except FileNotFoundError:
             # Should never happen as we just created the file above
-            log.error("{}: parameter file for data parameters {} not found".format(self.devname, filename))
+            log.error(f"{self.devname}: parameter file for data parameters {filename} not found")
             raise
-        
-        # FIXME: get rid of if clause write separate AWG module
-        if self.devtype != 'PQSC':
-            # Create modules
+
+        # Create modules
+        if awg_module:
             self._awgModule = self.daq.awgModule()
             self._awgModule.set('awgModule/device', device)
             self._awgModule.execute()
@@ -600,7 +698,6 @@ class ZI_base_instrument(Instrument):
             # Will hold information about all configured waveforms
             self._awg_waveforms = {}
 
-        
             # Asserted when AWG needs to be reconfigured
             self._awg_needs_configuration = [False]*(self._num_channels()//2)
             self._awg_program = [None]*(self._num_channels()//2)
@@ -608,9 +705,13 @@ class ZI_base_instrument(Instrument):
             # Create waveform parameters
             self._num_codewords = 0
             self._add_codeword_waveform_parameters(num_codewords)
+        else:
+            self._awgModule = None
 
         # Create other neat parameters
         self._add_extra_parameters()
+        # A list of all subscribed paths
+        self._subscribed_paths = []
 
         self._awg_source_strings = {}
 
@@ -621,18 +722,24 @@ class ZI_base_instrument(Instrument):
         # Make initial error check
         self.check_errors()
 
+        # Optionally setup log file
+        if logfile is not None:
+            self._logfile = open(logfile, 'w')
+        else:
+            self._logfile = None
+
         # Show some info
         serial = self.get('features_serial')
         options = self.get('features_options')
         fw_revision = self.get('system_fwrevision')
         fpga_revision = self.get('system_fpgarevision')
         log.info('{}: serial={}, options={}, fw_revision={}, fpga_revision={}'
-                 .format(self.devname, serial, options.replace('\n','|'), fw_revision, fpga_revision))
+                 .format(self.devname, serial, options.replace('\n', '|'), fw_revision, fpga_revision))
 
         self.connect_message(begin_time=t0)
-    
+
     ##########################################################################
-    # Private methods
+    # Private methods: Abstract Base Class methods
     ##########################################################################
 
     def _check_devtype(self):
@@ -672,21 +779,17 @@ class ZI_base_instrument(Instrument):
         """
         Adds extra useful parameters to the instrument.
         """
+        log.info(f'{self.devname}: Adding extra parameters')
         self.add_parameter(
-            'timeout', 
+            'timeout',
             unit='s',
             initial_value=30,
             parameter_class=ManualParameter,
             vals=validators.Ints())
 
-        #FIXME: get rid of if clause
-        if self.devtype != 'PQSC':
-            for i in range(self._num_channels()//2):
-                self.add_parameter(
-                    'awgs_{}_sequencer_program_crc32_hash'.format(i),
-                    parameter_class=ManualParameter,
-                    initial_value=0, 
-                    vals=validators.Ints())
+    ##########################################################################
+    # Private methods
+    ##########################################################################
 
     def _add_codeword_waveform_parameters(self, num_codewords) -> None:
         """
@@ -700,9 +803,11 @@ class ZI_base_instrument(Instrument):
                  ' to the channel as indicated on the device (1 is lowest).')
 
         self._params_to_skip_update = []
+        log.info(f'{self.devname}: Adding codeword waveform parameters')
         for ch in range(self._num_channels()):
             for cw in range(max(num_codewords, self._num_codewords)):
-                wf_name = gen_waveform_name(ch, cw)  # NB: parameter naming identical to QWG
+                # NB: parameter naming identical to QWG
+                wf_name = gen_waveform_name(ch, cw)
 
                 if cw >= self._num_codewords and wf_name not in self.parameters:
                     # Add parameter
@@ -722,7 +827,7 @@ class ZI_base_instrument(Instrument):
                     if wf_name in self.parameters:
                         self.parameters.pop(wf_name)
                         self._awg_waveforms.pop(wf_name)
-        
+
         # Update the number of codewords
         self._num_codewords = num_codewords
 
@@ -765,7 +870,7 @@ class ZI_base_instrument(Instrument):
                 par_kw['set_cmd'] = _gen_set_cmd(self.seti, parpath)
                 par_kw['get_cmd'] = _gen_get_cmd(self.geti, parpath)
                 par_kw['vals'] = validators.Ints(min_value=0,
-                                           max_value=len(par["Options"]))
+                                                 max_value=len(par["Options"]))
 
             elif par['Type'] == 'Double':
                 par_kw['set_cmd'] = _gen_set_cmd(self.setd, parpath)
@@ -798,27 +903,27 @@ class ZI_base_instrument(Instrument):
             elif par['Type'] == 'ZICntSample':
                 par_kw['get_cmd'] = None  # Not implemented
                 par_kw['set_cmd'] = None  # Not implemented
-                par_kw['vals'] = None # Not implemented
+                par_kw['vals'] = None  # Not implemented
 
             elif par['Type'] == 'ZITriggerSample':
                 par_kw['get_cmd'] = None  # Not implemented
                 par_kw['set_cmd'] = None  # Not implemented
-                par_kw['vals'] = None # Not implemented
+                par_kw['vals'] = None  # Not implemented
 
             elif par['Type'] == 'ZIDIOSample':
                 par_kw['get_cmd'] = None  # Not implemented
                 par_kw['set_cmd'] = None  # Not implemented
-                par_kw['vals'] = None # Not implemented
-            
+                par_kw['vals'] = None  # Not implemented
+
             elif par['Type'] == 'ZIAuxInSample':
                 par_kw['get_cmd'] = None  # Not implemented
                 par_kw['set_cmd'] = None  # Not implemented
-                par_kw['vals'] = None # Not implemented
-            
+                par_kw['vals'] = None  # Not implemented
+
             elif par['Type'] == 'ZIScopeWave':
                 par_kw['get_cmd'] = None  # Not implemented
                 par_kw['set_cmd'] = None  # Not implemented
-                par_kw['vals'] = None # Not implemented
+                par_kw['vals'] = None  # Not implemented
 
             else:
                 raise NotImplementedError(
@@ -842,9 +947,9 @@ class ZI_base_instrument(Instrument):
         """
         # Get all interesting nodes
         nodes = json.loads(self.daq.listNodesJSON('/' + self.devname))
-        
+
         modified_nodes = {}
-       
+
         # Do some name mangling
         for name, node in nodes.items():
             name = name.replace('/' + self.devname.upper() + '/', '')
@@ -900,10 +1005,12 @@ class ZI_base_instrument(Instrument):
         for par in waveform_params:
             par(wf)
         t1 = time.time()
-        log.debug('Set all waveforms to zeros in {:.1f} ms'.format(1.0e3*(t1-t0)))
+        log.debug(
+            'Set all waveforms to zeros in {:.1f} ms'.format(1.0e3*(t1-t0)))
 
     def _gen_write_waveform(self, ch, cw):
         def write_func(waveform):
+            log.debug(f"{self.devname}: Writing waveform (len {len(waveform)}) to ch{ch} cw{cw}")
             # Determine which AWG this waveform belongs to
             awg_nr = ch//2
 
@@ -912,29 +1019,36 @@ class ZI_base_instrument(Instrument):
 
             # Check that we're allowed to modify this waveform
             if self._awg_waveforms[wf_name]['readonly']:
-                raise ziConfigurationError('Trying to modify read-only waveform on codeword {}, channel {}'.format(cw, ch))
+                raise ziConfigurationError(
+                    'Trying to modify read-only waveform on '
+                    'codeword {}, channel {}'.format(cw, ch))
 
             # The length of HDAWG waveforms should be a multiple of 8 samples.
             if (len(waveform) % 8) != 0:
+                log.debug(f"{self.devname}: waveform is not a multiple of 8 samples, appending zeros.")
                 extra_zeros = 8-(len(waveform) % 8)
                 waveform = np.concatenate([waveform, np.zeros(extra_zeros)])
-            
+
             # If the length has changed, we need to recompile the AWG program
             if len(waveform) != len(self._awg_waveforms[wf_name]['waveform']):
+                log.debug(f"{self.devname}: Length of waveform has changed. Flagging awg as requiring recompilation.")
                 self._awg_needs_configuration[awg_nr] = True
 
             # Update the associated CSV file
-            self._write_csv_waveform(ch=ch, cw=cw, wf_name=wf_name, waveform=waveform)
+            log.debug(f"{self.devname}: Updating csv waveform {wf_name}, for ch{ch}, cw{cw}")
+            self._write_csv_waveform(ch=ch, cw=cw, wf_name=wf_name,
+                                     waveform=waveform)
 
             # And the entry in our table and mark it for update
             self._awg_waveforms[wf_name]['waveform'] = waveform
-            self._awg_waveforms[wf_name]['dirty']   = True
+            log.debug(f"{self.devname}: Marking waveform as dirty.")
+            self._awg_waveforms[wf_name]['dirty'] = True
 
         return write_func
 
-    def _write_csv_waveform(self, ch:int, cw: int, wf_name: str, waveform) -> None:
+    def _write_csv_waveform(self, ch: int, cw: int, wf_name: str, waveform) -> None:
         filename = os.path.join(
-            self._get_awg_directory(), 'waves', 
+            self._get_awg_directory(), 'waves',
             self.devname + '_' + wf_name + '.csv')
         np.savetxt(filename, waveform, delimiter=",")
 
@@ -945,17 +1059,21 @@ class ZI_base_instrument(Instrument):
 
             # Name of this waveform
             wf_name = gen_waveform_name(ch, cw)
-            
+            log.debug(f"{self.devname}: Reading waveform {wf_name} for ch{ch} cw{cw}")
             # Check if the waveform data is in our dictionary
             if wf_name not in self._awg_waveforms:
+                log.debug(f"{self.devname}: Waveform not in self._awg_waveforms: reading from csv file.")
                 # Initialize elements
-                self._awg_waveforms[wf_name] = {'waveform': None, 'dirty': False, 'readonly': False}
+                self._awg_waveforms[wf_name] = {
+                    'waveform': None, 'dirty': False, 'readonly': False}
                 # Make sure everything gets recompiled
+                log.debug(f"{self.devname}: Flagging awg as requiring recompilation.")
                 self._awg_needs_configuration[awg_nr] = True
                 # It isn't, so try to read the data from CSV
                 waveform = self._read_csv_waveform(ch, cw, wf_name)
                 # Check whether  we got something
                 if waveform is None:
+                    log.debug(f"{self.devname}: Waveform CSV does not exist, initializing to zeros.")
                     # Nope, initialize to zeros
                     waveform = np.zeros(32)
                     self._awg_waveforms[wf_name]['waveform'] = waveform
@@ -976,6 +1094,7 @@ class ZI_base_instrument(Instrument):
             self._get_awg_directory(), 'waves',
             self.devname + '_' + wf_name + '.csv')
         try:
+            log.debug(f"{self.devname}: reading waveform from csv '{filename}'")
             return np.genfromtxt(filename, delimiter=',')
         except OSError as e:
             # if the waveform does not exist yet dont raise exception
@@ -987,32 +1106,51 @@ class ZI_base_instrument(Instrument):
         Adjust the length of a codeword waveform such that each individual
         waveform of the pair has the same length
         """
-        for cw in range(self._num_codewords):
-            wf_name = gen_waveform_name(2*awg_nr+0, cw)
-            len_wf = len(self._awg_waveforms[wf_name]['waveform'])
-            other_wf_name = gen_waveform_name(2*awg_nr+1, cw)
-            len_other_wf = len(self._awg_waveforms[other_wf_name]['waveform'])
+        log.info('Length matching waveforms for dynamic waveform upload.')
+        wf_table = self._get_waveform_table(awg_nr)
 
-            # First one is shorter
-            if len_wf < len_other_wf:
-                # Temporarily unset the readonly flag to be allowed to append zeros
-                readonly = self._awg_waveforms[wf_name]['readonly']
-                self._awg_waveforms[wf_name]['readonly'] = False
-                self.set(wf_name, np.concatenate((self._awg_waveforms[wf_name]['waveform'], np.zeros(len_other_wf-len_wf))))
-                self._awg_waveforms[wf_name]['dirty'] = True
-                self._awg_waveforms[wf_name]['readonly'] = readonly
-            elif len_other_wf < len_wf:
-                readonly = self._awg_waveforms[other_wf_name]['readonly']
-                self._awg_waveforms[other_wf_name]['readonly'] = False
-                self.set(other_wf_name, np.concatenate((self._awg_waveforms[other_wf_name]['waveform'], np.zeros(len_wf-len_other_wf))))
-                self._awg_waveforms[other_wf_name]['dirty'] = True
-                self._awg_waveforms[other_wf_name]['readonly'] = readonly
+        matching_updated = False
+        iter_id = 0
+        # We iterate over the waveform table
+        while(matching_updated or iter_id == 0):
+
+            iter_id += 1
+            if iter_id > 10:
+                raise StopIteration
+            log.info('Length matching iteration {}.'.format(iter_id))
+            matching_updated = False
+
+            for wf_name, other_wf_name in wf_table:
+                len_wf = len(self._awg_waveforms[wf_name]['waveform'])
+                len_other_wf = len(self._awg_waveforms[other_wf_name]['waveform'])
+
+                # First one is shorter
+                if len_wf < len_other_wf:
+                    log.info(f"{self.devname}: Modifying {wf_name} for length matching.")
+                    # Temporarily unset the readonly flag to be allowed to append zeros
+                    readonly = self._awg_waveforms[wf_name]['readonly']
+                    self._awg_waveforms[wf_name]['readonly'] = False
+                    self.set(wf_name, np.concatenate(
+                        (self._awg_waveforms[wf_name]['waveform'], np.zeros(len_other_wf-len_wf))))
+                    self._awg_waveforms[wf_name]['dirty'] = True
+                    self._awg_waveforms[wf_name]['readonly'] = readonly
+                    matching_updated = True
+                elif len_other_wf < len_wf:
+                    log.info(f"{self.devname}: Modifying {other_wf_name} for length matching.")
+                    readonly = self._awg_waveforms[other_wf_name]['readonly']
+                    self._awg_waveforms[other_wf_name]['readonly'] = False
+                    self.set(other_wf_name, np.concatenate(
+                        (self._awg_waveforms[other_wf_name]['waveform'], np.zeros(len_wf-len_other_wf))))
+                    self._awg_waveforms[other_wf_name]['dirty'] = True
+                    self._awg_waveforms[other_wf_name]['readonly'] = readonly
+                    matching_updated = True
 
     def _clear_dirty_waveforms(self, awg_nr):
         """
         Adjust the length of a codeword waveform such that each individual
         waveform of the pair has the same length
         """
+        log.info(f"{self.devname}: Clearing dirty waveform tag for AWG {awg_nr}")
         for cw in range(self._num_codewords):
             wf_name = gen_waveform_name(2*awg_nr+0, cw)
             self._awg_waveforms[wf_name]['dirty'] = False
@@ -1022,7 +1160,7 @@ class ZI_base_instrument(Instrument):
 
     def _clear_readonly_waveforms(self, awg_nr):
         """
-        Clear the read-only flag of all configured waveforms. Typically used when switching 
+        Clear the read-only flag of all configured waveforms. Typically used when switching
         configurations (i.e. programs).
         """
         for cw in range(self._num_codewords):
@@ -1040,17 +1178,20 @@ class ZI_base_instrument(Instrument):
         """
         # Sanity check
         if cw >= self._num_codewords:
-            raise ziConfigurationError('Codeword {} is out of range of the configured number of codewords ({})!'.format(cw, self._num_codewords))
+            raise ziConfigurationError(
+                'Codeword {} is out of range of the configured number of codewords ({})!'.format(cw, self._num_codewords))
 
         if ch >= self._num_channels():
-            raise ziConfigurationError('Channel {} is out of range of the configured number of channels ({})!'.format(ch, self._num_channels()))
+            raise ziConfigurationError(
+                'Channel {} is out of range of the configured number of channels ({})!'.format(ch, self._num_channels()))
 
         # Name of this waveform
         wf_name = gen_waveform_name(ch, cw)
-        
+
         # Check if the waveform data is in our dictionary
         if wf_name not in self._awg_waveforms:
-            raise ziConfigurationError('Trying to mark waveform {} as read-only, but the waveform has not been configured yet!'.format(wf_name))
+            raise ziConfigurationError(
+                'Trying to mark waveform {} as read-only, but the waveform has not been configured yet!'.format(wf_name))
 
         self._awg_waveforms[wf_name]['readonly'] = True
 
@@ -1059,18 +1200,19 @@ class ZI_base_instrument(Instrument):
         Loop through all configured waveforms and use dynamic waveform uploading
         to update changed waveforms on the instrument as needed.
         """
-        # Upload waveform for each codeword
-        for cw in range(self._num_codewords):
-            # Loop through all AWG's
-            wf_name = gen_waveform_name(2*awg_nr+0, cw)
-            other_wf_name = gen_waveform_name(2*awg_nr+1, cw)
+        # Fixme. the _get_waveform_table should also be implemented for the UFH
+        log.info(f"{self.devname}: Using dynamic waveform update for AWG {awg_nr}.")
+        wf_table = self._get_waveform_table(awg_nr)
+
+        for dio_cw, (wf_name, other_wf_name) in enumerate(wf_table):
             if self._awg_waveforms[wf_name]['dirty'] or self._awg_waveforms[other_wf_name]['dirty']:
                 # Combine the waveforms and upload
-                wf_data = merge_waveforms(self._awg_waveforms[wf_name]['waveform'], 
-                                            self._awg_waveforms[other_wf_name]['waveform'])
+                wf_data = merge_waveforms(self._awg_waveforms[wf_name]['waveform'],
+                                          self._awg_waveforms[other_wf_name]['waveform'])
                 # Write the new waveform
-                self.setv('awgs/{}/waveform/waves/{}'.format(awg_nr, cw), wf_data)
-    
+                self.setv(
+                    'awgs/{}/waveform/waves/{}'.format(awg_nr, dio_cw), wf_data)
+
     def _codeword_table_preamble(self, awg_nr):
         """
         Defines a snippet of code to use in the beginning of an AWG program in order to define the waveforms.
@@ -1083,37 +1225,56 @@ class ZI_base_instrument(Instrument):
         """
         Configures an AWG with the program stored in the object in the self._awg_program[awg_nr] member.
         """
-        if self._awg_program[awg_nr] is not None:        
+        log.info(f"{self.devname}: Configuring AWG {awg_nr} with predefined codeword program")
+        if self._awg_program[awg_nr] is not None:
             full_program = \
                 '// Start of automatically generated codeword table\n' + \
                 self._codeword_table_preamble(awg_nr) + \
-                '// End of automatically generated codeword table\n' + self._awg_program[awg_nr]
+                '// End of automatically generated codeword table\n' + \
+                self._awg_program[awg_nr]
 
             self.configure_awg_from_string(awg_nr, full_program)
+        else:
+            logging.info(f"{self.devname}: No program configured for awg_nr {awg_nr}.")
+
+    def _write_cmd_to_logfile(self, cmd):
+        if self._logfile is not None:
+            now = datetime.now()
+            now_str = now.strftime("%d/%m/%Y %H:%M:%S")
+            self._logfile.write(f'#{now_str}\n')
+            self._logfile.write(f'{self.name}.{cmd}\n')
+
+    def _flush_logfile(self):
+        if self._logfile is not None:
+            self._logfile.flush()
 
     ##########################################################################
-    # Public methods
+    # Public methods: node helpers
     ##########################################################################
 
     def setd(self, path, value) -> None:
+        self._write_cmd_to_logfile(f'daq.setDouble("{path}", {value})')
         self.daq.setDouble(self._get_full_path(path), value)
 
     def getd(self, path):
         return self.daq.getDouble(self._get_full_path(path))
 
     def seti(self, path, value) -> None:
+        self._write_cmd_to_logfile(f'daq.setDouble("{path}", {value})')
         self.daq.setInt(self._get_full_path(path), value)
 
     def geti(self, path):
         return self.daq.getInt(self._get_full_path(path))
 
     def sets(self, path, value) -> None:
+        self._write_cmd_to_logfile(f'daq.setString("{path}", {value})')
         self.daq.setString(self._get_full_path(path), value)
 
     def gets(self, path):
         return self.daq.getString(self._get_full_path(path))
 
     def setc(self, path, value) -> None:
+        self._write_cmd_to_logfile(f'daq.setComplex("{path}", {value})')
         self.daq.setComplex(self._get_full_path(path), value)
 
     def getc(self, path):
@@ -1122,8 +1283,10 @@ class ZI_base_instrument(Instrument):
     def setv(self, path, value) -> None:
         # Handle absolute path
         if self.use_setVector:
+            self._write_cmd_to_logfile(f'daq.setVector("{path}", np.array({np.array2string(value, separator=",")}))')
             self.daq.setVector(self._get_full_path(path), value)
         else:
+            self._write_cmd_to_logfile(f'daq.vectorWrite("{path}", np.array({np.array2string(value, separator=",")}))')
             self.daq.vectorWrite(self._get_full_path(path), value)
 
     def getv(self, path):
@@ -1136,7 +1299,7 @@ class ZI_base_instrument(Instrument):
 
     def getdeep(self, path, timeout=5.0):
         path = self._get_full_path(path)
-        
+
         self.daq.getAsEvent(path)
         while timeout > 0.0:
             value = self.daq.poll(0.01, 500, 4, True)
@@ -1144,113 +1307,134 @@ class ZI_base_instrument(Instrument):
                 return value[path]
             else:
                 timeout -= 0.01
-  
+
         return None
 
-    def subs(self, path) -> None:
-        self.daq.subscribe(self._get_full_path(path))
+    def subs(self, path:str) -> None:
+        full_path = self._get_full_path(path)
+        if full_path not in self._subscribed_paths:
+            self._subscribed_paths.append(full_path)
+        self.daq.subscribe(full_path)
 
-    def unsubs(self, path) -> None:
-        self.daq.unsubscribe(self._get_full_path(path))
-        
+    def unsubs(self, path:str=None) -> None:
+        if path is None:
+            for path in self._subscribed_paths:
+                self.daq.unsubscribe(path)
+            self._subscribed_paths.clear()
+        else:
+            full_path = self._get_full_path(path)
+            if full_path in self._subscribed_paths:
+                del self._subscribed_paths[self._subscribed_paths.index(full_path)]
+            self.daq.unsubscribe(full_path)
+
     def poll(self, poll_time=0.1):
+        # The timeout of 1ms (second argument) is smaller than in the Delft
+        # driver version (500ms) to allow fast spectroscopy.
         return self.daq.poll(poll_time, 1, 4, True)
 
     def sync(self) -> None:
         self.daq.sync()
 
+    ##########################################################################
+    # Public methods
+    ##########################################################################
+
     def start(self):
+        log.info(f"{self.devname}: Starting '{self.name}'")
         self.check_errors()
 
-        # FIXME
         # Loop through each AWG and check whether to reconfigure it
-        if self.devtype != 'PQSC':
-            for awg_nr in range(self._num_channels()//2):
-                self._length_match_waveforms(awg_nr)
+        for awg_nr in range(self._num_channels()//2):
+            self._length_match_waveforms(awg_nr)
 
-                # If the reconfiguration flag is set, upload new program
-                if self._awg_needs_configuration[awg_nr]:
-                    self._configure_awg_from_variable(awg_nr)
-                    self._awg_needs_configuration[awg_nr] = False
-                    self._clear_dirty_waveforms(awg_nr)
-                else:
-                    # Loop through all waveforms and update accordingly
-                    self._upload_updated_waveforms(awg_nr)
-                    self._clear_dirty_waveforms(awg_nr)
+            # If the reconfiguration flag is set, upload new program
+            if self._awg_needs_configuration[awg_nr]:
+                log.debug(f"{self.devname}: Detected awg configuration tag for AWG {awg_nr}.")
+                self._configure_awg_from_variable(awg_nr)
+                self._awg_needs_configuration[awg_nr] = False
+                self._clear_dirty_waveforms(awg_nr)
+            else:
+                log.debug(f"{self.devname}: Did not detect awg configuration tag for AWG {awg_nr}.")
+                # Loop through all waveforms and update accordingly
+                self._upload_updated_waveforms(awg_nr)
+                self._clear_dirty_waveforms(awg_nr)
 
         # Start all AWG's
-        # FIXME: make this if clause nicer
-        if self.devtype != 'PQSC':
-            for awg_nr in range(self._num_channels()//2):
-                # Skip AWG's without programs
-                if self._awg_program[awg_nr] is None:
-                    continue
-                # Check that the AWG is ready
-                if not self.get('awgs_{}_ready'.format(awg_nr)):
-                    raise ziReadyError('Tried to start AWG {} that is not ready!'.format(awg_nr))
-                # Enable it
-                self.set('awgs_{}_enable'.format(awg_nr), 1)
-        else: 
-            self.set('execution_enable', 1)
+        for awg_nr in range(self._num_channels()//2):
+            # Skip AWG's without programs
+            if self._awg_program[awg_nr] is None:
+                # to configure all awgs use "upload_codeword_program" or specify
+                # another program
+                logging.info(f"{self.devname}: Not starting awg_nr {awg_nr}.")
+                continue
+            # Check that the AWG is ready
+            if not self.get('awgs_{}_ready'.format(awg_nr)):
+                raise ziReadyError(
+                    'Tried to start AWG {} that is not ready!'.format(awg_nr))
+            # Enable it
+            self.set('awgs_{}_enable'.format(awg_nr), 1)
+        log.info(f"{self.devname}: Started '{self.name}'")
 
-    def stop(self): 
+    def stop(self):
+        log.info('Stopping {}'.format(self.name))
         # Stop all AWG's
-        # FIXME: make this if clause nicer
-        if self.devtype != 'PQSC':
-            for awg_nr in range(self._num_channels()//2):
-                self.set('awgs_{}_enable'.format(awg_nr), 0)
-        else:
-            self.set('execution_enable', 0)
+        for awg_nr in range(self._num_channels()//2):
+            self.set('awgs_{}_enable'.format(awg_nr), 0)
 
         self.check_errors()
 
-    def close(self) -> None:
+    # FIXME: temporary solution for issue
+    def FIXMEclose(self) -> None:
         try:
-            if self._is_device_connected(self.devname):
-                # Stop all AWG's. In case errors are flagged we demote them
-                # to warnings.
-                try:
-                    self.stop()
-                except ziRuntimeError as err:
-                    log.error(str(err))
-                # Disconnect device from server
-                self.daq.disconnectDevice(self.devname)
             # Disconnect application server
             self.daq.disconnect()
         except AttributeError:
             pass
         super().close()
 
-    def check_errors(self) -> None:
+    def check_errors(self, errors_to_ignore=None) -> None:
         raise NotImplementedError('Virtual method with no implementation!')
 
     def clear_errors(self) -> None:
         raise NotImplementedError('Virtual method with no implementation!')
 
-    def demote_error(self, code):
-        raise NotImplementedError('Virtual method with no implementation!')
-
-    def initialize_all_waveforms_to_zeros(self):  # FIXME: typo, but used in some Notebooks
+    def demote_error(self, code: str):
         """
-        Generates all zeros waveforms for all codewords.
+        Demote a ZIRuntime error to a warning.
+
+        Arguments
+            code (str)
+            The error code of the exception to ignore.
+            The error code gets logged as an error before the exception
+            is raised. The code is a string like "DIOCWCASE".
+        """
+        self._errors_to_ignore.append(code)
+
+
+    def reset_waveforms_zeros(self):
+        """
+        Sets all waveforms to an array of 48 zeros.
         """
         t0 = time.time()
-        wf = np.zeros(32)
+
+        wf = np.zeros(48)
         waveform_params = [value for key, value in self.parameters.items()
                            if 'wave_ch' in key.lower()]
         for par in waveform_params:
             par(wf)
-        t1 = time.time()
-        print('Set all waveforms to zeros in {:.1f} ms'.format(1.0e3*(t1-t0)))
 
-    def configure_awg_from_string(self, awg_nr: int, program_string: str, timeout: float=15):
+        t1 = time.time()
+        log.info('Set all waveforms to zeros in {:.1f} ms'.format(1.0e3*(t1-t0)))
+
+    def configure_awg_from_string(self, awg_nr: int, program_string: str,
+                                  timeout: float=15):
         """
         Uploads a program string to one of the AWGs in a UHF-QA or AWG-8.
 
         This function is tested to work and give the correct error messages
         when compilation fails.
         """
-
+        log.info(f'{self.devname}: Configuring AWG {awg_nr} from string.')
         # Check that awg_nr is set in accordance with devtype
         self._check_awg_nr(awg_nr)
 
@@ -1262,10 +1446,13 @@ class ZI_base_instrument(Instrument):
 
         # This check (and while loop) is added as a workaround for #9
         while not success_and_ready:
-            print('Configuring AWG {}...'.format(awg_nr))
+            log.info(f'{self.devname}: Configuring AWG {awg_nr}...')
 
             self._awgModule.set('awgModule/index', awg_nr)
-            self._awgModule.set('awgModule/compiler/sourcestring', program_string)
+            self._write_cmd_to_logfile(f"_awgModule.set('awgModule/index', {awg_nr})")
+            self._awgModule.set(
+                'awgModule/compiler/sourcestring', program_string)
+            self._write_cmd_to_logfile(f"_awgModule.set('awgModule/compiler/sourcestring', \'\'\'{program_string}\'\'\')")
 
             succes_msg = 'File successfully uploaded'
 
@@ -1275,15 +1462,15 @@ class ZI_base_instrument(Instrument):
             while len(self._awgModule.get('awgModule/compiler/sourcestring')
                       ['compiler']['sourcestring'][0]) > 0:
                 time.sleep(0.01)
-                
+
                 if (time.time()-t0 >= timeout):
                     success = False
-                    # print('Timeout encountered during compilation.')
-                    raise TimeoutError('Timeout while waiting for compilation to finish!')
+                    raise TimeoutError(
+                        'Timeout while waiting for compilation to finish!')
 
             comp_msg = (self._awgModule.get(
-                    'awgModule/compiler/statusstring')['compiler']
-                    ['statusstring'][0])
+                'awgModule/compiler/statusstring')['compiler']
+                ['statusstring'][0])
 
             if not comp_msg.endswith(succes_msg):
                 success = False
@@ -1297,7 +1484,8 @@ class ZI_base_instrument(Instrument):
 
             # Give the device one second to respond
             for i in range(10):
-                ready = self.getdeep('awgs/{}/ready'.format(awg_nr))['value'][0]
+                ready = self.getdeep(
+                    'awgs/{}/ready'.format(awg_nr))['value'][0]
                 if ready != 1:
                     log.warning('AWG {} not ready'.format(awg_nr))
                     time.sleep(1)
@@ -1305,35 +1493,31 @@ class ZI_base_instrument(Instrument):
                     success_and_ready = True
                     break
 
-        hash_val = crc32(program_string.encode('utf-8'))
-        self.set('awgs_{}_sequencer_program_crc32_hash'.format(awg_nr),
-                 hash_val)
-
         t1 = time.time()
         print(self._awgModule.get('awgModule/compiler/statusstring')
               ['compiler']['statusstring'][0] + ' in {:.2f}s'.format(t1-t0))
 
         # Check status
         if self.get('awgs_{}_waveform_memoryusage'.format(awg_nr)) > 1.0:
-            log.warning('{}: Waveform memory usage exceeds available internal memory!'.format(self.devname))
+            log.warning(f'{self.devname}: Waveform memory usage exceeds available internal memory!')
 
         if self.get('awgs_{}_sequencer_memoryusage'.format(awg_nr)) > 1.0:
-            log.warning('{}: Sequencer memory usage exceeds available instruction memory!'.format(self.devname))
+            log.warning(f'{self.devname}: Sequencer memory usage exceeds available instruction memory!')
 
     def plot_dio_snapshot(self, bits=range(32)):
         raise NotImplementedError('Virtual method with no implementation!')
 
     def plot_awg_codewords(self, awg_nr=0, range=None):
-        raise NotImplementedError('Virtual method with no implementation!')        
+        raise NotImplementedError('Virtual method with no implementation!')
 
     def get_idn(self) -> dict:
         idn_dict = {}
-        idn_dict['vendor']        = 'ZurichInstruments'
-        idn_dict['model']         = self.devtype
-        idn_dict['serial']        = self.devname
-        idn_dict['firmware']      = self.geti('system/fwrevision')
+        idn_dict['vendor'] = 'ZurichInstruments'
+        idn_dict['model'] = self.devtype
+        idn_dict['serial'] = self.devname
+        idn_dict['firmware'] = self.geti('system/fwrevision')
         idn_dict['fpga_firmware'] = self.geti('system/fpgarevision')
-        
+
         return idn_dict
 
     def load_default_settings(self):

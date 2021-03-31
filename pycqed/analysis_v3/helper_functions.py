@@ -22,11 +22,12 @@ def convert_attribute(attr_val):
         file
     :return: the converted attribute value
     """
-    if type(attr_val) == bytes:
+    if isinstance(attr_val, bytes):
         attr_val = attr_val.decode('utf-8')
     # If it is an array of value decodes individual entries
-    if type(attr_val) == np.ndarray:
-        attr_val = [av.decode('utf-8') for av in attr_val]
+    if isinstance(attr_val, np.ndarray) or isinstance(attr_val, list):
+        attr_val = [av.decode('utf-8') if isinstance(av, bytes)
+                    else av for av in attr_val]
     try:
         return eval(attr_val)
     except Exception:
@@ -235,12 +236,20 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
                                   update_value=update_value,
                                   replace_value=replace_value)
                     elif par_name in list(data_file[group_name].keys()):
-                        add_param(all_keys[-1],
-                                  read_dict_from_hdf5(
-                                      {}, data_file[group_name][par_name]),
-                                  epd, append_value=append_value,
-                                  update_value=update_value,
-                                  replace_value=replace_value)
+                        if isinstance(data_file[group_name][par_name],
+                                      h5py._hl.dataset.Dataset):
+                            add_param(all_keys[-1],
+                                      np.array(data_file[group_name][par_name]),
+                                      epd, append_value=append_value,
+                                      update_value=update_value,
+                                      replace_value=replace_value)
+                        else:
+                            add_param(all_keys[-1],
+                                      read_dict_from_hdf5(
+                                          {}, data_file[group_name][par_name]),
+                                      epd, append_value=append_value,
+                                      update_value=update_value,
+                                      replace_value=replace_value)
 
             if all_keys[-1] not in epd:
                 log.warning(f'Parameter {file_par} was not found.')
@@ -519,7 +528,7 @@ def get_measurement_properties(data_dict, props_to_extract='all',
         elif 'sp' == prop:
             sp = get_param('sweep_points', data_dict, raise_error=raise_error,
                            **params)
-            props_to_return += [sp_mod.SweepPoints.cast_init(sp)]
+            props_to_return += [sp_mod.SweepPoints(sp)]
         elif 'mospm' == prop:
             meas_obj_sweep_points_map = get_param(
                 'meas_obj_sweep_points_map', data_dict, raise_error=raise_error,
@@ -991,7 +1000,7 @@ def read_from_hdf(data_dict, hdf_group):
             if hdf_group.attrs['list_type'] == 'generic_tuple':
                 data_list = tuple(data_list)
             if path[-1] == 'sweep_points':
-                data_list = sp_mod.SweepPoints.cast_init(data_list)
+                data_list = sp_mod.SweepPoints(data_list)
             add_param('.'.join(path), data_list, data_dict, replace_value=True)
         else:
             raise NotImplementedError('cannot read "list_type":"{}"'.format(

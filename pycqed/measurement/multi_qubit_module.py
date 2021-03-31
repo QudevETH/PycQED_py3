@@ -535,7 +535,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "preparation_params": prep_params,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
-                         "channel_map": channel_map
+                         "channel_map": channel_map,
+                         "data_to_fit": {}
                          })
     df = get_multiplexed_readout_detector_functions(
             qubits, nr_shots=n_shots)['int_log_det']
@@ -578,7 +579,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=False,
-                         update=True):
+                         update=True, measure=True):
     """
     Measures time traces for specified states and
     Args:
@@ -612,71 +613,74 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     """
     # check whether timetraces can be compute simultaneously
     qubits = dev.get_qubits(qubits)
-    uhf_names = np.array([qubit.instr_uhf.get_instr().name for qubit in qubits])
-    unique, counts = np.unique(uhf_names, return_counts=True)
-    for u, c in zip(unique, counts):
-        if c != 1:
-            raise ValueError(f"{np.array(qubits)[uhf_names == u]}"
-                             f" share the same UHF ({u}) and therefore"
-                             f" their timetraces cannot be computed "
-                             f"simultaneously.")
-
-    # combine operations and preparation dictionaries
-    operation_dict = dev.get_operation_dict(qubits=qubits)
     qb_names = dev.get_qubits(qubits, "str")
-    prep_params = dev.get_prep_params(qubits)
-    MC = qubits[0].instr_mc.get_instr()
 
-    if exp_metadata is None:
-        exp_metadata = dict()
-    temp_val = [(qb.acq_length, acq_length) for qb in qubits]
-    with temporary_value(*temp_val):
-        [qb.prepare(drive='timedomain') for qb in qubits]
-        npoints = qubits[0].inp_avg_det.nr_samples # same for all qubits
-        sweep_points = np.linspace(0, npoints / 1.8e9, npoints,
-                                            endpoint=False)
-        channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
-                        for vn in qb.inp_avg_det.value_names]
-                        for qb in qubits}
-        exp_metadata.update(
-            {'sweep_name': 'time',
-             'sweep_unit': ['s'],
-             'sweep_points': sweep_points,
-             'acq_length': acq_length,
-             'channel_map': channel_map,
-             'orthonormalize': orthonormalize,
-             "acq_weights_basis": acq_weights_basis})
+    if measure:
+        uhf_names = np.array([qubit.instr_uhf.get_instr().name for qubit in qubits])
+        unique, counts = np.unique(uhf_names, return_counts=True)
+        for u, c in zip(unique, counts):
+            if c != 1:
+                raise ValueError(f"{np.array(qubits)[uhf_names == u]}"
+                                 f" share the same UHF ({u}) and therefore"
+                                 f" their timetraces cannot be computed "
+                                 f"simultaneously.")
 
-        for state in states:
-            # create sequence
-            name = f'timetrace_{state}{get_multi_qubit_msmt_suffix(qubits)}'
-            if isinstance(state, str) and len(state) == 1:
-                # same state for all qubits, e.g. "e"
-                cp = CalibrationPoints.multi_qubit(qb_names, state,
-                                                   n_per_state=1)
-            else:
-                # ('g','e','f') as qb1=g, qb2=e, qb3=f
-                if len(qb_names) != len(state):
-                    raise ValueError(f"{len(qb_names)} qubits were given "
-                                     f"but custom states were "
-                                     f"specified for {len(state)} qubits.")
-                cp = CalibrationPoints(qb_names, state)
-            exp_metadata.update({'cal_points': repr(cp)})
-            seq = sequence.Sequence("timetrace",
-                                    cp.create_segments(operation_dict,
-                                                       **prep_params))
-            # set sweep function and run measurement
-            MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                           upload=upload))
-            MC.set_sweep_points(sweep_points)
-            df = get_multiplexed_readout_detector_functions(
-                qubits, nr_samples=npoints)["inp_avg_det"]
-            MC.set_detector_function(df)
-            MC.run(name=name, exp_metadata=exp_metadata)
+        # combine operations and preparation dictionaries
+        operation_dict = dev.get_operation_dict(qubits=qubits)
+        prep_params = dev.get_prep_params(qubits)
+        MC = qubits[0].instr_mc.get_instr()
+
+        if exp_metadata is None:
+            exp_metadata = dict()
+        temp_val = [(qb.acq_length, acq_length) for qb in qubits]
+        with temporary_value(*temp_val):
+            [qb.prepare(drive='timedomain') for qb in qubits]
+            npoints = qubits[0].inp_avg_det.nr_samples # same for all qubits
+            sweep_points = np.linspace(0, npoints / 1.8e9, npoints,
+                                                endpoint=False)
+            channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
+                            for vn in qb.inp_avg_det.value_names]
+                            for qb in qubits}
+            exp_metadata.update(
+                {'sweep_name': 'time',
+                 'sweep_unit': ['s'],
+                 'sweep_points': sweep_points,
+                 'acq_length': acq_length,
+                 'channel_map': channel_map,
+                 'orthonormalize': orthonormalize,
+                 "acq_weights_basis": acq_weights_basis})
+
+            for state in states:
+                # create sequence
+                name = f'timetrace_{state}{get_multi_qubit_msmt_suffix(qubits)}'
+                if isinstance(state, str) and len(state) == 1:
+                    # same state for all qubits, e.g. "e"
+                    cp = CalibrationPoints.multi_qubit(qb_names, state,
+                                                       n_per_state=1)
+                else:
+                    # ('g','e','f') as qb1=g, qb2=e, qb3=f
+                    if len(qb_names) != len(state):
+                        raise ValueError(f"{len(qb_names)} qubits were given "
+                                         f"but custom states were "
+                                         f"specified for {len(state)} qubits.")
+                    cp = CalibrationPoints(qb_names, state)
+                exp_metadata.update({'cal_points': repr(cp)})
+                seq = sequence.Sequence("timetrace",
+                                        cp.create_segments(operation_dict,
+                                                           **prep_params))
+                # set sweep function and run measurement
+                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
+                                                               upload=upload))
+                MC.set_sweep_points(sweep_points)
+                df = get_multiplexed_readout_detector_functions(
+                    qubits, nr_samples=npoints)["inp_avg_det"]
+                MC.set_detector_function(df)
+                MC.run(name=name, exp_metadata=exp_metadata)
 
     if analyze:
-        tps = a_tools.latest_data(n_matches=len(states),
-                                  return_timestamp=True)[0]
+        tps = [a_tools.latest_data(
+            contains=f'timetrace_{s}{get_multi_qubit_msmt_suffix(qubits)}',
+            n_matches=1, return_timestamp=True)[0][0] for s in states]
         if analysis_kwargs is None:
             analysis_kwargs = {}
         if 't_start' not in analysis_kwargs:
@@ -1289,10 +1293,15 @@ def measure_two_qubit_randomized_benchmarking(
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences, 'Nr. Seeds', ''))
     MC.set_sweep_points_2D(soft_sweep_points)
-    det_get_values_kws = {'classified': classified,
-                          'correlated': correlated,
-                          'thresholded': thresholded,
-                          'averaged': averaged}
+    det_get_values_kws_to_set = {'classified': classified,
+                                 'correlated': True,
+                                 'thresholded': True,
+                                 'averaged': True,
+                                 'ro_corrected_stored_mtx': False,
+                                 'ro_corrected_seq_cal_mtx': False}
+    if det_get_values_kws is None:
+        det_get_values_kws = {}
+    det_get_values_kws_to_set.update(det_get_values_kws)
     if classified:
         det_type = 'int_avg_classif_det'
         nr_shots = max(qb.acq_averages() for qb in qubits)
@@ -1301,7 +1310,8 @@ def measure_two_qubit_randomized_benchmarking(
         nr_shots = max(qb.acq_shots() for qb in qubits)
     det_func = get_multiplexed_readout_detector_functions(
         qubits, nr_averages=max(qb.acq_averages() for qb in qubits),
-        nr_shots=nr_shots, det_get_values_kws=det_get_values_kws)[det_type]
+        nr_shots=nr_shots,
+        det_get_values_kws=det_get_values_kws_to_set)[det_type]
     MC.set_detector_function(det_func)
 
     # create sweep points
@@ -1922,6 +1932,7 @@ def measure_drive_cancellation(
         if prep_params is None:
             prep_params = dev.get_prep_params(ramsey_qubits)
 
+        sweep_points = deepcopy(sweep_points)
         sweep_points.add_sweep_dimension()
         sweep_points.add_sweep_parameter('phase', phases, 'deg', 'Ramsey phase')
 
@@ -2635,8 +2646,7 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
     MC.set_sweep_points_2D(soft_sweep_points)
     det_func = qbr.int_avg_classif_det if classified else qbr.int_avg_det
     MC.set_detector_function(det_func)
-    sweep_points = SweepPoints(from_dict_list=[hard_sweep_params,
-                                               soft_sweep_params])
+    sweep_points = SweepPoints([hard_sweep_params, soft_sweep_params])
     exp_metadata.update({
         'preparation_params': prep_params,
         'cal_points': repr(cp),
@@ -2657,7 +2667,8 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
 
 def measure_cphase(dev, qbc, qbt, soft_sweep_params, cz_pulse_name,
                    hard_sweep_params=None, max_flux_length=None,
-                   num_cz_gates=1, n_cal_points_per_state=1, cal_states='auto',
+                   num_cz_gates=1, n_cal_points_per_state=1,
+                   cal_states='auto', det_get_values_kws=None,
                    prep_params=None, exp_metadata=None, label=None,
                    prepend_pulse_dicts=None,
                    analyze=True, upload=True, for_ef=True, **kw):
@@ -2771,14 +2782,19 @@ def measure_cphase(dev, qbc, qbt, soft_sweep_params, cz_pulse_name,
         channels_to_upload=channels_to_upload))
     MC.set_sweep_points_2D(soft_sweep_points)
 
-    det_get_values_kws = {'classified': classified,
-                          'correlated': False,
-                          'thresholded': True,
-                          'averaged': True}
+    det_get_values_kws_to_set = {'classified': classified,
+                                 'correlated': False,
+                                 'thresholded': True,
+                                 'averaged': True,
+                                 'ro_corrected_stored_mtx': False,
+                                 'ro_corrected_seq_cal_mtx': False}
+    if det_get_values_kws is None:
+        det_get_values_kws = {}
+    det_get_values_kws_to_set.update(det_get_values_kws)
     det_name = 'int_avg{}_det'.format('_classif' if classified else '')
     det_func = get_multiplexed_readout_detector_functions(
         [qbc, qbt], nr_averages=max(qb.acq_averages() for qb in [qbc, qbt]),
-        det_get_values_kws=det_get_values_kws)[det_name]
+        det_get_values_kws=det_get_values_kws_to_set)[det_name]
     MC.set_detector_function(det_func)
 
     exp_metadata.update({'leakage_qbnames': [qbc.name],
@@ -3223,7 +3239,7 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
                          'data_to_fit': {qbm.name: 'pe'},
                          "sweep_name": "Amplitude",
                          "sweep_unit": "V",
-                         "global_PCA": True})
+                         "rotation_type": 'global_PCA'})
     MC.run_2D(label, exp_metadata=exp_metadata)
 
     if analyze:
@@ -4053,8 +4069,8 @@ def measure_n_qubit_ramsey(dev, qubits, sweep_points=None, delays=None,
     :param last_ge_pulse: whether to use a ge pulse at the end of each segment
            for a ramsey between ef transition
     :param upload: whether to upload to AWGs
-    :param update: whether to update the qubits ge_amp180 (or ef_amp180)
-        parameters
+    :param update: whether to update the qubit parameters ge_freq + T2_star
+        (ef_freq + anharmonicity + T2_star_ef if for_ef)
     :param analyze: whether to analyze data
     :param label: measurement label
     :param exp_metadata: experiment metadata
@@ -4148,6 +4164,7 @@ def measure_n_qubit_ramsey(dev, qubits, sweep_points=None, delays=None,
                 if update:
                     if for_ef:
                         qb.ef_freq(new_qubit_freq)
+                        qb.anharmonicity(qb.ef_freq() - qb.ge_freq())
                         qb.T2_star_ef(T2_star)
                     else:
                         qb.ge_freq(new_qubit_freq)
