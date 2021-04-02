@@ -460,12 +460,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
             if 'fluxline' not in task:
                 continue
             qb = self.get_qubits(task['qb'])[0][0]
-            # offs = self.lo_offsets[[lo for lo, qbs in self.lo_qubits.items()
-            #                         if qb in qbs][0]]
-            dc_amp = (
-                lambda x, o=self.qb_offsets[qb],
-                       vfc=qb.fit_ge_freq_from_dc_offset() :
-                fit_mods.Qubit_freq_to_dac_res(np.array([x + o]), **vfc)[0])
+            dc_amp = (lambda x, o=self.qb_offsets[qb], qb=qb:
+                      qb.calculate_flux_voltage(x + o))
             sweep_functions += [swf.Transformed_Sweep(
                 task['fluxline'], transformation=dc_amp,
                 name=f'DC Offset {qb.name}',
