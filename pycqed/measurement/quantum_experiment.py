@@ -503,7 +503,7 @@ class QuantumExperiment(CircuitBuilder):
 
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
-            unit = list(self.sweep_points[0].values())[0][2]
+            unit = list(self.sweep_points[0].values())[0][1]
         except TypeError:
             sweep_param_name, unit = "None", ""
         sweep_func_1st_dim = self.sweep_functions[0](
@@ -517,7 +517,7 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
                 sweep_param_name = list(self.sweep_points[1])[0]
-                unit = list(self.sweep_points[1].values())[0][2]
+                unit = list(self.sweep_points[1].values())[0][1]
             except TypeError:
                 sweep_param_name, unit = "None", ""
             if len(self.channels_to_upload) == 0:
