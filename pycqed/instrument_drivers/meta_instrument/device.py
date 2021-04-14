@@ -25,6 +25,7 @@ extended by further methods from the multi_qubit_module or other modules.
 # General imports
 import logging
 from copy import deepcopy
+import numpy as np
 
 import pycqed.measurement.multi_qubit_module as mqm
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
@@ -35,7 +36,6 @@ from qcodes.utils import validators as vals
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 
 log = logging.getLogger(__name__)
-
 
 class Device(Instrument):
     # params that should not be loaded by pycqed.utilities.general.load_settings
@@ -105,6 +105,14 @@ class Device(Instrument):
                            initial_value=[],
                            docstring='stores all two qubit gate names',
                            parameter_class=ManualParameter)
+
+        self.add_parameter('relative_delay_graph',
+                           label='Relative Delay Graph',
+                           docstring='Stores the relative delays between '
+                                     'drive and flux channels of the device.',
+                           initial_value=RelativeDelayGraph(),
+                           parameter_class=ManualParameter,
+                           set_parser=RelativeDelayGraph)
 
         # Pulse preparation parameters
         default_prep_params = dict(preparation_type='wait',
@@ -479,6 +487,28 @@ class Device(Instrument):
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
 
+    def get_channel_delays(self):
+        object_delays = self.relative_delay_graph().get_absolute_delays()
+        channel_delays = {}
+        for (qbn, obj_type), v in object_delays.items():
+            qb = self.get_qb(qbn)
+            if obj_type == 'drive':
+                channel_delays[qb.ge_I_channel()] = v
+                channel_delays[qb.ge_Q_channel()] = v
+            elif obj_type == 'flux':
+                channel_delays[qb.flux_pulse_channel()] = v
+        return channel_delays
+
+    def configure_pulsar(self):
+        pulsar = self.instr_pulsar.get_instr()
+
+        # configure channel delays
+        channel_delays = self.get_channel_delays()
+        for ch, v in channel_delays.items():
+            awg = pulsar.AWG_obj(channel=ch)
+            chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
+            awg.set(f'sigouts_{chid}_delay', v)
+
     # Wrapper functions for Device algorithms #
 
     def measure_J_coupling(self, qbm, qbs, freqs, cz_pulse_name, **kwargs):
@@ -524,3 +554,91 @@ class Device(Instrument):
         """
 
         mqm.measure_dynamic_phases(self, qbc, qbt, cz_pulse_name, **kwargs)
+
+
+class RelativeDelayGraph:
+    """
+    Contains the informartion about the relative delays of channels of the device.
+    The relative delays are represented by a graph, where each channel is a node, and
+    edges represent the relative delays that we can measure.
+
+    Internally this is stored in a dictionary of the form:
+        _d = {
+            obj1: {
+                obj2: delay_obj1_obj2,
+                obj3: delay_obj1_obj3,
+            }
+        }
+
+    The relative delay is defined as the delay of the parent channel minus delay of child channel.
+    """
+
+    def __init__(self, reld=None):
+        if isinstance(reld, RelativeDelayGraph):
+            self._reld = deepcopy(reld._reld)
+        else:
+            if reld is None:
+                self._reld = {}
+            else:
+                self._reld = deepcopy(reld)
+
+    def increment_relative_delay(self, parent, child, delta_delay):
+        """Use this to update delays based on meas. results"""
+        if child in self._reld[parent]:
+            self._reld[parent][child] += delta_delay
+        elif parent in self._reld[child]:
+            self._reld[child][parent] -= delta_delay
+        else:
+            raise KeyError(f'No connection between {parent} and {child} in '
+                            'relative delay graph')
+
+    def get_relative_delay(self, parent, child):
+        """Use with care, gets the raw value of the relative channel delay"""
+        if child in self._reld[parent]:
+            return self._reld[parent][child]
+        elif parent in self._reld[child]:
+            return -self._reld[child][parent]
+        else:
+            raise KeyError(f'No connection between {parent} and {child} in '
+                            'relative delay graph')
+
+    def set_relative_delay(self, parent, child, delay):
+        """Use with care, sets the raw value of the relative channel delay"""
+        if child in self._reld[parent]:
+            self._reld[parent][child] = delay
+        elif parent in self._reld[child]:
+            self._reld[child][parent] = -delay
+        else:
+            raise KeyError(f'No connection between {parent} and {child} in '
+                            'relative delay graph')
+
+    def get_absolute_delays(self):
+        # determine root of the tree
+        abs_delays = {}
+        min_delay = np.inf
+        refs = set()
+        children = set()
+        for ref in self._reld:
+            refs.add(ref)
+            for child in self._reld[ref]:
+                refs.add(child)
+                children.add(child)
+        roots = refs - children
+        for ref in roots:
+            abs_delays[ref] = 0
+
+        while len(roots) > 0:
+            ref = list(roots)[0]
+            for child in self._reld.get(ref, []):
+                abs_delays[child] = abs_delays[ref] - self._reld[ref][child]
+                min_delay = min(min_delay, abs_delays[child])
+                roots.add(child)
+            roots.remove(ref)
+
+        for ref in abs_delays:
+            abs_delays[ref] -= min_delay
+
+        return abs_delays
+
+    def __repr__(self):
+        return self._reld.__repr__()
