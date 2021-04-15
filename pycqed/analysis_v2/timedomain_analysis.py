@@ -8092,20 +8092,28 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['delay'] = \
                 mu_A + 0.5 * (mu_B - mu_A) - fp_length / 2
-            self.proc_data_dict['analysis_params_dict'][qbn]['delay_stderr'] = \
-                1 / 2 * np.sqrt(
-                    self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                        'mu_A'].stderr ** 2
-                    + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                        'mu_B'].stderr ** 2)
+            try:
+                self.proc_data_dict['analysis_params_dict'][qbn]['delay_stderr'] = \
+                    1 / 2 * np.sqrt(
+                        self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
+                            'mu_A'].stderr ** 2
+                        + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
+                            'mu_B'].stderr ** 2)
+            except TypeError:
+                self.proc_data_dict['analysis_params_dict'][qbn]['delay_stderr']\
+                    = 0
             self.proc_data_dict['analysis_params_dict'][qbn]['fp_length'] = \
                 (mu_B - mu_A)
-            self.proc_data_dict['analysis_params_dict'][qbn]['fp_length_stderr'] = \
-                np.sqrt(
-                    self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                        'mu_A'].stderr ** 2
-                    + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                        'mu_B'].stderr ** 2)
+            try:
+                self.proc_data_dict['analysis_params_dict'][qbn]['fp_length_stderr'] = \
+                    np.sqrt(
+                        self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
+                            'mu_A'].stderr ** 2
+                        + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
+                            'mu_B'].stderr ** 2)
+            except TypeError:
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'fp_length_stderr'] = 0
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
