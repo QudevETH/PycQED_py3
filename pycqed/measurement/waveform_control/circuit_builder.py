@@ -511,8 +511,8 @@ class CircuitBuilder:
             preparation_pulses += [block_end]
             return Block(block_name, preparation_pulses)
 
-    def mux_readout(self, qb_names='all', element_name='RO', **pulse_pars):
-        block_name = "Readout"
+    def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
+                    **pulse_pars):
         _, qb_names = self.get_qubits(qb_names)
         ro_pulses = []
         for j, qb_name in enumerate(qb_names):
