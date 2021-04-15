@@ -592,6 +592,10 @@ class Segment:
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
 
+        For debugging, self.skip_trigger can be set to a list of AWG names
+        for which the triggering should be skipped (by using a 0-amplitude
+        trigger pulse).
+
         :param allow_overlap: (bool, default: False) see _test_overlap
         """
 
