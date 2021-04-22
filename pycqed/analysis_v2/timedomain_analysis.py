@@ -7040,13 +7040,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                basis_labels = ["ge", "gf"] \
+                basis_labels = ["ge", "ef"] \
                     if len(ana_params['timetraces'][qbn]) > 2 else ['ge']
 
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
                 basis_labels = basis_labels[qbn]
-
             # check that states from the basis are included in mmnt
             for bs in basis_labels:
                 for qb_s in bs:
@@ -7059,7 +7058,16 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
             # orthonormalize if required
             if self.get_param_value("orthonormalize", False):
-                basis = math.gram_schmidt(basis.T).T
+                # We need to consider the integration weights as a vector of
+                # real numbers to ensure the Gram-Schmidt transformation of the
+                # weights leads to a linear transformation of the integrated
+                # readout results (relates to how integration is done on UHF,
+                # see One Note: Surface 17/ATC75 M136 S17HW02 Cooldown 5/
+                # 210330 Notes on orthonormalizing readout weights
+                basis_real = np.hstack((basis.real, basis.imag), )
+                basis_real = math.gram_schmidt(basis_real.T).T
+                basis =    basis_real[:,:basis_real.shape[1]//2] + \
+                        1j*basis_real[:,basis_real.shape[1]//2:]
                 basis_labels = [bs + "_ortho" if bs != basis_labels[0] else bs
                                 for bs in basis_labels]
 
