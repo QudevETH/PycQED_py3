@@ -8,6 +8,7 @@ from copy import deepcopy
 import time
 from string import ascii_uppercase
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.utilities.timer import Timer
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 import logging
@@ -27,6 +28,7 @@ class Detector_Function(object):
         self.value_units = ['arb. units', 'arb. units']
         # to be used by MC.get_percdone()
         self.acq_data_len_scaling = 1
+        self.timer = Timer(self.name)
 
     def set_kw(self, **kw):
         '''
@@ -507,8 +509,10 @@ class UHFQC_Base(Hard_Detector):
         self.UHF_map = {UHF.name: i
                    for UHF, i in zip(self.UHFs, range(len(self.detectors)))}
 
+    @Timer()
     def poll_data(self):
         if self.AWG is not None:
+            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.start")
             self.AWG.stop()
 
         for UHF in self.UHFs:
@@ -516,6 +520,7 @@ class UHFQC_Base(Hard_Detector):
 
         if self.AWG is not None:
             self.AWG.start()
+            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.end")
 
         acq_paths = {UHF.name: UHF._acquisition_nodes for UHF in self.UHFs}
 
@@ -527,6 +532,7 @@ class UHFQC_Base(Hard_Detector):
                  self.UHFs}
         accumulated_time = 0
 
+        self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
         while accumulated_time < self.UHFs[0].timeout() and \
                 not all(np.concatenate(list(gotem.values()))):
             dataset = {}
@@ -545,6 +551,7 @@ class UHFQC_Base(Hard_Detector):
                                 self.UHF_map[UHFname]].nr_sweep_points:
                                 gotem[UHFname][n] = True
             accumulated_time += 0.01 * len(self.UHFs)
+        self.timer.checkpoint("UHFQC_Base.poll_data.loop.end")
 
         if not all(np.concatenate(list(gotem.values()))):
             for UHF in self.UHFs:
@@ -609,6 +616,7 @@ class UHFQC_multi_detector(UHFQC_Base):
             self.value_names += ['correlation']
             self.value_units += ['']
 
+    @Timer()
     def prepare(self, sweep_points):
         for d in self.detectors:
             d.prepare(sweep_points)
@@ -730,7 +738,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
         # Verified January 2018 by Xavi
         return raw_data
 
-
+    @Timer()
     def prepare(self, sweep_points):
         if self.AWG is not None:
             self.AWG.stop()

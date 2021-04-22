@@ -497,7 +497,8 @@ class MockDAQServer():
         Takes in a node_doc JSON file auto generates paths based on
         the contents of this file.
         """
-        f = open(filename).read()
+        with open(filename) as fo:
+            f = fo.read()
         node_pars = json.loads(f)
         for par in node_pars.values():
             node = par['Node'].split('/')
@@ -704,7 +705,10 @@ class ZI_base_instrument(Instrument):
 
             # Create waveform parameters
             self._num_codewords = 0
-            self._add_codeword_waveform_parameters(num_codewords)
+            # CH: this Delft function should not be needed for us, and removing it
+            # should save time in the init script. Please let me know if you
+            # experience any issues with the init of HDAWG/UHF.
+            # self._add_codeword_waveform_parameters(num_codewords)
         else:
             self._awgModule = None
 
@@ -836,7 +840,8 @@ class ZI_base_instrument(Instrument):
         Takes in a node_doc JSON file auto generates parameters based on
         the contents of this file.
         """
-        f = open(filename).read()
+        with open(filename) as fo:
+            f = fo.read()
         node_pars = json.loads(f)
         for par in node_pars.values():
             node = par['Node'].split('/')
@@ -1443,10 +1448,14 @@ class ZI_base_instrument(Instrument):
 
         t0 = time.time()
         success_and_ready = False
+        if not hasattr(self, 'compiler_statusstring'):
+            self.compiler_statusstring = ''
 
         # This check (and while loop) is added as a workaround for #9
         while not success_and_ready:
-            log.info(f'{self.devname}: Configuring AWG {awg_nr}...')
+            new_statusstring = f'{self.devname}: Configuring AWG {awg_nr}...'
+            log.info(new_statusstring)
+            self.compiler_statusstring += new_statusstring
 
             self._awgModule.set('awgModule/index', awg_nr)
             self._write_cmd_to_logfile(f"_awgModule.set('awgModule/index', {awg_nr})")
@@ -1494,8 +1503,11 @@ class ZI_base_instrument(Instrument):
                     break
 
         t1 = time.time()
-        print(self._awgModule.get('awgModule/compiler/statusstring')
+        new_statusstring = (self._awgModule.get(
+            'awgModule/compiler/statusstring')
               ['compiler']['statusstring'][0] + ' in {:.2f}s'.format(t1-t0))
+        log.info(new_statusstring)
+        self.compiler_statusstring += new_statusstring
 
         # Check status
         if self.get('awgs_{}_waveform_memoryusage'.format(awg_nr)) > 1.0:

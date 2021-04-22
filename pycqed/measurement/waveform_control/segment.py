@@ -8,6 +8,10 @@
 import numpy as np
 import math
 import logging
+
+import datetime
+from pycqed.utilities.timer import Timer
+
 log = logging.getLogger(__name__)
 from copy import deepcopy
 import pycqed.measurement.waveform_control.pulse as bpl
@@ -22,6 +26,10 @@ class Segment:
     Consists of a list of UnresolvedPulses, each of which contains information 
     about in which element the pulse is played and when it is played 
     (reference point + delay) as well as an instance of class Pulse.
+
+    Property distortion_dicts: a key of the form {AWG}_{channel} specifies
+        that the respective val should be used as distortion dict instead of
+        self.pulsar.{AWG}_{channel}_distortion_dict.
     """
 
     trigger_pulse_length = 20e-9
@@ -37,6 +45,7 @@ class Segment:
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
+        self.distortion_dicts = {}
         self.trigger_pars = {
             'pulse_length': self.trigger_pulse_length,
             'amplitude': self.trigger_pulse_amplitude,
@@ -46,6 +55,7 @@ class Segment:
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
         self.acquisition_elements = set()
+        self.timer = Timer(self.name)
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -119,7 +129,8 @@ class Segment:
         for p in pulses:
             self.add(p)
 
-    def resolve_segment(self):
+    @Timer()
+    def resolve_segment(self, store_segment_length_timer=True):
         """
         Top layer method of Segment class. After having addded all pulses,
             * pulse elements are updated to enforce single element per segment
@@ -135,6 +146,18 @@ class Segment:
         self.add_flux_crosstalk_cancellation_channels()
         self.gen_trigger_el()
         self.add_charge_compensation()
+        if store_segment_length_timer:
+            try:
+                # FIXME: we currently store 1e3*length because datetime
+                #  does not support nanoseconds. Find a cleaner solution.
+                self.timer.checkpoint(
+                    'length.dt', log_init=False, values=[
+                        datetime.datetime.utcfromtimestamp(0)
+                        + datetime.timedelta(microseconds=1e9*np.diff(
+                                self.get_segment_start_end())[0])])
+            except Exception as e:
+                # storing segment length is not crucial for the measurement
+                log.warning(f"Could not store segment length timer: {e}")
 
     def enforce_single_element(self):
         self.resolved_pulses = []
@@ -678,6 +701,25 @@ class Segment:
         """
         return self.element_start_end[element][awg][0]
 
+    def get_segment_start_end(self):
+        """
+        Returns the start and end of the segment in algorithm_time
+        """
+        for i in range(2):
+            start_end_times = np.array(
+                [[self.get_element_start(el, awg),
+                  self.get_element_end(el, awg)]
+                 for awg, v in self.elements_on_awg.items() for el in v])
+            if len(start_end_times) > 0:
+                # the segment has been resolved before
+                break
+            # Resolve the segment and retry. We set store_segment_length_timer
+            # to False to avoid that resolve_segment calls
+            # get_segment_start_end, which might cause an infinite loop in
+            # some pathological cases.
+            self.resolve_segment(store_segment_length_timer=False)
+        return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
+
     def _test_overlap(self):
         """
         Tests for all AWGs if any of their elements overlap.
@@ -897,9 +939,18 @@ class Segment:
 
                         wf = wfs[codeword][c]
 
-                        distortion_dictionary = self.pulsar.get(
-                            '{}_distortion_dict'.format(c))
-                        fir_kernels = distortion_dictionary.get('FIR', None)
+                        distortion_dict = self.distortion_dicts.get(c, None)
+                        if distortion_dict is None:
+                            distortion_dict = self.pulsar.get(
+                                '{}_distortion_dict'.format(c))
+                        else:
+                            distortion_dict = \
+                                flux_dist.process_filter_coeffs_dict(
+                                    distortion_dict,
+                                    default_dt=1 / self.pulsar.clock(
+                                        channel=c))
+
+                        fir_kernels = distortion_dict.get('FIR', None)
                         if fir_kernels is not None:
                             if hasattr(fir_kernels, '__iter__') and not \
                             hasattr(fir_kernels[0], '__iter__'): # 1 kernel
@@ -907,7 +958,7 @@ class Segment:
                             else:
                                 for kernel in fir_kernels:
                                     wf = flux_dist.filter_fir(kernel, wf)
-                        iir_filters = distortion_dictionary.get('IIR', None)
+                        iir_filters = distortion_dict.get('IIR', None)
                         if iir_filters is not None:
                             wf = flux_dist.filter_iir(iir_filters[0],
                                                       iir_filters[1], wf)
@@ -1344,6 +1395,9 @@ class Segment:
 
         # rename segment name
         self.name = new_name
+
+        # rename timer
+        self.timer.name = new_name
 
     def __deepcopy__(self, memo):
         cls = self.__class__

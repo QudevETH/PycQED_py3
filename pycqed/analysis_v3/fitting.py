@@ -2,15 +2,14 @@ import logging
 log = logging.getLogger(__name__)
 
 from pycqed.analysis_v3 import helper_functions as hlp_mod
+from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from pycqed.analysis import fitting_models as fit_mods
 from collections import OrderedDict
 import numpy as np
 import lmfit
-import sys
-this_mod = sys.modules[__name__]
 
-from pycqed.analysis_v3 import pipeline_analysis as pla
-pla.search_modules.add(this_mod)
+import sys
+pp_mod.search_modules.add(sys.modules[__name__])
 
 #####################################
 ### Functions related to Fitting ###
@@ -129,7 +128,8 @@ def prepare_cos_fit_dict(data_dict, keys_in=None, **params):
             'guess_pars': guess_pars,
             'params_to_print': params_to_print, **plot_params}
 
-    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict,
+                      add_param_method='update')
 
 
 def prepare_joint_residzz_fit_dict(data_dict, keys_in=None, **params):
@@ -207,7 +207,8 @@ def prepare_joint_residzz_fit_dict(data_dict, keys_in=None, **params):
         'guess_pars': guess_pars,
         'params_to_print': params_to_print, **plot_params}
 
-    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict,
+                      add_param_method='update')
     if params.get('do_fitting', False):
         run_fitting(data_dict, keys_in=list(fit_dicts), **params)
 
@@ -269,7 +270,8 @@ def prepare_residzz_fit_dict(data_dict, keys_in=None, **params):
             'guess_pars': guess_pars,
             'params_to_print': params_to_print, **plot_params}
 
-    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict,
+                      add_param_method='update')
     if params.get('do_fitting', False):
         run_fitting(data_dict, keys_in=list(fit_dicts), **params)
 
@@ -338,7 +340,8 @@ def prepare_expdamposc_fit_dict(data_dict, keys_in=None, **params):
             'params_to_print': params_to_print,
             'plot_params': plot_params}
 
-    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict,
+                      add_param_method='update')
 
     if params.get('do_fitting', False):
         run_fitting(data_dict, keys_in=list(fit_dicts), **params)
@@ -393,7 +396,8 @@ def prepare_rbleakage_fit_dict(data_dict, keys_in=None, **params):
                 'guess_pars': guess_pars,
                 'params_to_print': params_to_print, **plot_params}
 
-    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('fit_dicts', fit_dicts, data_dict,
+                      add_param_method='update')
     if params.get('do_fitting', False):
         run_fitting(data_dict, keys_in=list(fit_dicts), **params)
 
