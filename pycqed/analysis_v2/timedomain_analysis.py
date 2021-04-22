@@ -7058,10 +7058,11 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             # orthonormalize if required
             if self.get_param_value("orthonormalize", False):
                 # We need to consider the integration weights as a vector of
-                # real numbers for the Gram-Schmidt transformation of the
+                # real numbers to ensure the Gram-Schmidt transformation of the
                 # weights leads to a linear transformation of the integrated
                 # readout results (relates to how integration is done on UHF,
-                # see One Note: )
+                # see One Note: Surface 17/ATC75 M136 S17HW02 Cooldown 5/
+                # 210330 Notes on orthonormalizing readout weights
                 basis_real = np.hstack((basis.real, basis.imag), )
                 basis_real = math.gram_schmidt(basis_real.T).T
                 basis =    basis_real[:,:basis_real.shape[1]//2] + \
