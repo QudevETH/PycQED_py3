@@ -217,7 +217,8 @@ class MeasurementControl(Instrument):
         self.acq_data_len_scaling = self.detector_function.acq_data_len_scaling
 
         # update sweep_points based on self.acq_data_len_scaling
-        self.update_sweep_points()
+        if previous_attempts == 0:
+            self.update_sweep_points()
 
         # needs to be defined here because of the with statement below
         return_dict = {}
