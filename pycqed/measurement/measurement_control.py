@@ -258,6 +258,8 @@ class MeasurementControl(Instrument):
                 logging.warning('Caught a KeyboardInterrupt and there is '
                                 'unsaved data. Trying clean exit to save '
                                 'data.')
+                log.warning('Caught a KeyboardInterrupt and there is '
+                            'unsaved data. Trying clean exit to save data.')
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -435,10 +437,11 @@ class MeasurementControl(Instrument):
             except Exception:
                 # There are some cases where the sweep points are not
                 # specified that you don't want to crash (e.g. on -off seq)
-                logging.warning('You are in the exception case in '
-                                'MC.measure_hard() DATA STORING BLOCK section. '
-                                'Something might have gone wrong with your '
-                                'measurement.')
+                log.warning('You are in the exception case in '
+                            'MC.measure_hard() DATA STORING BLOCK section. '
+                            'Something might have gone wrong with your '
+                            'measurement.')
+                log.warning(traceback.format_exc())
 
         self.check_keyboard_interrupt()
         self.update_instrument_monitor()
