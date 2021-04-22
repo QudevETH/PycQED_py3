@@ -394,6 +394,11 @@ class BaseDataAnalysis(object):
                                 raw_data_dict_ts[save_par] = \
                                     self.get_hdf_datafile_param_value(
                                         data_file[group_name], par_name)
+                            elif par_name in list(data_file[group_name].keys()) or\
+                                    (par_name == "Timers" and group_name == "Timers"):
+                                raw_data_dict_ts[save_par] = \
+                                    read_dict_from_hdf5({}, data_file[
+                                        group_name])
                     else:
                         group_name = '/'.join(file_par.split('.')[:-1])
                         par_name = file_par.split('.')[-1]
