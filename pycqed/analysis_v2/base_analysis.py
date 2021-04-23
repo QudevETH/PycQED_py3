@@ -289,6 +289,8 @@ class BaseDataAnalysis(object):
         Returns:
 
         """
+        if a_tools.ignore_delegate_plotting:
+            return False
         if self.get_param_value("delegate_plotting", False):
             if len(self.timestamps) == 1:
                 f = self.raw_data_dict['folder']

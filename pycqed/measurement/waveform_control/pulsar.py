@@ -1625,8 +1625,11 @@ def _zi_wave_dir():
             log.warning('Could not extract my documents folder')
     else:
         _basedir = os.path.expanduser('~')
-    return os.path.join(_basedir, 'Zurich Instruments', 'LabOne', 
+    wave_dir = os.path.join(_basedir, 'Zurich Instruments', 'LabOne',
         'WebServer', 'awg', 'waves')
+    if not os.path.exists(wave_dir):
+        os.makedirs(wave_dir)
+    return wave_dir
 
 
 def _zi_clear_waves():
