@@ -255,9 +255,6 @@ class MeasurementControl(Instrument):
                     raise e
                 self.save_exp_metadata({'percentage_done': percentage_done},
                                        self.data_object)
-                logging.warning('Caught a KeyboardInterrupt and there is '
-                                'unsaved data. Trying clean exit to save '
-                                'data.')
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             result = self.dset[()]
