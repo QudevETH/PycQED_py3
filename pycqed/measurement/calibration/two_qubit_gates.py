@@ -562,7 +562,7 @@ class CalibBuilder(MultiTaskingExperiment):
         """
         self.update = update
         self.callback = kw.get('callback', self.run_update)
-        self.callback_condition = lambda : self.update
+        self.callback_condition = lambda : self.update and self.analyze
 
     def run_update(self, **kw):
         # must be overriden by child classes to update the
