@@ -201,7 +201,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
         if uhf not in channels:
             channels[uhf] = []
         channels[uhf] += [qb.acq_I_channel()]
-        if qb.acq_weights_type() in ['SSB', 'DSB', 'optimal_qutrit']:
+        if qb.acq_weights_type() in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
             if qb.acq_Q_channel() is not None:
                 channels[uhf] += [qb.acq_Q_channel()]
 
