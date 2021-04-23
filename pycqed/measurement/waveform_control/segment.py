@@ -467,6 +467,11 @@ class Segment:
             el_start = self.get_element_start(el, awg)
             new_end = t_end + length_comp
             new_samples = self.time2sample(new_end - el_start, awg=awg)
+            # make sure that element length is multiple of
+            # sample granularity
+            gran = self.pulsar.get('{}_granularity'.format(awg))
+            if new_samples % gran != 0:
+                new_samples += gran - new_samples % gran
             self.element_start_end[el][awg][1] = new_samples
 
     def gen_refpoint_dict(self):
