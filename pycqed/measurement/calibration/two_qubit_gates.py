@@ -567,8 +567,8 @@ class MultiTaskingExperiment(QuantumExperiment):
                     values_func = getattr(self, values_func, None)
 
                 k_list = k.split(',')
-                # if the respective task parameter (or keyword argument) exists
-                if k_list[0] in task and task[k_list[0]] is not None:
+                # if the respective task parameters (or keyword arguments) exist
+                if all([k in task and task[k] is not None for k in k_list]):
                     if values_func is not None:
                         values = values_func(*[task[key] for key in k_list])
                     elif isinstance(task[k_list[0]], int):

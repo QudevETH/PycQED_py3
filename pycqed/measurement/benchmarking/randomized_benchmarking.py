@@ -19,16 +19,16 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
         'cliffords': dict(param_name='cliffords', unit='',
                           label='Nr. Cliffords',
                           dimension=0),
-        'nr_seeds,nr_m': dict(param_name='seeds', unit='',
+        'nr_seeds,cliffords': dict(param_name='seeds', unit='',
                          label='Seeds', dimension=1,
-                         values_func=lambda ns, nm: np.array(
+                         values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
-                              for _ in range(nm)]).T),
+                              for _ in range(len(cliffords))]).T),
     }
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seeds=None, cliffords=None, sweep_type=None,
-                 interleaved_gate=None, gate_decomposition='HZ', **kw):
+                 sweep_type=None, interleaved_gate=None,
+                 gate_decomposition='HZ', **kw):
         """
         Class to run and analyze the randomized benchmarking experiment on
         one or several qubits in parallel, using the single-qubit Clifford group
@@ -37,13 +37,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             Ex: [{'cliffords': ([0, 4, 10], '', 'Nr. Cliffords')},
                  {'seeds': (array([0, 1, 2, 3]), '', 'Nr. Seeds')}]
         :param qubits: list of QuDev_transmon class instances
-        :param nr_seeds: int specifying the number of times the Clifford
-            group should be sampled for each Clifford sequence length.
-            If nr_seeds is specified and it does not exist in the SweepPoints
-            of each task in task_list, THEN ALL TASKS WILL RECEIVE THE SAME
-            PULSES!!!
-        :param cliffords: list or array of integers specifying the number of
-            cliffords to apply.
         :param sweep_type: dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
             the integers specify which parameter should correspond to the inner
             sweep (0), and which to the outer sweep (1).
@@ -59,6 +52,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             passed to CalibBuilder; see docstring there
 
         Assumptions:
+         - If nr_seeds and cliffords are specified in kw and they do not exist
+          in the task_list, THEN ALL TASKS WILL RECEIVE THE SAME PULSES!!!
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - in rb_block, it assumes only one parameter is being swept in the
@@ -68,45 +63,51 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
          lengths for different qubits
         """
         try:
+            condition1 = kw.get('nr_seeds', None) is None and \
+                         kw.get('cliffords', None) is not None
+            condition2 = kw.get('nr_seeds', None) is not None and \
+                         kw.get('cliffords', None) is None
+            if condition1 or condition2:
+                # identical pulses on all tasks is enabled when both nr_seeds
+                # and cliffords are specified as globals. The class breaks if
+                # only one of them is global
+                raise ValueError('If one of nr_seeds or cliffords is specified '
+                                 'as a global parameter, the other must also '
+                                 'be specified. This enables identical pulses '
+                                 'on all tasks IF YOU ALSO REMOVE THEM '
+                                 'FROM TASK_LIST.')
+
             self.sweep_type = sweep_type
             if self.sweep_type is None:
                 self.sweep_type = {'cliffords': 0, 'seeds': 1}
             self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
-            self.kw_for_sweep_points['nr_seeds,nr_m']['dimension'] = \
+            self.kw_for_sweep_points['nr_seeds,cliffords']['dimension'] = \
                 self.sweep_type['seeds']
             self.kw_for_sweep_points['cliffords']['dimension'] = \
                 self.sweep_type['cliffords']
 
             self.interleaved_gate = interleaved_gate
             if self.interleaved_gate is not None:
-                self.kw_for_sweep_points['nr_seeds,nr_m'] = [
+                self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
-                         values_func=lambda ns, nm: np.array(
+                         values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
-                              for _ in range(nm)]).T),
+                              for _ in range(len(cliffords))]).T),
                     dict(param_name='seeds_irb', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
-                         values_func=lambda ns, nm: np.array(
+                         values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
-                              for _ in range(nm)]).T)]
+                              for _ in range(len(cliffords))]).T)]
             kw['cal_states'] = kw.get('cal_states', '')
 
-            if cliffords is not None:
-                nr_m = len(cliffords)
-            else:
-                nr_m = len(task_list[0].get('cliffords', []))
-            for task in task_list:
-                task['nr_m'] = nr_m
-
             super().__init__(task_list, qubits=qubits,
-                             sweep_points=sweep_points,
-                             nr_seeds=nr_seeds, nr_m=nr_m,
-                             cliffords=cliffords, **kw)
+                             sweep_points=sweep_points, **kw)
+
             if self.experiment_name is None:
                 self.experiment_name = f'RB_{gate_decomposition}' if \
                     interleaved_gate is None else f'IRB_{gate_decomposition}'
-            self.identical_pulses = nr_seeds is not None and all([
+            self.identical_pulses = kw.get('nr_seeds', None) is not None and all([
                 task.get('nr_seeds', None) is None for task in task_list])
             self.gate_decomposition = gate_decomposition
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -127,12 +128,22 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                                      'move nr_seeds from keyword arguments '
                                      'into the tasks.')
 
-            # # remove the redundant 'seeds' entry in self.sweep_points which
-            # # might have been left over from self.generate_kw_sweep_points
-            # dim = self.sweep_points.find_parameter('seeds')
-            # if dim is not None:
-            #     self.sweep_points.get_sweep_params_description('seeds', dim,
-            #                                                    pop=True)
+            # remove the redundant 'seeds' and 'cliffords' entries in
+            # self.sweep_points which are created if these parameters are passed
+            # both as globals and in the task_list
+            intlvd_msmt = self.interleaved_gate is not None
+            factor = 1 + intlvd_msmt
+            condition = factor * (len(task_list) + 1)
+            for param in ['seeds', 'cliffords']:
+                dim = self.sweep_points.find_parameter(param)
+                if dim is not None and len(
+                        self.sweep_points.get_sweep_dimension(dim)) == \
+                        condition:
+                    # only remove if they are redundant, i.e. if these
+                    # parameters also exist with the prefixed qb names
+                    self.sweep_points.get_sweep_params_description(
+                        [param] + ['seeds_irb']*intlvd_msmt, dim, pop=True)
+
             self.sequences, self.mc_points = self.sweep_n_dim(
                 self.sweep_points, body_block=None,
                 body_block_func=self.rb_block, cal_points=self.cal_points,
@@ -154,7 +165,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
 
             self.add_processing_pipeline(**kw)
             self.autorun(**kw)
-
+        #
         except Exception as x:
             self.exception = x
             traceback.print_exc()
@@ -166,22 +177,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
         """
         Creates and adds the analysis processing pipeline to exp_metadata.
         """
-        # TODO: needs upgrade
         pass
-        # if 'dim_hilbert' not in kw:
-        #     raise ValueError('Please specify the dimension of the Hilbert '
-        #                      'space "dim_hilbert" for this measurement.')
-        # if 'log' in self.df_name:
-        #     pp = rb_ana.pipeline_ssro_measurement(
-        #         self.meas_obj_names, self.exp_metadata[
-        #             'meas_obj_sweep_points_map'], self.sweep_points,
-        #         n_shots=max(qb.acq_shots() for qb in self.meas_objs),
-        #         cal_points=self.cal_points, sweep_type=self.sweep_type,
-        #         interleaved_irb=self.interleaved_gate is not None, **kw)
-        #     self.exp_metadata.update({'processing_pipeline': pp})
-        # else:
-        #     log.debug(f'There is no support for automatic pipeline creation '
-        #               f'for the detector type {self.df_name}')
 
     def run_analysis(self, **kw):
         """
@@ -189,15 +185,19 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
         :param kw: keyword_arguments passed to analysis functions;
             see docstrings there
         """
-        self.analysis = pla.extract_data_hdf()  # returns a dict
-        pla.process_pipeline(self.analysis)
+        pass
 
 
 class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
-    def __init__(self, task_list, sweep_points=None, **kw):
+    def __init__(self, task_list, sweep_points=None, nr_seeds=None,
+                 cliffords=None, **kw):
         """
-        See docstring for RandomizedBenchmarking.
+        :param nr_seeds: int specifying the number of times the Clifford
+            group should be sampled for each Clifford sequence length.
+        :param cliffords: list or array of integers specifying the number of
+            cliffords to apply.
+        See docstring for RandomizedBenchmarking for the other parameters.
         """
         self.experiment_name = f'SingleQubitRB' if \
             kw.get('interleaved_gate', None) is None else f'SingleQubitIRB'
@@ -212,7 +212,8 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
                 task['prefix'] = f"{task['qb']}_"
 
         kw['dim_hilbert'] = 2
-        super().__init__(task_list, sweep_points=sweep_points, **kw)
+        super().__init__(task_list, sweep_points=sweep_points,
+                         nr_seeds=nr_seeds, cliffords=cliffords, **kw)
 
     def rb_block(self, sp1d_idx, sp2d_idx, **kw):
         interleaved_gate = kw.get('interleaved_gate', None)
@@ -245,14 +246,17 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
 class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
-    def __init__(self, task_list, sweep_points=None,
-                 max_clifford_idx=11520, **kw):
+    def __init__(self, task_list, sweep_points=None, nr_seeds=None,
+                 cliffords=None, max_clifford_idx=11520, **kw):
         """
-        See docstring for RandomizedBenchmarking.
-
+        :param nr_seeds: int specifying the number of times the Clifford
+            group should be sampled for each Clifford sequence length.
+        :param cliffords: list or array of integers specifying the number of
+            cliffords to apply.
         :param max_clifford_idx: int that allows to restrict the two qubit
             Clifford that is sampled. Set to 24**2 to only sample the tensor
             product of 2 single qubit Clifford groups.
+        See docstring for RandomizedBenchmarking for the other parameters.
         """
         self.max_clifford_idx = max_clifford_idx
         tqc.gate_decomposition = rb.get_clifford_decomposition(
@@ -269,7 +273,8 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
             kw.get('interleaved_gate', None) is None else 'TwoQubitIRB'
 
         kw['dim_hilbert'] = 4
-        super().__init__(task_list, sweep_points=sweep_points, **kw)
+        super().__init__(task_list, sweep_points=sweep_points,
+                         nr_seeds=nr_seeds, cliffords=cliffords, **kw)
 
     def guess_label(self, **kw):
         """
@@ -320,9 +325,16 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                             self.block_from_ops(f'blk{k}_{j}_{qbn}', gates)
                                     for qbn, gates in single_qb_gates.items()]))
                         single_qb_gates = {qb_1: [], qb_2: []}
+                        if idx == interleaved_gate:
+                            pulse_modifs = {0: {'amplitude': 0.05,
+                                                'amplitude2': 0.05}}
+                        else:
+                            pulse_modifs = None
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
-                            f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}'))
+                            f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
+                            pulse_modifs=pulse_modifs
+                            ))
                     else:
                         qb_name = qb_1 if '0' in pulse_tuple[1] else qb_2
                         pulse_name = pulse_tuple[0]
