@@ -361,7 +361,7 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure(self):
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
 
         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
@@ -444,7 +444,7 @@ class MeasurementControl(Instrument):
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
         for sweep_function in self.sweep_functions:
@@ -777,6 +777,9 @@ class MeasurementControl(Instrument):
     There are (will be) three kinds of plotmons, the regular plotmon,
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
+    def _live_plot_enabled(self):
+        return getattr(getattr(self, 'detector_function', None),
+                       'live_plot_enabled', self.live_plot_enabled())
 
     def _get_plotmon_axes_info(self):
         '''
@@ -1133,8 +1136,8 @@ class MeasurementControl(Instrument):
 
     def update_plotmon(self, force_update=False):
         # Note: plotting_max_pts takes precendence over force update
-        if self.live_plot_enabled() and (self.dset.shape[0] <
-                                         self.plotting_max_pts()):
+        if self._live_plot_enabled() and (self.dset.shape[0] <
+                                          self.plotting_max_pts()):
             i = 0  # index of the plot
             try:
                 time_since_last_mon_update = time.time() - self._mon_upd_time
@@ -1196,7 +1199,7 @@ class MeasurementControl(Instrument):
         Made to work with at most 2 2D arrays (as this is how the labview code
         works). It should be easy to extend this function for more vals.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 self.time_last_2Dplot_update = time.time()
                 self._plotmon_axes_info = self._get_plotmon_axes_info()
@@ -1227,7 +1230,7 @@ class MeasurementControl(Instrument):
         Adds latest measured value to the TwoD_array and sends it
         to the QC_QtPlot.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
@@ -1271,7 +1274,7 @@ class MeasurementControl(Instrument):
         if self.adaptive_function.__module__ == 'cma.evolution_strategy':
             return self.update_plotmon_adaptive_cma(force_update=force_update)
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1412,7 +1415,7 @@ class MeasurementControl(Instrument):
         Special adaptive plotmon for
         """
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1492,7 +1495,7 @@ class MeasurementControl(Instrument):
         Note that the plotmon only supports evenly spaced lattices.
         '''
         try:
-            if self.live_plot_enabled():
+            if self._live_plot_enabled():
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
@@ -1834,7 +1837,7 @@ class MeasurementControl(Instrument):
 
         set_grp.attrs['mode'] = self.mode
         set_grp.attrs['measurement_name'] = self.measurement_name
-        set_grp.attrs['live_plot_enabled'] = self.live_plot_enabled()
+        set_grp.attrs['live_plot_enabled'] = self._live_plot_enabled()
         sha1_id, diff = self.get_git_info()
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
