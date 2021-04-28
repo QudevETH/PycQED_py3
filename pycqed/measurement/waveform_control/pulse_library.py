@@ -1047,6 +1047,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             **params_super,
             'pulse_type': 'GaussFilteredCosIQPulseWithFlux',
             'flux_channel': None,
+            'disable_flux_crosstalk_cancellation': False,
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
