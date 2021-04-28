@@ -143,6 +143,9 @@ class Segment:
             * the virtual Z gates are resolved
             * the trigger pulses are generated
             * the charge compensation pulses are added
+
+        :param store_segment_length_timer: (bool, default: True) whether
+            the segment length should be stored in the segment's Timer object
         """
         self.enforce_single_element()
         self.resolve_timing()
