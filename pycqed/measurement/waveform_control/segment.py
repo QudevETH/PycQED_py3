@@ -586,7 +586,8 @@ class Segment:
 
         i = 1
         for awg in awg_hierarchy:
-            if awg not in self.elements_on_awg:
+            if awg not in self.elements_on_awg or awg in getattr(
+                    self, 'skip_trigger', []):
                 continue
 
             # for master AWG no trigger_pulse has to be added

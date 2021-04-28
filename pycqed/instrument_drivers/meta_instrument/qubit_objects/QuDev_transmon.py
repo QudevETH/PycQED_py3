@@ -414,7 +414,8 @@ class QuDev_transmon(Qubit):
                                  initial_value='BufferedCZPulse',
                                  vals=vals.Enum('BufferedSquarePulse',
                                                 'BufferedCZPulse',
-                                                'NZBufferedCZPulse'))
+                                                'NZBufferedCZPulse',
+                                                'NZTransitionControlledPulse'))
         self.add_pulse_parameter(op_name, ps_name + '_channel', 'channel',
                                  initial_value='', vals=vals.Strings())
         self.add_pulse_parameter(op_name, ps_name + '_aux_channels_dict',
@@ -3484,29 +3485,32 @@ class QuDev_transmon(Qubit):
             total_dist = np.abs(trace['e'] - trace['g']) + \
                          np.abs(trace['f'] - trace['g']) + \
                          np.abs(trace['f'] - trace['e'])
-            fmax = freqs[np.argmax(total_dist)]
-            # FIXME: just as debug plotting for now
-            fig, ax = plt.subplots(2)
-            ax[0].plot(freqs, np.abs(trace['g']), label='g')
-            ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        else:
+            total_dist = np.abs(trace['e'] - trace['g'])
+        fmax = freqs[np.argmax(total_dist)]
+        # FIXME: just as debug plotting for now
+        fig, ax = plt.subplots(2)
+        ax[0].plot(freqs, np.abs(trace['g']), label='g')
+        ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        if qutrit:
             ax[0].plot(freqs, np.abs(trace['f']), label='f')
-            ax[0].set_ylabel('Amplitude')
-            ax[0].legend()
-            ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        ax[0].set_ylabel('Amplitude')
+        ax[0].legend()
+        ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        if qutrit:
             ax[1].plot(freqs, np.abs(trace['f'] - trace['g']), label='fg')
             ax[1].plot(freqs, np.abs(trace['e'] - trace['f']), label='ef')
-            ax[1].plot(freqs, total_dist, label='total distance')
-            ax[1].set_xlabel("Freq. [Hz]")
-            ax[1].set_ylabel('Distance in IQ plane')
-            ax[0].set_title("Current RO_freq: {} Hz\nOptimal Freq: {} Hz".format(
-                self.ro_freq(),
-                                                                          fmax))
-            plt.legend()
+        ax[1].plot(freqs, total_dist, label='total distance')
+        ax[1].set_xlabel("Freq. [Hz]")
+        ax[1].set_ylabel('Distance in IQ plane')
+        ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
+                        + f"Optimal Freq: {fmax} Hz")
+        plt.legend()
 
-            m_a['g'].save_fig(fig, 'IQplane_distance')
-            plt.show()
-            if kw.get('analyze', True):
-                sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
+        m_a['g'].save_fig(fig, 'IQplane_distance')
+        plt.show()
+        if kw.get('analyze', True):
+            sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:
             fmax = freqs[np.argmax(np.abs(trace['e'] - trace['g']))]
 
