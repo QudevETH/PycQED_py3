@@ -73,6 +73,13 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        # Soft repetition is currently only available for "hard"
+        # measurements. It does not work with adaptive measurements.
+        self.add_parameter('soft_repetitions',
+                           label='Number of soft repetitions',
+                           parameter_class=ManualParameter,
+                           vals=vals.Ints(1, int(1e8)),
+                           initial_value=1)
 
         self.add_parameter('plotting_max_pts',
                            label='Maximum number of live plotting points',
@@ -195,8 +202,9 @@ class MeasurementControl(Instrument):
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
         if sweep_points is not None:
-            self.set_sweep_points(np.tile(sweep_points,
-                                          self.acq_data_len_scaling))
+            self.set_sweep_points(np.tile(
+                sweep_points,
+                self.acq_data_len_scaling * self.soft_repetitions()))
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
@@ -398,6 +406,7 @@ class MeasurementControl(Instrument):
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
                     sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    sp = sp[:len(sp) // self.soft_repetitions()]
                     # If the soft sweep function has the filtered_sweep
                     # attribute, the AWGs are programmed in a way that only
                     # the subset of acquisitions indicated by the filter is
@@ -487,10 +496,18 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
-        # Tell the detector_function to call print_progress for intermediate
-        # progress reports during get_detector_function.values.
-        self.detector_function.progress_callback = self.print_progress
-        new_data = np.array(self.detector_function.get_values()).T
+        n_acquired = 0
+        for i_rep in range(self.soft_repetitions()):
+            # Tell the detector_function to call print_progress for intermediate
+            # progress reports during get_detector_function.values.
+            self.detector_function.progress_callback = (
+                lambda x, n=n_acquired: self.print_progress(x + n))
+            this_new_data = np.array(self.detector_function.get_values()).T
+            n_acquired += this_new_data.shape[0]
+            new_data = this_new_data if i_rep == 0 else np.concatenate(
+                [new_data, this_new_data])
+            if i_rep < self.soft_repetitions() - 1:
+                self.print_progress(n_acquired)
         self.detector_function.progress_callback = None  # clean up
 
         if filtered_sweep is not None:
