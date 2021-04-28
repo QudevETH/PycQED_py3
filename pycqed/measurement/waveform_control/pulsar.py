@@ -70,8 +70,6 @@ class UHFQCPulsar:
         "{wave_definitions}\n"
         "\n"
         "var loop_cnt = getUserReg(0);\n"
-        "var first_seg = getUserReg({ureg_first});\n"
-        "var last_seg = getUserReg({ureg_last});\n"
         "\n"
         "{calc_repeat}\n"
         "\n"
@@ -239,7 +237,16 @@ class UHFQCPulsar:
 
         defined_waves = set()
         wave_definitions = []
-        playback_strings = ['var i_seg = -1;']
+        playback_strings = []
+
+        use_filter = any([e is not None and
+                          e.get('metadata', {}).get('allow_filter', False)
+                          for e in awg_sequence.values()])
+        if use_filter:
+            wave_definitions += [
+                f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
+                f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+            ]
 
         ch_has_waveforms = {'ch1': False, 'ch2': False}
 
@@ -251,7 +258,8 @@ class UHFQCPulsar:
             if awg_sequence_element is None:
                 current_segment = element
                 playback_strings.append(f'// Segment {current_segment}')
-                playback_strings.append('i_seg += 1;')
+                if use_filter:
+                    playback_strings.append('i_seg += 1;')
                 return playback_strings, wave_definitions
             playback_strings.append(f'// Element {element}')
 
@@ -282,6 +290,8 @@ class UHFQCPulsar:
         calc_repeat = ''
         self._filter_segment_functions[obj.name] = None
         if repeat_pattern is None:
+            if use_filter:
+                playback_strings += ['var i_seg = -1;']
             for element in awg_sequence:
                 playback_strings, wave_definitions = play_element(element,
                                                                   playback_strings,
@@ -375,8 +385,6 @@ class UHFQCPulsar:
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
             playback_string='\n  '.join(playback_strings),
-            ureg_first=obj.USER_REG_FIRST_SEGMENT,
-            ureg_last=obj.USER_REG_LAST_SEGMENT,
             calc_repeat=calc_repeat,
         )
 
@@ -417,9 +425,6 @@ class HDAWG8Pulsar:
         "{wave_definitions}\n"
         "\n"
         "{codeword_table_defs}\n"
-        "\n"
-        "var first_seg = getUserReg({ureg_first});\n"
-        "var last_seg = getUserReg({ureg_last});\n"
         "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
@@ -654,8 +659,18 @@ class HDAWG8Pulsar:
             codeword_table = {}
             wave_definitions = []
             codeword_table_defs = []
-            playback_strings = ['var i_seg = -1;']
+            playback_strings = []
             interleaves = []
+
+            use_filter = any([e is not None and
+                              e.get('metadata', {}).get('allow_filter', False)
+                              for e in awg_sequence.values()])
+            if use_filter:
+                playback_strings += ['var i_seg = -1;']
+                wave_definitions += [
+                    f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
+                    f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+                ]
 
             ch1id = 'ch{}'.format(awg_nr * 2 + 1)
             ch1mid = 'ch{}m'.format(awg_nr * 2 + 1)
@@ -685,7 +700,8 @@ class HDAWG8Pulsar:
                 if awg_sequence_element is None:
                     current_segment = element
                     playback_strings.append(f'// Segment {current_segment}')
-                    playback_strings.append('i_seg += 1;')
+                    if use_filter:
+                        playback_strings.append('i_seg += 1;')
                     first_element_of_segment = True
                     continue
                 wave_idx_lookup[element] = {}
@@ -818,8 +834,6 @@ class HDAWG8Pulsar:
                 wave_definitions='\n'.join(wave_definitions+interleaves),
                 codeword_table_defs='\n'.join(codeword_table_defs),
                 playback_string='\n  '.join(playback_strings),
-                ureg_first=obj.USER_REG_FIRST_SEGMENT,
-                ureg_last=obj.USER_REG_LAST_SEGMENT,
             )
 
             if not use_placeholder_waves or channels_to_program == 'all' or \
