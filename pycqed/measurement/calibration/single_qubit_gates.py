@@ -303,7 +303,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         if self.allowed_lo_freqs is not None:
             for task in self.preprocessed_task_list:
                 task['pulse_modifs'] = {'attr=mod_frequency': None}
-            self.cal_points.pulse_modifs = {'*.mod_frequency': [None]}
+            self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
 
         if self.adapt_drive_amp and self.qubits is None:
             log.warning('No qubit objects provided. Creating the sequence '
@@ -328,9 +328,9 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     if self.cal_points.pulse_modifs is None:
                         self.cal_points.pulse_modifs = {}
                     self.cal_points.pulse_modifs.update(
-                        {f'e_X180 {qb.name}*.amplitude': [
+                        {f'op_code=X180 {qb.name},attr=amplitude':
                             qb.ge_amp180() / (qb.get_ge_amp180_from_ge_freq(
-                                qb.ge_freq()) / max_amp)]})
+                                qb.ge_freq()) / max_amp)})
             self.exp_metadata['drive_amp_adaptation'] = {
                 qb.name: fnc(self.lo_sweep_points)
                 for qb, fnc in self.drive_amp_adaptation.items()}
