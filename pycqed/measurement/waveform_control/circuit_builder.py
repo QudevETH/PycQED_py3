@@ -639,8 +639,9 @@ class CircuitBuilder:
             cal_ops = [[f'{p}{qbn}' for p in cal_points.pulse_label_map[s]]
                        for s, qbn in zip(seg_states, cal_points.qb_names)]
             qb_blocks = [self.block_from_ops(
-                f'body_block_{i}_{o}', ops) for
-                o, ops in enumerate(cal_ops)]
+                f'body_block_{i}_{o}', ops,
+                pulse_modifs=cal_points.pulse_modifs)
+                for o, ops in enumerate(cal_ops)]
             parallel_qb_block = self.simultaneous_blocks(
                 f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
 
