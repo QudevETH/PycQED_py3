@@ -73,6 +73,13 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        # Soft repetition is currently only available for "hard"
+        # measurements. It does not work with adaptive measurements.
+        self.add_parameter('soft_repetitions',
+                           label='Number of soft repetitions',
+                           parameter_class=ManualParameter,
+                           vals=vals.Ints(1, int(1e8)),
+                           initial_value=1)
 
         self.add_parameter('plotting_max_pts',
                            label='Maximum number of live plotting points',
@@ -167,8 +174,9 @@ class MeasurementControl(Instrument):
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
         if sweep_points is not None:
-            self.set_sweep_points(np.tile(sweep_points,
-                                          self.acq_data_len_scaling))
+            self.set_sweep_points(np.tile(
+                sweep_points,
+                self.acq_data_len_scaling * self.soft_repetitions()))
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
@@ -350,15 +358,11 @@ class MeasurementControl(Instrument):
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
                     filtered_sweep = getattr(self.sweep_functions[1],
                                              'filtered_sweep', None)
-                    if filtered_sweep is None:
-                        self.detector_function.prepare(
-                            sweep_points=sweep_points[
-                                start_idx:start_idx+self.xlen, 0])
-                    else:
-                        self.detector_function.prepare(
-                            sweep_points=sweep_points[
-                                         start_idx:start_idx + self.xlen,
-                                         0][filtered_sweep])
+                    sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    sp = sp[:len(sp) // self.soft_repetitions()]
+                    if filtered_sweep is not None:
+                        sp = sp[filtered_sweep]
+                    self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
             raise Exception('Sweep and Detector functions not '
@@ -431,8 +435,16 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure_hard(self, filtered_sweep=None):
-        self.detector_function.progress_callback = self.print_progress
-        new_data = np.array(self.detector_function.get_values()).T
+        n_acquired = 0
+        for i_rep in range(self.soft_repetitions()):
+            self.detector_function.progress_callback = (
+                lambda x, n=n_acquired: self.print_progress(x + n))
+            this_new_data = np.array(self.detector_function.get_values()).T
+            n_acquired += this_new_data.shape[0]
+            new_data = this_new_data if i_rep == 0 else np.concatenate(
+                [new_data, this_new_data])
+            if i_rep < self.soft_repetitions() - 1:
+                self.print_progress(n_acquired)
         self.detector_function.progress_callback = None
 
         if filtered_sweep is not None:
