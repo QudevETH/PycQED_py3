@@ -1783,6 +1783,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                         self.get(s.format(ch))
                         if s.format(ch) in self.parameters else None)
                     for s in settings_to_check}
+                metadata[ch] = {'repeat_pattern':
+                                    sequence.repeat_patterns.get(ch, None)}
                 if ch in channels_to_upload or ch_awg in awgs_to_program:
                     continue
                 changed_settings = True
@@ -1793,6 +1795,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     changed_settings = False
                     np.testing.assert_equal(
                         sequence_cache['hashes'].get(ch, {}), hashes)
+                    np.testing.assert_equal(
+                        sequence_cache['metadata'].get(ch, {}), metadata[ch])
                 except AssertionError:
                     # changed setting, sequence structure, or hash
                     if ch_awg not in awgs_with_channels_to_upload:
@@ -1805,6 +1809,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             for ch in channels_to_upload:
                 sequence_cache['settings'][ch] = settings.get(ch, {})
                 sequence_cache['hashes'][ch] = channel_hashes.get(ch, {})
+                sequence_cache['metadata'][ch] = metadata.get(ch, {})
             # generate the waveforms that we need for uploading
             log.debug(f'Start of waveform generation sequence {sequence.name} '
                      f'{time.time() - t0}')
@@ -1848,6 +1853,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     sequence_cache['settings'][ch] = settings.get(ch, {})
                     sequence_cache['hashes'][ch] = channel_hashes.get(
                         ch, {})
+                    sequence_cache['metadata'][ch] = metadata.get(ch, {})
                     sequence_cache['length'][ch] = ch_length.get(ch, {})
             log.debug(f'awgs_to_program = {repr(awgs_to_program)}\n'
                       f'awgs_with_channels_to_upload = '
