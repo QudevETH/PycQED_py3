@@ -232,6 +232,10 @@ class MeasurementControl(Instrument):
         return_dict = {}
         self.last_sweep_pts = None  # used to prevent resetting same value
 
+        self.begintime = None
+        self.preparetime = None
+        self.endtime = None
+
         if self.skip_measurement():
             return return_dict
 
