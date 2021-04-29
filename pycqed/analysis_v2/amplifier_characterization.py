@@ -38,7 +38,6 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['dim'] = 2 if 'soft_sweep_points' in self.raw_data_dict[0] else 1
         self.proc_data_dict['sweep_label'] = \
             self.raw_data_dict[0]['sweep_parameter_names']
-        print(self.proc_data_dict['sweep_label'])
         self.proc_data_dict['sweep_unit'] = \
             self.raw_data_dict[0]['sweep_parameter_units']
         if self.proc_data_dict['dim'] > 1:
@@ -119,7 +118,7 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
         else:
             marker = ''
         self.plot_dicts['signal_power_gain'] = {
-            'title': 'Signal power gain \n' +
+            'title': 'Signal power gain\n' +
                      self.timestamps[0] + ', ' + self.timestamps[1],
             'fig_id': 'signal_power_gain',
             'plotfn': self.plot_line,
@@ -155,7 +154,6 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
             'line_kws': {'color': 'C0'},
             'marker': marker}
         self.plot_dicts['noise_power'] = {
-            # 'fig_name':'dummy',
             'fig_id': 'noise_power',
             'title': 'Noise power ' +
                      self.timestamps[0] + ', ' + self.timestamps[1],
@@ -175,7 +173,9 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
             'fig_id': 'noise_power',
             'plotfn': self.plot_line,
             'xvals': self.proc_data_dict['sweep_points'],
-            'yvals': self.proc_data_dict['noise_power_ref'],
+            'yvals': np.repeat(self.proc_data_dict['noise_power_ref'],
+                               len(self.proc_data_dict['sweep_points']) //
+                               len(self.proc_data_dict['noise_power_ref'])),
             'setlabel': 'TWPA Off',
             'do_legend': True,
             'line_kws': {'color': 'C1'},
