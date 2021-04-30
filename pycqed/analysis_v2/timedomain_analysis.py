@@ -7960,7 +7960,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         pdd['analysis_params']['state_prob_mtx'] = defaultdict(dict)
         pdd['analysis_params']['classifier_params'] = defaultdict(dict)
         pdd['analysis_params']['means'] = defaultdict(dict)
+        pdd['analysis_params']['snr'] = defaultdict(dict)
         pdd['analysis_params']["n_shots"] = len(shots_per_qb[qbn])
+        pdd['analysis_params']['slopes'] = defaultdict(dict)
         self.clf_ = defaultdict(dict)
         # create placeholders for analysis with preselection
         if self.preselection:
@@ -8016,6 +8018,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # save fidelity matrix and classifier
             pdd['analysis_params']['state_prob_mtx'][qbn] = fm
             pdd['analysis_params']['classifier_params'][qbn] = clf_params
+            if 'means_' in clf_params:
+                pdd['analysis_params']['snr'][qbn] = \
+                    self._extract_snr(clf, state_labels_ordered)
+                pdd['analysis_params']['slopes'][qbn] = self._extract_slopes(
+                    clf, state_labels_ordered)
+
             self.clf_[qbn] = clf
             if self.preselection:
                 #re do with classification first of preselection and masking
@@ -8039,6 +8047,94 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     qb_shots_masked.shape[0]
 
         self.save_processed_data()
+
+    @staticmethod
+    def _extract_snr(gmm=None,  state_labels=None, clf_params=None,):
+        """
+        Extracts SNR between pairs of states. SNR is defined as dist(m1,
+        m2)/sum(std1, std2), where dist = L2 norm, m1, m2 are the means of the
+        pair of states and std1, std2 are the "standard deviation" (obtained
+        from the confidence ellipse of the covariance if 2D).
+        :param gmm: Gaussian mixture model
+        :param clf_params: Classifier parameters. Not implemented but could
+        reconstruct gmm from clf params. Would be more analysis friendly.
+        :param state_labels (list): state labels for the SNR dict. If not provided,
+            tuples indicating the index of the state pairs is used.
+        :return: snr (dict): e.g. {"ge": 2.4} or  {"ge": 3, "ef": 2, "gf": 4}
+        """
+        snr = {}
+        if clf_params is not None:
+            raise NotImplementedError("Look in a_tools.predict_probas to "
+                                      "recreate GMM from clf_params")
+        means = MultiQutrit_Singleshot_Readout_Analysis._get_means(gmm)
+        covs = MultiQutrit_Singleshot_Readout_Analysis._get_covariances(gmm)
+        n_states = len(means)
+        if n_states >= 2:
+            state_pairs = list(itertools.combinations(np.arange(n_states), 2))
+            for sp in state_pairs:
+                m0, m1 = means[sp[0]], means[sp[1]]
+                if len(m0) == 1:
+                    # pad second element to treat as 2d
+                    m0, m1 = np.concatenate([m0, [0]]), np.concatenate([m1, [0]])
+                dist = np.linalg.norm(m0 - m1)
+                std0_candidates = math.find_intersect_line_ellipse(
+                    math.slope(m0- m1),
+                    *math.get_ellipse_radii_and_rotation(covs[sp[0]]))
+                idx = np.argmin([np.linalg.norm(std0_candidates[0] - m1),
+                                 np.linalg.norm(std0_candidates[1] -
+                                                m1)]).flatten()[0]
+                std0 = np.linalg.norm(std0_candidates[idx])
+                std1_candidates = math.find_intersect_line_ellipse(
+                    math.slope(m0 - m1),
+                    *math.get_ellipse_radii_and_rotation(covs[sp[1]]))
+                idx = np.argmin([np.linalg.norm(std0_candidates[0] - m0),
+                                 np.linalg.norm(std0_candidates[1] -
+                                                m1)]).flatten()[0]
+                std1 = np.linalg.norm(std1_candidates[idx])
+                label = state_labels[sp[0]] + state_labels[sp[1]] \
+                    if state_labels is not None else sp
+
+                snr.update({label: dist/(std0 + std1)})
+        return snr
+
+    @staticmethod
+    def _extract_slopes(gmm=None,  state_labels=None, clf_params=None, means=None):
+        """
+        Extracts slopes of line connecting two means of different states.
+        :param gmm: Gaussian mixture model from which means are extracted
+        :param clf_params: Classifier parameters from which means are extracted.
+        :param state_labels (list): state labels for the SNR dict. If not provided,
+            tuples indicating the index of the state pairs is used.
+        :param means (array):
+        :return: slopes (dict): e.g. {"ge": 0.1} or  {"ge": 0.1, "ef": 2,
+        "gf": 0.4}
+        """
+        slopes = {}
+        if clf_params is not None:
+            if not 'means_' in clf_params:
+                raise ValueError(f"could not find 'means_' in clf_params:"
+                                 f" {clf_params}. Please pass in means directly "
+                                 f"provide a classifier that fits means.")
+            means = clf_params.get('means_')
+        if gmm is not None:
+            means = MultiQutrit_Singleshot_Readout_Analysis._get_means(gmm)
+        if means is None:
+            raise ValueError('Please provide one of kwarg gmm, clf_params or '
+                             'means to extract the means of the different '
+                             'distributions')
+        n_states = len(means)
+        if n_states >= 2:
+            state_pairs = list(itertools.combinations(np.arange(n_states), 2))
+            for sp in state_pairs:
+                m0, m1 = means[sp[0]], means[sp[1]]
+                if len(m0) == 1:
+                    # pad second element to treat as 2d
+                    m0, m1 = np.concatenate([m0, [0]]), np.concatenate([m1, [0]])
+
+                label = state_labels[sp[0]] + state_labels[sp[1]] \
+                    if state_labels is not None else sp
+                slopes.update({label: math.slope(m0 - m1)})
+        return slopes
 
     def _classify(self, X, prep_state, method, qb_name, **kw):
         """
@@ -8106,7 +8202,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     " a second threshold manually (fidelity will likely be " \
                     "worse), make the data more separable, or use another " \
                     "classification method."
-                logging.warning(msg.format(list(params['thresholds'].keys())[0]))
+                log.warning(msg.format(list(params['thresholds'].keys())[0]))
             return pred_states, params, tree
         elif method == "threshold_brute":
             raise NotImplementedError()
