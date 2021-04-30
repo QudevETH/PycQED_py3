@@ -325,11 +325,11 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                             self.block_from_ops(f'blk{k}_{j}_{qbn}', gates)
                                     for qbn, gates in single_qb_gates.items()]))
                         single_qb_gates = {qb_1: [], qb_2: []}
-                        if idx == interleaved_gate:
-                            pulse_modifs = {0: {'amplitude': 0.05,
-                                                'amplitude2': 0.05}}
-                        else:
-                            pulse_modifs = None
+                        # if idx == interleaved_gate:
+                        #     pulse_modifs = {0: {'amplitude': 0.05,
+                        #                         'amplitude2': 0.05}}
+                        # else:
+                        pulse_modifs = None
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
