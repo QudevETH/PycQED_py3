@@ -122,7 +122,8 @@ class UHFQCPulsar:
                            initial_value=0, unit='s',
                            parameter_class=ManualParameter)
         self.add_parameter('{}_trigger_source'.format(awg.name), 
-                           initial_value='Dig1', vals=vals.Strings(),
+                           initial_value='Dig1',
+                           vals=vals.Enum('Dig1', 'Dig2', 'DIO'),
                            parameter_class=ManualParameter, 
                            docstring='Defines for which trigger source \
                                       the AWG should wait, before playing \
@@ -404,12 +405,13 @@ class HDAWG8Pulsar:
                            initial_value=0, unit='s',
                            parameter_class=ManualParameter)
         self.add_parameter('{}_trigger_source'.format(awg.name), 
-                           initial_value='Dig1', vals=vals.Strings(),
+                           initial_value='Dig1',
+                           vals=vals.Enum('Dig1', 'DIO', 'ZSync'),
                            parameter_class=ManualParameter, 
                            docstring='Defines for which trigger source \
                                       the AWG should wait, before playing \
                                       the next waveform. Allowed values \
-                                      are: "Dig1", "Dig2", "DIO"')
+                                      are: "Dig1", "DIO", "ZSync"')
 
         for ch_nr in range(8):
             id = 'ch{}'.format(ch_nr + 1)
@@ -1387,15 +1389,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             playback_string.append(
                 'waitDigTrigger(1{});'.format(', 1' if device == 'uhf' else ''))
         elif trig_source == 'Dig2':
-            if device == 'hdawg':
-                raise ValueError(
-                    'ZI HDAWG does not support having Dig2 as trigger source.')
             playback_string.append('waitDigTrigger(2,1);')
-        elif trig_source == 'DIO':
-            playback_string.append('waitDIOTrigger();')
         else:
-            raise ValueError(
-                'Trigger source for {} has to be "Dig1", "Dig2" or "DIO"!')
+            playback_string.append(f'wait{trig_source}Trigger();')
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append('playWaveDIO();')
@@ -1438,14 +1434,10 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             playback_string.append(
                 'waitDigTrigger(1{});'.format(', 1' if device == 'uhf' else ''))
         elif trig_source == 'Dig2':
-            if device == 'hdawg':
-                raise ValueError('ZI HDAWG does not support having Dig2 as trigger source.')
             playback_string.append('waitDigTrigger(2,1);')
-        elif trig_source == 'DIO':
-            playback_string.append('waitDIOTrigger();')
         else:
-            raise ValueError(f'Trigger source for {name} has to be "Dig1", "Dig2" or "DIO"!')
-        
+            playback_string.append(f'wait{trig_source}Trigger();')
+
         if codeword:
             # playback_string.append('playWaveDIO();')
             raise NotImplementedError('Modulation in combination with codeword'
@@ -1625,8 +1617,11 @@ def _zi_wave_dir():
             log.warning('Could not extract my documents folder')
     else:
         _basedir = os.path.expanduser('~')
-    return os.path.join(_basedir, 'Zurich Instruments', 'LabOne', 
+    wave_dir = os.path.join(_basedir, 'Zurich Instruments', 'LabOne',
         'WebServer', 'awg', 'waves')
+    if not os.path.exists(wave_dir):
+        os.makedirs(wave_dir)
+    return wave_dir
 
 
 def _zi_clear_waves():

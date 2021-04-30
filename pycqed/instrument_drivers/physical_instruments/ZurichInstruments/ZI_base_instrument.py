@@ -326,7 +326,7 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/raw/error/blinkforever'] = {'type': 'Integer', 'value': 0}
             self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
             for awg_nr in range(4):
-                for i in range(32):
+                for i in range(2048):
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
                         'type': 'ZIVectorData', 'value': np.array([])}
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
@@ -343,9 +343,13 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
             for dio_nr in range(32):
                 self.nodes[f'/{self.device}/raw/dios/0/delays/{dio_nr}/value'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/raw/error/clear'] = {
+                'type': 'Integer', 'value': 0}
         elif self.devtype == 'PQSC':
             self.nodes[f'/{self.device}/raw/error/json/errors'] = {
                 'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+            self.nodes[f'/{self.device}/raw/error/clear'] = {
+                'type': 'Integer', 'value': 0}
 
     def listNodesJSON(self, path):
         pass

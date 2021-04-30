@@ -9,6 +9,9 @@ import pycqed.measurement.waveform_control.pulsar as ps
 from collections import OrderedDict as odict
 from copy import deepcopy
 import logging
+
+from pycqed.utilities.timer import Timer
+
 log = logging.getLogger(__name__)
 
 class Sequence:
@@ -16,6 +19,8 @@ class Sequence:
     A Sequence consists of several segments, which can be played back on the 
     AWGs sequentially.
     """
+
+    RENAMING_SEPARATOR = "+"
 
     def __init__(self, name, segments=()):
         """
@@ -30,6 +35,7 @@ class Sequence:
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
+        self.timer = Timer(self.name)
 
     def add(self, segment):
         if segment.name in self.segments:
@@ -46,7 +52,7 @@ class Sequence:
         for seg in segments:
             self.add(seg)
 
-
+    @Timer()
     def generate_waveforms_sequences(self, awgs=None):
         """
         Calculates and returns 

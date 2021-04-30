@@ -6,6 +6,7 @@ import itertools
 import matplotlib as mpl
 from collections import OrderedDict, defaultdict
 
+from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
 from sklearn.tree import DecisionTreeClassifier as DTC
 
@@ -27,7 +28,7 @@ import logging
 from pycqed.utilities import math
 from pycqed.utilities.general import find_symmetry_index
 import pycqed.measurement.waveform_control.segment as seg_mod
-
+import datetime as dt
 log = logging.getLogger(__name__)
 try:
     import qutip as qtp
@@ -7039,13 +7040,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                basis_labels = ["ge", "gf"] \
+                basis_labels = ["ge", "ef"] \
                     if len(ana_params['timetraces'][qbn]) > 2 else ['ge']
 
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
                 basis_labels = basis_labels[qbn]
-
             # check that states from the basis are included in mmnt
             for bs in basis_labels:
                 for qb_s in bs:
@@ -7058,7 +7058,16 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
             # orthonormalize if required
             if self.get_param_value("orthonormalize", False):
-                basis = math.gram_schmidt(basis.T).T
+                # We need to consider the integration weights as a vector of
+                # real numbers to ensure the Gram-Schmidt transformation of the
+                # weights leads to a linear transformation of the integrated
+                # readout results (relates to how integration is done on UHF,
+                # see One Note: Surface 17/ATC75 M136 S17HW02 Cooldown 5/
+                # 210330 Notes on orthonormalizing readout weights
+                basis_real = np.hstack((basis.real, basis.imag), )
+                basis_real = math.gram_schmidt(basis_real.T).T
+                basis =    basis_real[:,:basis_real.shape[1]//2] + \
+                        1j*basis_real[:,basis_real.shape[1]//2:]
                 basis_labels = [bs + "_ortho" if bs != basis_labels[0] else bs
                                 for bs in basis_labels]
 
@@ -8188,3 +8197,125 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
                     'color': 'r',
                     'linestyle': '-',
                     'marker': 'x'}
+
+
+class RunTimeAnalysis(ba.BaseDataAnalysis):
+    """
+    Provides elementary analysis of Run time by plotting all timers
+    saved in the hdf5 file of a measurement.
+    """
+    def __init__(self,
+                 label: str = '',
+                 t_start: str = None, t_stop: str = None, data_file_path: str = None,
+                 options_dict: dict = None, extract_only: bool = False,
+                 do_fitting: bool = True, auto=True,
+                 params_dict=None, numeric_params=None, **kwargs):
+
+        super().__init__(t_start=t_start, t_stop=t_stop, label=label,
+                         data_file_path=data_file_path,
+                         options_dict=options_dict,
+                         extract_only=extract_only,
+                         do_fitting=do_fitting, **kwargs)
+        self.timers = {}
+
+        if not hasattr(self, "job"):
+            self.create_job(t_start=t_start, t_stop=t_stop,
+                            label=label, data_file_path=data_file_path,
+                            do_fitting=do_fitting, options_dict=options_dict,
+                            extract_only=extract_only, params_dict=params_dict,
+                            numeric_params=numeric_params, **kwargs)
+        self.params_dict = {f"{tm_mod.Timer.HDF_GRP_NAME}":
+                                f"{tm_mod.Timer.HDF_GRP_NAME}",
+                            "repetition_rate":
+                                "Instrument settings/TriggerDevice.pulse_period",
+                            }
+
+
+        if auto:
+            self.run_analysis()
+
+    def extract_data(self):
+        super().extract_data()
+        timers_dicts = self.raw_data_dict.get('Timers', {})
+        for t, v in timers_dicts.items():
+            self.timers[t] = tm_mod.Timer(name=t, **v)
+
+        # Extract and build raw measurement timer
+        self.timers['BareMeasurement'] = self.bare_measurement_timer(
+            ref_time=self.get_param_value("ref_time")
+        )
+
+    def process_data(self):
+        pass
+
+    def plot(self, **kwargs):
+        plot_kws = self.get_param_value('plot_kwargs', {})
+        for t in self.timers.values():
+            try:
+                self.figs["timer_" + t.name] = t.plot(**plot_kws)
+            except Exception as e:
+                log.error(f'Could not plot Timer: {t.name}: {e}')
+
+        if self.get_param_value('combined_timer', True):
+            self.figs['timer_all'] = tm_mod.multi_plot(self.timers.values(),
+                                                       **plot_kws)
+
+    def bare_measurement_timer(self, ref_time=None,
+                               checkpoint='bare_measurement', **kw):
+        bmtime = self.bare_measurement_time(**kw)
+        bmtimer = tm_mod.Timer('BareMeasurement', auto_start=False)
+        if ref_time is None:
+            try:
+                ts = [t.find_earliest() for t in self.timers.values()]
+                ts = [t[-1] for t in ts if len(t)]
+                arg_sorted = sorted(range(len(ts)),
+                                    key=list(ts).__getitem__)
+                ref_time = ts[arg_sorted[0]]
+            except Exception as e:
+                log.error('Failed to extract reference time for bare'
+                          f'Measurement timer. Please fix the error'
+                          f'or pass in a reference time manually.')
+                raise e
+
+        # TODO add more options of how to distribute the bm time in the timer
+        #  (not only start stop but e.g. distribute it)
+        bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.start",
+                           values=[ref_time], log_init=False)
+        bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.end",
+                           values=[ ref_time + dt.timedelta(seconds=bmtime)],
+                           log_init=False)
+
+        return bmtimer
+
+    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
+                              count_nan_measurements=False):
+        det_metadata = self.metadata.get("Detector Metadata", None)
+        if det_metadata is not None:
+            # multi detector function: look for child "detectors"
+            # assumes at least 1 child and that all children have the same
+            # number of averages
+            det = list(det_metadata.get('detectors', {}).values())[0]
+            if nr_averages is None:
+                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
+        if nr_averages is None:
+            raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
+                             'Please specify "nr_averages" in options_dict.')
+        n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+        n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
+        if repetition_rate is None:
+            repetition_rate = self.raw_data_dict["repetition_rate"]
+        if count_nan_measurements:
+            perc_meas = 1
+        else:
+            # When sweep points are skipped, data is missing in all columns
+            # Thus, we can simply check in the first column.
+            vals = list(self.raw_data_dict['measured_data'].values())[0]
+            perc_meas = 1 - np.sum(np.isnan(vals)) / np.prod(vals.shape)
+        return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
+                                           nr_averages, perc_meas)
+
+    @staticmethod
+    def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,
+                               percentage_measured):
+        return n_ssp * n_hsp * repetition_rate * nr_averages \
+               * percentage_measured
