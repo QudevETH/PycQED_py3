@@ -799,6 +799,8 @@ class UHFQC_multi_detector(UHFQC_Base):
         return corr_data
 
     def finish(self):
+        if self.AWG is not None:
+            self.AWG.stop()
         for d in self.detectors:
             d.finish()
 
