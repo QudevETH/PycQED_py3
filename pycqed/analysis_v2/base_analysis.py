@@ -1426,10 +1426,13 @@ class BaseDataAnalysis(object):
             legend_pos = pdict.get('legend_pos', 'best')
             legend_frameon = pdict.get('legend_frameon', False)
             legend_bbox_to_anchor = pdict.get('legend_bbox_to_anchor', None)
+            legend_fontsize= pdict.get('legend_fontsize', None)
+            # print('legend', legend_fontsize)
             axs.legend(title=legend_title,
                        loc=legend_pos,
                        ncol=legend_ncol,
                        bbox_to_anchor=legend_bbox_to_anchor,
+                       fontsize=legend_fontsize,
                        frameon=legend_frameon)
 
         if plot_xlabel is not None:
