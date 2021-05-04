@@ -629,10 +629,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         unique, counts = np.unique(uhf_names, return_counts=True)
         for u, c in zip(unique, counts):
             if c != 1:
-                raise ValueError(f"{np.array(qubits)[uhf_names == u]}"
-                                 f" share the same UHF ({u}) and therefore"
-                                 f" their timetraces cannot be computed "
-                                 f"simultaneously.")
+                log.warning(f"{np.array(qubits)[uhf_names == u]} "
+                            f"share the same UHF ({u}) and therefore their "
+                            f"timetraces should not be measured simultaneously, "
+                            f"except you know what you are doing.")
 
         # combine operations and preparation dictionaries
         operation_dict = dev.get_operation_dict(qubits=qubits)
