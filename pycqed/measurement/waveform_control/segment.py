@@ -601,8 +601,7 @@ class Segment:
 
         i = 1
         for awg in awg_hierarchy:
-            if awg not in self.elements_on_awg or awg in getattr(
-                    self, 'skip_trigger', []):
+            if awg not in self.elements_on_awg:
                 continue
 
             # for master AWG no trigger_pulse has to be added
@@ -648,11 +647,14 @@ class Segment:
                         '{}_trigger_channels'.format(awg)):
 
                     trigger_awg = self.pulsar.get('{}_awg'.format(channel))
+                    kw = deepcopy(self.trigger_pars)
+                    if awg in getattr(self, 'skip_trigger', []):
+                        kw['amplitude'] = 0
                     trig_pulse = pl.BufferedSquarePulse(
                         trigger_elements[trigger_awg],
                         channel=channel,
                         name='trigger_pulse_{}'.format(i),
-                        **self.trigger_pars)
+                        **kw)
                     i += 1
 
                     trig_pulse.algorithm_time(trigger_pulse_time -

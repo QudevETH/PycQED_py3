@@ -516,6 +516,8 @@ class ProcessingPipeline(list):
                 else:
                     raise ValueError('The first node in the pipeline cannot '
                                      'have "keys_in" = "previous".')
+            else:
+                keys_in += [keyi]
 
         # if keys_in != keys_in_temp:
         #     try:
