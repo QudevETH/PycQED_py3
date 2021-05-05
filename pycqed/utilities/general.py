@@ -767,9 +767,7 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
                 mwgs_set.add(qb_ro_mwg)
 
 
-def configure_qubit_feedback_params(qubits, for_ef=False):
-    if for_ef:
-        raise NotImplementedError('for_ef feedback_params')
+def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
     for qb in qubits:
         ge_ch = qb.ge_I_channel()
         acq_ch = qb.acq_I_channel()
@@ -779,14 +777,20 @@ def configure_qubit_feedback_params(qubits, for_ef=False):
             AWG.dios_0_mode(2)
             vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
-            AWG.set(f'awgs_{vawg}_dio_mask_value', 1)
+            AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1) #
+            # assumes channel I and Q are consecutive on same AWG.
         UHF = qb.instr_uhf.get_instr()
         UHF.dios_0_mode(2)
-        threshs = qb.acq_classifier_params()
-        if threshs is not None:
-            threshs = threshs.get('thresholds', None)
-        if threshs is not None:
-            UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
+        if set_thresholds:
+            if for_ef:
+                log.warning('This function sets only thresholds for ge. Please '
+                            'call ActiveReset._set_thresholds for proper ge-ef '
+                            'reset.')
+            threshs = qb.acq_classifier_params()
+            if threshs is not None:
+                threshs = threshs.get('thresholds', None)
+            if threshs is not None:
+                UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
 
 def find_symmetry_index(data):
