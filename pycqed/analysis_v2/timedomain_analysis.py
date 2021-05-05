@@ -8427,7 +8427,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         # prepare raw population plots
         legend_bbox_to_anchor = (1, -0.20)
         legend_pos = 'upper right'
-        legend_ncol = len(self.sp.get_values("initialize"))
+        legend_ncol = 2 #len(self.sp.get_values("initialize"))
         # overwrite baseAnalysis plots
         self.plot_dicts = OrderedDict()
         basekey = 'projected_data_dict_per_prep_state'
@@ -8462,13 +8462,14 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                          self.raw_data_dict['measurementstring']
                                          + " " + prep_state,
                                 'titlepad': 0.2,
-                                'linestyle': 'none',
+                                'linestyle': '-',
                                 'color': f'C{i}',
                                 'alpha': 0.5 if seq_nr == 0 else 1,
                                 'do_legend': True,
                                 'legend_ncol': legend_ncol,
                                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                'legend_pos': legend_pos}
+                                'legend_pos': legend_pos,
+                                'legend_fontsize': 5}
 
                             # add feedback params info to plot
                             textstr = self._get_feedback_params_text_str(qbn)
@@ -8502,7 +8503,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'do_legend': True,
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos}
+                                    'legend_pos': legend_pos,
+                                    'legend_fontsize': 5}
 
                             # plot fit results
                             fit_key = \
@@ -8539,7 +8541,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'do_legend': seq_nr in [0, 1],
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos}
+                                    'legend_pos': legend_pos,
+                                'legend_fontsize': 5}
 
                                 self.plot_dicts[fit_key + 'data'] = {
                                     'plotfn': self.plot_line,
@@ -8564,6 +8567,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
+                                    'legend_fontsize': 5
                                     }
 
     def _has_reset_pulses(self, seq_nr):
