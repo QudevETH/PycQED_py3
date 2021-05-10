@@ -10,12 +10,14 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         'X': ('Y90', 'mY90'),
         'Y': ('mX90', 'X90'),
         'Z': (None, None),
+        'I': ('I', 'I'),
     }
 
     def __init__(self, data_qubits, ancilla_qubits,
                  readout_rounds, nr_cycles, initializations=None,
                  finalizations=None, ancilla_reset=False,
                  ancilla_dd=True, skip_last_ancilla_readout=False,
+                 two_qb_gates_off=False,
                  **kw):
         # provide default values
         for k, v in [
@@ -41,11 +43,12 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         self._parse_initializations()
         self._parse_finalizations(
             basis_rots=kw.get('basis_rots', ('I', 'X90', 'Y90')))
-        self.sweep_points = sp_mod.SweepPoints()
+        self.sweep_points = kw.get('sweep_points', sp_mod.SweepPoints())
         self.sweep_points.add_sweep_parameter(
             'finalize', self.finalizations, '', 'Final', dimension=0)
         self.sweep_points.add_sweep_parameter(
             'initialize', self.initializations, '', 'Init', dimension=1)
+        self.two_qb_gates_off = two_qb_gates_off
         self.sequences, self.mc_points = self.sweep_n_dim(
             self.sweep_points, self.main_block(), repeat_ro=False,
             init_kwargs={'pulse_modifs': {'all': {
@@ -62,7 +65,9 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         #  metadata.
         self.exp_metadata.update({"nr_cycles": self.nr_cycles,
                                   "ancilla_dd": self.ancilla_dd,
-                                  "ancilla_reset": self.ancilla_reset})
+                                  "ancilla_reset": self.ancilla_reset,
+                                  "two_qb_gates_off": self.two_qb_gates_off})
+
 
     def _parse_finalizations(self, basis_rots):
         if self.finalizations is None or self.finalizations == 'logical_z':
@@ -149,7 +154,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                          for a, v in ancilla_steps.items()}
         # cz gates
         element_name = f'parity_map_entangle_{readout_round}_{cycle}'
-        pulse_modifs = {'all': dict(element_name=element_name)}
+        pulse_modifs = {'all': dict(element_name=element_name,
+                                    pulse_off=self.two_qb_gates_off)}
         gate_lists = [
             [(a, ds[s]) for a, ds in ancilla_steps.items() if ds[s] is not None]
             for s in range(total_steps)]
@@ -180,8 +186,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         # data qubit and ancilla basis changes
         qubit_bases = {}
         for pm in round_parity_maps:
-            assert qubit_bases.get(pm['ancilla'], 'X') == 'X'
-            qubit_bases[pm['ancilla']] = 'X'
+            qubit_bases[pm['ancilla']] = pm.get('ancilla_type', "X")
             for qb in pm['data']:
                 if qb is None:
                     continue
@@ -222,6 +227,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         ops = [f'RO {a}' for a in ancillas]
         ops += [f'Acq {q}' for q in
                 self.readout_rounds[readout_round]['dummy_readout_qbs']]
+        ops += [f'RO {q}' for q in
+                self.readout_rounds[readout_round].get('extra_readout_qbs', [])]
         if cycle == self.nr_cycles - 1:
             ops += [f'Acq {q}' for q in
                     self.readout_rounds[readout_round]\
@@ -252,7 +259,6 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                     and readout_round == len(self.readout_rounds) - 1:
                 continue
             ro_name = f'readouts_{readout_round}_{cycle}'
-            pulses += r.build(name=ro_name)
             round_delay += readout_round_pars['round_length']
             if self.ancilla_reset:
                 pulses += i.build(
