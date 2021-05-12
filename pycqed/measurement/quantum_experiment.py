@@ -715,6 +715,19 @@ class QuantumExperiment(CircuitBuilder):
 
     def plot(self, sequences=None, segments=None, qubits=None,
              save=False, **plot_kwargs):
+        """
+        Plots (a subset of) sequences / segments of the QuantumExperiment
+        :param sequences (int, list): sequences to plot. Can be None (plot all
+        sequences), an integer (index of sequence to plot),  or a list of
+        integers/str. If strings are in the list, then plots only sequences
+        with the corresponding name.
+        :param segments (int, list): index of segments to plot. Plots all
+        segments by default.
+        :param qubits (list): list of qubits to plot
+        :param save (bool): save the figures.
+        :param plot_kwargs: kwargs passed on to segment.plot()
+        :return:
+        """
         plot_kwargs = deepcopy(plot_kwargs)
         if sequences is None:
             # plot all sequences
