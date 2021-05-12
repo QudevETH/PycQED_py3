@@ -10,6 +10,7 @@ from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
+import pycqed.utilities.general as general
 from copy import deepcopy
 import logging
 log = logging.getLogger(__name__)
@@ -659,6 +660,62 @@ class QuantumExperiment(CircuitBuilder):
         except Exception as e:
             data_file.close()
             raise e
+
+
+    def plot(self, sequences=None, segments=None, qubits=None,
+             save=False, **plot_kwargs):
+        plot_kwargs = deepcopy(plot_kwargs)
+        if sequences is None:
+            # plot all sequences
+            sequences = self.sequences
+        elif isinstance(sequences, int):
+            sequences = [self.sequences[sequences]]
+        elif isinstance(sequences, list):
+            if len(sequences) and isinstance(sequences[0], int):
+                # sequences is a list of indices of sequences to plot
+                sequences = [self.sequences[s] for s in sequences]
+            elif len(sequences) and isinstance(sequences[0], str):
+                # sequences is a list of names of sequences to plot
+                sequences = [[s for s in self.sequences if s.name == seqname]
+                             for seqname in  sequences]
+                sequences = np.ravel(sequences).tolist()
+        if qubits is None:
+            qubits = self.meas_objs
+        plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
+                           general.get_channel_map(qubits))))
+        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend',False)))
+
+        if segments is None:
+            # plot all segments
+            segments = [np.arange(len(seq.segments)) for seq in sequences]
+        elif isinstance(segments, int):
+            # single segment from index
+            segments = [[segments] for _ in sequences]
+
+        for seq, segs in zip(sequences, segments):
+            for s in segs:
+                if isinstance(s, int):
+                    s = list(seq.segments.keys())[s]
+                if save:
+                    try:
+                        # FIXME: should we load a_tools in qexp? it means each
+                        #  time we reload qexp, we would have to reset the
+                        #  datafolder... For now, current implementation below
+                        #  will work if a_tools is already loaded.
+                        folder = a_tools.get_folder(timestamp=self.timestamp)
+                    except:
+                        log.warning('Could not determine folder of current '
+                                    'experiment. Sequence plot will be saved in '
+                                    'current directory.')
+                        folder = ""
+                    save_kwargs = dict(fname= folder + "/" +
+                                              "_".join((seq.name, s)) + ".png",
+                                       bbox_inches="tight")
+                    plot_kwargs.update(dict(save_kwargs=save_kwargs,
+                                            savefig=True))
+                seq.segments[s].plot(**plot_kwargs)
+
+
 
 
     def __repr__(self):
