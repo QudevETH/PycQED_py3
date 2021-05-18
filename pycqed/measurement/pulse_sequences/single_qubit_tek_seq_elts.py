@@ -582,9 +582,8 @@ def ramsey_active_reset(times, qb_name, operation_dict, cal_points, n=1,
         for pulse in sequence:
             if 'name' not in pulse:
                 continue
-            if pulse['pulse_delay'] > pulse_length:
-                pulse["element_name"] = f"Ramsey_x2_{i}_element"
-                i += 1
+            pulse["element_name"] = f"Ramsey_x2_{i}_element"
+            i += 1
 
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 
@@ -893,10 +892,10 @@ def over_under_rotation_seq(qb_name, nr_pi_pulses_array, operation_dict,
 # Helper functions
 
 def pulse_list_list_seq(pulse_list_list, name='pulse_list_list_sequence',
-                        upload=True):
+                        upload=True, resolve_overlap=False):
     seq = sequence.Sequence(name)
     for i, pulse_list in enumerate(pulse_list_list):
-        seq.add(segment.Segment('segment_{}'.format(i), pulse_list))
+        seq.add(segment.Segment('segment_{}'.format(i), pulse_list, resolve_overlap=resolve_overlap))
     if upload:
         ps.Pulsar.get_instance().program_awgs(seq)
     return seq

@@ -52,6 +52,7 @@ class Segment:
             self.add(pulse_pars)
 
         self.resolve_overlapping_elements = kw.pop('resolve_overlapping_elements', False)
+        self.resolve_overlapping_elements = True
 
     def add(self, pulse_pars):
         """
@@ -747,7 +748,7 @@ class Segment:
             new_overlap = True
 
         for i in range(len(joint_overlapping_elements)):
-            self._combine_elements(joint_overlapping_elements[i], 'overlapping_el_{}'.format(i))
+            self._combine_elements(joint_overlapping_elements[i], 'overlapping_el_{}_{}'.format(i, self.name))
 
 
     def _combine_elements(self, elements, combined_el_name):
