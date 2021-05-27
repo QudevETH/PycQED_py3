@@ -821,15 +821,18 @@ class CircuitBuilder:
         :param ro_qubits: is passed as argument qb_names to self.initialize()
             and self.mux_ro() to specify that only subset of qubits should
             be prepared and read out (default: 'all')
-        :param kw: keyword arguments
-            body_block_func_kw (dict, default: {}): keyword arguments for the
-                body_block_func
         :param repeat_ro: (bool) set repeat pattern for readout pulses
             (default: True)
         :param init_kwargs: Keyword arguments (dict) for the initialization,
             see method initialize().
         :param final_kwargs: Keyword arguments (dict) for the finalization,
             see method finalize().
+        :param kw: additional keyword arguments
+            body_block_func_kw (dict, default: {}): keyword arguments for the
+                body_block_func
+            block_align_cal_pts (str, default: 'end'): aligment condition for
+                the calpoints segments. Passed to seg_from_cal_points. See
+                docstring for simultaneous_blocks.
         :return:
             - if return_segments==True:
                 1D: list of segments, number of 1d sweep points or
