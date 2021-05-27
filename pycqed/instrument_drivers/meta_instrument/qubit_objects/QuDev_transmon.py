@@ -1040,15 +1040,12 @@ class QuDev_transmon(Qubit):
         else:
             operation_dict['X180_ef ' + self.name]['mod_frequency'] = \
                 self.ef_freq() - self.ge_freq() + self.ge_mod_freq()
+
         if self.fh_freq() == 0:
             operation_dict['X180_fh ' + self.name]['mod_frequency'] = None
-        elif self.ef_freq() == 0:
-            operation_dict['X180_fh ' + self.name]['mod_frequency'] = \
-                self.fh_freq() - self.ge_freq() + self.ge_mod_freq()
         else:
             operation_dict['X180_fh ' + self.name]['mod_frequency'] = \
-                self.fh_freq() - self.ef_freq() + self.ef_freq() - \
-                self.ge_freq() + self.ge_mod_freq()
+                self.fh_freq() - self.ge_freq() + self.ge_mod_freq()
 
         operation_dict.update(add_suffix_to_dict_keys(
             sq.get_pulse_dict_from_pars(
