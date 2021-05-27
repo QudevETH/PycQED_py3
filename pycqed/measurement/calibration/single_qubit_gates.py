@@ -1531,7 +1531,7 @@ class T1(SingleQubitGateCalib):
         t1_block.block_end.update({'ref_point': 'middle',
                                    'pulse_delay': ParametricValue('pulse_delay')
                                    })
-        return self.sequential_blocks(f'rabi_{qb}', [prepend_block, t1_block])
+        return self.sequential_blocks(f't1_{qb}', [prepend_block, t1_block])
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
