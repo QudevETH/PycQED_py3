@@ -471,8 +471,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # create projected_data_dict
         self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
         if self.data_to_fit is None:
-            # if data_to_fit not specified, set it to 'pe'
-            self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
+            # If we have cal points, but data_to_fit is not specified,
+            # choose a reasonable default value. In cases with only two cal
+            # points, this decides which projected plot is generated. (In
+            # cases with three cal points, we will anyways get all three
+            # projected plots.)
+            if 'e' in self.cal_states_dict.keys():
+                self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
+            elif 'g' in self.cal_states_dict.keys():
+                self.data_to_fit = {qbn: 'pg' for qbn in self.qb_names}
+            else:
+                self.data_to_fit = {}
+
 
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit. These lists are
