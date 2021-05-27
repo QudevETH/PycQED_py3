@@ -153,8 +153,13 @@ class MultiTaskingExperiment(QuantumExperiment):
         })
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
-            self.exp_metadata.update({'task_list': self.preprocessed_task_list})
-        elif self.task_list is not None:
+            tl = [copy(t) for t in self.preprocessed_task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'preprocessed_task_list': tl})
+        if self.task_list is not None:
             tl = [copy(t) for t in self.task_list]
             for t in tl:
                 for k, v in t.items():
