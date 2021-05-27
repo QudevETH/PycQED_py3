@@ -566,16 +566,13 @@ class UHFQC_Base(Hard_Detector):
         if self.AWG is not None:
             self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.start")
             self.AWG.stop()
-            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_stopped")
 
         for UHF in self.UHFs:
             UHF.set('qas_0_result_enable', 1)
-            self.timer.checkpoint("UHFQC_Base.poll_data.result_enabled")
 
         if self.AWG is not None:
             self.AWG.start(stop_first=False)
             self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.end")
-            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_started")
 
         acq_paths = {UHF.name: UHF._acquisition_nodes for UHF in self.UHFs}
 
@@ -600,7 +597,6 @@ class UHFQC_Base(Hard_Detector):
             for UHF in self.UHFs:
                 if not all(gotem[UHF.name]):
                     time.sleep(0.01)
-                    self.timer.checkpoint("UHFQC_Base.poll_data.poll")
                     dataset[UHF.name] = UHF.poll(0.01)
             for UHFname in dataset.keys():
                 for n, p in enumerate(acq_paths[UHFname]):
