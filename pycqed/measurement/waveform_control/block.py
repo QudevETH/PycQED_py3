@@ -247,6 +247,8 @@ class Block:
                                 p[attr], p['op_code'] = s.resolve(
                                     sweep_dict, ind, p['op_code'])
                             else:
+                                # allows to add ParametricValues to block_start
+                                # or block_end. See for ex the T1 class
                                 p[attr] = s.resolve(sweep_dict, ind)
 
         # resolve pulse modifiers now (they could overwrite parametric values)
