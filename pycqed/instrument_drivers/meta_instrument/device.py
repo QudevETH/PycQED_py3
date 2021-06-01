@@ -38,6 +38,10 @@ from pycqed.analysis_v3 import helper_functions as hlp_mod
 log = logging.getLogger(__name__)
 
 class Device(Instrument):
+    # params that should not be loaded by pycqed.utilities.general.load_settings
+    _params_to_not_load = {'qubits'}
+
+
     def __init__(self, name, qubits, connectivity_graph, **kw):
         """
         Instantiates device instrument and adds its parameters.
