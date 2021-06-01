@@ -1078,9 +1078,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             task = [t for t in task_list if t['qb'] == qb_name][0]
             trans_name = task.get('transition_name_input', None)
         if trans_name is None:
-            if 'h' in self.data_to_fit[qb_name]:
+            if 'h' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'fh'
-            elif 'f' in self.data_to_fit[qb_name]:
+            elif 'f' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'ef'
             else:
                 trans_name = 'ge'
