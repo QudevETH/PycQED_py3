@@ -169,7 +169,6 @@ def state_tomography_analysis(data_dict, keys_in,
         if cp is not None and (correct_readout or correct_readout is None):
             dat_proc_mod.calculate_meas_ops_and_covariations_cal_points(
                 data_dict, keys_in, n_readouts=n_readouts,
-                meas_obj_names=meas_obj_names,
                 keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
                 observables=observables, **params)
         else:
