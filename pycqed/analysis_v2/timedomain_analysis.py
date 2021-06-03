@@ -393,7 +393,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if self.cal_states_rotations is None:
             self.cal_states_rotations = cal_states_rotations
         if not len(self.cal_states_dict):
-            self.rotation_type = 'PCA'
+            self.rotation_type = 'global_PCA' if \
+                self.get_param_value('TwoD', default_value=False) else 'PCA'
 
     def create_sweep_points_dict(self):
         sweep_points_dict = self.get_param_value('sweep_points_dict')
@@ -747,9 +748,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 cal_state = \
                     [k for k, idx in cal_states_rot_qb.items()
                      if idx == i][0]
-                self.cal_states_dict_for_rotation[qbn][cal_state] = \
-                    None if do_PCA and self.num_cal_points != 3 else \
-                        self.cal_states_dict[cal_state]
+                if do_PCA and self.num_cal_points != 3:
+                    self.cal_states_dict_for_rotation[qbn][cal_state] = None
+                else:
+                    if not len(self.cal_states_dict):
+                        self.cal_states_dict_for_rotation[qbn][cal_state] = None
+                        if self.get_param_value('TwoD', default_value=False):
+                            self.rotation_type = 'global_PCA'
+                    else:
+                        self.cal_states_dict_for_rotation[qbn][cal_state] = \
+                            self.cal_states_dict[cal_state]
 
     def cal_states_analysis(self):
         self.get_cal_data_points()
@@ -808,7 +816,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             storing_keys, data_mostly_g=data_mostly_g,
                             column_PCA=self.rotation_type == 'column_PCA'))
             else:
-                if len(cal_states_dict) == 3:
+                if len(cal_states_dict) == 3 and 'PCA' not in self.rotation_type:
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_3_cal_states(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
