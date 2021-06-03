@@ -1679,9 +1679,12 @@ class MeasurementControl(Instrument):
                         val = ''
                     if p_name in parameter_checks_ins:
                         try:
-                            if not parameter_checks_ins[p_name](p['value']):
-                                log.warning(f'Parameter {iname}.{p_name} has '
-                                            f'an uncommon value: {val}.')
+                            res = parameter_checks_ins[p_name](p['value'])
+                            if res is not True:
+                                log.warning(
+                                    f'Parameter {iname}.{p_name} has an '
+                                    f'uncommon value: {val}.' +
+                                    (f" ({res})" if res is not False else ''))
                         except Exception as e:
                             log.warning(f'Could not run parameter check for '
                                         f'{iname}.{p_name}: {e}')
