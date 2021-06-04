@@ -5244,6 +5244,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_plots(self):
         super().prepare_plots()
 
+        raised_warning = False
         if self.do_fitting:
             ramsey_dict = self.proc_data_dict['analysis_params_dict']
             for qbn in self.qb_names:
@@ -5294,9 +5295,13 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 textstr += '\n$f_{qubit \_ old}$ = '+'{:.6f} GHz '.format(
                     old_qb_freq*1e-9)
-                textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(
-                    (ramsey_dict[qbn][exp_decay_fit_key]['new_qb_freq'] -
-                    old_qb_freq)*1e-6) + '$\pm$ {:.2E} MHz'.format(
+
+                art_det = ramsey_dict[qbn][exp_decay_fit_key][
+                              'artificial_detuning']*1e-6
+                delta_f = (ramsey_dict[qbn][exp_decay_fit_key]['new_qb_freq'] -
+                           old_qb_freq)*1e-6
+                textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(delta_f) +
+                            '$\pm$ {:.2E} MHz'.format(
                     self.fit_dicts[exp_decay_fit_key]['fit_res'].params[
                         'frequency'].stderr*1e-6) +
                     '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.2E} MHz'.format(
@@ -5305,9 +5310,19 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     self.fit_dicts[exp_decay_fit_key]['fit_res'].params[
                         'frequency'].stderr*1e-6))
                 textstr += T2_star_str
-                textstr += '\nartificial detuning = {:.2f} MHz'.format(
-                    ramsey_dict[qbn][exp_decay_fit_key][
-                        'artificial_detuning']*1e-6)
+                textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+
+                color = 'k'
+                if np.abs(delta_f) > np.abs(art_det):
+                    if not raised_warning:
+                        self._raise_warning_image()
+                        raised_warning = True
+                    textstr = textstr.split('\n')
+                    sc = [s for s in textstr if 'Delta f' in s][0]
+                    idx = textstr.index(sc)
+                    color = ['black']*len(textstr)
+                    color[idx] = 'red'
+                    color[-1] = 'red'
 
                 self.plot_dicts['text_msg_' + qbn] = {
                     'fig_id': base_plot_name,
@@ -5315,6 +5330,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xpos': -0.025,
                     'horizontalalignment': 'left',
                     'verticalalignment': 'top',
+                    'color': color,
                     'plotfn': self.plot_text,
                     'text_string': textstr}
 

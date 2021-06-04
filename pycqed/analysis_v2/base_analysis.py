@@ -3,6 +3,7 @@ File containing the BaseDataAnalyis class.
 """
 from inspect import signature
 import os
+import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -16,7 +17,8 @@ from pycqed.utilities.general import NumpyJsonEncoder
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
-    set_axis_label, flex_colormesh_plot_vs_xy, flex_color_plot_vs_x)
+    set_axis_label, flex_colormesh_plot_vs_xy,
+    flex_color_plot_vs_x, rainbow_text)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -1835,18 +1837,28 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
-
+        color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
         if box_props == 'fancy':
             box_props = self.fancy_box_props
 
-        # pfunc is expected to be ax.text
-        pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
-              transform=axs.transAxes,
-              verticalalignment=verticalalignment,
-              horizontalalignment=horizontalalignment,
-              bbox=box_props)
+        if isinstance(color, (list, tuple)):
+            assert isinstance(plot_text_string, (list, tuple))
+            assert len(color) == len(plot_text_string)
+            orientation = pdict.get('orientation', 'vertical')
+            rainbow_text(x=plot_xpos, y=plot_ypos,
+                         strings=plot_text_string, colors=color,
+                         ax=axs, orientation=orientation,
+                         verticalalignment=verticalalignment,
+                         horizontalalignment=horizontalalignment)
+        else:
+            # pfunc is expected to be ax.text
+            pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
+                  transform=axs.transAxes,
+                  verticalalignment=verticalalignment,
+                  horizontalalignment=horizontalalignment,
+                  bbox=box_props)
 
     def plot_vlines(self, pdict, axs):
         """
