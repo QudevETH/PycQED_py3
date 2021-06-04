@@ -241,6 +241,18 @@ class BaseDataAnalysis(object):
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
 
+    def _raise_warning_image(self, image_path=None):
+        import shutil
+        if image_path is None:
+            image_path = os.path.abspath(
+                sys.modules[self.__class__.__module__].__file__)
+            image_path = os.path.split(image_path)[0]
+            image_path = os.path.abspath(os.path.join(image_path, 'WARNING.png'))
+
+        destination = a_tools.get_folder(self.timestamps[-1])
+        destination = os.path.abspath(os.path.join(destination, 'WARNING.png'))
+        shutil.copy2(image_path, destination)
+
     def create_job(self, *args, **kwargs):
         """
         Create a job string representation of the analysis to be processed
