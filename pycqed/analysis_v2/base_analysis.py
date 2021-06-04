@@ -244,6 +244,13 @@ class BaseDataAnalysis(object):
                 log.error(traceback.format_exc())
 
     def _raise_warning_image(self, image_path=None):
+        """
+        Copy the image specified by image_path to the folder of the last
+        timestamp.
+        :param image_path: full path, including image name and extention, to
+            the warning image to be copied
+        :return:
+        """
         import shutil
         if image_path is None:
             image_path = os.path.abspath(

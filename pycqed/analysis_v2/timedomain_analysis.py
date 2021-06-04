@@ -5314,6 +5314,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 color = 'k'
                 if np.abs(delta_f) > np.abs(art_det):
+                    # we don't want this; raise a warning and highlight in red
+                    # the Delta f and artificial detuning row in textstr
                     if not raised_warning:
                         self._raise_warning_image()
                         raised_warning = True
