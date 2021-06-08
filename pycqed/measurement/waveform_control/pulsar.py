@@ -70,8 +70,6 @@ class UHFQCPulsar:
         "{wave_definitions}\n"
         "\n"
         "var loop_cnt = getUserReg(0);\n"
-        "var first_seg = getUserReg({ureg_first});\n"
-        "var last_seg = getUserReg({ureg_last});\n"
         "\n"
         "{calc_repeat}\n"
         "\n"
@@ -239,7 +237,16 @@ class UHFQCPulsar:
 
         defined_waves = set()
         wave_definitions = []
-        playback_strings = ['var i_seg = -1;']
+        playback_strings = []
+
+        use_filter = any([e is not None and
+                          e.get('metadata', {}).get('allow_filter', False)
+                          for e in awg_sequence.values()])
+        if use_filter:
+            wave_definitions += [
+                f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
+                f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+            ]
 
         ch_has_waveforms = {'ch1': False, 'ch2': False}
 
@@ -251,7 +258,8 @@ class UHFQCPulsar:
             if awg_sequence_element is None:
                 current_segment = element
                 playback_strings.append(f'// Segment {current_segment}')
-                playback_strings.append('i_seg += 1;')
+                if use_filter:
+                    playback_strings.append('i_seg += 1;')
                 return playback_strings, wave_definitions
             playback_strings.append(f'// Element {element}')
 
@@ -282,6 +290,8 @@ class UHFQCPulsar:
         calc_repeat = ''
         self._filter_segment_functions[obj.name] = None
         if repeat_pattern is None:
+            if use_filter:
+                playback_strings += ['var i_seg = -1;']
             for element in awg_sequence:
                 playback_strings, wave_definitions = play_element(element,
                                                                   playback_strings,
@@ -375,8 +385,6 @@ class UHFQCPulsar:
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
             playback_string='\n  '.join(playback_strings),
-            ureg_first=obj.USER_REG_FIRST_SEGMENT,
-            ureg_last=obj.USER_REG_LAST_SEGMENT,
             calc_repeat=calc_repeat,
         )
 
@@ -424,9 +432,6 @@ class HDAWG8Pulsar:
         "{wave_definitions}\n"
         "\n"
         "{codeword_table_defs}\n"
-        "\n"
-        "var first_seg = getUserReg({ureg_first});\n"
-        "var last_seg = getUserReg({ureg_last});\n"
         "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
@@ -740,8 +745,18 @@ class HDAWG8Pulsar:
             codeword_table = {}
             wave_definitions = []
             codeword_table_defs = []
-            playback_strings = ['var i_seg = -1;']
+            playback_strings = []
             interleaves = []
+
+            use_filter = any([e is not None and
+                              e.get('metadata', {}).get('allow_filter', False)
+                              for e in awg_sequence.values()])
+            if use_filter:
+                playback_strings += ['var i_seg = -1;']
+                wave_definitions += [
+                    f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
+                    f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+                ]
 
             ch1id = 'ch{}'.format(awg_nr * 2 + 1)
             ch1mid = 'ch{}m'.format(awg_nr * 2 + 1)
@@ -771,7 +786,8 @@ class HDAWG8Pulsar:
                 if awg_sequence_element is None:
                     current_segment = element
                     playback_strings.append(f'// Segment {current_segment}')
-                    playback_strings.append('i_seg += 1;')
+                    if use_filter:
+                        playback_strings.append('i_seg += 1;')
                     first_element_of_segment = True
                     continue
                 wave_idx_lookup[element] = {}
@@ -904,8 +920,6 @@ class HDAWG8Pulsar:
                 wave_definitions='\n'.join(wave_definitions+interleaves),
                 codeword_table_defs='\n'.join(codeword_table_defs),
                 playback_string='\n  '.join(playback_strings),
-                ureg_first=obj.USER_REG_FIRST_SEGMENT,
-                ureg_last=obj.USER_REG_LAST_SEGMENT,
             )
 
             if not use_placeholder_waves or channels_to_program == 'all' or \
@@ -1783,6 +1797,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                         self.get(s.format(ch))
                         if s.format(ch) in self.parameters else None)
                     for s in settings_to_check}
+                metadata[ch] = {'repeat_pattern':
+                                    sequence.repeat_patterns.get(ch, None)}
                 if ch in channels_to_upload or ch_awg in awgs_to_program:
                     continue
                 changed_settings = True
@@ -1793,6 +1809,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     changed_settings = False
                     np.testing.assert_equal(
                         sequence_cache['hashes'].get(ch, {}), hashes)
+                    np.testing.assert_equal(
+                        sequence_cache['metadata'].get(ch, {}), metadata[ch])
                 except AssertionError:
                     # changed setting, sequence structure, or hash
                     if ch_awg not in awgs_with_channels_to_upload:
@@ -1805,6 +1823,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             for ch in channels_to_upload:
                 sequence_cache['settings'][ch] = settings.get(ch, {})
                 sequence_cache['hashes'][ch] = channel_hashes.get(ch, {})
+                sequence_cache['metadata'][ch] = metadata.get(ch, {})
             # generate the waveforms that we need for uploading
             log.debug(f'Start of waveform generation sequence {sequence.name} '
                      f'{time.time() - t0}')
@@ -1848,6 +1867,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     sequence_cache['settings'][ch] = settings.get(ch, {})
                     sequence_cache['hashes'][ch] = channel_hashes.get(
                         ch, {})
+                    sequence_cache['metadata'][ch] = metadata.get(ch, {})
                     sequence_cache['length'][ch] = ch_length.get(ch, {})
             log.debug(f'awgs_to_program = {repr(awgs_to_program)}\n'
                       f'awgs_with_channels_to_upload = '

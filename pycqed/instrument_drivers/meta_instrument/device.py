@@ -26,6 +26,9 @@ extended by further methods from the multi_qubit_module or other modules.
 import logging
 from copy import deepcopy
 import numpy as np
+import functools
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 import pycqed.measurement.multi_qubit_module as mqm
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
@@ -33,7 +36,9 @@ import pycqed.measurement.waveform_control.pulse as bpl
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
+from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.analysis_v3 import helper_functions as hlp_mod
+from pycqed.analysis_v3 import plotting as plot_mod
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +118,10 @@ class Device(Instrument):
                            initial_value=RelativeDelayGraph(),
                            parameter_class=ManualParameter,
                            set_parser=RelativeDelayGraph)
+
+        self.add_parameter('flux_crosstalk_calibs',
+                           parameter_class=ManualParameter,
+                           )
 
         # Pulse preparation parameters
         default_prep_params = dict(preparation_type='wait',
@@ -237,13 +246,21 @@ class Device(Instrument):
             - list of integers specifying the index, e.g. [0, 1] for qb1, qb2
         :param return_type (str): "obj" --> qubit objects are returned.
             "str": --> qubit names are returned.
+            "ind": --> returns indices to find the qubits in self.qubits()
         :return: list of qb_names or qb objects. Note that a list is
             returned in all cases
         """
+        if return_type not in ['obj', 'str', 'ind']:
+            raise ValueError(f'Return type: {return_type} not understood')
+
         qb_names = [qb.name for qb in self.qubits()]
         if qubits == 'all':
-            return self.qubits() if return_type == "obj" else qb_names
-
+            if return_type == "obj":
+                return self.qubits()
+            elif return_type == "str":
+                return qb_names
+            else:
+                return list(range(len(qb_names)))
         elif not isinstance(qubits, (list, tuple)):
             qubits = [qubits]
 
@@ -274,7 +291,7 @@ class Device(Instrument):
             return [self.qubits()[qb_names.index(qbn)]
                     for qbn in qubits_to_return]
         else:
-            raise ValueError(f'Return type: {return_type} not understood')
+            return [qb_names.index(qb) for qb in qubits_to_return]
 
     def get_pulse_par(self, gate_name, qb1, qb2, param):
         """
@@ -508,6 +525,129 @@ class Device(Instrument):
             awg = pulsar.AWG_obj(channel=ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
+
+    def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
+        pulsar = self.instr_pulsar.get_instr()
+        calib = self.flux_crosstalk_calibs()
+        if calib is None:
+            calib = [np.identity(len(self.get_qubits()))]
+        if rounds == -1:
+            rounds = len(calib)
+        mtx_all = functools.reduce(np.dot, calib[:rounds])
+
+        xtalk_qbs = self.get_qubits('all' if qubits == 'auto' else qubits)
+        if qubits == 'auto':
+            mask = [True] * len(xtalk_qbs)
+            for mtx in calib:
+                mask = np.logical_and(mask, np.diag(mtx) != 1)
+            xtalk_qbs = [qb for i, qb in enumerate(xtalk_qbs) if mask[i]]
+        if len(xtalk_qbs) == 0:
+            pulsar.flux_crosstalk_cancellation(False)
+            return
+
+        qb_inds = {qb: ind for qb, ind in
+                   zip(xtalk_qbs, self.get_qubits(xtalk_qbs, 'ind'))}
+        mtx = np.zeros([len(xtalk_qbs)] * 2)
+        for i, qbA in enumerate(xtalk_qbs):
+            for j, qbB in enumerate(xtalk_qbs):
+                mtx[i, j] = mtx_all[qb_inds[qbA], qb_inds[qbB]]
+
+        pulsar.flux_channels([qb.flux_pulse_channel() for qb in xtalk_qbs])
+        pulsar.flux_crosstalk_cancellation_mtx(
+            np.linalg.inv(np.diag(1 / np.diag(mtx)) @ mtx))
+        pulsar.flux_crosstalk_cancellation(True)
+
+    def load_crosstalk_measurements(self, timestamps, round_ind=0):
+        all_qubits = self.get_qubits()
+        calibs = self.flux_crosstalk_calibs()
+        if calibs is None:
+            self.flux_crosstalk_calibs([])
+            calibs = self.flux_crosstalk_calibs()
+        while len(calibs) <= round_ind:
+            calibs.append(np.identity(len(all_qubits)))
+
+        for ts in timestamps:
+            target_qubit_name, crosstalk_qubit_names = tda.a_tools.get_folder(
+                ts).split('_')[-2:]
+            crosstalk_qubit_names = ['qb' + i for i in
+                                     crosstalk_qubit_names.split('qb')[1:]]
+            MA = tda.FluxlineCrosstalkAnalysis(t_start=ts,
+                                               qb_names=crosstalk_qubit_names,
+                                               extract_only=True,
+                                               options_dict={'TwoD': True})
+            for qbn in crosstalk_qubit_names:
+                i = self.get_qubits(qbn, 'ind')[0]
+                j = self.get_qubits(target_qubit_name, 'ind')[0]
+                dphi_dV = MA.fit_res[f'flux_fit_{qbn}'].best_values['a']
+                calibs[round_ind][i][j] = dphi_dV
+                print(i, j, dphi_dV)
+
+    def plot_flux_crosstalk_matrix(self, qubits='all', round_ind=0, unit='m',
+                                   vmax=None, show_and_close=False):
+        qubits = self.get_qubits(qubits)
+        qb_inds = self.get_qubits(qubits, return_type='ind')
+        if unit not in ['', 'c', 'm', 'u', None]:
+            log.warning(f'unit prefix "{unit}" not understood. Using "m".')
+        if unit == 'u':
+            phi_factor, phi_unit, diag_prefix = 1e-6, '\\mu\\Phi_0', 'M'
+            def_vmax = 100
+        elif unit == 'm':
+            phi_factor, phi_unit, diag_prefix = 1e-3, 'm\\Phi_0', 'k'
+            def_vmax = 4
+        elif unit == 'c':
+            phi_factor, phi_unit, diag_prefix = 1e-2, 'c\\Phi_0', 'h'
+            def_vmax = 4
+        else:
+            phi_factor, phi_unit, diag_prefix = 1, '\\Phi_0', ''
+            def_vmax =  1
+        vmax = vmax / phi_factor if vmax is not None else def_vmax
+
+        data_array = self.flux_crosstalk_calibs()[round_ind][
+                     qb_inds, :][:, qb_inds]
+        for i in range(len(qubits)):
+            data_array[i, :] *= np.sign(data_array[i, i])
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(
+            2 + (plot_mod.FIGURE_WIDTH_2COL - 2) / 17 * len(qubits),
+            1 + 6 / 17 * len(qubits))
+
+        cmap = mpl.cm.RdBu
+        cmap.set_over('k')
+        i = ax.imshow(data_array / phi_factor, vmax=vmax, vmin=-vmax,
+                      cmap=cmap)
+        cbar = fig.colorbar(i)
+
+        ax.set_xticks(np.arange(len(qubits)))
+        ax.set_yticks(np.arange(len(qubits)))
+        ax.set_xticklabels(['FL' + qb.name[2:] for qb in qubits])
+        ax.set_yticklabels(['Q' + qb.name[2:] for qb in qubits])
+        ax.set_xlabel('Fluxline')
+        ax.set_ylabel('Coupled qubit')
+        ax.tick_params(direction='out')
+        cbar.set_label(
+            f'Flux coupling, $\\mathrm{{d}}\Phi/\\mathrm{{d}}V$ '
+            f'($\\mathrm{{{phi_unit}}}$/V)')
+
+        for i in range(len(qubits)):
+            for j in range(len(qubits)):
+                if i != j:
+                    ax.text(i, j, f'{data_array[j, i] / phi_factor:.2f}',
+                            color='k', fontsize='small', ha='center',
+                            va='center')
+                else:
+                    ax.text(i, j,
+                            f'{data_array[j, i]:.2f}{diag_prefix}',
+                            color='w', fontsize='small', ha='center',
+                            va='center')
+
+        fig.subplots_adjust(left=0.04, right=1.04)
+        if show_and_close:
+            plt.show()
+            plt.close(fig)
+            return
+        else:
+            return fig
 
     # Wrapper functions for Device algorithms #
 

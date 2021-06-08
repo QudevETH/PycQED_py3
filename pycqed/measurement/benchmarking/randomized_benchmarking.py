@@ -325,11 +325,11 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                             self.block_from_ops(f'blk{k}_{j}_{qbn}', gates)
                                     for qbn, gates in single_qb_gates.items()]))
                         single_qb_gates = {qb_1: [], qb_2: []}
-                        if idx == interleaved_gate:
-                            pulse_modifs = {0: {'amplitude': 0.05,
-                                                'amplitude2': 0.05}}
-                        else:
-                            pulse_modifs = None
+                        # if idx == interleaved_gate:
+                        #     pulse_modifs = {0: {'amplitude': 0.05,
+                        #                         'amplitude2': 0.05}}
+                        # else:
+                        pulse_modifs = None
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
@@ -620,26 +620,27 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
                 gates.append(s_gates[2][0:3] + sim_str + "qb_2")
                 gates.append("CZ " + "qb_1 qb_2")
-                while i < length:
-                    last_1_gate1 = gates[-3][0:4]
+                if length > 0:
+                    while i < (length - 1):
+                        last_1_gate1 = gates[-3][0:4]
 
-                    choice1 = []
-                    for gate in s_gates:
-                        choice1.append(gate)
-                    choice1.remove(last_1_gate1)
-                    gate1 = random.choice(choice1)
-                    gates.append(gate1 + 'qb_1')
+                        choice1 = []
+                        for gate in s_gates:
+                            choice1.append(gate)
+                        choice1.remove(last_1_gate1)
+                        gate1 = random.choice(choice1)
+                        gates.append(gate1 + 'qb_1')
 
-                    last_1_gate2 = gates[-3][0:3] + ' '
-                    choice2 = []
-                    for gate in s_gates:
-                        choice2.append(gate)
-                    choice2.remove(last_1_gate2)
-                    gate2 = random.choice(choice2)
-                    sim_str = ' ' if 'Z' in gate2[:3] else 's '
-                    gates.append(gate2[:3] + sim_str + 'qb_2')
-                    gates.append("CZ " + 'qb_1 qb_2')
-                    i += 1
+                        last_1_gate2 = gates[-3][0:3] + ' '
+                        choice2 = []
+                        for gate in s_gates:
+                            choice2.append(gate)
+                        choice2.remove(last_1_gate2)
+                        gate2 = random.choice(choice2)
+                        sim_str = ' ' if 'Z' in gate2[:3] else 's '
+                        gates.append(gate2[:3] + sim_str + 'qb_2')
+                        gates.append("CZ " + 'qb_1 qb_2')
+                        i += 1
                 lis.append(gates)
             return lis
         return [gen_random(cycles) for _ in range(nr_seqs)]

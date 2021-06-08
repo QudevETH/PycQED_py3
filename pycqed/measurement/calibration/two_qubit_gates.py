@@ -1515,7 +1515,7 @@ class LeakageAmplification(CalibBuilder):
         :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
     ...
     """
-    kw_for_task_keys = ('n_amplification_rounds', )
+    kw_for_task_keys = ('n_amplification_rounds', "ro_delay")
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             self.experiment_name = kw.get('experiment_name', 'Leakage amplification')
@@ -1551,7 +1551,7 @@ class LeakageAmplification(CalibBuilder):
             traceback.print_exc()
 
     def sweep_block(self, sweep_points, qbc, qbt, n_amplification_rounds=1,
-                    init_state='11', max_flux_length=None,
+                    init_state='11', ro_delay=None,
                     prepend_pulse_dicts=None, **kw):
         """
         chevron block (sweep of flux pulse parameters)
@@ -1568,8 +1568,8 @@ class LeakageAmplification(CalibBuilder):
         :param n_amplification_rounds: number of sequential CZ gates, default: 1
         :param init_state: initial states of qbc and qbt (default: '11')
             Init in f level is currently not supported!
-        :param max_flux_length: determines the time to wait before the final
-            rotations, default: None, in which case it will be determined
+        :param ro_delay: determines the time to wait before the final
+            readout, default: None, in which case it will be determined
             automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             prepend_pulses_block
@@ -1601,13 +1601,13 @@ class LeakageAmplification(CalibBuilder):
                 for p in fp.pulses:
                     p[k] = ParametricValue(k)
 
-            if max_flux_length is not None:
-                log.debug(f'max_flux_length = {max_flux_length * 1e9:.2f} ns, '
+            if ro_delay is not None:
+                log.debug(f'readout delay = {ro_delay * 1e9:.2f} ns, '
                           f'set by user')
-            max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
-                                                    max_flux_length)
+            ro_delay = self.max_pulse_length(fp.pulses[0], sweep_points,
+                                             ro_delay)
             w = self.block_from_ops('wait', [])
-            w.block_end.update({'pulse_delay': max_flux_length})
+            w.block_end.update({'pulse_delay': ro_delay})
             fp_w = self.simultaneous_blocks('sim', [fp, w], block_align='center')
             ro = self.mux_readout(qb_names=[qbt, qbc],
                                   block_name=f'readout {n}',
