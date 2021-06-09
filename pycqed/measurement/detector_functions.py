@@ -590,6 +590,13 @@ class UHFQC_Base(Hard_Detector):
             t_callback = time.time()
             n_acq_last = [0] * len(self.UHFs)
             n_acq_add = [0] * len(self.UHFs)
+            progress_scaling = 1
+            if hasattr(self.detectors[0], 'nr_shots'):
+                if hasattr(self.detectors[0], 'classified'):
+                    if self.detectors[0].get_values_function_kwargs.get(
+                            'averaged', False):
+                        progress_scaling /= self.detectors[0].nr_shots
+
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
         while accumulated_time < self.UHFs[0].timeout() and \
                 not all(np.concatenate(list(gotem.values()))):
@@ -635,7 +642,8 @@ class UHFQC_Base(Hard_Detector):
                             # the following calculation works both if
                             # self.nr_averages is a vector/list or a scalar
                             progress = np.mean(np.multiply(
-                                n_acq, 1 / np.array(self.nr_averages)))
+                                np.array(n_acq)*progress_scaling,
+                                1 / np.array(self.nr_averages)))
                             self.progress_callback(progress)
                     except NoProgressError:
                         raise
