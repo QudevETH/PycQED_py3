@@ -8213,9 +8213,56 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 'corr_data'] = np.array(corr_data)
         self.save_processed_data(key='analysis_params_dict')
 
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+        for qbn in self.qb_names:
+            data = self.proc_data_dict['data_to_fit'][qbn][0]
+            sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                'msmt_sweep_points']
+            if self.num_cal_points != 0:
+                data = data[:-self.num_cal_points]
+
+            model = lmfit.Model(lambda t, slope, offset, delay:
+                                slope*np.abs((t-delay)) + offset)
+
+            delay_guess = sweep_points[np.argmin(data)]
+            offset_guess = np.min(data)
+            slope_guess = (data[-1] - offset_guess) / (sweep_points[-1] -
+                                                       delay_guess)
+
+            guess_pars = model.make_params(slope=slope_guess,
+                                           delay=delay_guess,
+                                           offset=offset_guess)
+
+            key = 'delay_fit_' + qbn
+            self.fit_dicts[key] = {
+                'fit_fn': model.func,
+                'fit_xvals': {'t': sweep_points},
+                'fit_yvals': {'data': data},
+                'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+
+        for qbn in self.qb_names:
+            self.proc_data_dict['analysis_params_dict'][qbn]['delay_fit'] = \
+                self.fit_dicts['delay_fit_' + qbn]['fit_res'].best_values['delay']
+            try:
+                stderr = self.fit_dicts['delay_fit_' + qbn]['fit_res'].params[
+                            'delay'].stderr
+                stderr = np.nan if stderr is None else stderr
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'delay_fit_stderr'] = stderr
+
+            except TypeError:
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'delay_fit_stderr'] \
+                    = 0
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
         self.options_dict.update({'TwoD': False,
                                   'plot_proj_data': False})
+        apd = self.proc_data_dict['analysis_params_dict']
         super().prepare_plots()
         rdd = self.raw_data_dict
         for qbn in self.qb_names:
@@ -8227,6 +8274,31 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 plot_name_suffix=qbn + 'fit',
                 qb_name=qbn)
 
+            if self.do_fitting:
+                self.plot_dicts['fit_' + base_plot_name] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': self.fit_res[ 'delay_fit_' + qbn],
+                    'setlabel': 'fit',
+                    'color': 'r',
+                    'do_legend': True,
+                    'legend_ncol': 2,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay_fit'] *
+                                                     1e9) \
+                          + ' $\pm$ {:.2f} ns'.format(apd[qbn][
+                                                          'delay_fit_stderr']
+                                                      * 1e9)
+                self.plot_dicts['text_msg_fit' + qbn] = {
+                    'fig_id': base_plot_name,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
             corr_data = self.proc_data_dict['analysis_params_dict'][qbn][
                 'corr_data']
             delays = self.proc_data_dict['analysis_params_dict'][qbn]['delays']
@@ -8266,7 +8338,6 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ymax': corr_data.max(),
                 'colors': 'gray'}
 
-            apd = self.proc_data_dict['analysis_params_dict']
             textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay'] * 1e9) \
                       + ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
                                                   * 1e9)
