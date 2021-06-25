@@ -24,7 +24,7 @@ class Test_UHFQC(unittest.TestCase):
     Test_UHFQC.uhf.awg_sequence_acquisition_and_pulse()
     Test_UHFQC.uhf.start()
     Test_UHFQC.uhf.stop()
-    
+
     # The program must be compiled exactly once at this point
     self.assertEqual(Test_UHFQC.uhf._awgModule.get_compilation_count(0), 1)
 
@@ -48,3 +48,15 @@ class Test_UHFQC(unittest.TestCase):
 
     # Now the compilation must have been executed again
     self.assertEqual(Test_UHFQC.uhf._awgModule.get_compilation_count(0), 2)
+
+  def test_async(self):
+        self.uhf.awgs_0_userregs_0(0)
+        self.uhf.awgs_0_triggers_0_level(0.0)
+        self.uhf.asyncBegin()
+        self.uhf.awgs_0_userregs_0(100)
+        self.uhf.awgs_0_triggers_0_level(1.123)
+        assert self.uhf.awgs_0_userregs_0() == 0
+        assert self.uhf.awgs_0_triggers_0_level() == 0
+        self.uhf.asyncEnd()
+        assert self.uhf.awgs_0_userregs_0() == 100
+        assert self.uhf.awgs_0_triggers_0_level() == 1.123
