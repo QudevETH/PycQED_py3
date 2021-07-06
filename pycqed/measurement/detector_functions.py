@@ -1680,7 +1680,7 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             thresh_data = np.isclose(np.repeat(
                 [np.arange(nr_states)],
                 data[:, nr_states*i: nr_states*(i+1)].shape[0], axis=0).T,
-                                     np.argmax(data, axis=1)).T
+                 np.argmax(data[:, nr_states*i: nr_states*(i+1)], axis=1)).T
             thresholded_data[:, nr_states * i: nr_states * i + nr_states] = \
                 thresh_data
 
