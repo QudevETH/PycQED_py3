@@ -38,7 +38,7 @@ class QuantumExperiment(CircuitBuilder):
                  analyze=True, temporary_values=(), drive="timedomain",
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  filter_segments_mask=None, df_kwargs=None, df_name=None,
-                 timer_kwargs=None,
+                 timer_kwargs=None, plot_sequence=False,
                  mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
@@ -150,6 +150,7 @@ class QuantumExperiment(CircuitBuilder):
         self.drive = drive
         self.callback = callback
         self.callback_condition = callback_condition
+        self.plot_sequence = plot_sequence
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -448,6 +449,9 @@ class QuantumExperiment(CircuitBuilder):
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
+
+        if self.plot_sequence:
+            self.plot()
 
     @Timer()
     def _configure_mc(self, MC=None):
@@ -762,17 +766,13 @@ class QuantumExperiment(CircuitBuilder):
                     s = list(seq.segments.keys())[s]
                 if save:
                     try:
-                        # FIXME: should we load a_tools in qexp? it means each
-                        #  time we reload qexp, we would have to reset the
-                        #  datafolder... For now, current implementation below
-                        #  will work if a_tools is already loaded.
-                        folder = a_tools.get_folder(timestamp=self.timestamp)
-                    except:
-                        log.warning('Could not determine folder of current '
+                        folder = ba.a_tools.get_folder(timestamp=self.timestamp)
+                    except KeyboardInterrupt as e:
+                        log.warning(f'Could not determine folder of current '
                                     'experiment. Sequence plot will be saved in '
-                                    'current directory.')
-                        folder = ""
-                    save_kwargs = dict(fname= folder + "/" +
+                                    f'current directory.: {e}')
+                        folder = "."
+                    save_kwargs = dict(fname= folder + "/" + f"{self.timestamp}_" +
                                               "_".join((seq.name, s)) + ".png",
                                        bbox_inches="tight")
                     plot_kwargs.update(dict(save_kwargs=save_kwargs,
