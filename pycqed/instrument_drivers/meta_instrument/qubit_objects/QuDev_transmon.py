@@ -68,6 +68,8 @@ class QuDev_transmon(Qubit):
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
+        self.add_parameter('instr_switch',
+            parameter_class=InstrumentRefParameter)
 
         # device parameters for user only
         # could be cleaned up
@@ -464,6 +466,12 @@ class QuDev_transmon(Qubit):
                            initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
                            vals=vals.Dict())
 
+        # switch parameters
+        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        self.add_parameter('switch_modes', parameter_class=ManualParameter,
+                           initial_value=DEFAULT_SWITCH_MODES,
+                           vals=vals.Dict())
+
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
 
@@ -819,7 +827,7 @@ class QuDev_transmon(Qubit):
                 nr_samples=nr_samples,
             )
 
-    def prepare(self, drive='timedomain'):
+    def prepare(self, drive='timedomain', switch='default'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -872,6 +880,10 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        if switch == 'default':
+            self.set_switch('spec' if drive.endswith('_spec') else 'modulated')
+        else:
+            self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         if weights_type is None:
@@ -956,6 +968,16 @@ class QuDev_transmon(Qubit):
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
+
+    def set_switch(self, switch_mode):
+        if self.instr_switch() is None:
+            return
+        switch = self.instr_switch.get_instr()
+        mode = self.switch_modes().get(switch_mode, None)
+        if mode is None:
+            log.warning(f'Switch mode {switch_mode} not configured for '
+                        f'{self.name}.')
+        switch.set_switch(mode)
 
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
