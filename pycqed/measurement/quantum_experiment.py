@@ -35,11 +35,11 @@ class QuantumExperiment(CircuitBuilder):
                  meas_objs=None, classified=False, MC=None,
                  label=None, exp_metadata=None, upload=True, measure=True,
                  analyze=True, temporary_values=(), drive="timedomain",
-                 sequences=(), sequence_function=None,
-                 sequence_kwargs=None, df_kwargs=None, df_name=None,
-                 timer_kwargs=None,
-                 mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
-                                                      awg_swf.SegmentSoftSweep),
+                 sequences=(), sequence_function=None, sequence_kwargs=None,
+                 df_kwargs=None, df_name=None, timer_kwargs=None,
+                 plot_sequence=False, mc_points=None,
+                 sweep_functions=(awg_swf.SegmentHardSweep,
+                                  awg_swf.SegmentSoftSweep),
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
                  callback_condition=lambda : True, **kw):
         """
@@ -142,6 +142,7 @@ class QuantumExperiment(CircuitBuilder):
         self.drive = drive
         self.callback = callback
         self.callback_condition = callback_condition
+        self.plot_sequence = plot_sequence
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -437,6 +438,9 @@ class QuantumExperiment(CircuitBuilder):
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
 
+        if self.plot_sequence:
+            self.plot()
+
     @Timer()
     def _configure_mc(self, MC=None):
         """
@@ -729,7 +733,7 @@ class QuantumExperiment(CircuitBuilder):
                         log.warning('Could not determine folder of current '
                                     'experiment. Sequence plot will be saved in '
                                     'current directory.')
-                        folder = ""
+                        folder = "."
                     import os
                     save_path = os.path.join(folder,
                                              "_".join((seq.name, s)) + ".png")
