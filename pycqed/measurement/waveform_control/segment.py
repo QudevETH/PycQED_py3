@@ -773,7 +773,7 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self, allow_overlap=False):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12):
         """
         Tests for all AWGs if any of their elements overlap.
 
@@ -809,9 +809,12 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if el_prev_end > el_new_start:
-                    msg = '{} and {} overlap on {}'.format(
-                        prev_el, el_list[i + 1][2], awg)
+                if (el_prev_end - el_new_start) > tol :
+                    print(el_prev_end, el_new_start)
+                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
+                    f'{el_list[i + 1][2]} (' \
+                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                          f'on {awg}'
                     if allow_overlap:
                         log.warning(msg)
                     else:
