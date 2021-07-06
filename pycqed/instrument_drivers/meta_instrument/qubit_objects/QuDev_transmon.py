@@ -2033,7 +2033,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             self.instr_pulsar.get_instr().start()
             MC.run('ge_uc_spectrum' + self.msmt_suffix)
 
@@ -2063,7 +2063,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_sweep_function(s)
             MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
             MC.set_detector_function(self.scope_fft_det)
@@ -2105,7 +2105,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(det.IndexDetector(
                 self.int_avg_det_spec, 0))
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
@@ -2155,7 +2155,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             d = self.scope_fft_det
             d.AWG = None
             idx = np.argmin(np.abs(d.get_sweep_vals() -
@@ -2201,7 +2201,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2255,7 +2255,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2369,7 +2369,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             ):
-                self.prepare(drive='timedomain')
+                self.prepare(drive='timedomain', switch='calib')
                 MC.set_detector_function(self.int_avg_det)
                 MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
 
