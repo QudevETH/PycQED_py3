@@ -223,7 +223,8 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                               dac_sweet_spot=0.0, V_per_phi0=None,
                               dac_flux_coefficient=None,
                               phi_park=None,
-                      branch='smallest'):
+                      branch='smallest',
+                          n_periods=(-1, 2)):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
     This function implements the inverse of "Qubit_dac_to_freq"
@@ -277,17 +278,18 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     elif branch == 'negative':
         dac_voltage = dac_voltage_neg
     elif branch == 'smallest':
-        if np.ndim(phi) != 0:
-            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
-            idxs0 = np.argmin(np.abs(dac_voltage), 0)
-            idxs1 = np.arange(len(dac_voltage_pos))
-            dac_voltage = dac_voltage[idxs0, idxs1]
-        else:
-            dac_voltage = dac_voltage_pos \
-                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
-                else dac_voltage_neg
-    else:
-        raise ValueError('branch {} not recognized'.format(branch))
+        branch = 0
+    if isinstance(branch, (int, float)):
+        if np.ndim(phi) == 0:
+            phi = np.array([phi])
+        dac_voltage = np.array([dac_voltage_pos + n*V_per_phi0 for n in range(
+            *n_periods)] + [dac_voltage_neg + n*V_per_phi0 for n in range(
+            *n_periods)])
+        idxs0 = np.argmin(np.abs(dac_voltage - branch), 0)
+        idxs1 = np.arange(len(dac_voltage_pos))
+        dac_voltage = dac_voltage[idxs0, idxs1]
+    # else:
+    #     raise ValueError('branch {} not recognized'.format(branch))
 
     return dac_voltage[0] if return_float else dac_voltage
 
