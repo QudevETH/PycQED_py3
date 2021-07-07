@@ -464,6 +464,7 @@ class BaseDataAnalysis(object):
 
         """
         n_shots = 1
+        TwoD = False
         if 'measured_data' in raw_data_dict and \
                 'value_names' in raw_data_dict:
             measured_data = raw_data_dict.pop('measured_data')
@@ -482,6 +483,7 @@ class BaseDataAnalysis(object):
             hybrid_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
+                TwoD = True
                 hsp = np.unique(mc_points[0])
                 ssp, counts = np.unique(mc_points[1:], return_counts=True)
                 if counts[0] != len(hsp):
@@ -522,6 +524,7 @@ class BaseDataAnalysis(object):
                 raise ValueError('Shape mismatch between data and ro channels.')
             for i, ro_ch in enumerate(value_names):
                 if 'soft_sweep_points' in raw_data_dict:
+                    TwoD = True
                     hsl = len(raw_data_dict['hard_sweep_points'])
                     ssl = len(raw_data_dict['soft_sweep_points'])
                     if hybrid_measurement:
@@ -569,7 +572,7 @@ class BaseDataAnalysis(object):
         if soft_sweep_mask is not None:
             raw_data_dict['soft_sweep_points'] = raw_data_dict[
                 'soft_sweep_points'][soft_sweep_mask]
-        return raw_data_dict
+        return raw_data_dict, TwoD
 
     def extract_data(self):
         """
@@ -613,7 +616,7 @@ class BaseDataAnalysis(object):
                     'cal_points'))
             except TypeError:
                 cp = CalibrationPoints([], [])
-            self.raw_data_dict = self.add_measured_data(
+            self.raw_data_dict, TwoD = self.add_measured_data(
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
@@ -621,22 +624,32 @@ class BaseDataAnalysis(object):
                                          default_value=dict()),
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
+
+            if 'TwoD' not in self.options_dict:
+                self.options_dict['TwoD'] = TwoD
         else:
             temp_dict_list = []
+            twod_list = []
             self.metadata = [rd['exp_metadata'] for
                              rd in self.raw_data_dict]
 
             for i, rd_dict in enumerate(self.raw_data_dict):
                 if len(rd_dict['exp_metadata']) == 0:
                     self.metadata[i] = {}
-                temp_dict_list.append(
-                    self.add_measured_data(
-                        rd_dict,
-                        self.get_param_value('compression_factor', 1, i),
-                        soft_sweep_mask=self.get_param_value(
-                            'soft_sweep_mask', None)
-                    ),)
+                rdd, TwoD = self.add_measured_data(
+                    rd_dict,
+                    self.get_param_value('compression_factor', 1, i),
+                    soft_sweep_mask=self.get_param_value(
+                        'soft_sweep_mask', None)
+                )
+                temp_dict_list.append(rdd,)
+                twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
+            if 'TwoD' not in self.options_dict:
+                if not all(twod_list):
+                    raise ValueError('Not all measurements have the same '
+                                     'number of sweep dimensions.')
+                self.options_dict['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
