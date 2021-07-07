@@ -794,6 +794,11 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
             if threshs is not None:
                 UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
+def get_channel_map(qbs, ge=True, ro=True, flux=True):
+    return {qb.name: ([qb.ge_I_channel(), qb.ge_Q_channel()] if ge else []) +
+                     ([qb.ro_I_channel(), qb.ro_Q_channel()] if ro else []) +
+                     ([qb.flux_pulse_channel()] if flux else [])
+            for qb in qbs}
 
 def find_symmetry_index(data):
     data = data.copy()
