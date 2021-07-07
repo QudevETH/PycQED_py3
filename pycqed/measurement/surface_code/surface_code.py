@@ -3,7 +3,7 @@ import pycqed.measurement.quantum_experiment as qe_mod
 import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.calibration.calibration_points as cp_mod
 from pycqed.measurement import sweep_points as sp_mod
-
+import numpy as np
 class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     block_align = 'center'
     type_to_ops_map = {
@@ -59,14 +59,17 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         if self.mc_points_override is not None:
             self.mc_points[0] = self.mc_points_override
 
-        # TODO (Nahan): in the future, we might want to put the experimental metadata update
+        # TODO (Nathan): in the future, we might want to put the experimental
+        #  metadata update
         #  at the beginning of the measurement or in the "prepare measurement", such that
         #  we are sure that the "latest" values of these parameters are used when saving the
         #  metadata.
         self.exp_metadata.update({"nr_cycles": self.nr_cycles,
                                   "ancilla_dd": self.ancilla_dd,
                                   "ancilla_reset": self.ancilla_reset,
-                                  "two_qb_gates_off": self.two_qb_gates_off})
+                                  "two_qb_gates_off": self.two_qb_gates_off,
+                                  'skip_last_ancilla_readout':
+                                      self.skip_last_ancilla_readout})
 
 
     def _parse_finalizations(self, basis_rots):
