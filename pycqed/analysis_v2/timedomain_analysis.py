@@ -5811,13 +5811,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
         else:
             self.fit_keys = ['exp_decay_']
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
+        def add_fit_dict(qbn, data, fit_keys):
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
-            for i, key in enumerate([k + qbn for k in self.fit_keys]):
+            for i, key in enumerate(fit_keys):
                 exp_damped_decay_mod = lmfit.Model(fit_mods.ExpDampOscFunc)
                 guess_pars = fit_mods.exp_damp_osc_guess(
                     model=exp_damped_decay_mod, data=data, t=sweep_points,
@@ -5839,6 +5838,16 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'fit_yvals': {'data': data},
                     'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                for i, data in enumerate(all_data):
+                    fit_keys = [f'{fk}{qbn}_{i}' for fk in self.fit_keys]
+                    add_fit_dict(qbn, data, fit_keys)
+            else:
+                fit_keys = [f'{fk}{qbn}' for fk in self.fit_keys]
+                add_fit_dict(qbn, all_data, fit_keys)
+
     def analyze_fit_results(self):
         if 'artificial_detuning' in self.options_dict:
             artificial_detuning_dict = OrderedDict(
@@ -5855,34 +5864,46 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             raise ValueError('"artificial_detuning" not found.')
 
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
-            for key in [k + qbn for k in self.fit_keys]:
-                self.proc_data_dict['analysis_params_dict'][qbn][key] = \
-                    OrderedDict()
-                fit_res = self.fit_dicts[key]['fit_res']
-                for par in fit_res.params:
-                    if fit_res.params[par].stderr is None:
-                        fit_res.params[par].stderr = 0
+        for k, fit_dict in self.fit_dicts.items():
+            split_key = k.split('_')
+            fit_type = '_'.join(split_key[:2])
+            qbn = split_key[2]
+            if len(split_key[2:]) == 1:
+                outer_key = qbn
+            else:
+                # TwoD
+                outer_key = '_'.join(split_key[2:])
 
-                trans_name = self.get_transition_name(qbn)
-                old_qb_freq = self.raw_data_dict[f'{trans_name}_freq_'+qbn]
-                if old_qb_freq != old_qb_freq:
-                    old_qb_freq = 0
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'old_qb_freq'] = old_qb_freq
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'new_qb_freq'] = old_qb_freq + \
-                                     artificial_detuning_dict[qbn] - \
-                                     fit_res.best_values['frequency']
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'T2_star'] = fit_res.best_values['tau']
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'T2_star_stderr'] = fit_res.params['tau'].stderr
-                self.proc_data_dict['analysis_params_dict'][qbn][key][
-                    'artificial_detuning'] = artificial_detuning_dict[qbn]
+            if outer_key not in self.proc_data_dict['analysis_params_dict']:
+                self.proc_data_dict['analysis_params_dict'][outer_key] = \
+                    OrderedDict()
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type] = \
+                OrderedDict()
+
+            fit_res = fit_dict['fit_res']
+            for par in fit_res.params:
+                if fit_res.params[par].stderr is None:
+                    fit_res.params[par].stderr = 0
+
+            trans_name = self.get_transition_name(qbn)
+            old_qb_freq = self.raw_data_dict[f'{trans_name}_freq_'+qbn]
+            if old_qb_freq != old_qb_freq:
+                old_qb_freq = 0
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'old_qb_freq'] = old_qb_freq
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'new_qb_freq'] = old_qb_freq + \
+                                 artificial_detuning_dict[qbn] - \
+                                 fit_res.best_values['frequency']
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'T2_star'] = fit_res.best_values['tau']
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'T2_star_stderr'] = fit_res.params['tau'].stderr
+            self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
+                'artificial_detuning'] = artificial_detuning_dict[qbn]
+
         hdf_group_name_suffix = self.options_dict.get(
             'hdf_group_name_suffix', '')
         self.save_processed_data(key='analysis_params_dict' +
@@ -5892,25 +5913,41 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
         super().prepare_plots()
 
         if self.do_fitting:
-            ramsey_dict = self.proc_data_dict['analysis_params_dict']
-            for qbn in self.qb_names:
-                base_plot_name = 'Ramsey_' + qbn
+            apd = self.proc_data_dict['analysis_params_dict']
+            for outer_key, ramsey_pars_dict in apd.items():
+                qbn, ii = (outer_key + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                    'sweep_points']
+                if len(ii):
+                    label, unit, vals = self.get_first_sweep_param(
+                        qbn, dimension=1)
+                    title_suffix = (f'{ii}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(ii)], unit,
+                                          return_type=lambda x: f'{x:0.1f}')))
+                    daa = self.metadata.get('drive_amp_adaptation', {}).get(
+                        qbn, None)
+                    if daa is not None:
+                        sweep_points = sweep_points * daa[int(ii)]
+                else:
+                    title_suffix = ''
+                base_plot_name = 'Ramsey_' + outer_key
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
+                    data=dtf[int(ii)] if ii != '' else dtf,
+                    sweep_points=sweep_points,
                     plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix)
 
-                exp_decay_fit_key = self.fit_keys[0] + qbn
-                old_qb_freq = ramsey_dict[qbn][
-                    exp_decay_fit_key]['old_qb_freq']
+                exp_dec_k = self.fit_keys[0][:-1]
+                old_qb_freq = ramsey_pars_dict[exp_dec_k]['old_qb_freq']
                 textstr = ''
                 T2_star_str = ''
 
-                for i, key in enumerate([k + qbn for k in self.fit_keys]):
-
-                    fit_res = self.fit_dicts[key]['fit_res']
-                    self.plot_dicts['fit_' + key] = {
+                for i, fit_type in enumerate(ramsey_pars_dict):
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}']['fit_res']
+                    self.plot_dicts[f'fit_{outer_key}_{fit_type}'] = {
                         'fig_id': base_plot_name,
                         'plotfn': self.plot_fit,
                         'fit_res': fit_res,
@@ -5927,9 +5964,9 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                         ('$f_{{qubit \_ new \_ {{{key}}} }}$ = '.format(
                             key=('exp' if i == 0 else 'gauss')) +
                             '{:.6f} GHz '.format(
-                            ramsey_dict[qbn][key]['new_qb_freq']*1e-9) +
-                            '$\pm$ {:.2E} GHz '.format(
-                            ramsey_dict[qbn][key][
+                            ramsey_pars_dict[fit_type]['new_qb_freq']*1e-9) +
+                                '$\pm$ {:.2E} GHz '.format(
+                            ramsey_pars_dict[fit_type][
                                 'new_qb_freq_stderr']*1e-9))
                     T2_star_str += \
                         ('\n$T_{{2,{{{key}}} }}^\star$ = '.format(
@@ -5942,21 +5979,20 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 textstr += '\n$f_{qubit \_ old}$ = '+'{:.6f} GHz '.format(
                     old_qb_freq*1e-9)
                 textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(
-                    (ramsey_dict[qbn][exp_decay_fit_key]['new_qb_freq'] -
+                    (ramsey_pars_dict[exp_dec_k]['new_qb_freq'] -
                     old_qb_freq)*1e-6) + '$\pm$ {:.2E} MHz'.format(
-                    self.fit_dicts[exp_decay_fit_key]['fit_res'].params[
+                    self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].stderr*1e-6) +
                     '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.2E} MHz'.format(
-                    self.fit_dicts[exp_decay_fit_key]['fit_res'].params[
+                    self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].value*1e-6,
-                    self.fit_dicts[exp_decay_fit_key]['fit_res'].params[
+                    self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].stderr*1e-6))
                 textstr += T2_star_str
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(
-                    ramsey_dict[qbn][exp_decay_fit_key][
-                        'artificial_detuning']*1e-6)
+                    ramsey_pars_dict[exp_dec_k]['artificial_detuning']*1e-6)
 
-                self.plot_dicts['text_msg_' + qbn] = {
+                self.plot_dicts['text_msg_' + outer_key] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': -0.025,
@@ -5965,14 +6001,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'plotfn': self.plot_text,
                     'text_string': textstr}
 
-                self.plot_dicts['half_hline_' + qbn] = {
+                self.plot_dicts['half_hline_' + outer_key] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
                     'y': 0.5,
-                    'xmin': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][0],
-                    'xmax': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][-1],
+                    'xmin': sweep_points[0],
+                    'xmax': sweep_points[-1],
                     'colors': 'gray'}
 
 
