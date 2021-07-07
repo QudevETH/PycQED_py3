@@ -5346,9 +5346,9 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 phi_err=phase_std,
                 period_const=n_piHalf_pulse*np.pi + np.pi/2,
                 cov=cov_freq_phase)
-        except Exception as e:
-            log.error(f'{e}\nSome stderrs from fit are None, setting stderr '
-                      f'of pi and pi/2 pulses to 0!')
+        except Exception:
+            log.warning(f'Some stderrs from fit are None, setting stderr '
+                        f'of pi and pi/2 pulses to 0!')
             piPulse_std = 0
             piHalfPulse_std = 0
 
