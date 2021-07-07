@@ -227,8 +227,10 @@ class two_par_joint_sweep(Soft_Sweep):
 
 
 class Transformed_Sweep(Soft_Sweep):
-    """A sweep soft sweep function that calls an other sweep function with
-    a transformation applied."""
+    """
+    A soft sweep function that calls another sweep function with a
+    transformation applied.
+    """
 
     def __init__(self,
                  sweep_function,
@@ -265,8 +267,9 @@ class Transformed_Sweep(Soft_Sweep):
 
 
 class Offset_Sweep(Transformed_Sweep):
-    """A sweep soft sweep function that calls an other sweep function with
-    an offset."""
+    """
+    A soft sweep function that calls an other sweep function with an offset.
+    """
 
     def __init__(self,
                  sweep_function,
@@ -283,6 +286,23 @@ class Offset_Sweep(Transformed_Sweep):
     def default_param_name(self):
         return self.sweep_function.parameter_name + \
                ' {:+} {}'.format(-self.offset, self.sweep_function.unit)
+
+
+class Indexed_Sweep(Transformed_Sweep):
+    """
+    A soft sweep function that calls another sweep function with parameter
+    values taken from a provided list of values.
+    """
+
+    def __init__(self, sweep_function, values, name=None, parameter_name=None,
+                 unit=''):
+        self.values = values
+        super().__init__(sweep_function,
+                 transformation=lambda i, v=self.values : v[i],
+                 name=name, parameter_name=parameter_name, unit=unit)
+
+    def default_param_name(self):
+        return f'index of {self.sweep_function.parameter_name}'
 
 
 class MajorMinorSweep(Soft_Sweep):
