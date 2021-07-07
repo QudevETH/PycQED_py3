@@ -227,7 +227,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         element_name = f'readouts_{readout_round}_{cycle}'
         pulse_modifs = {'all': dict(element_name=element_name,
                                     ref_point='start')}
-        ops = [f'RO {a}' for a in ancillas]
+        ro_ops = [rpm.get('RO opcode', 'RO') for rpm in round_parity_maps]
+        ops = [f'{op} {a}' for a, op in zip(ancillas, ro_ops)]
         ops += [f'Acq {q}' for q in
                 self.readout_rounds[readout_round]['dummy_readout_qbs']]
         ops += [f'RO {q}' for q in
@@ -240,14 +241,33 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                                        pulse_modifs=pulse_modifs)
 
         element_name = f'resets_{readout_round}_{cycle}'
-        ops = [f'I {a}' for a in ancillas] + [f'X180 {a}' for a in ancillas]
-        pulse_modifs = {i: dict(
-            element_name=element_name,
-            codeword=i // len(ancillas),
-            ref_point='start')
-            for i in range(len(ops))}
-        reset_block = self.block_from_ops(element_name, ops,
-                                          pulse_modifs=pulse_modifs)
+
+        thresh_map = self.get_prep_params(ancillas).get('threshold_mapping', {})
+        state_ops = dict(g=["I {a:}"], e=["X180 {a:}"],
+                             f=["X180_ef {a:}", "X180 {a:}"])
+
+        ancilla_reset_blocks = []
+        for a in ancillas:
+            if a not in thresh_map:
+                raise ValueError(
+                    f'Could not find threshold map for ancilla {a} in threshold map obtained '
+                    f'from prep_params: {thresh_map}')
+            ops_and_codewords = [(state_ops[s], c) for c, s in
+                                 thresh_map[a].items()]
+            # print(ops_and_codewords)
+            cw_blocks = []
+            for ops, c in ops_and_codewords:
+                cw_blocks.append(self.block_from_ops(f'{element_name}_{a}_codeword_{c}',
+                                                     ops, fill_values={'a': a},
+                                                     pulse_modifs={i: {
+                                                        "codeword": c,
+                                                     "element_name": element_name}
+                                                                 for i in
+                                                                 range(len(ops))}))
+            ancilla_reset_blocks.append(
+                self.simultaneous_blocks(f"{element_name}_{a}", cw_blocks))
+        reset_block = self.simultaneous_blocks(element_name, ancilla_reset_blocks)
+
 
         return ro_block, reset_block
 
@@ -259,14 +279,31 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             r, i = self._readout_round_readout_block(readout_round, cycle)
             pulses += g.build(ref_pulse='start', block_delay=round_delay)
             if self.skip_last_ancilla_readout and cycle == self.nr_cycles - 1 \
-                    and readout_round == len(self.readout_rounds) - 1:
+                    and readout_round == len(self.readout_rounds) - 1 and \
+                    not (self.ancilla_reset == "late"):
                 continue
             ro_name = f'readouts_{readout_round}_{cycle}'
             round_delay += readout_round_pars['round_length']
             if self.ancilla_reset:
-                pulses += i.build(
-                    ref_pulse=ro_name+'-|-start',
-                    block_delay=readout_round_pars['reset_delay'])
+                if self.ancilla_reset == "late":
+                    # put reset pulses right after last pulse on ancilla
+                    ref_pulse = pulses[-1]['name'] # gate_block_end_name
+                    block_delay = 10e-9
+
+                    pulses += i.build(ref_pulse=ref_pulse, block_delay=block_delay)
+                    if self.skip_last_ancilla_readout and cycle == self.nr_cycles - 1 \
+                            and readout_round == len(self.readout_rounds) - 1:
+                        continue
+                    pulses += r.build(name=ro_name)
+
+                else:
+                    # referenced to start of previous ro + some delay
+                    ref_pulse = ro_name + '-|-start'
+                    block_delay = readout_round_pars['reset_delay']
+                    pulses += r.build(name=ro_name)
+                    pulses += i.build(ref_pulse=ref_pulse, block_delay=block_delay)
+            else:
+                pulses += r.build(name=ro_name)
         return block_mod.Block(f'cycle_{cycle}', pulses)
 
 
