@@ -562,7 +562,7 @@ class CalibBuilder(MultiTaskingExperiment):
         """
         self.update = update
         self.callback = kw.get('callback', self.run_update)
-        self.callback_condition = lambda : self.update
+        self.callback_condition = lambda : self.update and self.analyze
 
     def run_update(self, **kw):
         # must be overriden by child classes to update the
@@ -1269,9 +1269,12 @@ def measure_flux_pulse_timing_between_qubits(task_list, pulse_length,
     pulse_lengths = np.array([pulse_length])
     sweep_points = SweepPoints('pulse_length', pulse_lengths, 's',
                                       dimension=1)
-    Chevron(task_list, sweep_points=sweep_points, analyze=False, label=label, **kw)
+    qe = Chevron(task_list, sweep_points=sweep_points, analyze=False,
+             label=label, **kw)
     if analyze:
-        tda.FluxPulseTimingBetweenQubitsAnalysis(qb_names=[task_list[0]['qbr']])
+        qe.analysis = tda.FluxPulseTimingBetweenQubitsAnalysis(
+            qb_names=[task_list[0]['qbr']])
+    return qe
 
 
 class Chevron(CalibBuilder):

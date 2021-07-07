@@ -317,6 +317,8 @@ def standard_qubit_pulses_to_rotations(pulse_list: List[Tuple]) \
     """
     standard_pulses = {
         'I': qtp.qeye(2),
+        'X0': qtp.qeye(2),
+        'Z0': qtp.qeye(2),
         'X180': qtp.rotation(qtp.sigmax(), np.pi),
         'mX180': qtp.rotation(qtp.sigmax(), -np.pi),
         'Y180': qtp.rotation(qtp.sigmay(), np.pi),
@@ -345,6 +347,8 @@ def standard_qubit_pulses_to_pauli(pulse_list: List[Tuple]) \
     """
     standard_pulses = {
         'I': 'Z',
+        'X0': 'Z',
+        'Z0': 'Z',
         'X180': 'mZ',
         'mX180': 'mZ',
         'Y180': 'mZ',
