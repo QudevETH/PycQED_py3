@@ -54,7 +54,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             init_kwargs={'pulse_modifs': {'all': {
                 'element_name': 'init_element'}}},
             final_kwargs={'pulse_modifs': {'all': {
-                'element_name': 'final_element'}}},
+                'element_name': 'final_element', 'pulse_delay':5e-9}}},
         )
         if self.mc_points_override is not None:
             self.mc_points[0] = self.mc_points_override
@@ -216,6 +216,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                   for op in ops_final]
         final_block = self.simultaneous_blocks('final_block', blocks,
                                                block_align=self.block_align)
+        final_block.pulses[-1]['pulse_delay'] = 6e-9
         blocks = [init_block] + cz_step_blocks + [final_block]
 
         return self.sequential_blocks(element_name, blocks)
