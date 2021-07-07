@@ -10,8 +10,7 @@ from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from copy import deepcopy
 
 import sys
-from pycqed.analysis_v3 import pipeline_analysis as pla
-pla.search_modules.add(sys.modules[__name__])
+pp_mod.search_modules.add(sys.modules[__name__])
 
 # Create pipelines
 def ramsey_iq_pipeline(meas_object_name):
@@ -98,23 +97,23 @@ def analyze_ramsey_fit_results(data_dict, keys_in, **params):
         if old_qb_freq != old_qb_freq:
             old_qb_freq = 0
         hlp_mod.add_param(f'{mobjn}.old_freq', old_qb_freq, data_dict,
-                          replace_value=True)
+                          add_param_method='replace')
         for fit_name in fit_names:
             key = fit_name + keyi
             fit_res = fit_dicts[key]['fit_res']
             hlp_mod.add_param(f'{mobjn}.new_freq ' + fit_name,
                               old_qb_freq + artificial_detuning_dict[mobjn] -
                               fit_res.best_values['frequency'],
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.new_freq ' + fit_name + '_stderr',
                               fit_res.params['frequency'].stderr,
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.T2_star ' + fit_name,
                               fit_res.best_values['tau'],
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.T2_star ' + fit_name + '_stderr',
                               fit_res.params['tau'].stderr,
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
 
 
 def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
@@ -243,5 +242,5 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
             'colors': 'gray'}
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
-                      update_value=True)
+                      add_param_method='update')
 

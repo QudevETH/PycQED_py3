@@ -203,7 +203,7 @@ class QuDev_transmon(Qubit):
                            label='Optimized weights for Q channel',
                            parameter_class=ManualParameter)
         self.add_parameter('acq_weights_type', initial_value='SSB',
-                           vals=vals.Enum('SSB', 'DSB', 'optimal',
+                           vals=vals.Enum('SSB', 'DSB', 'DSB2', 'optimal',
                                           'square_rot', 'manual',
                                           'optimal_qutrit'),
                            docstring=(
@@ -427,7 +427,7 @@ class QuDev_transmon(Qubit):
 
     def update_detector_functions(self):
         if self.acq_Q_channel() is None or \
-           self.acq_weights_type() not in ['SSB', 'DSB', 'optimal_qutrit']:
+           self.acq_weights_type() not in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
             channels = [self.acq_I_channel()]
         else:
             channels = [self.acq_I_channel(), self.acq_Q_channel()]
@@ -629,10 +629,18 @@ class QuDev_transmon(Qubit):
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
             elif weights_type == 'DSB':
+                # same as SSB but using only the first physical input channel
+                # doesn't allow to distinguish positive and negative sideband
                 uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0+0j)
+                uhf.set('qas_0_rotations_{}'.format(c1), 1.0 + 0j)
                 uhf.set('qas_0_integration_weights_{}_real'.format(c2), sinI)
-                uhf.set('qas_0_rotations_{}'.format(c2), 1.0+0j)
+                uhf.set('qas_0_rotations_{}'.format(c2), 1.0 + 0j)
+            elif weights_type == 'DSB2':
+                # same as DSB but using the second physical input channel
+                uhf.set('qas_0_rotations_{}'.format(c1), 0.0 + 1.0j)
+                uhf.set('qas_0_rotations_{}'.format(c2), 0.0 - 1.0j)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
             elif weights_type == 'square_rot':
                 uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
                 uhf.set('qas_0_rotations_{}'.format(c1), 1.0+1.0j)
@@ -2113,7 +2121,7 @@ class QuDev_transmon(Qubit):
                     self.acq_state_prob_mtx(state_prob_mtx)
                 return state_prob_mtx, classifier_params
             else:
-                rotate = self.acq_weights_type() in {'SSB', 'DSB'}
+                rotate = self.acq_weights_type() in {'SSB', 'DSB', 'DSB2'}
                 preselection = prep_params['preparation_type'] == 'preselection'
                 channels = det_func.value_names
                 if preselection:

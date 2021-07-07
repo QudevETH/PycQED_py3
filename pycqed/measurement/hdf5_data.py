@@ -297,7 +297,8 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
                 # lists of strings needs some special care, see also
                 # the writing part in the writing function above.
                 list_of_str = [x[0] for x in item[()]]
-                data_dict[key] = list_of_str
+                data_dict[key] = [x.decode('utf-8') if isinstance(x, bytes)
+                                  else x for x in list_of_str]
 
             else:
                 data_dict[key] = list(item[()])

@@ -285,11 +285,11 @@ class MeasurementAnalysis(object):
         '''
         s = self.g.attrs[key]
         # converts byte type to string because of h5py datasaving
-        if type(s) == bytes:
+        if isinstance(s, bytes):
             s = s.decode('utf-8')
         # If it is an array of value decodes individual entries
-        if type(s) == np.ndarray:
-            s = [s.decode('utf-8') for s in s]
+        if isinstance(s, np.ndarray) or isinstance(s, list):
+            s = [s.decode('utf-8') if isinstance(s, bytes) else s for s in s]
         return s
 
     def group_values(self, group_name):

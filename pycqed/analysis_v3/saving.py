@@ -5,6 +5,7 @@ import os
 import sys
 import h5py
 import lmfit
+import datetime
 import traceback
 import numpy as np
 import qutip as qtp
@@ -31,7 +32,7 @@ class Save:
     """
     def __init__(self, data_dict, savedir=None, save_processed_data=True,
                  save_figures=True, filename=None, extension='hdf5',
-                 filter_keys=None, **save_figs_params):
+                 filter_keys=None, add_timestamp=False, **save_figs_params):
 
         opt = np.get_printoptions()
         np.set_printoptions(threshold=sys.maxsize)
@@ -47,7 +48,7 @@ class Save:
                     savedir = hlp_mod.get_param(
                         'timestamps', data_dict, raise_error=True,
                         error_message='Either folders or timestamps must be '
-                                      'in data_dict is save_dir is not '
+                                      'in data_dict if save_dir is not '
                                       'specified.')
                     savedir = a_tools.get_folder(savedir[-1])
                 else:
@@ -57,16 +58,20 @@ class Save:
             if filename is None:
                 filename = 'AnalysisResults'
             filename = self.savedir.split('\\')[-1] + f'_{filename}.{extension}'
+            if add_timestamp:
+                filename = '{:%Y%m%d_%H%M%S}--{}'.format(
+                    datetime.datetime.now(), filename)
             self.filepath = self.savedir + '\\' + filename
             if save_processed_data:
                 self.save_data_dict()
-            if save_figures:
+            if save_figures and hlp_mod.get_param('figures', self.data_dict) \
+                    is not None:
                 self.save_figures(**save_figs_params)
 
             np.set_printoptions(**opt)
         except Exception:
             np.set_printoptions(**opt)
-            log.warning("Unhandled error during init of analysis!")
+            log.warning("Unhandled error during saving!")
             log.warning(traceback.format_exc())
 
     def save_data_dict(self):
@@ -96,14 +101,24 @@ class Save:
                     if value.get('is_data_dict', False):
                         self.dump_to_file(value, group)
                     else:
-                        value_to_save = {k: v for k, v in value.items() if
-                                         k not in self.filter_keys}
+                        value_to_save = {}
+                        for k, v in value.items():
+                            if k not in self.filter_keys:
+                                if isinstance(v, lmfit.model.ModelResult):
+                                    frd = {f'{k}': _convert_dict_rec(v)}
+                                    self.dump_to_file(frd,
+                                                      entry_point=group)
+                                else:
+                                    value_to_save[k] = v
                         h5d.write_dict_to_hdf5(value_to_save,
                                                entry_point=group)
                 elif isinstance(value, np.ndarray):
                     group.create_dataset(key, data=value)
                 elif isinstance(value, qtp.qobj.Qobj):
                     group.create_dataset(key, data=value.full())
+                elif isinstance(value, lmfit.model.ModelResult):
+                    h5d.write_dict_to_hdf5(_convert_dict_rec(value),
+                                           entry_point=group)
                 else:
                     try:
                         val = repr(value)
@@ -138,7 +153,7 @@ class Save:
                 del group[fr_key]
                 fr_group = group.create_group(fr_key)
 
-            d = _convert_dict_rec(deepcopy(fit_res))
+            d = _convert_dict_rec(fit_res)
             h5d.write_dict_to_hdf5(d, entry_point=fr_group)
 
     def save_figures(self, **params):
@@ -206,15 +221,16 @@ class Save:
 
 def _convert_dict_rec(obj):
     try:
+        obj_conv = deepcopy(obj)
         # is iterable?
-        for k in obj:
-            obj[k] = _convert_dict_rec(obj[k])
+        for k in obj_conv:
+            obj_conv[k] = _convert_dict_rec(obj_conv[k])
     except TypeError:
         if isinstance(obj, lmfit.model.ModelResult):
-            obj = _flatten_lmfit_modelresult(obj)
+            obj_conv = _flatten_lmfit_modelresult(obj)
         else:
-            obj = str(obj)
-    return obj
+            obj_conv = deepcopy(str(obj))
+    return obj_conv
 
 
 def _flatten_lmfit_modelresult(model):

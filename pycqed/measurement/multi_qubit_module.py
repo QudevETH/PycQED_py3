@@ -201,7 +201,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
         if uhf not in channels:
             channels[uhf] = []
         channels[uhf] += [qb.acq_I_channel()]
-        if qb.acq_weights_type() in ['SSB', 'DSB', 'optimal_qutrit']:
+        if qb.acq_weights_type() in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
             if qb.acq_Q_channel() is not None:
                 channels[uhf] += [qb.acq_Q_channel()]
 
@@ -573,12 +573,21 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                 'analysis_params']['classifier_params'][qb.name]
             if update:
                 qb.acq_classifier_params(classifier_params)
+                if 'state_prob_mtx_masked' in a.proc_data_dict[
+                        'analysis_params']:
+                    qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
+                        'state_prob_mtx_masked'][qb.name])
+                else:
+                    log.warning('Measurement was not run with preselection. '
+                                'state_prob_matx updated with non-masked one.')
+                    qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
+                        'state_prob_mtx'][qb.name])
         return a
 
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
-                         acq_weights_basis=None, orthonormalize=False,
+                         acq_weights_basis=None, orthonormalize=True,
                          update=True, measure=True):
     """
     Measures time traces for specified states and
@@ -1932,6 +1941,7 @@ def measure_drive_cancellation(
         if prep_params is None:
             prep_params = dev.get_prep_params(ramsey_qubits)
 
+        sweep_points = deepcopy(sweep_points)
         sweep_points.add_sweep_dimension()
         sweep_points.add_sweep_parameter('phase', phases, 'deg', 'Ramsey phase')
 

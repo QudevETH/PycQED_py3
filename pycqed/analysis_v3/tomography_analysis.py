@@ -16,8 +16,7 @@ from pycqed.analysis_v3 import data_processing as dat_proc_mod
 from copy import deepcopy
 
 import sys
-from pycqed.analysis_v3 import pipeline_analysis as pla
-pla.search_modules.add(sys.modules[__name__])
+pp_mod.search_modules.add(sys.modules[__name__])
 
 
 def standard_qubit_pulses_to_rotations(pulse_list):
@@ -32,6 +31,8 @@ def standard_qubit_pulses_to_rotations(pulse_list):
     """
     standard_pulses = {
         'I': qtp.qeye(2),
+        'X0': qtp.qeye(2),
+        'Z0': qtp.qeye(2),
         'X180': qtp.sigmax(),
         'mX180': qtp.rotation(qtp.sigmax(), -np.pi),
         'Y180': qtp.sigmay(),
@@ -115,6 +116,10 @@ def state_tomography_analysis(data_dict, keys_in,
     Assumptions:
         - the data indicated by keys_in is assumed to be thresholded shots
     """
+    meas_obj_names = hlp_mod.get_measurement_properties(
+        data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
+        **params)
+
     hlp_mod.pop_param('keys_out', data_dict, node_params=params)
 
     cp = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['cp'],
@@ -138,7 +143,8 @@ def state_tomography_analysis(data_dict, keys_in,
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, **params)
     if n_readouts is None:
         n_readouts = (do_preselection + 1) * (
-                len(basis_rots)**2 + (len(cp.states) if cp is not None else 0))
+                len(basis_rots)**len(meas_obj_names) +
+                (len(cp.states) if cp is not None else 0))
         hlp_mod.add_param('n_readouts', n_readouts, data_dict, **params)
 
     # get observables
@@ -149,23 +155,29 @@ def state_tomography_analysis(data_dict, keys_in,
         observables = hlp_mod.get_param('observables', data_dict)
 
     # get probability table
-    dat_proc_mod.calculate_probability_table(data_dict, keys_in=keys_in,
+    keys_in_extra = hlp_mod.get_param('keys_in_extra', data_dict,
+                                      default_value=[], **params)
+    dat_proc_mod.calculate_probability_table(data_dict, keys_in=keys_in+keys_in_extra,
                                              keys_out=['probability_table'],
                                              n_readouts=n_readouts,
                                              observables=observables, **params)
 
     # get measurement_ops and cov_matrix_meas_obs
     measurement_ops = hlp_mod.get_param('measurement_ops', data_dict, **params)
+    correct_readout = hlp_mod.get_param('correct_readout', data_dict, **params)
     if measurement_ops is None:
-        if cp is not None:
+        if cp is not None and (correct_readout or correct_readout is None):
             dat_proc_mod.calculate_meas_ops_and_covariations_cal_points(
                 data_dict, keys_in, n_readouts=n_readouts,
+                meas_obj_names=meas_obj_names,
                 keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
                 observables=observables, **params)
         else:
             dat_proc_mod.calculate_meas_ops_and_covariations(
                 data_dict, keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
-                observables=observables)
+                meas_obj_names=meas_obj_names,
+                observables=observables,
+                correct_readout=correct_readout)
     else:
         if hlp_mod.get_param('measurement_ops', data_dict) is None:
             hlp_mod.add_param('measurement_ops', measurement_ops, data_dict,
@@ -173,12 +185,9 @@ def state_tomography_analysis(data_dict, keys_in,
         cov_matrix_meas_obs = hlp_mod.get_param('cov_matrix_meas_obs',
                                                 data_dict, **params)
         if cov_matrix_meas_obs is None:
-            meas_obj_names = hlp_mod.get_measurement_properties(
-                data_dict, props_to_extract=['mobjn'],
-                enforce_one_meas_obj=False, **params)
             hlp_mod.add_param('cov_matrix_meas_obs',
-                              np.diag(np.ones(len(meas_obj_names)**2)), data_dict,
-                              **params)
+                              np.diag(np.ones(len(meas_obj_names)**2)),
+                              data_dict, **params)
         else:
             if hlp_mod.get_param('cov_matrix_meas_obs', data_dict) is None:
                 hlp_mod.add_param('cov_matrix_meas_obs', measurement_ops,
@@ -469,6 +478,11 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
     :return: adds to data_dict: plot_dicts
     """
     plot_dicts = OrderedDict()
+    figures_prefix = hlp_mod.get_param('figures_prefix', data_dict,
+                                       default_value='', **params)
+    if len(figures_prefix):
+        figures_prefix += '_'
+
     probability_table = hlp_mod.get_param('probability_table', data_dict,
                                           raise_error=True, **params)
     probability_table = np.array(list(probability_table.values())).T
@@ -513,9 +527,10 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
     else:
         title = f'{timestamps[-1]} {",".join(meas_obj_names)}'
 
-    plot_dicts[f'counts_table_{"".join(meas_obj_names)}'] = {
+    plot_dicts[f'{figures_prefix}counts_table_{"".join(meas_obj_names)}'] = {
         'axid': "ptable",
         'plotfn': 'plot_colorx',
+        'plotsize': [6.4, 4.8],
         'xvals': np.arange(len(observables))[obs_filter],
         'yvals': np.array(len(observables)*[ylist]),
         'zvals': plt_data,
@@ -533,11 +548,12 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'aspect': 'equal'
     }
 
-    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
+                      add_param_method='update')
 
 
 def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
-                                plot_rho_target=True, **params):
+                                plot_rho_target=True, leakage=None, **params):
     """
     Prepares plot of the density matrix estimated with method estimation_type.
     :param data_dict: OrderedDict containing data to be plotted and where
@@ -546,6 +562,8 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         estimate the density matrix. Assumes estimation_type.rho exists in
         data_dict.
     :param plot_rho_target: whether to prepare a separate figure for rho_target
+    :param leakage: dict of leakages as returned by
+        data_processing.py/extract_leakage_classified_shots
     :param params: keyword arguments:
         Expects to find either in data_dict or in params:
             - meas_obj_names: list of measurement object names
@@ -562,6 +580,11 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         - estimation_type.rho exists in data_dict
     """
     plot_dicts = OrderedDict()
+    figures_prefix = hlp_mod.get_param('figures_prefix', data_dict,
+                                       default_value='', **params)
+    if len(figures_prefix):
+        figures_prefix += '_'
+
     meas_obj_names = hlp_mod.get_measurement_properties(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
@@ -591,7 +614,7 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         if plot_rho_target:
             title = 'Target density matrix\n' + plot_mod.default_figure_title(
                 data_dict, ','.join(meas_obj_names))
-            plot_dicts['density_matrix_target'] = {
+            plot_dicts[f'{figures_prefix}density_matrix_target'] = {
                 'plotfn': 'plot_bar3D',
                 '3d': True,
                 '3d_azim': -35,
@@ -625,26 +648,9 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     else:
         base_title = 'Density matrix\n'
 
-    empty_artist = mpl.patches.Rectangle((0, 0), 0, 0, visible=False)
-    purity = hlp_mod.get_param(f'{estimation_type}.purity', data_dict)
-    legend_entries = []
-    if purity is not None:
-        legend_entries += [(empty_artist,
-                           r'Purity, $Tr(\rho^2) = {:.1f}\%$'.format(
-                               100 * purity))]
-    if rho_target is not None:
-        fidelity = hlp_mod.get_param(f'{estimation_type}.fidelity', data_dict)
-        if fidelity is not None:
-            legend_entries += [
-                (empty_artist, r'Fidelity, $F = {:.1f}\%$'.format(
-                    100 * fidelity))]
-    if d == 4:
-        concurrence = hlp_mod.get_param(f'{estimation_type}.concurrence',
-                                        data_dict)
-        if concurrence is not None:
-            legend_entries += [
-                (empty_artist, r'Concurrence, $C = {:.2f}$'.format(
-                    concurrence))]
+    legend_entries = get_legend_artists_labels(data_dict,
+                                               estimation_type=estimation_type,
+                                               **params)
 
     title = base_title + plot_mod.default_figure_title(
         data_dict, ','.join(meas_obj_names))
@@ -653,7 +659,8 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     color_tar = (0.5 * np.angle(rho_target.full()) / np.pi) % 1.
     color_meas = (0.5 * np.angle(rho_meas.full()) / np.pi) % 1.
     color = np.concatenate((1.1*np.ones_like(color_tar), color_meas))
-    plot_dicts[f'density_matrix_{estimation_type}_{"".join(meas_obj_names)}'] = {
+    plot_dicts[f'{figures_prefix}density_matrix_' \
+               f'{estimation_type}_{"".join(meas_obj_names)}'] = {
         'plotfn': 'plot_bar3D',
         '3d': True,
         '3d_azim': -35,
@@ -677,15 +684,17 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         'title': title,
         'do_legend': len(legend_entries),
         'legend_entries': legend_entries,
-        'legend_kws': dict(loc='upper left', bbox_to_anchor=(0, 0.94)),
+        'legend_kws': dict(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                           ncol=2, frameon=False),
         'set_edgecolor': True
     }
 
-    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict, update_value=True)
+    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
+                      add_param_method='update')
 
 
 def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
-                             **params):
+                             leakage=None, **params):
     """
     Prepares plot of the density matrix estimated with method estimation_type.
     :param data_dict: OrderedDict containing data to be plotted and where
@@ -693,6 +702,8 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
     :param estimation_type: string indicating the method that was used to
         estimate the density matrix. Assumes estimation_type.rho exists in
         data_dict.
+    :param leakage: dict of leakages as returned by
+        data_processing.py/extract_leakage_classified_shots
     :param params: keyword arguments:
         Expects to find either in data_dict or in params:
             - meas_obj_names: list of measurement object names
@@ -705,6 +716,11 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
         - estimation_type.rho exists in data_dict
     """
     plot_dicts = OrderedDict()
+    figures_prefix = hlp_mod.get_param('figures_prefix', data_dict,
+                                       default_value='', **params)
+    if len(figures_prefix):
+        figures_prefix += '_'
+
     rho_meas = hlp_mod.get_param(f'{estimation_type}.rho', data_dict,
                                  raise_error=True)
     rho_target = hlp_mod.get_param('rho_target', data_dict, **params)
@@ -737,8 +753,14 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
     else:
         fit_type = '\n'
 
-    plot_dicts[f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}'] = {
+    legend_entries = get_legend_artists_labels(data_dict,
+                                               estimation_type=estimation_type,
+                                               **params)
+    figure_name = f'{figures_prefix}' \
+                  f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}'
+    plot_dicts[figure_name] = {
         'plotfn': 'plot_bar',
+        'plotsize': (4.5, 3),
         'xcenters': np.arange(len(order)),
         'xwidth': 0.4,
         'xrange': (-1, len(order)),
@@ -757,14 +779,15 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
         'do_legend': True
     }
     if nr_qubits > 2:
-        plot_dicts[f'pauli_basis_{estimation_type}']['plotsize'] = (10, 5)
+        plot_dicts[figure_name]['plotsize'] = (10, 5)
 
     if rho_target is not None:
         rho_target = qtp.Qobj(rho_target)
         ytar = tomo.density_matrix_to_pauli_basis(rho_target)
-        plot_dicts[f'pauli_basis_target_{estimation_type}_{"".join(meas_obj_names)}'] = {
+        plot_dicts[f'{figures_prefix}pauli_basis_target_{estimation_type}_' \
+                   f'{"".join(meas_obj_names)}'] = {
             'plotfn': 'plot_bar',
-            'fig_id': f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}',
+            'fig_id': figure_name,
             'xcenters': np.arange(len(order)),
             'xwidth': 0.8,
             'yvals': np.array(ytar)[order],
@@ -772,36 +795,61 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
             'xtick_labels': np.array(labels)[order],
             'bar_kws': dict(color='0.8', zorder=0),
             'setlabel': 'Target values',
+            'legend_entries': legend_entries,
+            'legend_kws': dict(loc='center left', bbox_to_anchor=(1, 0.5),
+                               ncol=1, frameon=False),
             'do_legend': True
         }
+    else:
+        plot_dicts[figure_name].update({
+            'legend_entries': legend_entries,
+            'legend_kws': dict(loc='center left', bbox_to_anchor=(1, 0.5),
+                               ncol=2, frameon=False)})
 
+    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
+                      add_param_method='update')
+
+
+def get_legend_artists_labels(data_dict, estimation_type='least_squares',
+                              leakage=None, **params):
+    rho_target = hlp_mod.get_param('rho_target', data_dict, **params)
+    meas_obj_names = hlp_mod.get_measurement_properties(
+        data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
+        **params)
+    d = len(meas_obj_names)**2
+
+    empty_artist = mpl.patches.Rectangle((0, 0), 0, 0, visible=False)
     purity = hlp_mod.get_param(f'{estimation_type}.purity', data_dict)
-    legend_str = ''
+    legend_entries = []
     if purity is not None:
-        legend_str += r'Purity, $Tr(\rho^2) = {:.1f}\%$'.format(100 * purity)
+        legend_entries += [(empty_artist,
+                            r'Purity, $Tr(\rho^2) = {:.1f}\%$'.format(
+                                100 * purity))]
     if rho_target is not None:
         fidelity = hlp_mod.get_param(f'{estimation_type}.fidelity', data_dict)
         if fidelity is not None:
-            legend_str += '\n' + r'Fidelity, $F = {:.1f}\%$'.format(
-                100 * fidelity)
-    if nr_qubits == 2:
+            legend_entries += [
+                (empty_artist, r'Fidelity, $F = {:.1f}\%$'.format(
+                    100 * fidelity))]
+    if d == 4:
         concurrence = hlp_mod.get_param(f'{estimation_type}.concurrence',
                                         data_dict)
         if concurrence is not None:
-            legend_str += '\n' + r'Concurrence, $C = {:.1f}\%$'.format(
-                concurrence)
+            legend_entries += [
+                (empty_artist, r'Concurrence, $C = {:.2f}$'.format(
+                    concurrence))]
 
-    plot_dicts[f'pauli_info_labels_{estimation_type}_{"".join(meas_obj_names)}'] = {
-        'fig_id': f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}',
-        'plotfn': 'plot_line',
-        'xvals': [0],
-        'yvals': [0],
-        'line_kws': {'alpha': 0},
-        'setlabel': legend_str,
-        'do_legend': True
-    }
+    if leakage is None:
+        keys_in_leakage = hlp_mod.get_param('keys_in_leakage', data_dict,
+                                            **params)
+        if keys_in_leakage is not None:
+            leakage = hlp_mod.get_param(keys_in_leakage[0], data_dict)
 
-    hlp_mod.add_param('plot_dicts', plot_dicts, data_dict, update_value=True)
+        if leakage is not None:
+            legend_entries += [
+                (empty_artist, f'Leakage, $L_{{{key}}} = {100*leak:.2f}\%$')
+                for key, leak in leakage.items()]
+    return legend_entries
 
 
 def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
@@ -910,7 +958,9 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
         preped_rhos = len(prep_pulses_list) * ['']
         preped_rhos_flatten = len(prep_pulses_list) * ['']
         for i, prep_pulses in enumerate(prep_pulses_list):
-            prep_str = ''.join(prep_pulses)
+            prep_str = prep_pulses
+            if not isinstance(prep_pulses, str):
+                prep_str = ''.join(prep_pulses)
             if verbose:
                 print(prep_str, [U1s[pp] for pp in prep_pulses])
             psi_target = (qtp.tensor([U1s[pp] for pp in prep_pulses]) *
@@ -982,23 +1032,45 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
                           data_dict, **params)
 
 
-def bootstrapping(measured_data, n_readouts, n_shots, preselection=False,
-                  **params):
+def bootstrapping(data_dict=None, keys_in=None, measured_data=None, **params):
     """
     Does one round of resampling of measured_data using a uniform distribution.
+    :param data_dict: OrderedDict containing data to be processed
+    :param keys_in: list of channel names or dictionary paths leading to
+            data to be processed of the form (n_readouts*n_shots, n_qubits).
     :param measured_data: array of shape (n_readouts*n_shots, n_qubits)
         containing raw data shots
-    :param n_readouts: number of segments including preselection
-    :param n_shots: number of data shots per segment
-    :param preselection: whether preselection was used
-    :param params: keyword arguments (here so I can pass **kw)
+    :param params: keyword arguments:
+        n_readouts (required): number of segments including preselection
+        n_shots (required): number of data shots per segment
+        preselection: whether preselection was used
+
     :return: array of shape (n_readouts*n_shots, n_qubits) with resampled raw
         data shots.
     """
+    if measured_data is None:
+        if data_dict is None or keys_in is None:
+            raise ValueError('Make sure both data_dict and keys_in are '
+                             'specified. Or provide measured_data.')
+        data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+        measured_data = np.concatenate([arr[:, np.newaxis] for arr in
+                                        list(data_to_proc_dict.values())],
+                                       axis=1)
+
+    if data_dict is None:
+        data_dict = {}
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
+                                   **params)
+    n_shots = hlp_mod.get_param('n_shots', data_dict, raise_error=True,
+                                **params)
+    preselection = hlp_mod.get_param('preselection', data_dict,
+                                     default_value=False, **params)
+
     sample_i = np.zeros(measured_data.shape)
     for seg in range(n_readouts)[preselection::preselection+1]:
         sample = deepcopy(measured_data[seg::n_readouts, :])
         assert len(sample) == n_shots
+        # resample with replacement the shots for the segment seg
         p = np.random.choice(np.arange(n_shots), n_shots)
         sample_i[seg::n_readouts, :] = sample[p]
         # preselection
@@ -1089,10 +1161,11 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
     for n in range(Nbstrp):
         if verbose:
             print('Bootstrapping run state tomo: ', n)
-        sample_i = bootstrapping(raw_data, n_readouts, n_shots, preselection)
+        sample_i = bootstrapping(measured_data=raw_data, n_readouts=n_readouts,
+                                 n_shots=n_shots, preselection=preselection)
         for i, keyi in enumerate(data_to_proc_dict):
             hlp_mod.add_param(keyi, sample_i[:, i], data_dict_temp,
-                              replace_value=True)
+                              add_param_method='replace')
 
         state_tomography_analysis(data_dict_temp, keys_in=keys_in,
                                   do_plotting=False, prepare_plotting=False,
@@ -1205,3 +1278,42 @@ def bootstrapping_process_tomography(
         hlp_mod.add_param(
             f'bootstrapping_errors_{gate_name}.{estimation_type}',
             errors[estimation_type], data_dict, **params)
+
+
+def get_tomo_data_subset(data_dict, keys_in, preselection=True, **params):
+
+    meas_obj_names = hlp_mod.get_measurement_properties(
+        data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
+        **params)
+    n = len(meas_obj_names)
+    ignore_extra_seqs = hlp_mod.get_param(
+        'ignore_extra_sequences', data_dict, **params, default_value=False)
+    init_rots_basis = hlp_mod.get_param('init_rots_basis', data_dict, **params)
+    prep_pulses_list = list(itertools.product(init_rots_basis, repeat=n))
+    final_rots_basis = hlp_mod.get_param('final_rots_basis', data_dict, **params)
+    cal_points = hlp_mod.get_measurement_properties(data_dict,
+                                                    props_to_extract=['cp'])
+    total_nr_segments = (len(final_rots_basis)**n + len(cal_points.states)) * \
+                        (preselection + 1)
+
+    nr_shots = hlp_mod.get_param('nr_shots', data_dict, **params)
+    if nr_shots is None:
+        detectors = hlp_mod.get_param('exp_metadata.Detector Metadata.detectors',
+                                      data_dict)
+        nr_shots = detectors[list(detectors)[0]].get('nr_shots', None)
+        if nr_shots is None:
+            raise ValueError('Please provide nr_shots.')
+
+    data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+    for keyi, data in data_to_proc_dict.items():
+        if ignore_extra_seqs:
+            data = data[:len(init_rots_basis)**n * nr_shots*total_nr_segments]
+        data_reshaped = data.reshape((
+            len(init_rots_basis)**n, nr_shots*total_nr_segments))
+        if len(prep_pulses_list) != data_reshaped.shape[0]:
+            raise ValueError(f'len(prep_pulses_list)={len(prep_pulses_list)} '
+                             f'does not match data shape {data_reshaped.shape}).')
+
+        for prep_pulses, row in zip(prep_pulses_list, data_reshaped):
+            hlp_mod.add_param(f'{"".join(prep_pulses)}.{keyi}',
+                              row, data_dict, **params)
