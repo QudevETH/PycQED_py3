@@ -266,3 +266,49 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                     block_delay=readout_round_pars['reset_delay'])
         return block_mod.Block(f'cycle_{cycle}', pulses)
 
+
+class ParityMap(dict):
+    def __init__(self, ancilla=None, data=None, type=('Y90', 'Y90'), **kw):
+        if ancilla is not None:
+            kw.update({'ancilla': ancilla})
+        if ancilla is not None:
+            kw.update({'data': data})
+        if type is not None:
+            kw.update({'type': type})
+        super().__init__(**kw)
+
+    def _get(self, qubits='ancilla', return_type='str', exclude_none=False):
+        qbs = self[qubits]
+        return_string = False
+        if not np.ndim(qbs) > 0:
+            return_string = True
+            qbs = [self[qubits]]
+
+        if return_type == "str":
+            # print(qbs)
+            qubits_to_return = tuple(
+                qb.name if qb is not None else None for qb in qbs)
+        elif return_type == "obj":
+            qubits_to_return = tuple(qb if qb is not None else None for qb in qbs)
+        else:
+            raise ValueError(f'return_type {return_type} not understood.')
+        if exclude_none:
+            qubits_to_return = tuple(
+                qb for qb in qubits_to_return if qb is not None)
+        if return_string:
+            qubits_to_return = qubits_to_return[0]
+        return qubits_to_return
+
+    def ancilla(self, return_type="str"):
+        return self._get(qubits='ancilla', return_type=return_type)
+
+    def data(self, return_type="str", exclude_none=False):
+        return self._get(qubits='data', return_type=return_type,
+                         exclude_none=exclude_none)
+
+    def string_copy(self):
+        from copy import deepcopy
+        cp = dict(ancilla=self.ancilla(return_type='str'),
+                  data=self.data(return_type='str'))
+        cp.update({k:v for k, v in self.items() if k not in ('ancilla', 'data')})
+        return deepcopy(cp)
