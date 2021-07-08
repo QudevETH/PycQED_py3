@@ -5198,14 +5198,17 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
-        params_dict = {}
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if params_dict is None:
+            params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = s+f'.{trans_name}_amp180'
             params_dict[f'{trans_name}_amp90scale_'+qbn] = s+f'.{trans_name}_amp90_scale'
-        super().get_params_from_file(params_dict, list(params_dict))
+        if numeric_params is None:
+            numeric_params = list(params_dict)
+        super().get_params_from_file(params_dict, numeric_params)
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5506,15 +5509,17 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiFrequencySweepAnalysis(RabiAnalysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
-        params_dict = kwargs.get('params_dict', {})
-        for qbn in qb_names:
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if params_dict is None:
+            params_dict = {}
+        for qbn in self.qb_names:
             params_dict[f'drive_ch_{qbn}'] = \
                 f'Instrument settings.{qbn}.ge_I_channel'
             params_dict[f'ge_freq_{qbn}'] = \
                 f'Instrument settings.{qbn}.ge_freq'
-        kwargs['params_dict'] = params_dict
-        super().__init__(qb_names, *args, **kwargs)
+        if numeric_params is None:
+            numeric_params = list(params_dict)
+        super().get_params_from_file(params_dict, numeric_params)
 
     def extract_data(self):
         super().extract_data()
@@ -5705,14 +5710,17 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
-        params_dict = {}
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if params_dict is None:
+            params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_T1_'+qbn] = \
                 s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
-        super().get_params_from_file(params_dict, list(params_dict))
+        if numeric_params is None:
+            numeric_params = list(params_dict)
+        super().get_params_from_file(params_dict, numeric_params)
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5797,13 +5805,16 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
-        params_dict = {}
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if params_dict is None:
+            params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
-        super().get_params_from_file(params_dict, list(params_dict))
+        if numeric_params is None:
+            numeric_params = list(params_dict)
+        super().get_params_from_file(params_dict, numeric_params)
 
     def prepare_fitting(self):
         if self.options_dict.get('fit_gaussian_decay', True):
@@ -6012,14 +6023,17 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
-        params_dict = {}
+    def get_params_from_file(self, params_dict=None, numeric_params=None):
+        if params_dict is None:
+            params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_qscale_'+qbn] = \
                 s+f'.{trans_name}_motzoi'
-        super().get_params_from_file(params_dict, list(params_dict))
+        if numeric_params is None:
+            numeric_params = list(params_dict)
+        super().get_params_from_file(params_dict, numeric_params)
 
     def process_data(self):
         super().process_data()
