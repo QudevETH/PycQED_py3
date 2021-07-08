@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import logging
 import re
 from datetime import datetime
+import copy
 
 from qcodes.instrument.base import Instrument
 from qcodes.utils import validators
@@ -302,6 +303,9 @@ class MockDAQServer():
         self.nodes[f'/{self.device}/system/fwrevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/system/fpgarevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
+        self.nodes[f'/{self.device}/raw/error/json/errors'] = {
+                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+        self.nodes[f'/{self.device}/raw/error/clear'] = {'type': 'Integer', 'value': 0}
 
         if self.devtype == 'UHFQA':
             self.nodes[f'/{self.device}/features/options'] = {'type': 'String', 'value': 'QA\nAWG'}
@@ -317,8 +321,6 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/dios/0/mode'] = {'type': 'Integer', 'value': 0}
         elif self.devtype == 'HDAWG8':
             self.nodes[f'/{self.device}/features/options'] = {'type': 'String', 'value': 'PC\nME'}
-            self.nodes[f'/{self.device}/raw/error/json/errors'] = {
-                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
             for i in range(32):
                 self.nodes['/' + self.device +
                         '/raw/dios/0/delays/' + str(i) + '/value'] = {'type': 'Integer', 'value': 0}
@@ -343,13 +345,6 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
             for dio_nr in range(32):
                 self.nodes[f'/{self.device}/raw/dios/0/delays/{dio_nr}/value'] = {'type': 'Integer', 'value': 0}
-            self.nodes[f'/{self.device}/raw/error/clear'] = {
-                'type': 'Integer', 'value': 0}
-        elif self.devtype == 'PQSC':
-            self.nodes[f'/{self.device}/raw/error/json/errors'] = {
-                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
-            self.nodes[f'/{self.device}/raw/error/clear'] = {
-                'type': 'Integer', 'value': 0}
 
     def listNodesJSON(self, path):
         pass
@@ -1244,7 +1239,7 @@ class ZI_base_instrument(Instrument):
 
             self.configure_awg_from_string(awg_nr, full_program)
         else:
-            logging.info(f"{self.devname}: No program configured for awg_nr {awg_nr}.")
+            log.info(f"{self.devname}: No program configured for awg_nr {awg_nr}.")
 
     def _write_cmd_to_logfile(self, cmd):
         if self._logfile is not None:
@@ -1378,7 +1373,7 @@ class ZI_base_instrument(Instrument):
             if self._awg_program[awg_nr] is None:
                 # to configure all awgs use "upload_codeword_program" or specify
                 # another program
-                logging.info(f"{self.devname}: Not starting awg_nr {awg_nr}.")
+                log.info(f"{self.devname}: Not starting awg_nr {awg_nr}.")
                 continue
             # Check that the AWG is ready
             if not self.get('awgs_{}_ready'.format(awg_nr)):
@@ -1405,11 +1400,60 @@ class ZI_base_instrument(Instrument):
             pass
         super().close()
 
-    def check_errors(self, errors_to_ignore=None) -> None:
-        raise NotImplementedError('Virtual method with no implementation!')
+    def check_errors(self, errors_to_ignore=None):
+        errors = json.loads(self.getv('raw/error/json/errors'))
 
-    def clear_errors(self) -> None:
-        raise NotImplementedError('Virtual method with no implementation!')
+        # If this is the first time we are called, log the detected errors, but don't raise
+        # any exceptions
+        if self._errors is None:
+            raise_exceptions = False
+            self._errors = {}
+        else:
+            raise_exceptions = True
+
+        # Asserted in case errors were found
+        found_errors = False
+
+        # Combine errors_to_ignore with commandline
+        _errors_to_ignore = copy.copy(self._errors_to_ignore)
+        if errors_to_ignore is not None:
+            _errors_to_ignore += errors_to_ignore
+
+        # Go through the errors and update our structure, raise exceptions if anything changed
+        for m in errors['messages']:
+            code     = m['code']
+            count    = m['count']
+            severity = m['severity']
+            message  = m['message']
+
+            if not raise_exceptions:
+                self._errors[code] = {
+                    'count'   : count,
+                    'severity': severity,
+                    'message' : message}
+                log.warning(f'{self.devname}: Code {code}: "{message}" ({severity})')
+            else:
+                # Check if there are new errors
+                if code not in self._errors or count > self._errors[code]['count']:
+                    if code in _errors_to_ignore:
+                        log.warning(f'{self.devname}: {message} ({code}/{severity})')
+                    else:
+                        log.error(f'{self.devname}: {message} ({code}/{severity})')
+                        found_errors = True
+
+                if code in self._errors:
+                    self._errors[code]['count'] = count
+                else:
+                    self._errors[code] = {
+                        'count'   : count,
+                        'severity': severity,
+                        'message' : message}
+
+        if found_errors:
+            log.error('Errors detected during run-time!')
+
+    def clear_errors(self):
+        self.seti('raw/error/clear', 1)
 
     def demote_error(self, code: str):
         """
@@ -1422,7 +1466,6 @@ class ZI_base_instrument(Instrument):
             is raised. The code is a string like "DIOCWCASE".
         """
         self._errors_to_ignore.append(code)
-
 
     def reset_waveforms_zeros(self):
         """
