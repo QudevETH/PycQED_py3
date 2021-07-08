@@ -5338,7 +5338,8 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         return fit_dict_keys
 
     def prepare_plots(self):
-        super().prepare_plots()
+        if self.get_param_value('plot_all_traces', True):
+            super().prepare_plots()
         if self.do_fitting:
             for qbn in self.qb_names:
                 base_plot_name = f'Rabi_amplitudes_{qbn}'
