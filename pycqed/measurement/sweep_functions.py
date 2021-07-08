@@ -268,7 +268,7 @@ class Transformed_Sweep(Soft_Sweep):
 
 class Offset_Sweep(Transformed_Sweep):
     """
-    A soft sweep function that calls an other sweep function with an offset.
+    A soft sweep function that calls another sweep function with an offset.
     """
 
     def __init__(self,
