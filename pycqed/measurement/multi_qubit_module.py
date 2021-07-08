@@ -23,12 +23,6 @@ from pycqed.utilities.general import temporary_value
 from pycqed.analysis_v2 import tomography_qudev as tomo
 import pycqed.analysis.analysis_toolbox as a_tools
 
-try:
-    import \
-        pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQuantumController as uhfqc
-except ModuleNotFoundError:
-    log.warning('"UHFQuantumController" not imported.')
-
 
 def get_operation_dict(qubits):
     operation_dict = dict()

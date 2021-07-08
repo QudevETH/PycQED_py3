@@ -2,7 +2,6 @@ import numpy as np
 import scipy.optimize as sp_opt
 import scipy.integrate as sp_int
 import scipy.special as sp_spc
-import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQuantumController as uhfqc
 
 """
 This file contains the simulation and optimization functions
