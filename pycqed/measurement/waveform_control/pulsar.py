@@ -31,10 +31,20 @@ try:
 except Exception:
     UHFQC = type(None)
 try:
+    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
+        UHFQA_qudev import UHFQA_qudev
+except Exception:
+    UHFQA_qudev = type(None)
+try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
         ZI_HDAWG8 import ZI_HDAWG8
 except Exception:
     ZI_HDAWG8 = type(None)
+try:
+    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
+        ZI_HDAWG_qudev import ZI_HDAWG_qudev
+except Exception:
+    ZI_HDAWG_qudev = type(None)
 
 try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
@@ -52,8 +62,8 @@ class UHFQCPulsar:
     Defines the Zurich Instruments UHFQC specific functionality for the Pulsar
     class
     """
-    _supportedAWGtypes = (UHFQC, dummy_UHFQC)
-    
+    _supportedAWGtypes = (UHFQC, dummy_UHFQC, UHFQA_qudev)
+
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
         "const WINT_TRIG = 0x00000010;\n"
@@ -451,8 +461,8 @@ class UHFQCPulsar:
     def _get_segment_filter_userregs(self, obj):
         if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
             return super()._get_segment_filter_userregs(obj)
-        return [(f'awgs_0_userregs_{UHFQC.USER_REG_FIRST_SEGMENT}',
-                 f'awgs_0_userregs_{UHFQC.USER_REG_LAST_SEGMENT}')]
+        return [(f'awgs_0_userregs_{obj.USER_REG_FIRST_SEGMENT}',
+                 f'awgs_0_userregs_{obj.USER_REG_LAST_SEGMENT}')]
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))
@@ -466,7 +476,7 @@ class HDAWG8Pulsar:
     Defines the Zurich Instruments HDAWG8 specific functionality for the Pulsar
     class
     """
-    _supportedAWGtypes = (ZI_HDAWG8, VirtualAWG8, )
+    _supportedAWGtypes = (ZI_HDAWG8, VirtualAWG8, ZI_HDAWG_qudev)
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -1107,8 +1117,8 @@ class HDAWG8Pulsar:
     def _get_segment_filter_userregs(self, obj):
         if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
             return super()._get_segment_filter_userregs(obj)
-        return [(f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_FIRST_SEGMENT}',
-                 f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_LAST_SEGMENT}')
+        return [(f'awgs_{i}_userregs_{obj.USER_REG_FIRST_SEGMENT}',
+                 f'awgs_{i}_userregs_{obj.USER_REG_LAST_SEGMENT}')
                 for i in range(4) if obj._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
