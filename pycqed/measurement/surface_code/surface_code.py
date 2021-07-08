@@ -16,7 +16,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     def __init__(self, data_qubits, ancilla_qubits,
                  readout_rounds, nr_cycles, initializations=None,
                  finalizations=None, ancilla_reset=False,
-                 ancilla_dd=True, skip_last_ancilla_readout=False,
+                 ancilla_dd=True, data_dd=False, skip_last_ancilla_readout=False,
                  two_qb_gates_off=False,
                  **kw):
         # provide default values
@@ -35,6 +35,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         self.initializations = initializations
         self.finalizations = finalizations
         self.ancilla_dd = ancilla_dd
+        self.data_dd = data_dd
         self.cycle_length = sum([r['round_length']
                                  for r in self.readout_rounds])
         self.skip_last_ancilla_readout = skip_last_ancilla_readout
@@ -155,6 +156,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         ancilla_steps = {a: (total_steps - len(v)) // 2 * [None] +
                             list(v) + (total_steps - len(v) + 1) // 2 * [None]
                          for a, v in ancilla_steps.items()}
+        print('tot steps: ', total_steps)
+        print('anc steps: ', ancilla_steps)
         # cz gates
         element_name = f'parity_map_entangle_{readout_round}_{cycle}'
         pulse_modifs = {'all': dict(element_name=element_name,
@@ -162,10 +165,20 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         gate_lists = [
             [(a, ds[s]) for a, ds in ancilla_steps.items() if ds[s] is not None]
             for s in range(total_steps)]
-        cz_step_blocks = [
-            self._parallel_cz_step_block(gates, pulse_modifs=pulse_modifs)
-            for gates in gate_lists]
-
+        if self.data_dd:
+            gate_lists_ancqb = [[qb[0] for qb in gl] for gl in gate_lists]
+            gate_lists_dataqb = [[qb[1] for qb in gl] for gl in gate_lists]
+            dd_qubit_lists = [
+                [d for qb in gate_lists_ancqb[i] for d in ancilla_steps[qb] if d is not None and d not in gate_lists_dataqb[i]]
+                for i in range(total_steps)]
+            dd_qubit_lists = [list(np.unique(dd)) for dd in dd_qubit_lists]
+            cz_step_blocks = [
+                self._parallel_cz_step_block(gates, dd_qubits=dd_qubits, pulse_modifs=pulse_modifs)
+                for gates, dd_qubits in zip(gate_lists, dd_qubit_lists)]
+        else:
+            cz_step_blocks = [self._parallel_cz_step_block(gates, pulse_modifs=pulse_modifs)
+                for gates in gate_lists]
+        print('gate_lists: ', gate_lists)
         # ancilla dd
         element_name = f'parity_map_ancilla_dd_{readout_round}_{cycle}'
         pulse_modifs = {'all': dict(element_name=element_name)}
@@ -218,7 +231,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                                                block_align=self.block_align)
         final_block.pulses[-1]['pulse_delay'] = 6e-9
         blocks = [init_block] + cz_step_blocks + [final_block]
-
+        # print('Init block: ', init_block)
+        # print('CZ step block: ', cz_step_blocks)
         return self.sequential_blocks(element_name, blocks)
 
     def _readout_round_readout_block(self, readout_round, cycle=0):
