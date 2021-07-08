@@ -292,22 +292,24 @@ class SweepPoints(list):
             if hasattr(mobj, 'name'):
                 measurement_objects[i] = mobj.name
 
-        sweep_points_map = OrderedDict()
-        for i, mobjn in enumerate(measurement_objects):
-            sweep_points_map[mobjn] = []
-            for dim, d in enumerate(self):
-                if len(d) == 1:
-                    # assume all mobjs use the same param_name
+        sweep_points_map = {mobjn: [] for mobjn in measurement_objects}
+
+        for dim, d in enumerate(self):
+            if len(d) == 1:
+                # assume all mobjs use the same param_name
+                for mobjn in measurement_objects:
                     sweep_points_map[mobjn] += [next(iter(d))]
-                elif mobjn in list(d)[i]:
-                    sweep_points_map[mobjn] += [list(d)[i]]
-                else:
-                    if len(d) != len(measurement_objects):
-                        raise ValueError(
-                            f'{len(measurement_objects)} measurement objects '
-                            f'were given but there are {len(d)} '
-                            f'sweep parameters in dimension {dim}.')
-                    sweep_points_map[mobjn] += [list(d)[i]]
+            else:
+                all_vals = []
+                for mobjn in measurement_objects:
+                    values = [k for k in list(d) if mobjn in k]
+                    all_vals += values
+                    if len(values):
+                        sweep_points_map[mobjn] += values
+                remaining_pars = [k for k in list(d) if k not in all_vals]
+                if len(remaining_pars):
+                    for mobjn in measurement_objects:
+                        sweep_points_map[mobjn] += remaining_pars
         return sweep_points_map
 
     def length(self, dimension='all'):
