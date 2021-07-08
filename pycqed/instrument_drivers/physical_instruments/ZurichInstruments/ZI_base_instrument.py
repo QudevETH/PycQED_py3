@@ -1110,6 +1110,8 @@ class ZI_base_instrument(Instrument):
         Adjust the length of a codeword waveform such that each individual
         waveform of the pair has the same length
         """
+        if not hasattr(self, '_get_waveform_table'):
+            return
         log.info('Length matching waveforms for dynamic waveform upload.')
         wf_table = self._get_waveform_table(awg_nr)
 
@@ -1204,6 +1206,8 @@ class ZI_base_instrument(Instrument):
         Loop through all configured waveforms and use dynamic waveform uploading
         to update changed waveforms on the instrument as needed.
         """
+        if not hasattr(self, '_get_waveform_table'):
+            return
         # Fixme. the _get_waveform_table should also be implemented for the UFH
         log.info(f"{self.devname}: Using dynamic waveform update for AWG {awg_nr}.")
         wf_table = self._get_waveform_table(awg_nr)
