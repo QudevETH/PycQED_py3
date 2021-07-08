@@ -5652,6 +5652,10 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
         if self.do_fitting:
             apd = self.proc_data_dict['analysis_params_dict']
             for outer_key, ramsey_pars_dict in apd.items():
+                if outer_key in ['qubit_frequencies', 'reparking_params']:
+                    # This is only for ReparkingRamseyAnalysis.
+                    # It is handled by prepare_fitting_qubit_freqs of that class
+                    continue
                 qbn, ii = (outer_key + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                     'sweep_points']
@@ -5771,6 +5775,160 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xmin': sweep_points[0],
                     'xmax': sweep_points[-1],
                     'colors': 'gray'}
+
+
+class ReparkingRamseyAnalysis(RamseyAnalysis):
+
+    def extract_data(self):
+        super().extract_data()
+        # Set some default values specific to ReparkingRamseyAnalysis if the
+        # respective options have not been set by the user or in the metadata.
+        # (We do not do this in the init since we have to wait until
+        # metadata has been extracted.)
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        freqs = OrderedDict()
+
+        if self.get_param_value('freq_from_gaussian_fit', False):
+            self.fit_type = self.fit_keys[1][:-1]
+        else:
+            self.fit_type = self.fit_keys[0][:-1]
+
+        apd = self.proc_data_dict['analysis_params_dict']
+        for qbn in self.qb_names:
+            freqs[qbn] = \
+                {'val': np.array([d[self.fit_type]['new_qb_freq']
+                                     for k, d in apd.items() if qbn in k]),
+                 'stderr': np.array([d[self.fit_type]['new_qb_freq_stderr']
+                                     for k, d in apd.items() if qbn in k])}
+        self.proc_data_dict['analysis_params_dict']['qubit_frequencies'] = freqs
+
+        fit_dict_keys = self.prepare_fitting_qubit_freqs()
+        self.run_fitting(keys_to_fit=fit_dict_keys)
+
+        self.proc_data_dict['analysis_params_dict']['reparking_params'] = {}
+        for qbn in self.qb_names:
+            fit_dict = self.fit_dicts[f'frequency_fit_{qbn}']
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][
+                'reparking_params'][qbn] = {'ss_freq': fit_res.best_values['f0'],
+                                            'ss_volt': fit_res.best_values['V0']}
+
+    def prepare_fitting_qubit_freqs(self):
+        fit_dict_keys = []
+        for qbn in self.qb_names:
+            # old qb freq is the same for all keys in
+            # self.proc_data_dict['analysis_params_dict'] so take qbn_0
+            old_qb_freq = self.proc_data_dict['analysis_params_dict'][
+                f'{qbn}_0'][self.fit_type]['old_qb_freq']
+            freqs = self.proc_data_dict['analysis_params_dict'][
+                'qubit_frequencies'][qbn]
+            par_name = \
+                [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
+                 if 'offset' not in p][0]
+            voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
+            fit_func = lambda V, V0, f0, fv: f0 - fv * (V - V0)**2
+            model = lmfit.Model(fit_func)
+            if old_qb_freq > 5e9:  # USS
+                guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
+                                   'f0': np.max(np.array(freqs['val'])),
+                                   'fv': 2.5}
+            else:  # LSS
+                guess_pars_dict = {'V0': voltages[np.argmin(freqs['val'])],
+                                   'f0': np.min(np.array(freqs['val'])),
+                                   'fv': -2.5}
+            guess_pars = model.make_params(**guess_pars_dict)
+            self.fit_dicts[f'frequency_fit_{qbn}'] = {
+                'fit_fn': fit_func,
+                'fit_xvals': {'V': voltages},
+                'fit_yvals': {'data': freqs['val']},
+                'fit_yvals_stderr': freqs['stderr'],
+                'guess_pars': guess_pars}
+            fit_dict_keys += [f'frequency_fit_{qbn}']
+        return fit_dict_keys
+
+    def prepare_plots(self):
+        if self.get_param_value('plot_all_traces', True):
+            super().prepare_plots()
+        if self.do_fitting:
+            current_voltages = self.get_param_value('current_voltages', {})
+            for qbn in self.qb_names:
+                base_plot_name = f'reparking_{qbn}'
+                title = f'{self.raw_data_dict["timestamp"]} ' \
+                        f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
+                plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+                plotsize = (plotsize[0], plotsize[0]/1.25)
+                par_name = \
+                    [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
+                     if 'offset' not in p][0]
+                voltages, xunit, xlabel = self.sp.get_sweep_params_description(
+                    par_name, 1)
+                fit_dict = self.fit_dicts[f'frequency_fit_{qbn}']
+                fit_res = fit_dict['fit_res']
+                self.plot_dicts[base_plot_name] = {
+                    'plotfn': self.plot_line,
+                    'fig_id': base_plot_name,
+                    'plotsize': plotsize,
+                    'xvals': fit_dict['fit_xvals']['V'],
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': fit_dict['fit_yvals']['data'],
+                    'ylabel': 'Qubit frequency, $f$',
+                    'yunit': 'Hz',
+                    'setlabel': 'Data',
+                    'title': title,
+                    'linestyle': 'none',
+                    'do_legend': False,
+                    'legend_bbox_to_anchor': (1, 0.5),
+                    'legend_pos': 'center left',
+                    'yerr':  fit_dict['fit_yvals_stderr'],
+                    'color': 'C0'
+                }
+
+                self.plot_dicts[f'{base_plot_name}_fit'] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'Fit',
+                    'color': 'C0',
+                    'do_legend': True,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                # old qb freq is the same for all keys in
+                # self.proc_data_dict['analysis_params_dict'] so take qbn_0
+                old_qb_freq = self.proc_data_dict['analysis_params_dict'][
+                    f'{qbn}_0'][self.fit_type]['old_qb_freq']
+                textstr = \
+                    "Sweet spot frequency: " \
+                        f"{fit_res.best_values['f0']/1e9:.6f} GHz " \
+                    f"\nPrevious ss frequency: {old_qb_freq/1e9:.6f} GHz " \
+                    f"\nSweet spot DC voltage: " \
+                        f"{fit_res.best_values['V0']:.3f} V "
+                if qbn in current_voltages:
+                    old_voltage = current_voltages[qbn]
+                    textstr += f"\nPrevious DC voltage: {old_voltage:.3f} V"
+                self.plot_dicts[f'{base_plot_name}_text'] = {
+                    'fig_id': base_plot_name,
+                    'ypos': -0.2,
+                    'xpos': -0.1,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
+
+                self.plot_dicts[f'{base_plot_name}_marker'] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_line,
+                    'xvals': [fit_res.best_values['V0']],
+                    'yvals': [fit_res.best_values['f0']],
+                    'color': 'r',
+                    'marker': 'o',
+                    'line_kws': {'markersize': 10},
+                    'linestyle': ''}
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
