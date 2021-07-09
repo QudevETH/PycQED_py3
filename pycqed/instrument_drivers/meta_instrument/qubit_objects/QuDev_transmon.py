@@ -3270,7 +3270,7 @@ class QuDev_transmon(Qubit):
         else:
             total_dist = np.abs(trace['e'] - trace['g'])
         fmax = freqs[np.argmax(total_dist)]
-        # FIXME: just as debug plotting for now
+        # Plotting which works for qubit or qutrit
         fig, ax = plt.subplots(2)
         ax[0].plot(freqs, np.abs(trace['g']), label='g')
         ax[0].plot(freqs, np.abs(trace['e']), label='e')
@@ -3288,9 +3288,9 @@ class QuDev_transmon(Qubit):
         ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
                         + f"Optimal Freq: {fmax} Hz")
         plt.legend()
-
+        # Save figure into 'g' measurement folder
         m_a['g'].save_fig(fig, 'IQplane_distance')
-        plt.show()
+
         if kw.get('analyze', True):
             sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:
