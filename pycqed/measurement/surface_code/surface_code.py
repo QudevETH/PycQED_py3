@@ -124,7 +124,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         return block_mod.Block(
             'main', pulses, block_end={'pulse_delay': self.final_readout_delay})
 
-    def _parallel_cz_step_block(self, gates, dd_qubits=None, dd_pulse='X180',
+    def _parallel_cz_step_block(self, gates, dd_qubits=None, dd_pulse='Y180',
+                                anc_comp_qubits=None, anc_comp_pulse='Z180',
                                 pulse_modifs=None):
         """
         Creates a block containing parallel CZ gates and dynamical decoupling
@@ -139,9 +140,11 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             A block containing the relevant pulses.
         """
         dd_qubits = dd_qubits if dd_qubits is not None else []
+        anc_comp_qubits = anc_comp_qubits if anc_comp_qubits is not None else []
         block_name = 'CZ_' + '_'.join([''.join(gate) for gate in gates])
         ops = ['CZ {} {}'.format(*gate) for gate in gates]
         ops += [dd_pulse + ' ' + dd_qb for dd_qb in dd_qubits]
+        ops += [anc_comp_pulse + ' ' + anc_qb for anc_qb in anc_comp_qubits]
         blocks = [self.block_from_ops(op, [op], pulse_modifs=pulse_modifs)
                   for op in ops]
         return self.simultaneous_blocks(block_name, blocks,
@@ -156,7 +159,6 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         ancilla_steps = {a: (total_steps - len(v)) // 2 * [None] +
                             list(v) + (total_steps - len(v) + 1) // 2 * [None]
                          for a, v in ancilla_steps.items()}
-        print('tot steps: ', total_steps)
         print('anc steps: ', ancilla_steps)
         # cz gates
         element_name = f'parity_map_entangle_{readout_round}_{cycle}'
@@ -168,13 +170,32 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         if self.data_dd:
             gate_lists_ancqb = [[qb[0] for qb in gl] for gl in gate_lists]
             gate_lists_dataqb = [[qb[1] for qb in gl] for gl in gate_lists]
+            # for each time step the dyn. decoupled qubits are determined among the data qubits to be those
+            # which do not participate which do not participate in another gate and are neighbors to an active ancilla
             dd_qubit_lists = [
                 [d for qb in gate_lists_ancqb[i] for d in ancilla_steps[qb] if d is not None and d not in gate_lists_dataqb[i]]
                 for i in range(total_steps)]
             dd_qubit_lists = [list(np.unique(dd)) for dd in dd_qubit_lists]
+            # for each timestep, for each dyn. decoupling pulse on a data qubit determine ancilla qubits which
+            # will do a cz gate with that data qubit in a later timestep
+            # anc_compensation_lists = [[anc for anc in ancilla_steps for dq in dd_qubit_lists[i] if (anc, dq) in
+            #                            [gate for gate_list in gate_lists[i+1:] for gate in gate_list]] for i in
+            #                           range(total_steps-1)]
+            anc_compensation_lists = []
+            for i in range(total_steps-1):
+                anc_compensation_lists.append([])
+                for dq in dd_qubit_lists[i]:
+                    for anc in ancilla_steps:
+                        if (anc, dq) in [gate for gate_list in gate_lists[i + 1:] for gate in gate_list]:
+                            if anc not in anc_compensation_lists[i]:
+                                anc_compensation_lists[i] += [anc]
+                            else:
+                                anc_compensation_lists[i].remove(anc)
+            anc_compensation_lists.append([])
             cz_step_blocks = [
-                self._parallel_cz_step_block(gates, dd_qubits=dd_qubits, pulse_modifs=pulse_modifs)
-                for gates, dd_qubits in zip(gate_lists, dd_qubit_lists)]
+                self._parallel_cz_step_block(gates, dd_qubits=dd_qubits, anc_comp_qubits=anc_comp_qubits,
+                                             pulse_modifs=pulse_modifs)
+                for gates, dd_qubits, anc_comp_qubits in zip(gate_lists, dd_qubit_lists, anc_compensation_lists)]
         else:
             cz_step_blocks = [self._parallel_cz_step_block(gates, pulse_modifs=pulse_modifs)
                 for gates in gate_lists]
@@ -217,6 +238,24 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                 ops_init += [f'{basis[0]} {qb}']
             if basis[1] is not None:
                 ops_final += [f'{basis[1]} {qb}']
+        # add compensation pulses on data qubits to compensate previously applied DD pulses
+        if self.data_dd:
+            dd_qubit_lists_flattened = [ddqb for dd_list in dd_qubit_lists for ddqb in dd_list]
+            for ddqb in np.unique(dd_qubit_lists_flattened):
+                nr_dd_pulses = sum(ddqb2 == ddqb for ddqb2 in dd_qubit_lists_flattened)
+                comp_pulse = nr_dd_pulses % 2
+                # print(ddqb, comp_pulse)
+                if comp_pulse:
+                    if f'Y180 {ddqb}' in ops_final:
+                        ops_final.remove(f'Y180 {ddqb}')
+                    elif f'mY90 {ddqb}' in ops_final:
+                        ops_final.remove(f'mY90 {ddqb}')
+                        ops_final += [f'Y90 {ddqb}']
+                    elif f'Y90 {ddqb}' in ops_final:
+                        ops_final.remove(f'Y90 {ddqb}')
+                        ops_final += [f'mY90 {ddqb}']
+                    else:
+                        ops_final += [f'Y180 {ddqb}']
         element_name = f'parity_basis_init_{readout_round}_{cycle}'
         pulse_modifs = {'all': dict(element_name=element_name)}
         blocks = [self.block_from_ops(op, [op], pulse_modifs=pulse_modifs)
