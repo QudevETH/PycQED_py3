@@ -884,7 +884,9 @@ class QuDev_transmon(Qubit):
         self.update_detector_functions()
         self.set_readout_weights()
         if switch == 'default':
-            self.set_switch('spec' if drive.endswith('_spec') else 'modulated')
+            self.set_switch(
+                'spec' if drive is not None and drive.endswith('_spec')
+                else 'modulated')
         else:
             self.set_switch(switch)
 
