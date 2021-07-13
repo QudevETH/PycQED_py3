@@ -345,12 +345,15 @@ class FluxPulseScope(ParallelLOSweepExperiment):
             the end of the flux pulse (or in the middle of the readout-flux-pulse
             if fp_during_ro is True) or a delay in seconds to start a fixed
             amount of time after the drive pulse. If not provided or set to
-            None, a default fixed delay of 100e-9 is used.
+            None, a default fixed delay of 100e-9 is used. If fp_compensation is
+            used, the readout pulse is referenced to the end of the flux
+            compensation pulse.
         :param fp_truncation: Truncate the flux pulse after the drive pulse
         :param fp_truncation_buffer: Time buffer after the drive pulse, before
             the truncation happens.
-        :param fp_compensation: Custom compensation for the charge build-up
-            in the bias T.
+        :param fp_compensation: Truncated custom compensation calculated from a
+            first order distortion with dominant time constant tau. Standard
+            compensation has to be turned off manually.
         :param fp_compensation_amp: Fixed amplitude for the custom compensation
             pulse.
         :param fp_during_ro: Play a flux pulse during the read-out pulse to
@@ -423,10 +426,10 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                 'delay', func=fp_length_function)
             if fp_compensation:
                 cp = b.pulses[2]
+                cp['name'] = 'FPS_FPC'
                 cp['amplitude'] = -np.sign(fp['amplitude']) * np.abs(
                     fp_compensation_amp)
                 cp['pulse_delay'] = sweep_diff + bl_start
-                tau = 200e-9 * 100
 
                 def t_trunc(x, fnc=fp_length_function, tau=tau,
                             fp_amp=fp['amplitude'], cp_amp=cp['amplitude']):
@@ -440,7 +443,6 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     return -np.log(cp_amp / (cp_amp - v_c_fp)) * tau
 
                 cp['pulse_length'] = ParametricValue('delay', func=t_trunc)
-                # TODO: implement that the ro_delay is adjusted accordingly!
 
         # assumes a unipolar flux-pulse for the calculation of the
         # amplitude decay.
@@ -482,6 +484,9 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     fp.get('buffer_length_end', 0) + fp.get('trans_length', 0)
                 b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'middle',
                                     'pulse_delay': delay})
+        elif fp_compensation:
+            b.block_end.update({'ref_pulse': 'FPS_FPC', 'ref_point': 'end',
+                                'pulse_delay': ro_pulse_delay})
         else:
             b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'end',
                                 'pulse_delay': ro_pulse_delay})
