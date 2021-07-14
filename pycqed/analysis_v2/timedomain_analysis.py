@@ -487,8 +487,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # create projected_data_dict
         self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
         if self.data_to_fit is None:
-            # if data_to_fit not specified, set it to 'pe'
-            self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
+            # If we have cal points, but data_to_fit is not specified,
+            # choose a reasonable default value. In cases with only two cal
+            # points, this decides which projected plot is generated. (In
+            # cases with three cal points, we will anyways get all three
+            # projected plots.)
+            if 'e' in self.cal_states_dict.keys():
+                self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
+            elif 'g' in self.cal_states_dict.keys():
+                self.data_to_fit = {qbn: 'pg' for qbn in self.qb_names}
+            else:
+                self.data_to_fit = {}
+
 
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit. These lists are
@@ -7696,7 +7706,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
                 basis_labels = basis_labels[qbn]
-            print(basis_labels)
             # check that states from the basis are included in mmnt
             for bs in basis_labels:
                 for qb_s in bs:
@@ -7710,10 +7719,11 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             # orthonormalize if required
             if self.get_param_value("orthonormalize", False):
                 # We need to consider the integration weights as a vector of
-                # real numbers for the Gram-Schmidt transformation of the
+                # real numbers to ensure the Gram-Schmidt transformation of the
                 # weights leads to a linear transformation of the integrated
                 # readout results (relates to how integration is done on UHF,
-                # see One Note: )
+                # see One Note: Surface 17/ATC75 M136 S17HW02 Cooldown 5/
+                # 210330 Notes on orthonormalizing readout weights
                 basis_real = np.hstack((basis.real, basis.imag), )
                 basis_real = math.gram_schmidt(basis_real.T).T
                 basis =    basis_real[:,:basis_real.shape[1]//2] + \

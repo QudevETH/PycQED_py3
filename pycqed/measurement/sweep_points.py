@@ -1,7 +1,7 @@
 import logging
 log = logging.getLogger(__name__)
 from collections import OrderedDict
-from copy import deepcopy
+from copy import copy, deepcopy
 import numpy as np
 from numpy import array  # Needed for eval. Do not remove.
 
@@ -284,7 +284,9 @@ class SweepPoints(list):
         :return: dict of the form
          {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
-        if not isinstance(measurement_objects, list):
+        if isinstance(measurement_objects, list):
+            measurement_objects = copy(measurement_objects)
+        else:
             measurement_objects = [measurement_objects]
         for i, mobj in enumerate(measurement_objects):
             if hasattr(mobj, 'name'):

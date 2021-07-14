@@ -146,6 +146,8 @@ class MeasurementControl(Instrument):
         self._last_percdone_change_time = 0
         self._last_percdone_log_time = 0
 
+        self.parameter_checks = {}
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -217,11 +219,16 @@ class MeasurementControl(Instrument):
         self.acq_data_len_scaling = self.detector_function.acq_data_len_scaling
 
         # update sweep_points based on self.acq_data_len_scaling
-        self.update_sweep_points()
+        if previous_attempts == 0:
+            self.update_sweep_points()
 
         # needs to be defined here because of the with statement below
         return_dict = {}
         self.last_sweep_pts = None  # used to prevent resetting same value
+
+        self.begintime = None
+        self.preparetime = None
+        self.endtime = None
 
         if self.skip_measurement():
             return return_dict
@@ -1661,6 +1668,7 @@ class MeasurementControl(Instrument):
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
+                parameter_checks_ins = self.parameter_checks.get(iname, {})
                 instrument_grp = set_grp.create_group(iname)
                 par_snap = ins.snapshot()['parameters']
                 parameter_list = dict_to_ordered_tuples(par_snap)
@@ -1669,6 +1677,17 @@ class MeasurementControl(Instrument):
                         val = repr(p['value'])
                     except KeyError:
                         val = ''
+                    if p_name in parameter_checks_ins:
+                        try:
+                            res = parameter_checks_ins[p_name](p['value'])
+                            if res is not True:
+                                log.warning(
+                                    f'Parameter {iname}.{p_name} has an '
+                                    f'uncommon value: {val}.' +
+                                    (f" ({res})" if res is not False else ''))
+                        except Exception as e:
+                            log.warning(f'Could not run parameter check for '
+                                        f'{iname}.{p_name}: {e}')
                     instrument_grp.attrs[p_name] = val
         numpy.set_printoptions(**opt)
 
@@ -1728,6 +1747,13 @@ class MeasurementControl(Instrument):
             except Exception:
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
+
+    def add_parameter_check(self, parameter, check_function):
+        iname = parameter.instrument.name
+        if iname not in self.parameter_checks:
+            self.parameter_checks[iname] = {}
+        self.parameter_checks[iname].update(
+            {parameter.name: check_function})
 
     def get_percdone(self, current_acq=0):
         percdone = (self.total_nr_acquired_values + current_acq) / (

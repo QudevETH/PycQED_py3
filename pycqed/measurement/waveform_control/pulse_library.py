@@ -358,16 +358,19 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         return params
 
     def _update_lengths_amps_channels(self):
-        self.channels = [self.channel, self.channel2]
+        self.channels = [c for c in [self.channel, self.channel2]
+                         if c is not None]
         self.lengths = []
         self.amplitudes = []
 
-        for ma, ta, ao, d in [
+        for ma, ta, ao, d, c in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
-             -self.channel_relative_delay/2),
+             -self.channel_relative_delay/2, self.channel),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
-             self.channel_relative_delay/2),
+             self.channel_relative_delay/2, self.channel2),
         ]:
+            if c is None:
+                continue
             ml = self.pulse_length
             tl = self.trans_length
             bs = self.buffer_length_start
@@ -1174,6 +1177,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             **params_super,
             'pulse_type': 'GaussFilteredCosIQPulseWithFlux',
             'flux_channel': None,
+            'disable_flux_crosstalk_cancellation': False,
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
