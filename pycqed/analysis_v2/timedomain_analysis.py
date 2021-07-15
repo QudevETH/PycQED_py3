@@ -6084,11 +6084,11 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
             if old_qb_freq > 5e9:  # USS
                 guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
                                    'f0': np.max(np.array(freqs['val'])),
-                                   'fv': 2.5}
+                                   'fv': 2.5e9}
             else:  # LSS
                 guess_pars_dict = {'V0': voltages[np.argmin(freqs['val'])],
                                    'f0': np.min(np.array(freqs['val'])),
-                                   'fv': -2.5}
+                                   'fv': -2.5e9}
             guess_pars = model.make_params(**guess_pars_dict)
             self.fit_dicts[f'frequency_fit_{qbn}'] = {
                 'fit_fn': fit_func,
