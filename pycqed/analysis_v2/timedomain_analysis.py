@@ -5981,9 +5981,9 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                             key=('exp' if i == 0 else 'gauss')) +
                             '{:.6f} GHz '.format(
                             ramsey_pars_dict[fit_type]['new_qb_freq']*1e-9) +
-                                '$\pm$ {:.2E} GHz '.format(
+                                '$\pm$ {:.3f} MHz '.format(
                             ramsey_pars_dict[fit_type][
-                                'new_qb_freq_stderr']*1e-9))
+                                'new_qb_freq_stderr']*1e-6))
                     T2_star_str += \
                         ('\n$T_{{2,{{{key}}} }}^\star$ = '.format(
                             key=('exp' if i == 0 else 'gauss')) +
@@ -5996,14 +5996,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     old_qb_freq*1e-9)
                 textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(
                     (ramsey_pars_dict[exp_dec_k]['new_qb_freq'] -
-                    old_qb_freq)*1e-6) + '$\pm$ {:.2E} MHz'.format(
+                    old_qb_freq)*1e-6) + '$\pm$ {:.3f} kHz'.format(
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
-                        'frequency'].stderr*1e-6) +
-                    '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.2E} MHz'.format(
+                        'frequency'].stderr*1e-3) +
+                    '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.3f} kHz'.format(
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].value*1e-6,
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
-                        'frequency'].stderr*1e-6))
+                        'frequency'].stderr*1e-3))
                 textstr += T2_star_str
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(
                     ramsey_pars_dict[exp_dec_k]['artificial_detuning']*1e-6)
