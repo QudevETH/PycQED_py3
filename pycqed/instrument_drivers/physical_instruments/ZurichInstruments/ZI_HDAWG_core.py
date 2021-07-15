@@ -106,8 +106,8 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
         Checks that the correct options are installed on the instrument.
         """
         options = self.gets('features/options').split('\n')
-        if 'PC' not in options:
-            raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
+        # if 'PC' not in options:
+        #     raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
 
     def _check_awg_nr(self, awg_nr):
         """
