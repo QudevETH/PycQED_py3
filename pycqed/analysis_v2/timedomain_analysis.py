@@ -6226,10 +6226,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     'T2_echo_stderr'] = params_dict['T1_stderr']
             else:
                 self.proc_data_dict['analysis_params_dict'][qbn][
-                    'T2_echo'] = params_dict['exp_decay_'+qbn][
-                    'T2_star']
+                    'T2_echo'] = params_dict['exp_decay']['T2_star']
                 self.proc_data_dict['analysis_params_dict'][qbn][
-                    'T2_echo_stderr'] = params_dict['exp_decay_'+qbn][
+                    'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
 
     def prepare_plots(self):
