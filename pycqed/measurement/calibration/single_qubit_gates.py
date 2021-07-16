@@ -1504,10 +1504,10 @@ class Ramsey(SingleQubitGateCalib):
                 else:
                     qb_freq = self.analysis.proc_data_dict[
                         'analysis_params_dict'][qubit.name][
-                        'exp_decay_' + qubit.name]['new_qb_freq']
+                        'exp_decay']['new_qb_freq']
                     T2_star = self.analysis.proc_data_dict[
                         'analysis_params_dict'][qubit.name][
-                        'exp_decay_' + qubit.name]['T2_star']
+                        'exp_decay']['T2_star']
                     qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                     qubit.set(f'T2_star{task["transition_name"]}', T2_star)
 
