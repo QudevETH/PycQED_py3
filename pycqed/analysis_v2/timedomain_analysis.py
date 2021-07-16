@@ -23,6 +23,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
+import traceback
 import logging
 
 from pycqed.utilities import math
@@ -6203,13 +6204,20 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
             self.echo_analysis = T1Analysis(*args, auto=False, **kwargs)
 
         if auto:
-            self.echo_analysis.extract_data()
-            self.echo_analysis.process_data()
-            self.echo_analysis.prepare_fitting()
-            self.echo_analysis.run_fitting()
-            self.echo_analysis.save_fit_results()
-            self.analyze_fit_results()
-            self.prepare_plots()
+            try:
+                self.echo_analysis.extract_data()
+                self.echo_analysis.process_data()
+                self.echo_analysis.prepare_fitting()
+                self.echo_analysis.run_fitting()
+                self.echo_analysis.save_fit_results()
+                self.analyze_fit_results()
+                self.prepare_plots()
+            except Exception as e:
+                if self.raise_exceptions:
+                    raise e
+                else:
+                    log.error("Unhandled error during analysis!")
+                    log.error(traceback.format_exc())
 
     def analyze_fit_results(self):
         self.echo_analysis.analyze_fit_results()
