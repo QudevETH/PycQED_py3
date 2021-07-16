@@ -1255,7 +1255,6 @@ class SingleQubitGateCalib(CalibBuilder):
                 cal_states = self.state_order[:max(indices)+1]
                 self.create_cal_points(
                     n_cal_points_per_state=kw.get('n_cal_points_per_state', 1),
-                    for_ef=kw.get('for_ef', False),
                     transition_name=''.join(cal_states))
 
             self.update_preproc_tasks()
