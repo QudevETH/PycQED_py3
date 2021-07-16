@@ -1755,7 +1755,10 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  n_pulses=None, **kw):
         try:
+            self.use_x90_pulses = kw.get('use_x90_pulses', False)
             self.experiment_name = f'Inphase_amp_calib_{n_pulses}'
+            if self.use_x90_pulses:
+                self.experiment_name += '_x90_pulses'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              n_pulses=n_pulses, **kw)
@@ -1775,9 +1778,12 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
 
             n_pulses = sweep_points.get_sweep_params_property(
                 'values', 0, 'n_pulses')[sp1d_idx]
+            pulse_list = [f'X90{transition_name} {qb}'] + \
+                         (2*n_pulses * [f'X90{transition_name} {qb}'] if
+                self.use_x90_pulses else
+                         n_pulses*[f'X180{transition_name} {qb}'])
             inphase_calib_block = self.block_from_ops(
-                f'pulses_{qb}', [f'X90{transition_name} {qb}'] +
-                                n_pulses*[f'X180{transition_name} {qb}'])
+                f'pulses_{qb}', pulse_list)
 
             parallel_block_list += [self.sequential_blocks(
                 f'inphase_calib_{qb}', [prepend_block, inphase_calib_block])]
