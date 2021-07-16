@@ -1255,13 +1255,18 @@ class SingleQubitGateCalib(CalibBuilder):
                 cal_states = self.state_order[:max(indices)+1]
                 self.create_cal_points(
                     n_cal_points_per_state=kw.get('n_cal_points_per_state', 1),
-                    for_ef=kw.get('for_ef', False),
                     transition_name=''.join(cal_states))
 
             self.update_preproc_tasks()
+            self.update_sweep_points()
             self.define_data_to_fit()
             if len(self.cal_states) >= 2:
                 self.define_cal_states_rotations()
+            # meas_obj_sweep_points_map might be different after runnig some
+            # of the above methods
+            self.exp_metadata['meas_obj_sweep_points_map'] = \
+                self.sweep_points.get_meas_obj_sweep_points_map(
+                    self.meas_obj_names)
 
             if 'qscale' in self.experiment_name.lower() or \
                     'inphase_amp_calib' in self.experiment_name.lower():
@@ -1323,6 +1328,9 @@ class SingleQubitGateCalib(CalibBuilder):
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
 
     def update_preproc_tasks(self):
+        pass
+
+    def update_sweep_points(self):
         pass
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
@@ -1423,7 +1431,8 @@ class Ramsey(SingleQubitGateCalib):
             if 'artificial_detuning' not in kw:
                 kw['artificial_detuning'] = 0
             self.echo = echo
-            self.experiment_name = 'Echo' if self.echo else 'Ramsey'
+            if not hasattr(self, 'experiment_name'):
+                self.experiment_name = 'Echo' if self.echo else 'Ramsey'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              delays=delays, **kw)
@@ -1471,7 +1480,7 @@ class Ramsey(SingleQubitGateCalib):
         """
         Runs analysis and stores analysis instances in self.analysis.
         :param analysis_kwargs: (dict) keyword arguments for analysis
-        :param kw: currently ignored
+        :param kw: keyword arguments
         """
         # analysis_kwargs = super().run_analysis(analysis_kwargs=None, **kw)
         if analysis_kwargs is None:
@@ -1501,6 +1510,123 @@ class Ramsey(SingleQubitGateCalib):
                         'exp_decay_' + qubit.name]['T2_star']
                     qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                     qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+
+
+class ReparkingRamsey(Ramsey):
+
+    kw_for_sweep_points = {
+        'delays': dict(param_name='pulse_delay', unit='s',
+                       label=r'Second $\pi$-half pulse delay', dimension=0),
+        'phases': dict(param_name='phase', unit='deg',
+                       label=r'Second $\pi$-half pulse phase', dimension=0),
+        'dc_voltages': dict(param_name='dc_voltages', unit='V',
+                       label=r'DC voltage', dimension=1),
+        'dc_voltage_offsets': dict(param_name='dc_voltage_offsets', unit='V',
+                            label=r'DC voltage offset', dimension=1),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 dc_voltages=None, dc_voltage_offsets=None, delays=None, **kw):
+
+        try:
+            self.kw_for_task_keys += ['artificial_detuning']
+            if 'artificial_detuning' not in kw:
+                kw['artificial_detuning'] = 0
+            self.experiment_name = 'ReparkingRamsey'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             delays=delays,
+                             dc_voltages=dc_voltages,
+                             dc_voltage_offsets=dc_voltage_offsets,
+                             force_2D_sweep=True, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        for task in self.preprocessed_task_list:
+            swpts = task['sweep_points']
+            if swpts.find_parameter('dc_voltage_offsets') is not None:
+                fluxline = task['fluxline']
+                values_to_set = swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltage_offsets'),
+                    param_names='dc_voltage_offsets') + fluxline()
+                # update sweep points
+                par_name = f'{task["prefix"]}dc_voltages'
+                self.sweep_points.add_sweep_parameter(par_name, values_to_set,
+                                                      'V', 'DC voltage', 1)
+
+    def run_measurement(self, **kw):
+        sweep_functions = []
+        temp_vals= []
+        nr_volt_points = self.sweep_points.length(1)
+        self.exp_metadata['current_voltages'] = {}
+        for task in self.preprocessed_task_list:
+            qb = self.get_qubits(task['qb'])[0][0]
+
+            fluxline = task['fluxline']
+            temp_vals.append((fluxline, fluxline()))
+            self.exp_metadata['current_voltages'][qb.name] = fluxline()
+
+            swpts = task['sweep_points']
+            if swpts.find_parameter('dc_voltage_offsets') is not None:
+                # relative dc_voltages were given
+                values_to_set = swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltage_offsets'),
+                    param_names='dc_voltage_offsets') + fluxline()
+                name = 'Parking voltage shift'
+            else:
+                # absolute dc_voltage were given
+                values_to_set = swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltages'),
+                    param_names='dc_voltages')
+                name = 'Parking voltage'
+            if len(values_to_set) != nr_volt_points:
+                raise ValueError('All tasks must have the same number of '
+                                 'voltage sweep points.')
+            sweep_functions += [swf.Indexed_Sweep(
+                task['fluxline'], values=values_to_set,
+                name=f'DC Offset {qb.name}',
+                parameter_name=f'{name} {qb.name}', unit='V')]
+
+        self.sweep_functions = [
+            self.sweep_functions[0], swf.multi_sweep_function(
+                sweep_functions, name=name, parameter_name=name)]
+        self.mc_points[1] = np.arange(nr_volt_points)
+
+        with temporary_value(*temp_vals):
+            super().run_measurement(**kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        options_dict = analysis_kwargs.pop('options_dict', {})
+        options_dict.update(dict(
+            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
+            artificial_detuning=kw.pop('artificial_detuning', None)))
+        self.analysis = tda.ReparkingRamseyAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            options_dict=options_dict, **analysis_kwargs)
+        if self.update:
+            for task in self.preprocessed_task_list:
+                qubit = self.get_qubits(task['qb'])[0][0]
+                fluxline = task['fluxline']
+
+                apd = self.analysis.proc_data_dict['analysis_params_dict']
+                # set new qubit frequency
+                qubit.set(f'{task["transition_name_input"]}_freq',
+                          apd['reparking_params'][qubit.name]['ss_freq'])
+                # set new voltage
+                fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
 
 
 class T1(SingleQubitGateCalib):

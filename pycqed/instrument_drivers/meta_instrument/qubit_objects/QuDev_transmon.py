@@ -66,6 +66,8 @@ class QuDev_transmon(Qubit):
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
+        self.add_parameter('instr_switch',
+            parameter_class=InstrumentRefParameter)
 
         # device parameters for user only
         # could be cleaned up
@@ -147,6 +149,10 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
+        self.add_pulse_parameter('RO',
+                                 'ro_flux_disable_crosstalk_cancellation',
+                                 'disable_flux_crosstalk_cancellation',
+                                 initial_value=True, vals=vals.Bool())
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -491,6 +497,12 @@ class QuDev_transmon(Qubit):
         self.add_parameter('ge_lo_leakage_cal',
                            parameter_class=ManualParameter,
                            initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           vals=vals.Dict())
+
+        # switch parameters
+        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        self.add_parameter('switch_modes', parameter_class=ManualParameter,
+                           initial_value=DEFAULT_SWITCH_MODES,
                            vals=vals.Dict())
 
     def get_idn(self):
@@ -848,7 +860,7 @@ class QuDev_transmon(Qubit):
                 nr_samples=nr_samples,
             )
 
-    def prepare(self, drive='timedomain'):
+    def prepare(self, drive='timedomain', switch='default'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -882,6 +894,8 @@ class QuDev_transmon(Qubit):
                 ge_lo.get_instr().on()
             elif drive == 'pulsed_spec':
                 ge_lo.get_instr().pulsemod_state('On')
+                if 'pulsemod_source' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().pulsemod_source('EXT')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
                 ge_lo.get_instr().on()
@@ -899,6 +913,12 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        if switch == 'default':
+            self.set_switch(
+                'spec' if drive is not None and drive.endswith('_spec')
+                else 'modulated')
+        else:
+            self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         if weights_type is None:
@@ -983,6 +1003,16 @@ class QuDev_transmon(Qubit):
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
+
+    def set_switch(self, switch_mode):
+        if self.instr_switch() is None:
+            return
+        switch = self.instr_switch.get_instr()
+        mode = self.switch_modes().get(switch_mode, None)
+        if mode is None:
+            log.warning(f'Switch mode {switch_mode} not configured for '
+                        f'{self.name}.')
+        switch.set_switch(mode)
 
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
@@ -2056,7 +2086,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             self.instr_pulsar.get_instr().start()
             MC.run('ge_uc_spectrum' + self.msmt_suffix)
 
@@ -2086,7 +2116,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_sweep_function(s)
             MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
             MC.set_detector_function(self.scope_fft_det)
@@ -2128,7 +2158,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(det.IndexDetector(
                 self.int_avg_det_spec, 0))
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
@@ -2178,7 +2208,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             d = self.scope_fft_det
             d.AWG = None
             idx = np.argmin(np.abs(d.get_sweep_vals() -
@@ -2224,7 +2254,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2278,7 +2308,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2392,7 +2422,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             ):
-                self.prepare(drive='timedomain')
+                self.prepare(drive='timedomain', switch='calib')
                 MC.set_detector_function(self.int_avg_det)
                 MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
 
@@ -3485,7 +3515,7 @@ class QuDev_transmon(Qubit):
         else:
             total_dist = np.abs(trace['e'] - trace['g'])
         fmax = freqs[np.argmax(total_dist)]
-        # FIXME: just as debug plotting for now
+        # Plotting which works for qubit or qutrit
         fig, ax = plt.subplots(2)
         ax[0].plot(freqs, np.abs(trace['g']), label='g')
         ax[0].plot(freqs, np.abs(trace['e']), label='e')
@@ -3503,9 +3533,9 @@ class QuDev_transmon(Qubit):
         ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
                         + f"Optimal Freq: {fmax} Hz")
         plt.legend()
-
+        # Save figure into 'g' measurement folder
         m_a['g'].save_fig(fig, 'IQplane_distance')
-        plt.show()
+
         if kw.get('analyze', True):
             sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:
