@@ -591,6 +591,12 @@ class UHFQC_Base(Hard_Detector):
             n_acq_last = [0] * len(self.UHFs)
             n_acq_add = [0] * len(self.UHFs)
             progress_scaling = 1
+            # It is okay to access self.detectors because this is and
+            # attribute of this class and will exist even for a single
+            # detector function measurement.
+            # We look at the first entry in self.detectors because pycqed
+            # currently requires that these parameters be the same for
+            # all detector function in self.detectors.
             if hasattr(self.detectors[0], 'nr_shots'):
                 if hasattr(self.detectors[0], 'classified'):
                     if self.detectors[0].get_values_function_kwargs.get(
@@ -642,9 +648,9 @@ class UHFQC_Base(Hard_Detector):
                             # the following calculation works both if
                             # self.nr_averages is a vector/list or a scalar
                             progress = np.mean(np.multiply(
-                                np.array(n_acq)*progress_scaling,
+                                np.array(n_acq),
                                 1 / np.array(self.nr_averages)))
-                            self.progress_callback(progress)
+                            self.progress_callback(progress*progress_scaling)
                     except NoProgressError:
                         raise
                     except Exception as e:
