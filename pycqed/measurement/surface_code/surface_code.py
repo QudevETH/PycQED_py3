@@ -16,7 +16,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     def __init__(self, data_qubits, ancilla_qubits,
                  readout_rounds, nr_cycles, initializations=None,
                  finalizations=None, ancilla_reset=False,
-                 ancilla_dd=True, data_dd=False, skip_last_ancilla_readout=False,
+                 ancilla_dd=True, data_dd=False, data_dd_simple=False, skip_last_ancilla_readout=False,
                  two_qb_gates_off=False,
                  **kw):
         # provide default values
@@ -36,6 +36,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         self.finalizations = finalizations
         self.ancilla_dd = ancilla_dd
         self.data_dd = data_dd
+        self.data_dd_simple = data_dd_simple
         self.cycle_length = sum([r['round_length']
                                  for r in self.readout_rounds])
         self.skip_last_ancilla_readout = skip_last_ancilla_readout
@@ -203,18 +204,36 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         # ancilla dd
         element_name = f'parity_map_ancilla_dd_{readout_round}_{cycle}'
         pulse_modifs = {'all': dict(element_name=element_name)}
+        ops_dd = []
         if self.ancilla_dd:
             if total_steps % 2:
                 raise NotImplementedError('Ancilla dynamical decoupling not '
                                           'implemented for odd weight parity maps.')
-            ops = []
             for a, ds in ancilla_steps.items():
-                ops += [f'Y180 {a}', f'Z180 {a}']
-                ops += [f'Z180 {d}' for d in ds[total_steps//2:]
+                ops_dd += [f'Y180 {a}', f'Z180 {a}']
+                ops_dd += [f'Z180 {d}' for d in ds[total_steps//2:]
                             if d is not None]
-
+        if self.data_dd_simple:
+            for a, ds in ancilla_steps.items():
+                for d in ds:
+                    if d is not None and f'Y180 {d}' not in ops_dd:
+                        # DD on data qubit
+                        ops_dd += [f'Y180 {d}']
+                        # compensation on data qubit
+                        if f'Z180 {d}' not in ops_dd:
+                            ops_dd += [f'Z180 {d}']
+                        else:
+                            ops_dd.remove(f'Z180 {d}')
+                # compensation on ancilla qubit
+                for d in ds[total_steps // 2:]:
+                    if d is not None:
+                        if f'Z180 {a}' not in ops_dd:
+                            ops_dd += [f'Z180 {a}']
+                        else:
+                            ops_dd.remove(f'Z180 {a}')
+        if self.ancilla_dd or self.data_dd_simple:
             blocks = [self.block_from_ops(op, [op], pulse_modifs=pulse_modifs)
-                      for op in ops]
+                      for op in ops_dd]
             ancilla_dd_block = self.simultaneous_blocks(
                 'ancilla_dd_block', blocks, block_align=self.block_align)
             cz_step_blocks = cz_step_blocks[:total_steps//2] + \
