@@ -1477,7 +1477,16 @@ def sum_int(x,y):
     return np.cumsum(y[:-1]*(x[1:]-x[:-1]))
 
 
-def Gaussian(freq,sigma,mu,ampl,offset):
+def DoubleGaussian(freq, sigma, mu, ampl, sigma0, mu0, ampl0, offset):
+    '''
+    Double Gaussian function
+    '''
+    return ampl/(sigma*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu)/sigma)**2) + \
+           ampl0/(sigma0*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu0)/sigma0)**2) + \
+           offset
+
+
+def Gaussian(freq, sigma, mu, ampl, offset):
     '''
     Gaussian function
     '''
