@@ -1759,10 +1759,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         if qbn is None:
             param_name = [p for v in self.mospm.values() for p in v
-                          if self.sp.find_parameter(p) == 1][0]
+                          if self.sp.find_parameter(p) == 1]
         else:
             param_name = [p for p in self.mospm[qbn]
-                          if self.sp.find_parameter(p)][0]
+                          if self.sp.find_parameter(p)]
+        if not len(param_name):
+            return None
+
+        param_name = param_name[0]
         label = self.sp.get_sweep_params_property(
             'label', dimension=dimension, param_names=param_name)
         unit = self.sp.get_sweep_params_property(
@@ -5395,9 +5399,11 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 qbn, i = (k + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                         'sweep_points']
-                if len(i):
-                    label, unit, vals = self.get_first_sweep_param(
-                        qbn, dimension=1)
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
                     title_suffix = (f'{i}: {label} = ' + ' '.join(
                         SI_val_to_msg_str(vals[int(i)], unit,
                                           return_type=lambda x : f'{x:0.4f}')))
@@ -5406,6 +5412,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     if daa is not None:
                         sweep_points = sweep_points * daa[int(i)]
                 else:
+                    # OneD
                     title_suffix = ''
                 fit_res = fit_dict['fit_res']
                 base_plot_name = 'Rabi_' + k
@@ -5953,9 +5960,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 qbn, ii = (outer_key + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                     'sweep_points']
-                if len(ii):
-                    label, unit, vals = self.get_first_sweep_param(
-                        qbn, dimension=1)
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(ii) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
                     title_suffix = (f'{ii}: {label} = ' + ' '.join(
                         SI_val_to_msg_str(vals[int(ii)], unit,
                                           return_type=lambda x: f'{x:0.1f}')))
@@ -5964,6 +5973,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     if daa is not None:
                         sweep_points = sweep_points * daa[int(ii)]
                 else:
+                    # OneD
                     title_suffix = ''
                 base_plot_name = 'Ramsey_' + outer_key
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
