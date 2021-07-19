@@ -3669,14 +3669,25 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     pdd['filtered_amps'][qb] = pdd['amps_masked'][qb]
 
             # fit the freqs to the qubit model
-            freq_mod = lmfit.Model(fit_mods.Qubit_dac_to_freq)
-            freq_mod.guess = fit_mods.Qubit_dac_arch_guess.__get__(
+            self.fit_func = self.get_param_value('fit_func', fit_mods.Qubit_dac_to_freq)
+
+            if self.fit_func == fit_mods.Qubit_dac_to_freq_precise:
+                fit_guess_func = fit_mods.Qubit_dac_arch_guess_precise
+            else:
+                fit_guess_func = fit_mods.Qubit_dac_arch_guess
+            freq_mod = lmfit.Model(self.fit_func)
+            fixed_params = \
+                self.get_param_value("fixed_params_for_fit", {}).get(qb, None)
+            if fixed_params is None:
+                fixed_params = dict(E_c=0)
+            freq_mod.guess = fit_guess_func.__get__(
                 freq_mod, freq_mod.__class__)
 
             self.fit_dicts[f'freq_fit_{qb}'] = {
                 'model': freq_mod,
                 'fit_xvals': {'dac_voltage': pdd['filtered_amps'][qb]},
-                'fit_yvals': {'data': pdd['filtered_center'][qb]}}
+                'fit_yvals': {'data': pdd['filtered_center'][qb]},
+                "guessfn_pars": {"fixed_params": fixed_params}}
 
             self.run_fitting()
 
@@ -3717,7 +3728,7 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'xunit': 'V',
                         'ylabel': r'Qubit drive frequency',
                         'yunit': 'Hz',
-                        'color': 'purple',
+                        'color': 'white',
                     }
 
                 amps = pdd['sweep_points_dict'][qb]['sweep_points'][
@@ -3732,7 +3743,7 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'linestyle': '-',
                     'marker': '',
                     'xvals': amps,
-                    'yvals': fit_mods.Qubit_dac_to_freq(amps,
+                    'yvals': self.fit_func(amps,
                             **self.fit_res[f'freq_fit_{qb}'].best_values),
                     'color': 'red',
                 }
