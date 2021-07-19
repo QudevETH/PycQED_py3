@@ -831,6 +831,8 @@ class QuDev_transmon(Qubit):
                 ge_lo.get_instr().on()
             elif drive == 'pulsed_spec':
                 ge_lo.get_instr().pulsemod_state('On')
+                if 'pulsemod_source' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().pulsemod_source('EXT')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
                 ge_lo.get_instr().on()
