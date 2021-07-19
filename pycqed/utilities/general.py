@@ -206,8 +206,10 @@ def load_settings(instrument,
             if verbose:
                 print('Loaded settings successfully from the HDF file.')
 
-            params_to_set = kw.pop('params_to_set', [])
-            if len(params_to_set)>0:
+            params_to_set = kw.pop('params_to_set', None)
+            if params_to_set is not None:
+                if len(params_to_set) == 0:
+                    log.warning('The list of parameters to update is empty.')
                 if verbose and update:
                     print('Setting parameters {} for {}.'.format(
                         params_to_set, instrument_name))
@@ -217,7 +219,10 @@ def load_settings(instrument,
             else:
                 if verbose and update:
                     print('Setting parameters for {}.'.format(instrument_name))
-                params_to_set = ins_group.attrs.items()
+                params_to_set = [
+                    (param, val) for (param, val) in ins_group.attrs.items()
+                    if param not in getattr(
+                        instrument, '_params_to_not_load', {})]
 
             if not update:
                 params_dict = {parameter : value for parameter, value in \

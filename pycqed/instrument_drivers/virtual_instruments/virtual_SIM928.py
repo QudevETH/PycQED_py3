@@ -26,7 +26,7 @@ class VirtualSIM928(Instrument):
             instrument's JSON snapshot.
     """
 
-    def __init__(self, name, slot_names=None, **kw):
+    def __init__(self, name, address=None, slot_names=None, **kw):
         super().__init__(name, **kw)
 
         if slot_names is None:
