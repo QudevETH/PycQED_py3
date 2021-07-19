@@ -5678,9 +5678,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 qbn, ii = (outer_key + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                     'sweep_points']
-                if len(ii):
-                    label, unit, vals = self.get_first_sweep_param(
-                        qbn, dimension=1)
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(ii) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
                     title_suffix = (f'{ii}: {label} = ' + ' '.join(
                         SI_val_to_msg_str(vals[int(ii)], unit,
                                           return_type=lambda x: f'{x:0.1f}')))
@@ -5689,6 +5691,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     if daa is not None:
                         sweep_points = sweep_points * daa[int(ii)]
                 else:
+                    # OneD
                     title_suffix = ''
                 base_plot_name = 'Ramsey_' + outer_key
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
