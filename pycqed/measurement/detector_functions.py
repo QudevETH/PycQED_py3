@@ -591,17 +591,22 @@ class UHFQC_Base(Hard_Detector):
             n_acq_last = [0] * len(self.UHFs)
             n_acq_add = [0] * len(self.UHFs)
             progress_scaling = 1
-            # It is okay to access self.detectors because this is and
+            # It is okay to access self.detectors because this is an
             # attribute of this class and will exist even for a single
             # detector function measurement.
             # We look at the first entry in self.detectors because pycqed
-            # currently requires that these parameters be the same for
-            # all detector function in self.detectors.
-            if hasattr(self.detectors[0], 'nr_shots'):
-                if hasattr(self.detectors[0], 'classified'):
-                    if self.detectors[0].get_values_function_kwargs.get(
-                            'averaged', False):
-                        progress_scaling /= self.detectors[0].nr_shots
+            # currently requires that this parameter be the same for
+            # all detector functions in self.detectors.
+            if hasattr(self.detectors[0], 'classified'):
+                if self.detectors[0].get_values_function_kwargs.get(
+                        'averaged', False):
+                    # this is needed in this particular case but not for the
+                    # ssro acquisition because when averaged == True for the
+                    # classifier detector the sweep points in MC are tiled by
+                    # acq_data_len_scaling = nr_shots (in this mode, the
+                    # classifier det is a hybrid det that records single shots
+                    # from the acq instr but returns averaged data to MC).
+                    progress_scaling /= self.detectors[0].nr_shots
 
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
         while accumulated_time < self.UHFs[0].timeout() and \
