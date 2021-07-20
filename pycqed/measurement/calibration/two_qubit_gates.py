@@ -590,6 +590,8 @@ class CalibBuilder(MultiTaskingExperiment):
         pulse['element_name'] = 'tmp'
 
         if given_pulse_length is not None:
+            log.debug(f'maximum pulse length set by the user: '
+                      f'{given_pulse_length * 1e9:.2f} ns')
             pulse['pulse_length'] = given_pulse_length
             # generate a pulse object to extend the given length with buffer
             # times etc
@@ -828,9 +830,6 @@ class CPhase(CalibBuilder):
         for k in soft_sweep_dict:
             for p in fp.pulses:
                 p[k] = ParametricValue(k)
-        if max_flux_length is not None:
-            log.debug(f'max_flux_length = {max_flux_length * 1e9:.2f} ns, '
-                      f'set by user')
         max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
                                                 max_flux_length)
         w = self.block_from_ops('wait', [])
@@ -1405,9 +1404,6 @@ class Chevron(CalibBuilder):
             for p in fp.pulses:
                 p[k] = ParametricValue(k)
 
-        if max_flux_length is not None:
-            log.debug(f'max_flux_length = {max_flux_length * 1e9:.2f} ns, '
-                      f'set by user')
         max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
                                                 max_flux_length)
         w = self.block_from_ops('wait', [])
