@@ -1353,6 +1353,8 @@ class Chevron(CalibBuilder):
     ...
     """
 
+    kw_for_task_keys = ['num_cz_gates', 'init_state']
+
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             self.experiment_name = kw.get('experiment_name', 'Chevron')
