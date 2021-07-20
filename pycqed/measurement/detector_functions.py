@@ -513,8 +513,9 @@ class UHFQC_Base(Hard_Detector):
         """
         This method should be used to check whether the measurement settings
         are supported by the hardware.
-        Currently, it only checks whether the total number of acquisitions is
-        supported by the UHF (1048576 is hardcoded).
+        Currently, it only checks whether the total number of acquisitions in
+        case of a single-shot readout is supported by the UHF
+        (1048576 is hardcoded).
         """
 
         for i, d in enumerate(self.detectors):
