@@ -801,8 +801,8 @@ class BufferedFLIPPulse(pulse.Pulse):
             'channel2': None,
             'amplitude': 0,
             'amplitude2': 0,
-            'mirror_pattern': None,
-            'mirror_correction': None,
+            'mirror_pattern': None,  # see Segment.resolve_mirror
+            'mirror_correction': None,  # see Segment.resolve_mirror
             'pulse_length': 0,
             'buffer_length_start': 30e-9,
             'buffer_length_end': 30e-9,

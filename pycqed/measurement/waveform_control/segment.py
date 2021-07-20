@@ -739,6 +739,30 @@ class Segment:
         """
         Resolves amplitude mirroring for pulses that have a mirror_pattern
         property.
+
+        Pulses are categorized by their op_code and by whether or not they
+        are a copy created by enforce_single_element. The mirror_pattern
+        decides which pulses within a category get mirrored. The mirroring
+        is performed by multiplying all pulse parameters that contain
+        'amplitude' in their name by -1 (and adding a mirror_correction if
+        it is provided).
+
+        mirror_pattern:
+        - 'none'/'all': no/all pulses are mirrored
+        - 'odd'/'even': the i-th occurrence of a pulse from the category is
+          mirrored if i is odd (1, 3, ...) / even (2, 4, ...). Note that i is
+          meant as a natural number (i.e., 1-indexed and not 0-indexed).
+        - a list of bools (or of anything that can be interpreted as a bool).
+          In this case, the j-th element of the list indicates whether the
+          j-th occurrence of a pulse from the category is mirrored. If there
+          are more occurrences than elements in the list, the list is
+          repeated periodically.
+
+        mirror_correction:
+        None (no corrections) or a dict, where each key is a pulse
+        parameter name and the corresponding value specifies an additive
+        constant to be added after mirroring of this parameter. For parameters
+        not found in the dict, no correction is applied.
         """
         op_counts = {}
         for p in self.resolved_pulses:
@@ -747,17 +771,21 @@ class Segment:
                 op_counts[pulse_category] = 0
             op_counts[pulse_category] += 1
             pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            # interpret string pattern ('none'/'all'/'odd'/'even')
             if pattern is None or pattern == 'none':
-                continue
+                continue  # do not mirror
             for pa1, pa2 in [('all', [1]), ('even', [0, 1]), ('odd', [1, 0])]:
                 if pattern == pa1:
                     pattern = pa2
+            # periodically extend pattern if needed
             pattern = deepcopy(pattern)
             while len(pattern) < op_counts[pulse_category]:
                 pattern += pattern
+            # check whether the pulse should be mirrored
             if not pattern[op_counts[pulse_category] - 1]:
-                continue
-            # use mirror pulse
+                continue  # do not mirror
+            # mirror all parameters that have 'amplitude' in their name
+            # (and apply mirror correction if applicable)
             mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
             if mirror_correction is None:
                 mirror_correction = {}
