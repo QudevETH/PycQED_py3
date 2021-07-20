@@ -249,8 +249,6 @@ class QuantumExperiment(CircuitBuilder):
             # configure measurement control (mc_points, detector functions)
             mode = self._configure_mc()
 
-            self._check_hardware_limitations()
-
             self.guess_label(**kw)
 
             self.update_metadata()
@@ -588,25 +586,6 @@ class QuantumExperiment(CircuitBuilder):
                                      "objects were found. Pass the MC to "
                                      "run_measurement() or set the MC attribute"
                                      " of the QuantumExperiment instance.")
-
-    def _check_hardware_limitations(self):
-        """
-        This method should be used to check whether the measurement settings
-        are supported by the hardware.
-        Currently, it only checks whether the total number of acquisitions is
-        supported by the UHF (1048576 is hardcoded).
-        """
-        d = self.df
-        if hasattr(self.df, 'detectors'):
-            d = self.df.detectors[0]
-
-        if hasattr(d, 'nr_shots'):
-            nr_shots = d.nr_shots
-            nr_acq = self.mc_points[0].size * nr_shots
-            if nr_acq > 2**20:
-                raise ValueError(f'Nr. segments * nr. shots = {nr_acq} > '
-                                 f'1048576 supported by the UHF. Please change '
-                                 f'the compression_seg_lim or reduce nr_shots.')
 
     # def __setattr__(self, name, value):
     #     """
