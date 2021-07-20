@@ -177,10 +177,6 @@ class T1FrequencySweep(CalibBuilder):
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
         fp = self.block_from_ops('flux', [f'FP {qubit_name}'],
                                  pulse_modifs=pulse_modifs)
-        for k in ['channel', 'channel2']:
-            if k in fp.pulses[0]:
-                if fp.pulses[0][k] not in self.channels_to_upload:
-                    self.channels_to_upload.append(fp.pulses[0][k])
         for k in hard_sweep_dict:
             for p in fp.pulses:
                 if k in p:

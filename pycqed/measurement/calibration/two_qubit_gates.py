@@ -133,10 +133,6 @@ class MultiTaskingExperiment(QuantumExperiment):
             then calls the respective method in QuantumExperiment.
         :param kw: keyword arguments
         """
-        # allow the user to overwrite the automatically generated list of
-        # channels to upload
-        self.channels_to_upload = kw.get('channels_to_upload',
-                                         self.channels_to_upload)
         # update the nr_averages based on the settings in the user measure
         # objects
         self.df_kwargs.update(
@@ -814,13 +810,6 @@ class CPhase(CalibBuilder):
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbl} {qbr}"] * num_cz_gates)
         # TODO here, we could do DD pulses (CH 2020-06-19)
-        # FIXME: currently, this assumes that only flux pulse parameters are
-        #  swept in the soft sweep. In fact, channels_to_upload should be
-        #  determined based on the sweep_points
-        for k in ['channel', 'channel2']:
-            if k in fp.pulses[0]:
-                if fp.pulses[0][k] not in self.channels_to_upload:
-                    self.channels_to_upload.append(fp.pulses[0][k])
 
         for k in soft_sweep_dict:
             for p in fp.pulses:
@@ -1138,13 +1127,6 @@ class DynamicPhase(CalibBuilder):
             proc_op_code = op_code
         fp = self.block_from_ops('flux', proc_op_code)
         fp.pulses[0]['pulse_off'] = ParametricValue('flux_pulse_off')
-        # FIXME: currently, this assumes that only flux pulse parameters are
-        #  swept in the soft sweep. In fact, channels_to_upload should be
-        #  determined based on the sweep_points
-        for k in ['channel', 'channel2']:
-            if k in fp.pulses[0]:
-                if fp.pulses[0][k] not in self.channels_to_upload:
-                    self.channels_to_upload.append(fp.pulses[0][k])
 
         for k in soft_sweep_dict:
             if '=' not in k:  # pulse modifier in the sweep dict
@@ -1358,13 +1340,6 @@ class Chevron(CalibBuilder):
 
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbc} {qbt}"] * num_cz_gates)
-        # FIXME: currently, this assumes that only flux pulse parameters are
-        #  swept in the soft sweep. In fact, channels_to_upload should be
-        #  determined based on the sweep_points
-        for k in ['channel', 'channel2']:
-            if k in fp.pulses[0]:
-                if fp.pulses[0][k] not in self.channels_to_upload:
-                    self.channels_to_upload.append(fp.pulses[0][k])
 
         for k in list(sweep_points[0].keys()) + list(sweep_points[1].keys()):
             for p in fp.pulses:
