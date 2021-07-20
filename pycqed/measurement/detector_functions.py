@@ -523,18 +523,18 @@ class UHFQC_Base(Hard_Detector):
 
                 # For the integration logging detector,
                 # nr_sweep_points = nr_shots * nr_segments
-                total_nr_acq = d.nr_sweep_points
+                total_nr_shots_acq = d.nr_sweep_points
                 if hasattr(d, 'classified'):
                     # For the classifier detector
                     # nr_sweep_points = nr_segments like for the integrated
                     # averaged detector, but the UHF is programmed to return
                     # single shots.
-                    total_nr_acq *= d.nr_shots
-                if total_nr_acq > 2**20:
+                    total_nr_shots_acq *= d.nr_shots
+                if total_nr_shots_acq > 2**20:
                     raise ValueError(f'For detector function number {i}, '
                                      f'({d.name}) nr. segments * nr. shots = '
-                                     f'{total_nr_acq} > 1048576 supported by '
-                                     f'the UHF. Please reduce the '
+                                     f'{total_nr_shots_acq} > 1048576 '
+                                     f'supported by the UHF. Please reduce the '
                                      f'compression_seg_lim, the number of 1D '
                                      f'sweep points, or the nr_shots.')
 
