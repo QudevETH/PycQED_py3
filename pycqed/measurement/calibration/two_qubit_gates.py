@@ -1357,16 +1357,10 @@ class Chevron(CalibBuilder):
         try:
             self.experiment_name = kw.get('experiment_name', 'Chevron')
             for task in task_list:
-                # if qbr is not provided, read out qbt
-                if task.get('qbr', None) is None:
-                    task['qbr'] = task['qbt']
                 # convert qubit objects to qubit names
-                for k in ['qbc', 'qbt', 'qbr']:
+                for k in ['qbc', 'qbt']:
                     if not isinstance(task[k], str):
                         task[k] = task[k].name
-                if task['qbr'] not in [task['qbc'], task['qbt']]:
-                    raise ValueError(
-                        'Only target or control qubit can be read out!')
                 # generate an informative task prefix
                 if not 'prefix' in task:
                     task['prefix'] = f"{task['qbc']}{task['qbt']}_"
@@ -1451,7 +1445,7 @@ class Chevron(CalibBuilder):
     def get_meas_objs_from_task(self, task):
         """
         Returns a list of all measure objects of a task. In case of
-        Chevron, this list is the qubit qbr.
+        Chevron, this list includes qbc and qbt.
         :param task: a task dictionary
         :return: list of qubit objects (if available) or names
         """
@@ -1472,7 +1466,7 @@ class Chevron(CalibBuilder):
         if 'TwoD' not in analysis_kwargs['options_dict']:
             analysis_kwargs['options_dict']['TwoD'] = True
         self.analysis = tda.MultiQubit_TimeDomain_Analysis(
-            qb_names=list(self.exp_metadata['meas_obj_sweep_points_map'].keys()),
+            qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
 
