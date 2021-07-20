@@ -2795,6 +2795,20 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         mle: True/False, whether to do maximum likelihood fit. If False, only
              least squares fit will be done, which could give negative
              eigenvalues for the density matrix.
+        imle: True/False, whether to do iterative maximum likelihood fit. If
+             True, it takes preference over maximum likelihood method. Otherwise
+             least squares fit will be done, then 'mle' option will be checked.
+        pauli_raw: True/False, extracts Pauli expected values from a measurement
+             without assignment correction based on calibration data. If True,
+             takes preference over other methods except pauli_corr.
+        pauli_values: True/False, extracts Pauli expected values from a
+             measurement with assignment correction based on calibration data.
+             If True, takes preference over other methods.
+        iterations (optional): maximum number of iterations allowed in imle.
+             Tomographies with more qubits require more iterations to converge.
+        tolerance (optional): minimum change across iterations allowed in imle.
+             The iteration will stop if it goes under this value. Tomographies
+             with more qubits require smaller tolerance to converge.
         rho_target (optional): A qutip density matrix that the result will be
                                compared to when calculating fidelity.
     """
@@ -2871,11 +2885,24 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         self.proc_data_dict['covar_matrix'] = all_Omegas
         self.proc_data_dict['meas_results'] = all_mus
 
-        if self.options_dict.get('pauli_raw', False):
+        if self.options_dict.get('pauli_values', False):
+            rho_pauli = tomo.pauli_values_tomography(all_mus,Fs,basis_rots_str)
+            self.proc_data_dict['rho_raw'] = rho_pauli
+            self.proc_data_dict['rho'] = rho_pauli
+        elif self.options_dict.get('pauli_raw', False):
             pauli_raw = self.generate_raw_pauli_set()
             rho_raw = tomo.pauli_set_to_density_matrix(pauli_raw)
             self.proc_data_dict['rho_raw'] = rho_raw
             self.proc_data_dict['rho'] = rho_raw
+        elif self.options_dict.get('imle', False):
+            it = metadata.get('iterations', None)
+            it = self.options_dict.get('iterations', it)
+            tol = metadata.get('tolerance', None)
+            tol = self.options_dict.get('tolerance', tol)
+            rho_imle = tomo.imle_tomography(
+                all_mus, all_Fs, it, tol)
+            self.proc_data_dict['rho_imle'] = rho_imle
+            self.proc_data_dict['rho'] = rho_imle
         else:
             rho_ls = tomo.least_squares_tomography(
                 all_mus, all_Fs,
@@ -2929,9 +2956,13 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         color = (0.5 * np.angle(self.proc_data_dict['rho'].full()) / np.pi) % 1.
         cmap = self.options_dict.get('rho_colormap', self.default_phase_cmap())
         if self.options_dict.get('pauli_raw', False):
+            title = 'Density matrix reconstructed from the Pauli (raw) set\n'
+        elif self.options_dict.get('pauli_values', False):
             title = 'Density matrix reconstructed from the Pauli set\n'
         elif self.options_dict.get('mle', False):
             title = 'Maximum likelihood fit of the density matrix\n'
+        elif self.options_dict.get('it_mle', False):
+            title = 'Iterative maximum likelihood fit of the density matrix\n'
         else:
             title = 'Least squares fit of the density matrix\n'
         empty_artist = mpl.patches.Rectangle((0, 0), 0, 0, visible=False)
@@ -3033,6 +3064,42 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             pauli_raw_values.append(2**nr_qubits*sum_terms/nr_terms)
         return pauli_raw_values
 
+    def generate_corr_pauli_set(self,Fs,rotations):
+        nr_qubits = self.proc_data_dict['d'].bit_length() - 1
+
+        Fs_corr = []
+        assign_corr = []
+        for i,F in enumerate(Fs):
+            new_op = np.zeros(2**nr_qubits)
+            new_op[i] = 1
+            Fs_corr.append(qtp.Qobj(np.diag(new_op)))
+            assign_corr.append(np.diag(F.full()))
+        pauli_Fs = tomo.rotated_measurement_operators(rotations, Fs_corr)
+        pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=np.object).T))
+
+        mus = self.proc_data_dict['meas_results']
+        pauli_mus = np.reshape(mus,[-1,2**nr_qubits])
+        for i,raw_mus in enumerate(pauli_mus):
+            pauli_mus[i] = np.matmul(np.linalg.inv(assign_corr),np.array(raw_mus))
+        pauli_mus = pauli_mus.flatten()
+
+        pauli_values = []
+        for op in tomo.generate_pauli_set(nr_qubits)[1]:
+            nr_terms = 0
+            sum_terms = 0.
+            for meas_op, meas_res in zip(pauli_Fs,pauli_mus):
+                trace = (meas_op*op).tr().real
+                clss = int(trace*2)
+                if clss < 0:
+                    sum_terms -= meas_res
+                    nr_terms += 1
+                elif clss > 0:
+                    sum_terms += meas_res
+                    nr_terms += 1
+            pauli_values.append(2**nr_qubits*sum_terms/nr_terms)
+
+        return pauli_values
+
     def prepare_pauli_basis_plot(self):
         yexp = tomo.density_matrix_to_pauli_basis(self.proc_data_dict['rho'])
         nr_qubits = self.proc_data_dict['d'].bit_length() - 1
@@ -3054,8 +3121,12 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             order = np.arange(4**nr_qubits)[1:]
         if self.options_dict.get('pauli_raw', False):
             fit_type = 'raw counts'
+        elif self.options_dict.get('pauli_values', False):
+            fit_type = 'corrected counts'
         elif self.options_dict.get('mle', False):
             fit_type = 'maximum likelihood estimation'
+        elif self.options_dict.get('imle', False):
+            fit_type = 'iterative maximum likelihood estimation'
         else:
             fit_type = 'least squares fit'
         meas_string = self.base_analysis. \

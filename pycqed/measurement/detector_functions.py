@@ -561,6 +561,36 @@ class UHFQC_Base(Hard_Detector):
         self.nr_averages = None
         self.ro_mode = 'rl'
 
+    def _check_hardware_limitations(self):
+        """
+        This method should be used to check whether the measurement settings
+        are supported by the hardware.
+        Currently, it only checks whether the total number of acquisitions in
+        case of a single-shot readout is supported by the UHF
+        (1048576 is hardcoded).
+        """
+
+        for i, d in enumerate(self.detectors):
+            if hasattr(d, 'nr_shots'):
+                # Either integration_logging_det or classifier_detector
+
+                # For the integration logging detector,
+                # nr_sweep_points = nr_shots * nr_segments
+                total_nr_shots_acq = d.nr_sweep_points
+                if hasattr(d, 'classified'):
+                    # For the classifier detector
+                    # nr_sweep_points = nr_segments like for the integrated
+                    # averaged detector, but the UHF is programmed to return
+                    # single shots.
+                    total_nr_shots_acq *= d.nr_shots
+                if total_nr_shots_acq > 2**20:
+                    raise ValueError(f'For detector function number {i}, '
+                                     f'({d.name}) nr. segments * nr. shots = '
+                                     f'{total_nr_shots_acq} > 1048576 '
+                                     f'supported by the UHF. Please reduce the '
+                                     f'compression_seg_lim, the number of 1D '
+                                     f'sweep points, or the nr_shots.')
+
     @Timer()
     def poll_data(self):
         if self.AWG is not None:
@@ -843,6 +873,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
             self.AWG.stop()
         self.nr_sweep_points = self.nr_samples
         self.ro_mode = 'iavg'
+        self._check_hardware_limitations()
         self.UHFQC.qudev_acquisition_initialize(channels=self.channels,
                                           samples=self.nr_samples,
                                           averages=self.nr_averages,
@@ -1171,6 +1202,8 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
                 self.prepare_function()
 
         self.ro_mode = 'rl'
+        self._check_hardware_limitations()
+
         # Do not enable the rerun button; the AWG program uses userregs/0 to
         # define the number of iterations in the loop
         self.UHFQC.awgs_0_single(1)
@@ -1253,6 +1286,7 @@ class UHFQC_correlation_detector(UHFQC_integrated_average_detector):
             self.nr_sweep_points = self.seg_per_point
         else:
             self.nr_sweep_points = len(sweep_points) * self.seg_per_point
+        self._check_hardware_limitations()
 
         self.UHFQC.qas_0_integration_length(int(self.integration_length*(1.8e9)))
 
@@ -1452,14 +1486,14 @@ class UHFQC_integration_logging_det(UHFQC_Base):
             if self.prepare_function is not None:
                 self.prepare_function()
 
+        self.nr_sweep_points = len(sweep_points)
+        self._check_hardware_limitations()
+
         # The averaging-count is used to specify how many times the AWG program
         # should run
         self.UHFQC.awgs_0_single(1)
-
-        self.nr_sweep_points = len(sweep_points)
         self.ro_mode = 'rl'
         self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
-
         self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
         self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
                                           samples=self.nr_sweep_points,
@@ -1589,6 +1623,8 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
         assert len(sweep_points) % self.acq_data_len_scaling == 0
         self.nr_sweep_points = len(sweep_points) // self.acq_data_len_scaling
         self.ro_mode = 'rl'
+        self._check_hardware_limitations()
+
         # The averaging-count is used to specify how many times the AWG program
         # should run
         self.UHFQC.awgs_0_single(1)
@@ -1685,7 +1721,7 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             thresh_data = np.isclose(np.repeat(
                 [np.arange(nr_states)],
                 data[:, nr_states*i: nr_states*(i+1)].shape[0], axis=0).T,
-                                     np.argmax(data, axis=1)).T
+                     np.argmax(data[:, nr_states*i: nr_states*(i+1)], axis=1)).T
             thresholded_data[:, nr_states * i: nr_states * i + nr_states] = \
                 thresh_data
 
