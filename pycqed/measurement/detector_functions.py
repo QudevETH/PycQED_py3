@@ -1472,6 +1472,11 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
 
         if self.get_values_function_kwargs.get('averaged', True):
             self.acq_data_len_scaling = 1  # to be used in MC
+            # The following value is only used for correct progress
+            # calculation in poll_data. It will not influence the behavior of
+            # the acquisition device since UHFQC_classifier_detector.prepare
+            # passes averages=1 to qudev_acquisition_initialize.
+            self.nr_averages = self.nr_shots
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
