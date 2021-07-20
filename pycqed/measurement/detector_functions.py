@@ -516,7 +516,7 @@ class UHFQC_Base(Hard_Detector):
         Currently, it only checks whether the total number of acquisitions is
         supported by the UHF (1048576 is hardcoded).
         """
-        print('here')
+
         for i, d in enumerate(self.detectors):
             if hasattr(d, 'nr_shots'):
                 # Either integration_logging_det or classifier_detector
