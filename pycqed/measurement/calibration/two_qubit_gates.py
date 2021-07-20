@@ -1429,14 +1429,45 @@ def measure_flux_pulse_timing_between_qubits(task_list, pulse_length,
 
 class Chevron(CalibBuilder):
     """
-    TODO
+    Chevron Measurement for CZ gates by performing a flux pulse after
+    bringing the qubits to an init state (by default '11). This is a
+    multitasking experiment, see docstrings of MultiTaskingExperiment and of
+    CalibBuilder for general information. Each task corresponds to the
+    characterization of a particular CZ gate specified by the control qubit
+    qbc and the target qubit qbt (keys in the task), i.e., multiple gates
+    can be characterized in parallel.
 
-    Args:
-        FIXME: add further args
-        TODO
-        :param cz_pulse_name: see CircuitBuilder
-        :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
-    ...
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qbc:    |X180|  ---   |  fluxpulse   |
+        qbt:    |X180|  --------------------------------------  |RO|
+
+        Note: in case of a FLIP gate or in case of push-away pulses,
+        flux pulses are on multiple qubits.
+
+        Note: the class can also be used to characterize other kinds of
+        two-qubit gates (e.g., SWAP gates) by setting the parameter
+        cz_pulse_name (see docstring of CircuitBuilder) to point to the
+        desired two qubit gates. Since each kind of gate might bring its own
+        subtleties, this is an experimental feature that should be used with
+        care by expert users (a future version might include more stable
+        code for other kinds of gates). In this context, note that parameter
+        names like qbc, qbt, num_cz_gates, etc. need to be re-interpreted
+        in an appropriate way if a non-CZ gate is characterized.
+
+    Sweep points in dimension 0 and 1 will be interpreted as parameters of
+    the flux pulse (CZ gate).
+
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun,
+        and to the parent class.
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - num_cz_gates
+        - init_state
     """
 
     kw_for_task_keys = ['num_cz_gates', 'init_state']
@@ -1472,13 +1503,8 @@ class Chevron(CalibBuilder):
                     init_state='11', max_flux_length=None,
                     prepend_pulse_dicts=None, **kw):
         """
-        chevron block (sweep of flux pulse parameters)
-
-        Timings of sequence
-                                      <-- length -->
-        qb_control:    |X180|  ---   |  fluxpulse   |
-        qb_target:     |X180|  --------------------------------------  |RO|
-        Note: in case of a FLIP gate, flux pulses are on both qubits.
+        This function creates the blocks for a single Chevron measurement
+        task, see the pulse sequence in the class docstring.
 
         :param sweep_points: SweepPoints object
         :param qbc: control qubit (= 1st gate qubit)
@@ -1486,9 +1512,13 @@ class Chevron(CalibBuilder):
         :param num_cz_gates: number of sequential CZ gates, default: 1
         :param init_state: initial states of qbc and qbt (default: '11')
             Init in f level is currently not supported!
-        :param max_flux_length: determines the time to wait before the final
-            rotations, default: None, in which case it will be determined
-            automatically
+        :param max_flux_length: (float, default: None) the duration of the
+            longest possible flux pulse. If None, it will be determined
+            automatically. This length is used to reserve a fixed time window
+            for the flux pulse in order to have a uniform sequence length,
+            no matter how long the individual flux pulse is. Note that the
+            parameter is understood as a net pulse length, and buffer times
+            are automatically added if applicable.
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             prepend_pulses_block
         :param kw: further keyword arguments:
@@ -1496,7 +1526,10 @@ class Chevron(CalibBuilder):
                 global choice passed to the class init)
         """
 
+        # create prepended pulses (pb)
         pb = self.prepend_pulses_block(prepend_pulse_dicts)
+
+        # create pulses for initial rotations (ir)
         pulse_modifs = {'all': {'element_name': 'initial_rots_el'}}
         ir = self.block_from_ops('initial_rots',
                                  [f'{self.STD_INIT[init_state[0]][0]} {qbc}',
@@ -1504,20 +1537,30 @@ class Chevron(CalibBuilder):
                                  pulse_modifs=pulse_modifs)
         ir.pulses[1]['ref_point_new'] = 'end'
 
+        # create flux pulse (fp)
+        # Calling get_cz_operation_name() allows to take into account a
+        # custom cz_pulse_name that was potentially provided in kw.
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbc} {qbt}"] * num_cz_gates)
 
+        # All sweep points are interpreted as parameters of the flux pulse,
+        # except if they are pulse modifier sweep points (see docstring of
+        # Block.build).
         for k in list(sweep_points[0].keys()) + list(sweep_points[1].keys()):
             if '=' not in k:  # '=' indicates a pulse modifier sweep point
                 for p in fp.pulses:
                     p[k] = ParametricValue(k)
 
+        # Reserve a time window (w), whose duration is specified by
+        # max_flux_length.
         max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
                                                 max_flux_length)
         w = self.block_from_ops('wait', [])
         w.block_end.update({'pulse_delay': max_flux_length * num_cz_gates})
+        # Center-align the current flux pulse within the avaiable time window.
         fp_w = self.simultaneous_blocks('sim', [fp, w], block_align='center')
 
+        # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ir, fp_w]
 
     def guess_label(self, **kw):
