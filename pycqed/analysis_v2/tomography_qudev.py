@@ -85,6 +85,80 @@ def hermitian_traceless_basis(d: int) -> List[qtp.Qobj]:
             Os.append(qtp.Qobj(O))
     return Os
 
+def imle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
+                             iterations: Optional[int]=None,
+                             tolerance: Optional[float]=None,
+                             rho_guess: Optional[qtp.Qobj]=None) -> qtp.Qobj:
+    """
+    Executes iterative maximum likelihood based on a complete set of POVMs
+
+    Args:
+        mus: 1-dimensional numpy ndarray containing the measured expectation
+             values for the measurement operators Fs.
+        Fs: A list of the measurement operators (as qutip operators) that
+            correspond to the expectation values in mus. Must be a set able to
+            fully characterize any density matrix of the corresponding
+            dimension.
+        tolerance (float; default: None): tolerance threshold. If not set, it
+            will use default -15 for 2 qubits and -18 for 3 qubits.
+        iterations (int; default: None): iteration threshold. If not set, it
+            will use 1000 by default, which is larger than mean it. for
+            convergence (~100 on 3 qubits) to give preference to tolerance as a
+            stopping point.
+        rho_guess: Initial rho for the iterative method. If none is provided, it
+              starts on the identity matrix corresponding to the fully
+              mixed state. (The method could be improved with a better
+              initial choice? but this is something yet to look into)
+    Returns: The found density matrix as a qutip operator.
+    """
+
+    dim = Fs[0].shape[0]
+    n = int(np.log2(dim))
+    new_shape_unty = [[2]*n,[2]*n]
+    new_shape_ket = [[2]*n,[1]*n]
+
+    # Set default values if they are None. Inital rho should not have a big
+    # effect in the algorithm as long as it is positive semidefinite.
+    if rho_guess == None:
+        rho_guess = qtp.Qobj(np.diag(np.ones(dim)/dim),new_shape_unty)
+    if iterations == None:
+        iterations = 1000
+    if tolerance == None:
+        tolerance = (-15 if n==2 else -18)
+
+    # Format POVM operators properly and get g matrix (sum of all used POVMs)
+    povm_list = []
+    g = 0
+    for i in range(len(mus)):
+        povm_list.append([qtp.Qobj(Fs[i].data,new_shape_unty), mus[i]])
+        g += qtp.Qobj(Fs[i].data,new_shape_unty)
+    g_inv = g.inv()
+
+    # start loop
+    rho = rho_guess
+    for it in range(iterations):
+        R = 0
+        # build current trace to calculate R
+        for povm in povm_list:
+            trace_step = ((povm[0] * rho).tr()).real
+            if trace_step>0:
+                R += povm[1]/trace_step * povm[0]
+        next_rho = g_inv * R * rho * R * g_inv
+        # check for trace to renormalize
+        next_rho = next_rho / next_rho.tr()
+
+        # Tolerance checks that we're not stuck from one step to another
+        tol = np.log(1-fidelity(next_rho,rho))
+        rho = next_rho
+        if tol < tolerance:
+            print('Stopped by step-improvment under given tolerance (' + str(tolerance) + ')')
+            print('Stopped with ' + str(it+1) + ' iterations')
+            break
+    # If we reach maximum iterations the algorithm also stops
+    if it == (iterations-1):
+        print('Stopped with maximum iterations (' + str(iterations) + ')')
+
+    return next_rho
 
 def mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                    Omega: Optional[np.ndarray]=None,
@@ -142,6 +216,65 @@ def mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                                       'fun': constr_func, 'args': (d, )}).x
     T = ltriag_matrix(params, d)
     return T * T.dag()
+
+def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
+                            basis_rots: List[str]) -> qtp.Qobj:
+    """
+    Extracts the measured pauli values considering the assignment correction
+    from the calibration points, then uses them as the weight for all
+    combinations of Pauli operator products to construct a density matrix.
+    It will not be physical in general.
+    Extracting pauli values with 'density_matrix_to_pauli_basis' from the
+    output density matrix will return the measured pauli values.
+
+    Args:
+        mus: 1-dimensional numpy ndarray containing the measured expectation
+             values for the measurement operators Fs.
+        Fs: A list of the measurement operators (as qutip operators) that
+            correspond to the expectation values in mus. Must receive the
+            original ones before applying the rotation basis.
+        rotation_basis: list of standard PycQED pulse names that were
+                        applied to qubits before measurement
+    Returns: The found density matrix as a qutip operator.
+    """
+
+    nr_qubits = int(np.log2(Fs[0].shape[0]))
+    pulse_list = list(itertools.product(basis_rots,repeat=nr_qubits))
+    rotations = standard_qubit_pulses_to_rotations(pulse_list)
+
+    Fs_corr = []
+    assign_corr = []
+    for i,F in enumerate(Fs):
+        new_op = np.zeros(2**nr_qubits)
+        new_op[i] = 1
+        Fs_corr.append(qtp.Qobj(np.diag(new_op)))
+        assign_corr.append(np.diag(F.full()))
+    pauli_Fs = rotated_measurement_operators(rotations, Fs_corr)
+    pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=np.object).T))
+
+    pauli_mus = np.reshape(mus,[-1,2**nr_qubits])
+    for i,raw_mus in enumerate(pauli_mus):
+        pauli_mus[i] = np.matmul(np.linalg.inv(assign_corr),np.array(raw_mus))
+    pauli_mus = pauli_mus.flatten()
+
+    pauli_values = []
+    for op in generate_pauli_set(nr_qubits)[1]:
+        nr_terms = 0
+        sum_terms = 0.
+        for meas_op, meas_res in zip(pauli_Fs,pauli_mus):
+            trace = (meas_op*op).tr().real
+            clss = int(trace*2)
+            if clss < 0:
+                sum_terms -= meas_res
+                nr_terms += 1
+            elif clss > 0:
+                sum_terms += meas_res
+                nr_terms += 1
+        pauli_values.append(2**nr_qubits*sum_terms/nr_terms)
+
+    rho_pauli = pauli_set_to_density_matrix(pauli_values)
+
+    return rho_pauli
 
 
 def ltriag_matrix(params: np.ndarray, d: int):
@@ -248,8 +381,9 @@ def density_matrix_to_pauli_basis(rho):
 
 def pauli_set_to_density_matrix(paulis):
     """
-    Returns the expectation values for all combinations of Pauli operator
-    products. The dimension of the density matrix must be a power of two.
+    Returns a density matrix constructed with all combinations of Pauli operator
+    products weighted with the corresponding expectation values given.
+    The dimension of output density matrix will be a power of two.
     """
     d2 = len(paulis)
     if 4 ** ((d2.bit_length() - 1)//2) == d2:
@@ -373,7 +507,7 @@ def generate_pauli_set(nr_qubits):
         'Y': qtp.sigmay(),
         'Z': qtp.sigmaz(),
     }
-    labels = [''.join(ops) for ops in itertools.product(['I','X','Y','Z'], 
+    labels = [''.join(ops) for ops in itertools.product(['I','X','Y','Z'],
               repeat=nr_qubits)]
     operators = []
     for label in labels:
@@ -383,3 +517,61 @@ def generate_pauli_set(nr_qubits):
         op.dims = [[2**nr_qubits], [2**nr_qubits]]
         operators.append(op)
     return labels, operators
+
+def generate_povm_set(nr_qubits):
+    """
+    Generates povm set for n qubits (nr_qubits) based on the pauli operator set.
+    """
+    Id = qtp.Qobj([[1,0],[0,1]])
+    X = qtp.Qobj([[0,1],[1,0]])
+    Y = qtp.Qobj([[0,-1j],[1j,0]])
+    Z = qtp.Qobj([[1,0],[0,-1]])
+    povms = { 'X': (Id+X)/2, 'x': (Id-X)/2, 'Y': (Id+Y)/2,
+              'y': (Id-Y)/2, 'Z': (Id+Z)/2, 'z': (Id-Z)/2 }
+
+    labels = [''.join(ops) for ops in itertools.product(['X','x','Y','y',
+                'Z','z'], repeat=nr_qubits)]
+    operators = []
+    for label in labels:
+        op = qtp.Qobj([[1]])
+        for c in label:
+            op = qtp.tensor(op, paulis[c])
+        op.dims = [[2**nr_qubits], [2**nr_qubits]]
+        operators.append(op)
+    return labels, operators
+
+def pauli_to_povm(nr_qubits,mus):
+    """
+    Converts pauli expected values to expected values of the povm set generated
+    by generate_povm_set.
+    """
+    base_conv = [[1/2,1/2,0,0],[1/2,-1/2,0,0],[1/2,0,1/2,0],[1/2,0,-1/2,0],
+                    [1/2,0,0,1/2],[1/2,0,0,-1/2]]
+    full_conv = [[1]]
+    for n in range(nr_qubits):
+        next_conv = []
+        for povm_ind_new in base_conv:
+            for povm_ind_prev in full_conv:
+                next_conv.append(np.array([ind*np.array(povm_ind_prev)
+                for ind in povm_ind_new]).flatten())
+        full_conv = next_conv
+
+    return np.dot(full_conv,mus)
+
+def povm_to_pauli(nr_qubits,mus):
+    """
+    Converts expected values of the povm set generated by generate_povm_set to
+    pauli expected values.
+    """
+    base_conv = [[1/6,1/6,1/6,1/6,1/6,1/6],[3/6,-3/6,0,0,0,0],
+                    [0,0,3/6,-3/6,0,0],[0,0,0,0,3/6,-3/6]]
+    full_conv = [[1]]
+    for n in range(nr_qubits):
+        next_conv = []
+        for povm_ind_new in base_conv:
+            for povm_ind_prev in full_conv:
+                next_conv.append(np.array([ind*np.array(povm_ind_prev)
+                for ind in povm_ind_new]).flatten())
+        full_conv = next_conv
+
+    return np.dot(full_conv,mus)
