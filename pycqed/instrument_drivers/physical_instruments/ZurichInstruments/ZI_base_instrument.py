@@ -326,7 +326,7 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/raw/error/blinkforever'] = {'type': 'Integer', 'value': 0}
             self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
             for awg_nr in range(4):
-                for i in range(32):
+                for i in range(2048):
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
                         'type': 'ZIVectorData', 'value': np.array([])}
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
@@ -343,9 +343,13 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
             for dio_nr in range(32):
                 self.nodes[f'/{self.device}/raw/dios/0/delays/{dio_nr}/value'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/raw/error/clear'] = {
+                'type': 'Integer', 'value': 0}
         elif self.devtype == 'PQSC':
             self.nodes[f'/{self.device}/raw/error/json/errors'] = {
                 'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+            self.nodes[f'/{self.device}/raw/error/clear'] = {
+                'type': 'Integer', 'value': 0}
 
     def listNodesJSON(self, path):
         pass
@@ -497,7 +501,8 @@ class MockDAQServer():
         Takes in a node_doc JSON file auto generates paths based on
         the contents of this file.
         """
-        f = open(filename).read()
+        with open(filename) as fo:
+            f = fo.read()
         node_pars = json.loads(f)
         for par in node_pars.values():
             node = par['Node'].split('/')
@@ -704,7 +709,10 @@ class ZI_base_instrument(Instrument):
 
             # Create waveform parameters
             self._num_codewords = 0
-            self._add_codeword_waveform_parameters(num_codewords)
+            # CH: this Delft function should not be needed for us, and removing it
+            # should save time in the init script. Please let me know if you
+            # experience any issues with the init of HDAWG/UHF.
+            # self._add_codeword_waveform_parameters(num_codewords)
         else:
             self._awgModule = None
 
@@ -836,7 +844,8 @@ class ZI_base_instrument(Instrument):
         Takes in a node_doc JSON file auto generates parameters based on
         the contents of this file.
         """
-        f = open(filename).read()
+        with open(filename) as fo:
+            f = fo.read()
         node_pars = json.loads(f)
         for par in node_pars.values():
             node = par['Node'].split('/')
@@ -1443,10 +1452,14 @@ class ZI_base_instrument(Instrument):
 
         t0 = time.time()
         success_and_ready = False
+        if not hasattr(self, 'compiler_statusstring'):
+            self.compiler_statusstring = ''
 
         # This check (and while loop) is added as a workaround for #9
         while not success_and_ready:
-            log.info(f'{self.devname}: Configuring AWG {awg_nr}...')
+            new_statusstring = f'{self.devname}: Configuring AWG {awg_nr}...'
+            log.info(new_statusstring)
+            self.compiler_statusstring += new_statusstring
 
             self._awgModule.set('awgModule/index', awg_nr)
             self._write_cmd_to_logfile(f"_awgModule.set('awgModule/index', {awg_nr})")
@@ -1494,8 +1507,11 @@ class ZI_base_instrument(Instrument):
                     break
 
         t1 = time.time()
-        print(self._awgModule.get('awgModule/compiler/statusstring')
+        new_statusstring = (self._awgModule.get(
+            'awgModule/compiler/statusstring')
               ['compiler']['statusstring'][0] + ' in {:.2f}s'.format(t1-t0))
+        log.info(new_statusstring)
+        self.compiler_statusstring += new_statusstring
 
         # Check status
         if self.get('awgs_{}_waveform_memoryusage'.format(awg_nr)) > 1.0:
