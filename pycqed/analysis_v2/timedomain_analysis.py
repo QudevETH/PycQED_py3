@@ -1796,10 +1796,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         if qbn is None:
             param_name = [p for v in self.mospm.values() for p in v
-                          if self.sp.find_parameter(p) == 1][0]
+                          if self.sp.find_parameter(p) == 1]
         else:
             param_name = [p for p in self.mospm[qbn]
-                          if self.sp.find_parameter(p)][0]
+                          if self.sp.find_parameter(p)]
+        if not len(param_name):
+            return None
+
+        param_name = param_name[0]
         label = self.sp.get_sweep_params_property(
             'label', dimension=dimension, param_names=param_name)
         unit = self.sp.get_sweep_params_property(
@@ -5288,7 +5292,12 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
+            # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+            # replace k with qbn_i or qbn
             k = k.replace('cos_fit_', '')
+            # split into qbn and i. (k + '_') is needed because if k = qbn
+            # doing k.split('_') will only have one output and assignment to
+            # two variables will fail.
             qbn, i = (k + '_').split('_')[:2]
             fit_res = fit_dict['fit_res']
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
@@ -5418,13 +5427,20 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     # It is handled by prepare_amplitude_fit_plots of that class
                     continue
 
+                # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+                # replace k with qbn_i or qbn
                 k = k.replace('cos_fit_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
                 qbn, i = (k + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                         'sweep_points']
-                if len(i):
-                    label, unit, vals = self.get_first_sweep_param(
-                        qbn, dimension=1)
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
                     title_suffix = (f'{i}: {label} = ' + ' '.join(
                         SI_val_to_msg_str(vals[int(i)], unit,
                                           return_type=lambda x : f'{x:0.4f}')))
@@ -5433,6 +5449,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     if daa is not None:
                         sweep_points = sweep_points * daa[int(i)]
                 else:
+                    # OneD
                     title_suffix = ''
                 fit_res = fit_dict['fit_res']
                 base_plot_name = 'Rabi_' + k
@@ -5918,13 +5935,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
+            # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
             split_key = k.split('_')
             fit_type = '_'.join(split_key[:2])
             qbn = split_key[2]
             if len(split_key[2:]) == 1:
                 outer_key = qbn
             else:
-                # TwoD
+                # TwoD: out_key = qbn_i
                 outer_key = '_'.join(split_key[2:])
 
             if outer_key not in self.proc_data_dict['analysis_params_dict']:
@@ -5972,12 +5990,18 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     # This is only for ReparkingRamseyAnalysis.
                     # It is handled by prepare_fitting_qubit_freqs of that class
                     continue
+                # outer_key is of the form qbn_i if TwoD else qbn.
+                # split into qbn and i. (outer_key + '_') is needed because if
+                # outer_key = qbn doing outer_key.split('_') will only have one
+                # output and assignment to two variables will fail.
                 qbn, ii = (outer_key + '_').split('_')[:2]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                     'sweep_points']
-                if len(ii):
-                    label, unit, vals = self.get_first_sweep_param(
-                        qbn, dimension=1)
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(ii) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
                     title_suffix = (f'{ii}: {label} = ' + ' '.join(
                         SI_val_to_msg_str(vals[int(ii)], unit,
                                           return_type=lambda x: f'{x:0.1f}')))
@@ -5986,6 +6010,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     if daa is not None:
                         sweep_points = sweep_points * daa[int(ii)]
                 else:
+                    # OneD
                     title_suffix = ''
                 base_plot_name = 'Ramsey_' + outer_key
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
