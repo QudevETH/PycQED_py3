@@ -1401,8 +1401,9 @@ class Chevron(CalibBuilder):
                     self.channels_to_upload.append(fp.pulses[0][k])
 
         for k in list(sweep_points[0].keys()) + list(sweep_points[1].keys()):
-            for p in fp.pulses:
-                p[k] = ParametricValue(k)
+            if '=' not in k:  # '=' indicates a pulse modifier sweep point
+                for p in fp.pulses:
+                    p[k] = ParametricValue(k)
 
         max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
                                                 max_flux_length)
