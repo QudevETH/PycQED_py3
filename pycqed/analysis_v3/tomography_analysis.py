@@ -340,6 +340,12 @@ def density_matrices(data_dict,
                 state vector as qutip object
             - use_covariance_matrix (bool; default: False): whether to use the
                 covariance matrices in the estimations
+            - tolerance (float; default: None): custom tolerance threshold for
+                iterative maximum likelihood estimation.
+            - iterations (int; default: None): custom iteration threshold for
+                iterative maximum likelihood estimation.
+            - rho_guess (qutip Qobj; default: None): initial rho used in Maximum
+                likelihood estimation (mle) or iterative mle instead of default
     :return: adds to data_dict
         - rho_target if not already there
         - est_type.purity, (est_type.concurrence if len(meas_obj_names) == 2),
@@ -382,6 +388,24 @@ def density_matrices(data_dict,
                                      default_value=False, **params) else None,
                 rho_guess=rho_guess)
             hlp_mod.add_param('max_likelihood.rho', rho_mle, data_dict, **params)
+        elif estimation_type == 'iterative_mle':
+            rho_imle = tomo.imle_tomography(
+                hlp_mod.get_param('all_measurement_results', data_dict,
+                                  raise_error=True, **params),
+                hlp_mod.get_param('all_measurement_operators', data_dict,
+                                  raise_error=True, **params),
+                hlp_mod.get_param('iterations', data_dict, **params),
+                hlp_mod.get_param('tolerance', data_dict, **params),
+                hlp_mod.get_param('rho_guess', data_dict, **params))
+            hlp_mod.add_param('iterative_mle.rho', rho_imle, data_dict, **params)
+        elif estimation_type == 'pauli_values':
+            rho_pauli = tomo.pauli_values_tomography(
+                hlp_mod.get_param('all_measurement_results', data_dict,
+                                  raise_error=True, **params),
+                [qtp.Qobj(F) for F in hlp_mod.get_param('measurement_ops',
+                                                        data_dict)],
+                hlp_mod.get_param('basis_rots', data_dict))
+            hlp_mod.add_param('pauli_values.rho', rho_pauli, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
@@ -644,8 +668,13 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         base_title = 'Least squares fit of the density matrix\n'
     elif estimation_type == 'max_likelihood':
         base_title = 'Maximum likelihood fit of the density matrix\n'
+    elif estimation_type == 'iterative_mle':
+        base_title = 'Iterative maximum likelihood fit of the density matrix\n'
+    elif estimation_type == 'pauli_values':
+        base_title = 'Density matrix reconstructed from measured Pauli values\n'
     else:
         base_title = 'Density matrix\n'
+
 
     legend_entries = get_legend_artists_labels(data_dict,
                                                estimation_type=estimation_type,
@@ -749,6 +778,10 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
         fit_type = 'least squares fit\n'
     elif estimation_type == 'max_likelihood':
         fit_type = 'maximum likelihood estimation\n'
+    elif estimation_type == 'iterative_mle':
+        fit_type = 'iterative maximum likelihood estimation'
+    elif estimation_type == 'pauli_values':
+        fit_type = 'measured pauli values'
     else:
         fit_type = '\n'
 

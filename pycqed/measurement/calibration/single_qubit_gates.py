@@ -297,7 +297,13 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         Returns: None
 
     """
-    kw_for_task_keys = ['ro_pulse_delay']
+    kw_for_task_keys = ['ro_pulse_delay', 'fp_truncation',
+                        'fp_truncation_buffer',
+                        'fp_compensation',
+                        'fp_compensation_amp',
+                        'fp_during_ro', 'tau',
+                        'fp_during_ro_length',
+                        'fp_during_ro_buffer']
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
                       label=r'drive frequency, $f_d$',
@@ -317,7 +323,12 @@ class FluxPulseScope(ParallelLOSweepExperiment):
             traceback.print_exc()
 
     def sweep_block(self, qb, sweep_points, flux_op_code=None,
-                    ro_pulse_delay=None, **kw):
+                    ro_pulse_delay=None,
+                    fp_truncation=False, fp_compensation=False,
+                    fp_compensation_amp=None, fp_truncation_buffer=None,
+                    fp_during_ro=False, tau=None,
+                    fp_during_ro_length=None,
+                    fp_during_ro_buffer=None, **kw):
         """
         Performs X180 pulse on top of a fluxpulse
         Timings of sequence
@@ -331,9 +342,28 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         :param flux_op_code: (optional str) the flux pulse op_code (default
             FP qb)
         :param ro_pulse_delay: Can be 'auto' to start the readout after
-            the end of the flux pulse or a delay in seconds to start a fixed
+            the end of the flux pulse (or in the middle of the readout-flux-pulse
+            if fp_during_ro is True) or a delay in seconds to start a fixed
             amount of time after the drive pulse. If not provided or set to
-            None, a default fixed delay of 100e-9 is used.
+            None, a default fixed delay of 100e-9 is used. If fp_compensation is
+            used, the readout pulse is referenced to the end of the flux
+            compensation pulse.
+        :param fp_truncation: Truncate the flux pulse after the drive pulse
+        :param fp_truncation_buffer: Time buffer after the drive pulse, before
+            the truncation happens.
+        :param fp_compensation: Truncated custom compensation calculated from a
+            first order distortion with dominant time constant tau. Standard
+            compensation has to be turned off manually.
+        :param fp_compensation_amp: Fixed amplitude for the custom compensation
+            pulse.
+        :param fp_during_ro: Play a flux pulse during the read-out pulse to
+            bring the qubit actively to the parking position in the case where
+            the flux-pulse is not filtered yet. This assumes a unipolar flux-pulse.
+        :param fp_during_ro_length: Length of the fp_during_ro.
+        :param fp_during_ro_buffer: Time buffer between the drive pulse and
+            the fp_during_ro
+        :param tau: Approximate dominant time constant in the flux line, which
+            is used to calculate the amplitude of the fp_during_ro.
 
         :param kw:
         """
@@ -341,31 +371,127 @@ class FluxPulseScope(ParallelLOSweepExperiment):
             flux_op_code = f'FP {qb}'
         if ro_pulse_delay is None:
             ro_pulse_delay = 100e-9
+        if fp_truncation_buffer is None:
+            fp_truncation_buffer = 5e-8
+        if fp_compensation_amp is None:
+            fp_compensation_amp = -2
+        if tau is None:
+            tau = 20e-6
+        if fp_during_ro_length is None:
+            fp_during_ro_length = 2e-6
+        if fp_during_ro_buffer is None:
+            fp_during_ro_buffer = 0.2e-6
+
+        if ro_pulse_delay is 'auto' and (fp_truncation or \
+            hasattr(fp_truncation, '__iter__')):
+            raise Exception('fp_truncation does currently not work ' + \
+                            'with the auto mode of ro_pulse_delay.')
+
+        assert not (fp_compensation and fp_during_ro)
+
         pulse_modifs = {'attr=name,op_code=X180': f'FPS_Pi',
                         'attr=element_name,op_code=X180': 'FPS_Pi_el'}
         b = self.block_from_ops(f'ge_flux {qb}',
-                                [f'X180 {qb}', flux_op_code],
+                                [f'X180 {qb}'] + [flux_op_code] * \
+                                (2 if fp_compensation else 1) \
+                                + ([f'FP {qb}'] if fp_during_ro else []),
                                 pulse_modifs=pulse_modifs)
+
         fp = b.pulses[1]
         fp['ref_point'] = 'middle'
-        offs = fp.get('buffer_length_start', 0)
+        bl_start = fp.get('buffer_length_start', 0)
+        bl_end = fp.get('buffer_length_end', 0)
+
+        def fp_delay(x, o=bl_start):
+            return -(x+o)
+
         fp['pulse_delay'] = ParametricValue(
-            'delay', func=lambda x, o=offs: -(x + o))
+            'delay', func=fp_delay)
+
+        fp_length_function = lambda x: fp['pulse_length']
+
+        if (fp_truncation or hasattr(fp_truncation, '__iter__')):
+            if not hasattr(fp_truncation, '__iter__'):
+                fp_truncation = [-np.inf, np.inf]
+            original_fp_length = fp['pulse_length']
+            max_fp_sweep_length = np.max(
+                sweep_points.get_sweep_params_property(
+                    'values', dimension=0, param_names='delay'))
+            sweep_diff = max(max_fp_sweep_length - original_fp_length, 0)
+            fp_length_function = lambda x, opl=original_fp_length, \
+                o=bl_start + fp_truncation_buffer, trunc=fp_truncation: \
+                max(min((x + o), opl), 0) if (x>np.min(trunc) and x<np.max(trunc)) else opl
+
+            fp['pulse_length'] = ParametricValue(
+                'delay', func=fp_length_function)
+            if fp_compensation:
+                cp = b.pulses[2]
+                cp['name'] = 'FPS_FPC'
+                cp['amplitude'] = -np.sign(fp['amplitude']) * np.abs(
+                    fp_compensation_amp)
+                cp['pulse_delay'] = sweep_diff + bl_start
+
+                def t_trunc(x, fnc=fp_length_function, tau=tau,
+                            fp_amp=fp['amplitude'], cp_amp=cp['amplitude']):
+                    fp_length = fnc(x)
+
+                    def v_c(tau, fp_length, fp_amp, v_c_start=0):
+                        return fp_amp - (fp_amp - v_c_start) * np.exp(
+                            -fp_length / tau)
+
+                    v_c_fp = v_c(tau, fp_length, fp_amp, v_c_start=0)
+                    return -np.log(cp_amp / (cp_amp - v_c_fp)) * tau
+
+                cp['pulse_length'] = ParametricValue('delay', func=t_trunc)
+
+        # assumes a unipolar flux-pulse for the calculation of the
+        # amplitude decay.
+        if fp_during_ro:
+            rfp = b.pulses[2]
+
+            def rfp_delay(x, fp_delay=fp_delay, fp_length=fp_length_function,\
+                fp_bl_start=bl_start, fp_bl_end=bl_end):
+                return -(fp_length(x)+fp_bl_end+fp_delay(x))
+
+            def rfp_amp(x, fp_delay=fp_delay, rfp_delay=rfp_delay, tau=tau,
+                fp_amp=fp['amplitude'], o=fp_during_ro_buffer-bl_start):
+                fp_length=-fp_delay(x)+o
+                if fp_length <= 0:
+                    return 0
+                elif rfp_delay(x) < 0:
+                    # in the middle of the fp
+                    return -fp_amp * np.exp(-fp_length / tau)
+                else:
+                    # after the end of the fp
+                    return fp_amp * (1 - np.exp(-fp_length / tau))
+
+            rfp['pulse_length'] = fp_during_ro_length
+            rfp['pulse_delay'] = ParametricValue('delay', func=rfp_delay)
+            rfp['amplitude'] = ParametricValue('delay', func=rfp_amp)
+            rfp['buffer_length_start'] = fp_during_ro_buffer
 
         if ro_pulse_delay == 'auto':
-            delay = \
-                fp['pulse_length'] - np.min(
-                    sweep_points.get_sweep_params_property(
-                        'values', dimension=0, param_names='delay')) + \
-                fp.get('buffer_length_end', 0) + fp.get('trans_length', 0)
-            b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'middle',
-                                'pulse_delay': delay})
+            if fp_during_ro:
+                # start the ro pulse in the middle of the fp_during_ro pulse
+                delay = fp_during_ro_buffer + fp_during_ro_length/2
+                b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'end',
+                                    'pulse_delay': delay})
+            else:
+                delay = \
+                    fp['pulse_length'] - np.min(
+                        sweep_points.get_sweep_params_property(
+                            'values', dimension=0, param_names='delay')) + \
+                    fp.get('buffer_length_end', 0) + fp.get('trans_length', 0)
+                b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'middle',
+                                    'pulse_delay': delay})
+        elif fp_compensation:
+            b.block_end.update({'ref_pulse': 'FPS_FPC', 'ref_point': 'end',
+                                'pulse_delay': ro_pulse_delay})
         else:
             b.block_end.update({'ref_pulse': 'FPS_Pi', 'ref_point': 'end',
                                 'pulse_delay': ro_pulse_delay})
 
         self.data_to_fit.update({qb: 'pe'})
-
         return b
 
     @Timer()
