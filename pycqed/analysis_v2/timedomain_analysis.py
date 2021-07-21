@@ -5396,17 +5396,21 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 color = 'k'
                 if np.abs(delta_f) > np.abs(art_det):
-                    # we don't want this; raise a warning and highlight in red
-                    # the Delta f and artificial detuning row in textstr
+                    # We don't want this: if the qubit detuning is larger than
+                    # the artificial detuning, the sign of the qubit detuning
+                    # cannot be determined from just one Ramsey measurement.
+                    # Save a warning image and highlight in red
+                    # the Delta f and artificial detuning rows in textstr
                     if not raised_warning:
                         self._raise_warning_image()
                         raised_warning = True
                     textstr = textstr.split('\n')
-                    sc = [s for s in textstr if 'Delta f' in s][0]
-                    idx = textstr.index(sc)
                     color = ['black']*len(textstr)
+                    idx = [i for i, s in enumerate(textstr) if 'Delta f' in s][0]
                     color[idx] = 'red'
-                    color[-1] = 'red'
+                    idx = [i for i, s in enumerate(textstr) if
+                           'artificial detuning' in s][0]
+                    color[idx] = 'red'
 
                 self.plot_dicts['text_msg_' + qbn] = {
                     'fig_id': base_plot_name,
