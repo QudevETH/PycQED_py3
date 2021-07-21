@@ -379,6 +379,9 @@ def rainbow_text(x, y, strings, colors, ax, orientation='horizontal', **kwargs):
     other (orientation='horizontal') or one over the other
     (orientation='vertical'), with text strings[i] being shown in colors[i].
 
+    Adapted from:
+    https://matplotlib.org/stable/gallery/text_labels_and_annotations/rainbow_text.html
+
     Parameters
     ----------
     x, y : float
