@@ -205,16 +205,16 @@ class Save:
                 savename = os.path.join(self.savedir, savebase + key + tstag +
                                         'presentation' + '.' + fmt)
                 figs_dicts[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
+                                        format=fmt, dpi=dpi)
                 savename = os.path.join(self.savedir, savebase + key + tstag +
                                         'presentation' + '.svg')
                 figs_dicts[key].savefig(savename, bbox_inches='tight',
-                                        fmt='svg')
+                                        format='svg')
             else:
                 savename = os.path.join(self.savedir, savebase + key + tstag
                                         + '.' + fmt)
                 figs_dicts[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
+                                        format=fmt, dpi=dpi)
             if params.get('close_figs', True):
                 plt.close(figs_dicts[key])
 

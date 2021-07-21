@@ -718,13 +718,13 @@ class BaseDataAnalysis(object):
             if self.presentation_mode:
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
                 self.figs[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
+                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
-                self.figs[key].savefig(savename, bbox_inches='tight', fmt='svg')
+                self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
             else:
                 savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
                 self.figs[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
+                                       format=fmt, dpi=dpi)
             if close_figs:
                 plt.close(self.figs[key])
 
@@ -1027,7 +1027,8 @@ class BaseDataAnalysis(object):
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
-            pdict['no_label'] = no_label
+            if 'no_label' not in pdict:
+                pdict['no_label'] = no_label
             # Use the key of the plot_dict if no ax_id is specified
             pdict['fig_id'] = pdict.get('fig_id', key)
             pdict['ax_id'] = pdict.get('ax_id', None)
@@ -1613,8 +1614,11 @@ class BaseDataAnalysis(object):
         plot_ytick_loc = pdict.get('ytick_loc', None)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
+        plot_nolabel_units = pdict.get('no_label_units', False)
         plot_normalize = pdict.get('normalize', False)
         plot_logzscale = pdict.get('logzscale', False)
+        plot_logxscale = pdict.get('logxscale', False)
+        plot_logyscale = pdict.get('logyscale', False)
         plot_origin = pdict.get('origin', 'lower')
 
         if plot_logzscale:
@@ -1672,6 +1676,11 @@ class BaseDataAnalysis(object):
                             transpose=plot_transpose,
                             normalize=plot_normalize)
 
+        if plot_logxscale:
+            axs.set_xscale('log')
+        if plot_logyscale:
+            axs.set_yscale('log')
+
         if plot_xrange is None:
             if plot_xwidth is not None:
                 xmin, xmax = min([min(xvals) - plot_xwidth[tt] / 2
@@ -1727,10 +1736,17 @@ class BaseDataAnalysis(object):
 
         if not plot_nolabel:
             self.label_color2D(pdict, axs)
+        if plot_nolabel_units:
+            axs.set_xlabel(pdict['xlabel'])
+            axs.set_ylabel(pdict['ylabel'])
 
         axs.cmap = out['cmap']
         if plot_cbar:
-            self.plot_colorbar(axs=axs, pdict=pdict)
+            no_label = plot_nolabel
+            if plot_nolabel and plot_nolabel_units:
+                no_label = False
+            self.plot_colorbar(axs=axs, pdict=pdict,
+                               no_label=no_label)
 
     def label_color2D(self, pdict, axs):
         plot_transpose = pdict.get('transpose', False)
@@ -1754,7 +1770,7 @@ class BaseDataAnalysis(object):
             # axs.set_title(plot_title)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
-                      orientation='vertical'):
+                      orientation='vertical', no_label=None):
         if key is not None:
             pdict = self.plot_dicts[key]
             axs = self.axs[key]
@@ -1764,6 +1780,9 @@ class BaseDataAnalysis(object):
                     'pdict and axs must be specified'
                     ' when no key is specified.')
         plot_nolabel = pdict.get('no_label', False)
+        if no_label is not None:
+            plot_nolabel = no_label
+
         plot_clabel = pdict.get('clabel', None)
         plot_cbarwidth = pdict.get('cbarwidth', '10%')
         plot_cbarpad = pdict.get('cbarpad', '5%')
