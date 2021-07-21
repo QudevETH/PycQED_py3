@@ -5326,7 +5326,6 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_plots(self):
         super().prepare_plots()
 
-        raised_warning = False
         if self.do_fitting:
             ramsey_dict = self.proc_data_dict['analysis_params_dict']
             for qbn in self.qb_names:
@@ -5401,9 +5400,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     # cannot be determined from just one Ramsey measurement.
                     # Save a warning image and highlight in red
                     # the Delta f and artificial detuning rows in textstr
-                    if not raised_warning:
-                        self._raise_warning_image()
-                        raised_warning = True
+                    self._raise_warning_image()
+                    self._warning_image_raised = True
                     textstr = textstr.split('\n')
                     color = ['black']*len(textstr)
                     idx = [i for i, s in enumerate(textstr) if 'Delta f' in s][0]

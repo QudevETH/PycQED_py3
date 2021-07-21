@@ -206,6 +206,8 @@ class BaseDataAnalysis(object):
             if type(self.auto_keys) is str:
                 self.auto_keys = [self.auto_keys]
 
+            self._warning_image_raised = False
+
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -251,16 +253,17 @@ class BaseDataAnalysis(object):
             the warning image to be copied
         :return:
         """
-        import shutil
-        if image_path is None:
-            image_path = os.path.abspath(
-                sys.modules[self.__class__.__module__].__file__)
-            image_path = os.path.split(image_path)[0]
-            image_path = os.path.abspath(os.path.join(image_path, 'WARNING.png'))
+        if not self._warning_image_raised:
+            import shutil
+            if image_path is None:
+                image_path = os.path.abspath(
+                    sys.modules[self.__class__.__module__].__file__)
+                image_path = os.path.split(image_path)[0]
+                image_path = os.path.abspath(os.path.join(image_path, 'WARNING.png'))
 
-        destination = a_tools.get_folder(self.timestamps[-1])
-        destination = os.path.abspath(os.path.join(destination, 'WARNING.png'))
-        shutil.copy2(image_path, destination)
+            destination = a_tools.get_folder(self.timestamps[-1])
+            destination = os.path.abspath(os.path.join(destination, 'WARNING.png'))
+            shutil.copy2(image_path, destination)
 
     def create_job(self, *args, **kwargs):
         """
