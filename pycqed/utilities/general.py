@@ -800,3 +800,26 @@ def find_symmetry_index(data):
         data_filtered = data[np.int(iflip-span):np.int(iflip+span+1)]
         corr.append((data_filtered*data_filtered[::-1]).sum())
     return np.argmax(corr), corr
+
+
+def raise_warning_image(destination_path, warning_image_path=None):
+    """
+    Copy the image specified by warning_image_path to the folder specified by
+    destination_path.
+    :param destination_path: folder where the warning image is to be copied
+    :param image_path: full path, including image name and extension, to
+        the warning image to be copied. If None, assumes WARNING.png exists in
+        the module folder.
+    :return:
+    """
+    if 'WARNING.png' not in os.listdir(destination_path):
+        import shutil
+        if warning_image_path is None:
+            warning_image_path = os.path.abspath(sys.modules[__name__].__file__)
+            warning_image_path = os.path.split(warning_image_path)[0]
+            warning_image_path = os.path.abspath(os.path.join(
+                warning_image_path, 'WARNING.png'))
+
+        destination = os.path.abspath(os.path.join(destination_path,
+                                                   'WARNING.png'))
+        shutil.copy2(warning_image_path, destination)

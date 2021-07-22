@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.general import NumpyJsonEncoder
+from pycqed.utilities.general import NumpyJsonEncoder, raise_warning_image
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
@@ -33,7 +33,6 @@ import traceback
 import logging
 log = logging.getLogger(__name__)
 log.addHandler(logging.StreamHandler())
-
 
 class BaseDataAnalysis(object):
     """
@@ -245,25 +244,13 @@ class BaseDataAnalysis(object):
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
 
-    def _raise_warning_image(self, image_path=None):
+    def _raise_warning_image(self):
         """
-        Copy the image specified by image_path to the folder of the last
-        timestamp.
-        :param image_path: full path, including image name and extention, to
-            the warning image to be copied
-        :return:
+        Calls raise_warning_image with the folder corresponding to the last
+        timestamp in self.timestamps.
         """
         if not self._warning_image_raised:
-            import shutil
-            if image_path is None:
-                image_path = os.path.abspath(
-                    sys.modules[self.__class__.__module__].__file__)
-                image_path = os.path.split(image_path)[0]
-                image_path = os.path.abspath(os.path.join(image_path, 'WARNING.png'))
-
-            destination = a_tools.get_folder(self.timestamps[-1])
-            destination = os.path.abspath(os.path.join(destination, 'WARNING.png'))
-            shutil.copy2(image_path, destination)
+            raise_warning_image(a_tools.get_folder(self.timestamps[-1]))
 
     def create_job(self, *args, **kwargs):
         """
