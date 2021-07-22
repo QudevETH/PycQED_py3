@@ -5397,11 +5397,16 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 if np.abs(delta_f) > np.abs(art_det):
                     # We don't want this: if the qubit detuning is larger than
                     # the artificial detuning, the sign of the qubit detuning
-                    # cannot be determined from just one Ramsey measurement.
+                    # cannot be determined from a single Ramsey measurement.
                     # Save a warning image and highlight in red
                     # the Delta f and artificial detuning rows in textstr
-                    self._raise_warning_image()
-                    self._warning_image_raised = True
+                    self._raise_warning(f'Qubit {qbn} frequency change '
+                                        f'({np.abs(delta_f):.5f} MHz) is larger'
+                                        f' than the artificial detuning of '
+                                        f'{art_det:.5f} MHz. In this case, the '
+                                        f'sign of the qubit detuning cannot be '
+                                        f'determined from a single Ramsey '
+                                        f'measurement.')
                     textstr = textstr.split('\n')
                     color = ['black']*len(textstr)
                     idx = [i for i, s in enumerate(textstr) if 'Delta f' in s][0]

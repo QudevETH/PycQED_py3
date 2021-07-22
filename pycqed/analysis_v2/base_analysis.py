@@ -13,7 +13,8 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.general import NumpyJsonEncoder, raise_warning_image
+from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
+    write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
@@ -244,13 +245,31 @@ class BaseDataAnalysis(object):
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
 
-    def _raise_warning_image(self):
+    def _raise_warning(self, warning_message=None, warning_textfile_name=None):
         """
-        Calls raise_warning_image with the folder corresponding to the last
-        timestamp in self.timestamps.
+        If self._warning_image_raised == False, calls raise_warning_image
+        which saves a warning image to the the folder corresponding to the
+        last timestamp in self.timestamps.
+
+        If warning_message is not None, calls write_warning_message_to_text_file
+        which creates a text file with warning_message in the folder
+        corresponding to the last timestamp in self.timestamps. If text file
+        already exists, it will append to it.
+
+        :param warning_message: string with the message to be written into the
+            text file.
+        :param warning_textfile_name: string with name of the file without
+            extension.
         """
+        destination_path = a_tools.get_folder(self.timestamps[-1])
         if not self._warning_image_raised:
-            raise_warning_image(a_tools.get_folder(self.timestamps[-1]))
+            raise_warning_image(destination_path)
+            self._warning_image_raised = True
+
+        if warning_message is not None:
+            write_warning_message_to_text_file(destination_path,
+                                               warning_message,
+                                               warning_textfile_name)
 
     def create_job(self, *args, **kwargs):
         """

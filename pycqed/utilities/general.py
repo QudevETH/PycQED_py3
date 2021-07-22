@@ -823,3 +823,42 @@ def raise_warning_image(destination_path, warning_image_path=None):
         destination = os.path.abspath(os.path.join(destination_path,
                                                    'WARNING.png'))
         shutil.copy2(warning_image_path, destination)
+
+
+def write_warning_message_to_text_file(destination_path, message, filename=None):
+    """
+    Write a warning message to a text file.
+    :param destination_path: folder to the text file. If file does not yet
+        exist, it will be created.
+    :param message: string with the message to be written into the text file.
+    :param filename: string with name of the warning message file without
+        extension. If None, uses 'warning_message'. If text file does not exist,
+        it will be created. It text file already exists, the message wil be
+        appended.
+    :return:
+    """
+    if filename is None:
+        filename = 'warning_message'
+    filename += '.txt'
+
+    # Adding this will ensure the if a future message is appended to the file,
+    # the new message will be separated by an empty line from the current
+    # message.
+    message += '\n\n'
+
+    write_message = True
+    if filename in os.listdir(destination_path):
+        # Opening with "a+" should open for reading and writing but
+        # file.read() or file.readlines() returns empty (bug?).
+        # So we use "r" and reopen with "a" later.
+        file = open(destination_path + f"\\{filename}", 'r')
+        file_message = file.read()
+        file.close()
+        if message in file_message:
+            # Do not add message if already exists.
+            write_message = False
+
+    if write_message:
+        file = open(destination_path + f"\\{filename}", 'a+')
+        file.writelines(message)
+        file.close()
