@@ -776,7 +776,6 @@ class Cryoscope(CalibBuilder):
             concatenation of the truncation_lengths array for each pulse,
             defined between 0 and total length of each pulse.
         """
-        from pprint import pprint
         parallel_block_list = []
         for i, task in enumerate(self.preprocessed_task_list):
             sweep_points = task['sweep_points']
