@@ -24,6 +24,7 @@ latest_data_match_whole_words = False
 datadir = get_default_datadir()
 print('Data directory set to:', datadir)
 fetch_data_dir = None
+ignore_delegate_plotting = False
 
 
 ######################################################################
@@ -332,7 +333,7 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
-            if ro_acq_weight_type in ['SSB', 'DSB', 'optimal_qutrit']:
+            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
             channel_map[qbn] = [vn for vn in value_names for nr in qbchs
                                 if uhf+'_'+ro_type+nr in vn]

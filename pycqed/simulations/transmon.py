@@ -24,6 +24,8 @@ import scipy as sp
 import scipy.optimize
 import functools
 from typing import Optional, List, Tuple
+import logging
+log = logging.getLogger(__name__)
 
 
 @functools.lru_cache()
@@ -224,8 +226,8 @@ def resonator_hamiltonian(frb: float, dim_resonator: int = 10):
 
 
 def transmon_resonator_levels(ec: float, ej: float, frb: float, gb: float,
-                              ng: float = 0., dim_charge: int = 31,
-                              dim_resonator: int = 10,
+                              ng: float = 0., dim_charge: int = 21,
+                              dim_resonator: int = 3,
                               states: List[Tuple[int, int]] =
                               ((1, 0), (2, 0), (0, 1), (1, 1))):
     """Calculate eigenfrequencies of the coupled transmon-resonator Hamiltonian.
@@ -254,15 +256,34 @@ def transmon_resonator_levels(ec: float, ej: float, frb: float, gb: float,
     ham_int = gb * np.kron(n_mon, a_res + a_res.T)
     ham = np.kron(ham_mon, id_res) + np.kron(id_mon, ham_res) + ham_int
 
-    levels_full, states_full = np.linalg.eigh(ham)
-    levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
+    try:
+        levels_full, states_full = np.linalg.eigh(ham)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+    except np.linalg.LinAlgError as e:
+        log.warning(f'Eigenvalue calculation in transmon_resonator_levels '
+                    f'failed in first attempt: {e} Trying again.')
+        levels_full, states_full = np.linalg.eigh(ham)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+        log.warning('Second attempt successful.')
     states_transmon = states_transmon[:, np.argsort(levels_transmon)]
+
     return_idxs = []
     for kt, kr in states:
         bare_state = np.kron(states_transmon[:, kt],
                              np.arange(dim_resonator) == kr)
         return_idxs.append(np.argmax(np.abs(states_full.T @ bare_state)))
-    return levels_full[return_idxs] - levels_full.min()
+
+    bare_state = np.kron(states_transmon[:, 0],
+                         np.arange(dim_resonator) == 0)
+    gs_id = np.argmax(np.abs(states_full.T @ bare_state))
+
+    es = levels_full[return_idxs] - levels_full[gs_id]
+
+    return es
 
 
 def transmon_resonator_fge_anh_frg_chi(ec: float, ej: float, frb: float,
