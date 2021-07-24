@@ -549,10 +549,13 @@ class QuantumExperiment(CircuitBuilder):
                             "filter_segments_mask.")
             elif self.filter_segments_mask is not None:
                 mask = np.array(self.filter_segments_mask)
+                # Only segments with indices included in the mask can be
+                # filtered out. The others will always be measured.
                 for seq in self.sequences:
                     for i, seg in enumerate(seq.segments.values()):
                         if i < mask.shape[0]:
                             seg.allow_filter = True
+                # Create filter lookup table for FilteredSweep
                 lookup = {}
                 for i, sp in enumerate(self.mc_points[1]):
                     if i >= mask.shape[1]:
