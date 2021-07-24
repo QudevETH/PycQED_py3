@@ -736,10 +736,6 @@ class CircuitBuilder:
                 block relative to the duration the block). Default: 'start'
             set_end_after_all_pulses (bool, default False): in all
                 blocks, correct the end pulse to happen after the last pulse.
-            block_align (str or float): at which point the simultaneous
-                blocks should be aligned ('start', 'middle', 'end', or a float
-                between 0.0 and 1.0 that determines the alignment point of each
-                block relative to the duration the block). Default: 'start'
             disable_block_counter (bool, default False): prevent block.build
                 from appending a counter to the block name.
         """
