@@ -263,6 +263,8 @@ class UHFQCPulsar:
             playback_strings.append(f'// Element {element}')
 
             metadata = awg_sequence_element.pop('metadata', {})
+            # The following line only has an effect if the metadata specifies
+            # that the segment should be repeated multiple times.
             playback_strings += self._zi_playback_string_loop_start(
                 metadata, ['ch1', 'ch2'])
             if list(awg_sequence_element.keys()) != ['no_codeword']:
@@ -280,6 +282,8 @@ class UHFQCPulsar:
                 name=obj.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
+            # The following line only has an effect if the metadata specifies
+            # that the segment should be repeated multiple times.
             playback_strings += self._zi_playback_string_loop_end(metadata)
 
             ch_has_waveforms['ch1'] |= wave[0] is not None
@@ -296,15 +300,20 @@ class UHFQCPulsar:
                                                                   wave_definitions)
         else:
             real_indicies = []
+            # The allow_filter dict counts for each segment how many elements
+            # in the segment have allow_filter set in the metadata.
+            # (Note: it will be either True for all elements of the segment
+            # or False for all elements of the segment. So the value either
+            # equals the number of elements in the segment or 0 in the end.)
             allow_filter = {}
             seg_indices = []
             for index, element in enumerate(awg_sequence):
-                if awg_sequence[element] is not None:
+                if awg_sequence[element] is not None:  # element
                     real_indicies.append(index)
                     metadata = awg_sequence[element].get('metadata', {})
                     if metadata.get('allow_filter', False):
                         allow_filter[seg_indices[-1]] += 1
-                else:
+                else:  # segment
                     seg_indices.append(index)
                     allow_filter[seg_indices[-1]] = 0
             el_total = len(real_indicies)
@@ -317,10 +326,12 @@ class UHFQCPulsar:
                     [f for f in allow_filter.values() if f > 0])
                 if len(n_filter_elements) > 1:
                     raise NotImplementedError(
-                        'Element filtering with repeat patterns is not '
-                        'requires the same number elements in all segments '
-                        'that can be filtered.')
+                        'Element filtering with repeat patterns requires '
+                        'the same number elements in all segments that can '
+                        'be filtered.')
 
+                # Tell _set_filter_segments how to calculate the number of
+                # acquisition for given indeces of first and last segment.
                 def filter_count(first_seg, last_seg, n_tot=repeat_pattern[0],
                                  allow_filter=allow_filter):
                     for i, cnt in enumerate(allow_filter.values()):
@@ -330,6 +341,8 @@ class UHFQCPulsar:
                             n_tot -= cnt
                     return n_tot
                 self._filter_segment_functions[obj.name] = filter_count
+                # _set_filter_segments will pass the correct number of
+                # repetitions via a user register to the SeqC variable last_seg
                 repeat_pattern = ('last_seg', 1)
 
             def repeat_func(n, el_played, index, playback_strings,
@@ -359,6 +372,8 @@ class UHFQCPulsar:
                     for k in range(n):
                         el_index = real_indicies[int(index)+k]
                         element = list(awg_sequence.keys())[el_index]
+                        # Pass allow_filter=False since segment filtering is
+                        # already covered by the repeat pattern.
                         playback_strings, wave_definitions = play_element(
                             element, playback_strings, wave_definitions,
                             allow_filter=False)
@@ -793,6 +808,8 @@ class HDAWG8Pulsar:
                 playback_strings.append(f'// Element {element}')
                 
                 metadata = awg_sequence_element.pop('metadata', {})
+                # The following line only has an effect if the metadata
+                # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_start(
                     metadata, [ch1id, ch2id, ch1mid, ch2mid])
 
@@ -823,7 +840,6 @@ class HDAWG8Pulsar:
                             placeholder_wave_lengths = [
                                 waveforms[h].size for h in wave if h is not None
                             ]
-                            log.debug(placeholder_wave_lengths)
                             if max(placeholder_wave_lengths) != \
                                min(placeholder_wave_lengths):
                                 log.warning(f"Waveforms of unequal length on"
@@ -889,6 +905,8 @@ class HDAWG8Pulsar:
                                                   "modulation not implemented.")
                     first_element_of_segment = False
 
+                # The following line only has an effect if the metadata
+                # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_end(metadata)
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
@@ -976,8 +994,6 @@ class HDAWG8Pulsar:
             self._hdawg_waveform_cache[f'{obj.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
-        log.debug([len(w) if w is not None else None
-                   for w in [a1, m1, a2, m2]])
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
         if m1 is not None and a1 is None:
             a1 = np.zeros(n)
@@ -998,10 +1014,7 @@ class HDAWG8Pulsar:
             mc = None
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
-        log.debug([len(w) if w is not None else None
-                   for w in [a1, m1, a2, m2]])
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        log.debug(np.shape(wf_raw_combined))
         obj.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
 
     def _is_awg_running(self, obj):
@@ -2207,14 +2220,6 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
 
     def _get_filter_segments(self):
         return self._filter_segments
-        # vals = []
-        # for AWG in self.awgs.values():
-        #     for regs in self._get_segment_filter_userregs(AWG):
-        #         vals.append((AWG.get(regs[0]), AWG.get(regs[1])))
-        # if len(np.unique(vals, axis=0)) > 1:
-        #     log.warning(f'Filter segment settings not consistent. Returning '
-        #                 f'first value found in {self.awgs[0].name}.')
-        # return vals[0]
 
     def AWGs_prequeried(self, status=None):
         if status is None:
