@@ -1,16 +1,12 @@
 import numpy as np
-from copy import copy
 from copy import deepcopy
 import traceback
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
-from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
-from pycqed.analysis import fitting_models as fit_mods
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.analysis import measurement_analysis as ma
 from pycqed.utilities.general import temporary_value
 import logging
 
