@@ -71,8 +71,6 @@ class UHFQCPulsar:
         "\n"
         "var loop_cnt = getUserReg(0);\n"
         "\n"
-        "{calc_repeat}\n"
-        "\n"
         "repeat (loop_cnt) {{\n"
         "  {playback_string}\n"
         "}}\n"
@@ -149,6 +147,7 @@ class UHFQCPulsar:
             self._uhfqc_create_channel_parameters(id, name, awg)
             self.channels.add(name)
             group.append(name)
+        # all channels are considered as a single group
         for name in group:
             self.channel_groups.update({name: group})
 
@@ -287,7 +286,6 @@ class UHFQCPulsar:
             ch_has_waveforms['ch2'] |= wave[2] is not None
             return playback_strings, wave_definitions
 
-        calc_repeat = ''
         self._filter_segment_functions[obj.name] = None
         if repeat_pattern is None:
             if use_filter:
@@ -385,7 +383,6 @@ class UHFQCPulsar:
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
             playback_string='\n  '.join(playback_strings),
-            calc_repeat=calc_repeat,
         )
 
         # Necessary hack to pass the UHFQC drivers sanity check 
@@ -527,6 +524,8 @@ class HDAWG8Pulsar:
             self._hdawg_create_marker_channel_parameters(id, name, awg)
             self.channels.add(name)
             group.append(name)
+            # channel pairs plus the corresponding marker channels are
+            # considered as groups
             if (ch_nr + 1) % 2 == 0:
                 for name in group:
                     self.channel_groups.update({name: group})
@@ -1109,6 +1108,7 @@ class AWG5014Pulsar:
             self._awg5014_create_marker_channel_parameters(id, name, awg)
             self.channels.add(name)
             group.append(name)
+        # all channels are considered as a single group
         for name in group:
             self.channel_groups.update({name: group})
 
