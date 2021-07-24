@@ -1206,10 +1206,6 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
         for qb in self.meas_obj_names:
             qb.fit_ge_freq_from_flux_pulse_amp(
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
-        if self.update:
-            for qb in self.meas_obj_names:
-                qb.fit_ge_freq_from_flux_pulse_amp(
-                    self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
 class SingleQubitGateCalib(CalibBuilder):
