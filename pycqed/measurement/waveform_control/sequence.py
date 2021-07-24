@@ -126,6 +126,9 @@ class Sequence:
                     if seg.allow_filter is not None:
                         sequences[awg][elname]['metadata']['allow_filter'] = \
                             seg.allow_filter
+                # Experimental feature to sweep values of nodes of ZI HDAWGs
+                # in a hard sweep. See the comments above the sweep_params
+                # property in Segment.
                 if seg.sweep_params is not None and len(seg.sweep_params):
                     sequences[awg][elnames[0]]['metadata']['loop'] = len(
                         list(seg.sweep_params.values())[0])
