@@ -306,10 +306,20 @@ class Indexed_Sweep(Transformed_Sweep):
 
 
 class MajorMinorSweep(Soft_Sweep):
-    """A soft sweep function that combines two sweep function such that the
+    """
+    A soft sweep function that combines two sweep function such that the
     major sweep function takes only discrete values from a given set while
     the minor sweep function takes care of the difference between the
-    discrete values and the desired sweep values."""
+    discrete values and the desired sweep values.
+
+    (further parameters as in multi_sweep_function)
+    :param major_sweep_function: (obj) a soft sweep function or QCoDeS
+        parameter to perform large steps of the sweep parameter
+    :param minor_sweep_function: (obj) a soft sweep function or QCoDeS
+        parameter to perform small steps of the sweep parameter
+    :param major_values: (array, list) allowed values of the
+        major_sweep_function
+    """
 
     def __init__(self,
                  major_sweep_function,
@@ -347,9 +357,12 @@ class MajorMinorSweep(Soft_Sweep):
         self.minor_sweep_function.finish(*args, **kwargs)
 
     def set_parameter(self, val):
+        # find the closes allowed value of the major_sweep_function
         ind = np.argmin(np.abs(self.major_values - val))
         mval = self.major_values[ind]
         self.major_sweep_function.set_parameter(mval)
+        # use the minor_sweep_function to bridge the difference to the
+        # target value
         self.minor_sweep_function.set_parameter(val - mval)
 
 
