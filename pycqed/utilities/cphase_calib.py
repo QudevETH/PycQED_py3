@@ -24,6 +24,7 @@ def update_cz_amplitude(qbc, qbt, phases, amplitudes, target_phase=np.pi,
 
 def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
                     classified_ro=False, tangent_fit=False,
+                    parfit=False,
                     analysis_object=None, **kw):
 
     if analysis_object is None:
@@ -54,6 +55,12 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
         fit_res = lmfit.Model(lambda x, m, b: m*np.tan(x/2-np.pi/2) + b).fit(
             x=cphases, data=sweep_pts,
             m=(max(sweep_pts)-min(sweep_pts))/((max(cphases)-min(cphases))),
+            b=np.min(sweep_pts))
+    elif parfit:
+        fit_res = lmfit.Model(lambda x, m, b, c: m*x + c*x**2 + b).fit(
+            x=cphases, data=sweep_pts,
+            m=(max(sweep_pts)-min(sweep_pts))/((max(cphases)-min(cphases))),
+            c=0.001,
             b=np.min(sweep_pts))
     else:
         fit_res = lmfit.Model(lambda x, m, b: m*x + b).fit(

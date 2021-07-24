@@ -9,6 +9,9 @@ import pycqed.measurement.waveform_control.pulsar as ps
 from collections import OrderedDict as odict
 from copy import deepcopy
 import logging
+
+from pycqed.utilities.timer import Timer
+
 log = logging.getLogger(__name__)
 
 class Sequence:
@@ -16,6 +19,8 @@ class Sequence:
     A Sequence consists of several segments, which can be played back on the 
     AWGs sequentially.
     """
+
+    RENAMING_SEPARATOR = "+"
 
     def __init__(self, name, segments=()):
         """
@@ -30,6 +35,7 @@ class Sequence:
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
+        self.timer = Timer(self.name)
 
     def add(self, segment):
         if segment.name in self.segments:
@@ -46,7 +52,7 @@ class Sequence:
         for seg in segments:
             self.add(seg)
 
-
+    @Timer()
     def generate_waveforms_sequences(self, awgs=None):
         """
         Calculates and returns 
@@ -230,7 +236,8 @@ class Sequence:
 
                 segment_counter += seq.n_segments()
 
-                merged_seqs[-1].name += "+" + seq.name # update name of merged seq
+                # update name of merged seq
+                merged_seqs[-1].name += "+" + seq.name
                 if merge_repeat_patterns:
                     for ch_name, pattern in seq.repeat_patterns.items():
                         # if channel is already present, update number of
@@ -238,40 +245,72 @@ class Sequence:
                         if ch_name in merged_seqs[-1].repeat_patterns:
                             pattern_prev = \
                                 merged_seqs[-1].repeat_patterns[ch_name]
-                            if pattern_prev[1] != pattern[1]:
+                            if pattern_prev[1:] != pattern[1:]:
                                 raise NotImplementedError(
-                                    "The repeat patterns for channel: {ch_name} do not "
-                                    f"have the same 'outer loop' specification (see "
-                                    f"docstring Sequence.repeat). Repeat patterns cannot "
-                                    f"be merged automatically. Set merge_repeat_patterns "
-                                    f"to False and update the repeat patterns manually.")
+                                    f"The repeat patterns for channel: "
+                                    f"{ch_name} do not have the same "
+                                    f"'outer loop' specification (see "
+                                    f"docstring Sequence.repeat). Repeat "
+                                    f"patterns cannot be merged automatically. "
+                                    f"Set merge_repeat_patterns to False and "
+                                    f"update the repeat patterns manually.")
                             pattern_updated = (pattern_prev[0] + pattern[0],
-                                               pattern_prev[1])
-                            merged_seqs[-1].repeat_patterns[ch_name] = pattern_updated
+                                               *pattern_prev[1:])
+                            merged_seqs[-1].repeat_patterns[ch_name] = \
+                                pattern_updated
                         # add repeat pattern
                         else:
-                            merged_seqs[-1].repeat_patterns.update({ch_name:
-                                                                         pattern})
+                            merged_seqs[-1].repeat_patterns.update(
+                                {ch_name: pattern})
 
         return merged_seqs
 
     @staticmethod
-    def compress_2D_sweep(sequences, segment_limit=None, merge_repeat_patterns=True):
+    def interleave_sequences(seq_list_list):
         """
-        Compresses a list of sequences to a lower number of sequences (if possible),
-        each of which containing the same amount of segments (assumes fixed number
-        of readout per segment) while respecting the segment_limit (memory limit).
-        Note that all sequences MUST have the same number of segments.
-        Wraps the Sequence.merge() by computing an effective segment limit that
-        minimizes the total number of sequences (to reduce upload time overhead)
-        while keeping the (new) number of segments per sequence constant
-        (it currently is a limitation of 2D sweeps that  all sequences must have same
-        number of readouts)
+        Interleave a list of Sequence instances.
+        :param seq_list_list: list of lists of Sequence instances
+        :return: list of interleaved Sequences
+        """
+        # make sure all sequence lists in seq_list_list have the same length
+        if len(set([len(seq_list) for seq_list in seq_list_list])) != 1:
+            raise ValueError('The sequence lists do not have the same length.')
+        # make sure all sequence lists in seq_list_list have the same segments
+        if len(set([seq_list[0].n_acq_elements() for
+                        seq_list in seq_list_list])) != 1:
+            raise ValueError('The sequence lists do not have the same number '
+                             'of segments.')
+
+        interleaved_seqs = len(seq_list_list) * len(seq_list_list[0]) * ['']
+        for i in range(len(seq_list_list)):
+            interleaved_seqs[i::len(seq_list_list)] = seq_list_list[i]
+
+        mc_points = [np.arange(interleaved_seqs[0].n_acq_elements()),
+                     np.arange(len(interleaved_seqs))]
+
+        return interleaved_seqs, mc_points
+
+    @staticmethod
+    def compress_2D_sweep(sequences, segment_limit=None,
+                          merge_repeat_patterns=True, mc_points=None):
+        """
+        Compresses a list of sequences to a lower number of sequences
+        (if possible), each of which containing the same amount of segments
+        (assumes fixed number of readout per segment) while respecting the
+        segment_limit (memory limit). Note that all sequences MUST have the
+        same number of segments. Wraps the Sequence.merge() by computing an
+        effective segment limit that minimizes the total number of sequences
+        (to reduce upload time overhead) while keeping the (new)
+        number of segments per sequence constant (it currently is a limitation
+        of 2D sweeps that  all sequences must have same number of readouts)
         Args:
-            sequences (list): list of sequences to compress, which all have the same
-                number of segments
-            segment_limit (int): maximal number of segments that can be in a sequence
+            sequences (list): list of sequences to compress, which all have
+                the same number of segments
+            segment_limit (int): maximal number of segments that can be in
+                a sequence
             merge_repeat_patterns (bool): see docstring of Sequence.merge.
+            mc_points: mc_points array of the original hardware sweep.
+                Useful in case it differs from n_acq_elements().
 
         Returns: list of sequences for the compressed 2D sweep,
             new hardsweep points indices,
@@ -279,7 +318,8 @@ class Sequence:
 
         """
         assert len(np.unique([s.n_segments() for s in sequences])) == 1, \
-            "To allow compression, all sequences must have the same number of segments"
+            "To allow compression, all sequences must have the same number " \
+            "of segments"
         from pycqed.utilities.math import factors
         n_soft_sp = len(sequences)
         n_seg = sequences[0].n_segments()
@@ -309,8 +349,14 @@ class Sequence:
         seg_lim_eff = factor * n_seg
         compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
                                               merge_repeat_patterns)
-        hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
-        soft_sp_ind = np.arange(len(compressed_2D_sweep))
+        if mc_points is None:
+            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+        else:
+            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
+                                    len(compressed_2D_sweep))
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+
         return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
 
     def __repr__(self):
@@ -330,11 +376,13 @@ class Sequence:
                 setattr(new_seq, k, deepcopy(v, memo))
         return new_seq
 
-    def plot(self, segments=None, **segment_plot_kwargs):
+    def plot(self, segments=None, show_and_close=True, **segment_plot_kwargs):
         """
         :param segments: list of segment names to plot
+        :param show_and_close: (bool) show and close the plots (default: True)
         :param segment_plot_kwargs:
-        :return:
+        :return: A list of tuples of figure and axes objects if show_and_close
+            is False, otherwise no return value.
         """
         plots = []
         if segments is None:
@@ -342,5 +390,9 @@ class Sequence:
         else:
             segments = [self.segments[s] for s in segments]
         for s in segments:
-            plots.append(s.plot(**segment_plot_kwargs))
-        return plots
+            plots.append(s.plot(show_and_close=show_and_close,
+                                **segment_plot_kwargs))
+        if show_and_close:
+            return
+        else:
+            return plots

@@ -181,7 +181,9 @@ class multi_sweep_function(Soft_Sweep):
                  name=None,
                  **kw):
         self.set_kw()
-        self.sweep_functions = sweep_functions
+        self.sweep_functions = [mc_parameter_wrapper.wrap_par_to_swf(s)
+                                if isinstance(s, qcodes.Parameter) else s
+                                for s in sweep_functions]
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
         self.unit = sweep_functions[0].unit
@@ -224,13 +226,15 @@ class two_par_joint_sweep(Soft_Sweep):
         self.par_B.set(val * self.par_ratio)
 
 
-class Offset_Sweep(Soft_Sweep):
-    """A sweep soft sweep function that calls an other sweep function with
-    an offset."""
+class Transformed_Sweep(Soft_Sweep):
+    """
+    A soft sweep function that calls another sweep function with a
+    transformation applied.
+    """
 
     def __init__(self,
                  sweep_function,
-                 offset,
+                 transformation,
                  name=None,
                  parameter_name=None,
                  unit=None):
@@ -239,23 +243,18 @@ class Offset_Sweep(Soft_Sweep):
             sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
                 sweep_function)
         if sweep_function.sweep_control != 'soft':
-            raise ValueError('Offset_Sweep: Only software sweeps supported')
+            raise ValueError(f'{self.__class__.__name__}: Only software '
+                             f'sweeps supported')
         self.sweep_function = sweep_function
-        self.offset = offset
+        self.transformation = transformation
         self.sweep_control = sweep_function.sweep_control
-        if parameter_name is None:
-            self.parameter_name = sweep_function.parameter_name + \
-                ' {:+} {}'.format(-offset, sweep_function.unit)
-        else:
-            self.parameter_name = parameter_name
-        if name is None:
-            self.name = sweep_function.name
-        else:
-            self.name = name
-        if unit is None:
-            self.unit = sweep_function.unit
-        else:
-            self.unit = unit
+        self.name = self.sweep_function.name if name is None else name
+        self.unit = self.sweep_function.unit if unit is None else unit
+        self.parameter_name = self.default_param_name() \
+            if parameter_name is None else parameter_name
+
+    def default_param_name(self):
+        return f'transformation of {self.sweep_function.parameter_name}'
 
     def prepare(self, *args, **kwargs):
         self.sweep_function.prepare(*args, **kwargs)
@@ -264,4 +263,43 @@ class Offset_Sweep(Soft_Sweep):
         self.sweep_function.finish(*args, **kwargs)
 
     def set_parameter(self, val):
-        self.sweep_function.set_parameter(val + self.offset)
+        self.sweep_function.set_parameter(self.transformation(val))
+
+
+class Offset_Sweep(Transformed_Sweep):
+    """
+    A soft sweep function that calls another sweep function with an offset.
+    """
+
+    def __init__(self,
+                 sweep_function,
+                 offset,
+                 name=None,
+                 parameter_name=None,
+                 unit=None):
+
+        self.offset = offset
+        super().__init__(sweep_function,
+                 transformation=lambda x, o=offset : x + o,
+                 name=name, parameter_name=parameter_name, unit=unit)
+
+    def default_param_name(self):
+        return self.sweep_function.parameter_name + \
+               ' {:+} {}'.format(-self.offset, self.sweep_function.unit)
+
+
+class Indexed_Sweep(Transformed_Sweep):
+    """
+    A soft sweep function that calls another sweep function with parameter
+    values taken from a provided list of values.
+    """
+
+    def __init__(self, sweep_function, values, name=None, parameter_name=None,
+                 unit=''):
+        self.values = values
+        super().__init__(sweep_function,
+                 transformation=lambda i, v=self.values : v[i],
+                 name=name, parameter_name=parameter_name, unit=unit)
+
+    def default_param_name(self):
+        return f'index of {self.sweep_function.parameter_name}'

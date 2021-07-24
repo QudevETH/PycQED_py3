@@ -428,7 +428,8 @@ def fluxpulse_scope_sequence(
     flux_pulse['name'] = 'FPS_Flux'
     flux_pulse['ref_pulse'] = 'FPS_Pi'
     flux_pulse['ref_point'] = 'middle'
-    flux_pulse_delays = -delays - flux_pulse.get('buffer_length_start', 0)
+    flux_pulse_delays = -np.asarray(delays) - flux_pulse.get(
+        'buffer_length_start', 0)
 
     ro_pulse = deepcopy(operation_dict['RO ' + qb_name])
     ro_pulse['name'] = 'FPS_Ro'
