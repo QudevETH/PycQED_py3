@@ -245,9 +245,8 @@ class BaseDataAnalysis(object):
 
     def _raise_warning(self, warning_message=None, warning_textfile_name=None):
         """
-        If self._warning_image_raised == False, calls raise_warning_image
-        which saves a warning image to the the folder corresponding to the
-        last timestamp in self.timestamps.
+        Calls raise_warning_image which saves a warning image to the folder
+        corresponding to the last timestamp in self.timestamps.
 
         If warning_message is not None, calls write_warning_message_to_text_file
         which creates a text file with warning_message in the folder
