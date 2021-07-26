@@ -160,7 +160,6 @@ class QuantumExperiment(CircuitBuilder):
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
         self.harmonize_element_lengths = harmonize_element_lengths
-        self.channels_to_upload = []
         # The experiment_name might have been set by the user in kw or by a
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
@@ -540,12 +539,9 @@ class QuantumExperiment(CircuitBuilder):
                 unit = list(self.sweep_points[1].values())[0][1]
             except TypeError:
                 sweep_param_name, unit = "None", ""
-            if len(self.channels_to_upload) == 0:
-                self.channels_to_upload = "all"
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
                 sweep_func_2nd_dim = self.sweep_functions[1](
-                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit,
-                    self.channels_to_upload)
+                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
@@ -560,10 +556,13 @@ class QuantumExperiment(CircuitBuilder):
                             "filter_segments_mask.")
             elif self.filter_segments_mask is not None:
                 mask = np.array(self.filter_segments_mask)
+                # Only segments with indices included in the mask can be
+                # filtered out. The others will always be measured.
                 for seq in self.sequences:
                     for i, seg in enumerate(seq.segments.values()):
                         if i < mask.shape[0]:
                             seg.allow_filter = True
+                # Create filter lookup table for FilteredSweep
                 lookup = {}
                 for i, sp in enumerate(self.mc_points[1]):
                     if i >= mask.shape[1]:

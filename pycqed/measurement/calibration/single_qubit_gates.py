@@ -1,16 +1,12 @@
 import numpy as np
-from copy import copy
 from copy import deepcopy
 import traceback
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
-from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
-from pycqed.analysis import fitting_models as fit_mods
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.analysis import measurement_analysis as ma
 from pycqed.utilities.general import temporary_value
 import logging
 
@@ -187,10 +183,6 @@ class T1FrequencySweep(CalibBuilder):
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
         fp = self.block_from_ops('flux', [f'FP {qubit_name}'],
                                  pulse_modifs=pulse_modifs)
-        for k in ['channel', 'channel2']:
-            if k in fp.pulses[0]:
-                if fp.pulses[0][k] not in self.channels_to_upload:
-                    self.channels_to_upload.append(fp.pulses[0][k])
         for k in hard_sweep_dict:
             for p in fp.pulses:
                 if k in p:
@@ -1210,10 +1202,6 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
         for qb in self.meas_obj_names:
             qb.fit_ge_freq_from_flux_pulse_amp(
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
-        if self.update:
-            for qb in self.meas_obj_names:
-                qb.fit_ge_freq_from_flux_pulse_amp(
-                    self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
 class SingleQubitGateCalib(CalibBuilder):
