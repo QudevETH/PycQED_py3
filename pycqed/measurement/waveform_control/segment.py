@@ -142,6 +142,7 @@ class Segment:
         """
         self.enforce_single_element()
         self.resolve_timing()
+        self.resolve_mirror()
         self.resolve_Z_gates()
         self.add_flux_crosstalk_cancellation_channels()
         self.gen_trigger_el()
@@ -185,7 +186,14 @@ class Segment:
                 p1.basis_rotation = {}
                 p1.delay = 0
                 p1.pulse_obj.name += '_ese'
-                self.resolved_pulses.append(p1)
+                p1.is_ese_copy = True
+                if p1.pulse_obj.codeword == "no_codeword":
+                   self.resolved_pulses.append(p1)
+                else:
+                    ese_chs = [ch for m, ch in zip(ch_mask, p.pulse_obj.channels) if m]
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(ese_chs)}')
             else:
                 p = deepcopy(p)
                 self.resolved_pulses.append(p)
@@ -773,6 +781,67 @@ class Segment:
             if len(self.elements_on_awg[awg]) > 1:
                 raise ValueError(
                     'There is more than one element on {}'.format(awg))
+
+    def resolve_mirror(self):
+        """
+        Resolves amplitude mirroring for pulses that have a mirror_pattern
+        property.
+
+        Pulses are categorized by their op_code and by whether or not they
+        are a copy created by enforce_single_element. The mirror_pattern
+        decides which pulses within a category get mirrored. The mirroring
+        is performed by multiplying all pulse parameters that contain
+        'amplitude' in their name by -1 (and adding a mirror_correction if
+        it is provided).
+
+        mirror_pattern:
+        - 'none'/'all': no/all pulses are mirrored
+        - 'odd'/'even': the i-th occurrence of a pulse from the category is
+          mirrored if i is odd (1, 3, ...) / even (2, 4, ...). Note that i is
+          meant as a natural number (i.e., 1-indexed and not 0-indexed).
+        - a list of bools (or of anything that can be interpreted as a bool).
+          In this case, the j-th element of the list indicates whether the
+          j-th occurrence of a pulse from the category is mirrored. If there
+          are more occurrences than elements in the list, the list is
+          repeated periodically.
+
+        mirror_correction:
+        None (no corrections) or a dict, where each key is a pulse
+        parameter name and the corresponding value specifies an additive
+        constant to be added after mirroring of this parameter. For parameters
+        not found in the dict, no correction is applied.
+        """
+        op_counts = {}
+        for p in self.resolved_pulses:
+            pulse_category = (p.op_code, getattr(p, "is_ese_copy", False))
+            if pulse_category not in op_counts:
+                op_counts[pulse_category] = 0
+            op_counts[pulse_category] += 1
+            pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            # interpret string pattern ('none'/'all'/'odd'/'even')
+            if pattern is None or pattern == 'none':
+                continue  # do not mirror
+            for pa1, pa2 in [('all', [1]), ('even', [0, 1]), ('odd', [1, 0])]:
+                if pattern == pa1:
+                    pattern = pa2
+            # periodically extend pattern if needed
+            pattern = deepcopy(pattern)
+            while len(pattern) < op_counts[pulse_category]:
+                pattern += pattern
+            # check whether the pulse should be mirrored
+            if not pattern[op_counts[pulse_category] - 1]:
+                continue  # do not mirror
+            # mirror all parameters that have 'amplitude' in their name
+            # (and apply mirror correction if applicable)
+            mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
+            if mirror_correction is None:
+                mirror_correction = {}
+            for k in p.pulse_obj.__dict__:
+                if 'amplitude' in k:
+                    amp = -getattr(p.pulse_obj, k)
+                    if k in mirror_correction:
+                        amp += mirror_correction[k]
+                    setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """
