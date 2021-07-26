@@ -197,7 +197,8 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 # Lists of a single type, are stored as an hdf5 dset
                 if (all(isinstance(x, elt_type) for x in item) and
                         not isinstance(item[0], dict) and
-                        not isinstance(item, tuple)):
+                        not isinstance(item, tuple) and
+                        not isinstance(item[0], list)):
                     if isinstance(item[0], (int, float,
                                             np.int32, np.int64)):
                         try:
