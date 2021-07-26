@@ -831,17 +831,19 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     :param destination_path: folder to the text file. If file does not yet
         exist, it will be created.
     :param message: string with the message to be written into the text file.
-    :param filename: string with name of the warning message file without
-        extension. If None, uses 'warning_message'. If text file does not exist,
-        it will be created. It text file already exists, the message wil be
-        appended.
+    :param filename: string with name of the warning message file. If None,
+        uses 'warning_message'. If text file does not exist, it will be created.
+        If text file already exists, the message will be appended.
     :return:
     """
     if filename is None:
         filename = 'warning_message'
-    filename += '.txt'
 
-    # Adding this will ensure the if a future message is appended to the file,
+    # Add extension if not contained in filename.
+    if not len(os.path.splitext(filename)[-1]):
+        filename += '.txt'
+
+    # Adding this will ensure that if a future message is appended to the file,
     # the new message will be separated by an empty line from the current
     # message.
     message += '\n\n'
