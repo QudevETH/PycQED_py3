@@ -206,8 +206,6 @@ class BaseDataAnalysis(object):
             if type(self.auto_keys) is str:
                 self.auto_keys = [self.auto_keys]
 
-            self._warning_image_raised = False
-
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -262,9 +260,7 @@ class BaseDataAnalysis(object):
             extension.
         """
         destination_path = a_tools.get_folder(self.timestamps[-1])
-        if not self._warning_image_raised:
-            raise_warning_image(destination_path)
-            self._warning_image_raised = True
+        raise_warning_image(destination_path)
 
         if warning_message is not None:
             write_warning_message_to_text_file(destination_path,
