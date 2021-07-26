@@ -458,18 +458,15 @@ def neural_network_opt(fun, training_grid, target_values = None,
     if x_init is None:
         x_init = np.zeros(n_features)
         #The data is centered. No values above -1,1 should be encountered
-        bounds=[(-1.,1.) for i in range(n_features)]
+        bounds = [(-1.,1.) for i in range(n_features)]
         res = minimize(estimator_wrapper, x_init, method='Nelder-Mead')
     else:
         print('x_init minimizer:', x_init)
         for it in range(n_features):
             x_init[it] = (x_init[it]-input_feature_means[it])/input_feature_ext[it] # scale initial value
-        bounds=[(-1.,0.5) for i in range(n_features)]
+        bounds = [(-1.,0.5) for i in range(n_features)]
         res = minimize(estimator_wrapper, x_init, method='Nelder-Mead')
-        # res = [res.x]
         print('result:', res)
-        # print(res)
-
 
     result = res.x
     opti_flag = True
