@@ -851,7 +851,7 @@ class CPhase(CalibBuilder):
         self.cz_durations.update({
             fp.pulses[0]['op_code']: fr.pulses[0]['pulse_delay']})
         self.cal_states_rotations.update({qbl: {'g': 0, 'e': 1, 'f': 2},
-                                          qbr: {'g': 0, 'e': 1, 'f': 2}})
+                                          qbr: {'g': 0, 'e': 1}})
         self.data_to_fit.update({qbl: ['pg', 'pf'] if ref_pi_half else 'pf',
                                  qbr: 'pe'})
 
