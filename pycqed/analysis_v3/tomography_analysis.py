@@ -884,7 +884,7 @@ def get_legend_artists_labels(data_dict, estimation_type='least_squares',
     return legend_entries
 
 
-def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
+def process_tomography_analysis(data_dict, Uideal=None,
                                 n_qubits=None, prep_pulses_list=None,
                                 estimation_types=('least_squares',
                                                   'max_likelihood'),
@@ -900,10 +900,8 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
          the density matrices from doing state tomography for each prep state)
          - or must contain the key measured_rhos containing a dict of the form
          {est_type.rho: (list of meas ops) for est_type in estimation_types}
-    :param gate_name: name of the gate for which the error is estimated.
-         MUST CORRESPOND TO Uideal IF THE LATTER IS PROVIDED, since gate_name
-         will be used in the key name for storing the results
-    :param Uideal: qutip Qobj of the ideal unitary operator for gate_name
+    :param Uideal: qutip Qobj of the ideal unitary operator for the process.
+        Can also be specified with process_name, see keyword arguments below.
     :param n_qubits: number of qubits
     :param prep_pulses_list: list of tuples with length nr_qubits contanining
          strings indicating the preparation pulses for each state tomography
@@ -929,6 +927,9 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
         - chi_{gate_name}.{estimation_type} and
             measured_error_{gate_name}.{estimation_type} for estimation_type
             in estimation_types.
+        -  process_name: name of the gate for which the error is estimated.
+         MUST CORRESPOND TO Uideal IF THE LATTER IS PROVIDED, since gate_name
+         will be used in the key name for storing the results
     """
     if n_qubits is None:
         meas_obj_names = hlp_mod.get_measurement_properties(
@@ -936,11 +937,17 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
             **params)
         n_qubits = len(meas_obj_names)
     if Uideal is None:
-        if gate_name == 'CZ':
-            Uideal = qtp.to_chi(qtp.cphase(np.pi))/16
+        process_name = hlp_mod.get_param('process_name', data_dict, **params)
+        if process_name == 'CZ':
+            Uideal = qtp.qip.operations.cphase(np.pi)
+        elif process_name == 'CNOT':
+            Uideal = qtp.qip.operations.cnot()
         else:
-            raise ValueError(f'Unknown gate of interest {gate_name}. '
-                             f'Please provide the Uideal.')
+            raise ValueError(f'Unknown gate of interest {process_name}. '
+                             f'Please provide the process unitary, Uideal.')
+    print(Uideal)
+    Uideal = qtp.to_chi(Uideal)/16
+
     if prep_pulses_list is None:
         basis_rots = hlp_mod.get_param(
             'basis_rots', data_dict, raise_error=True,
@@ -1055,11 +1062,11 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
         chi_qtp = qtp.Qobj(chi, dims=Uideal.dims)
 
         # add found chi matrix to data_dict
-        hlp_mod.add_param(f'chi_{gate_name}.{estimation_type}',
+        hlp_mod.add_param(f'chi_{process_name}.{estimation_type}',
                           chi_qtp.full(), data_dict, **params)
 
         # add gate error to data_dict
-        hlp_mod.add_param(f'measured_error_{gate_name}.{estimation_type}',
+        hlp_mod.add_param(f'measured_error_{process_name}.{estimation_type}',
                           1-np.real(qtp.process_fidelity(chi_qtp, Uideal)),
                           data_dict, **params)
 
