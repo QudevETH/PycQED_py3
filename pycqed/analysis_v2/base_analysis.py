@@ -271,11 +271,11 @@ class BaseDataAnalysis(object):
             # else, the warning image and text file will be generated twice
             # when the AnalysisDaemon is active
 
+            destination_path = a_tools.get_folder(self.timestamps[-1])
             warning_message = self.get_param_value('warning_message')
             warning_textfile_name = self.get_param_value('warning_textfile_name')
 
             if self._raise_warning_image:
-                destination_path = a_tools.get_folder(self.timestamps[-1])
                 raise_warning_image(destination_path)
 
             if warning_message is None:
