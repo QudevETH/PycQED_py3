@@ -222,6 +222,7 @@ class CircuitBuilder:
                 raise KeyError(f'Gate "{op}" not found.')
             angle, qbn = op_name[1:], op_info[1]
             if angle[-1] == 's' and angle[:-1].isnumeric():
+                # Simultaneous virtual Z pulses (ex: Z90s qb1)
                 op_info[0] = 's' + op_info[0]
                 angle = angle[:-1]
             param = None
