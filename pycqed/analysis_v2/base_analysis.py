@@ -206,6 +206,12 @@ class BaseDataAnalysis(object):
             if type(self.auto_keys) is str:
                 self.auto_keys = [self.auto_keys]
 
+            # Warning message to be used in self._raise_warning.
+            # Children will append to this variable.
+            self._warning_message = ''
+            # Whether self.raise_warning should save a warning image.
+            self._raise_warning_image = False
+
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -236,6 +242,7 @@ class BaseDataAnalysis(object):
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
                         'close_figs', False))
+            self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -243,7 +250,7 @@ class BaseDataAnalysis(object):
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
 
-    def _raise_warning(self, warning_message=None, warning_textfile_name=None):
+    def _raise_warning(self):
         """
         If delegate_plotting is False, calls raise_warning_image which saves a
         warning image to the folder corresponding to the last timestamp in
@@ -254,18 +261,27 @@ class BaseDataAnalysis(object):
         corresponding to the last timestamp in self.timestamps. If text file
         already exists, it will append to it.
 
+        Params that can be passed in the options_dict:
         :param warning_message: string with the message to be written into the
-            text file.
+            text file. self.warning_message will be appended to this
         :param warning_textfile_name: string with name of the file without
             extension.
         """
         if not self.check_plotting_delegation():
             # else, the warning image and text file will be generated twice
             # when the AnalysisDaemon is active
-            destination_path = a_tools.get_folder(self.timestamps[-1])
-            raise_warning_image(destination_path)
 
-            if warning_message is not None:
+            warning_message = self.get_param_value('warning_message')
+            warning_textfile_name = self.get_param_value('warning_textfile_name')
+
+            if self._raise_warning_image:
+                destination_path = a_tools.get_folder(self.timestamps[-1])
+                raise_warning_image(destination_path)
+
+            if warning_message is None:
+                warning_message = ''
+            warning_message += self._warning_message
+            if len(warning_message):
                 write_warning_message_to_text_file(destination_path,
                                                    warning_message,
                                                    warning_textfile_name)
