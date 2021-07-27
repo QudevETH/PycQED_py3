@@ -110,17 +110,17 @@ class T1FrequencySweep(CalibBuilder):
             if len(sweep_points) == 1:
                 sweep_points.add_sweep_dimension()
             if 'qubit_freqs' in sweep_points[1]:
-                qubit_freqs = sweep_points[1]['qubit_freqs'][0]
+                qubit_freqs = sweep_points['qubit_freqs']
             elif len(self.sweep_points) >= 2 and \
                     'qubit_freqs' in self.sweep_points[1]:
-                qubit_freqs = self.sweep_points[1]['qubit_freqs'][0]
+                qubit_freqs = self.sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
             if 'amplitude' in sweep_points[1]:
-                amplitudes = sweep_points[1]['amplitude'][0]
+                amplitudes = sweep_points['amplitude']
             elif len(self.sweep_points) >= 2 and \
                     'amplitude' in self.sweep_points[1]:
-                amplitudes = self.sweep_points[1]['amplitude'][0]
+                amplitudes = self.sweep_points['amplitude']
             else:
                 amplitudes = None
             qubits, _ = self.get_qubits(task['qb'])
