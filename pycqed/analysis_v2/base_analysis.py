@@ -646,9 +646,11 @@ class BaseDataAnalysis(object):
             self.raw_data_dict = tuple(temp_dict_list)
             if 'TwoD' not in self.options_dict:
                 if not all(twod_list):
-                    raise ValueError('Not all measurements have the same '
-                                     'number of sweep dimensions.')
-                self.options_dict['TwoD'] = twod_list[0]
+                    raise log.info('Not all measurements have the same '
+                                   'number of sweep dimensions. TwoD flag '
+                                   'will remain unset.')
+                else:
+                    self.options_dict['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
