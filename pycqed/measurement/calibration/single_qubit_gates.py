@@ -1,5 +1,5 @@
 import numpy as np
-from copy import deepcopy
+from copy import copy, deepcopy
 import traceback
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
@@ -70,7 +70,8 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
-            self.add_amplitude_sweep_points(**kw)
+            self.task_list = self.add_amplitude_sweep_points(
+                [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.sequences, self.mc_points = \
