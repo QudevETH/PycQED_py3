@@ -245,8 +245,9 @@ class BaseDataAnalysis(object):
 
     def _raise_warning(self, warning_message=None, warning_textfile_name=None):
         """
-        Calls raise_warning_image which saves a warning image to the folder
-        corresponding to the last timestamp in self.timestamps.
+        If delegate_plotting is False, calls raise_warning_image which saves a
+        warning image to the folder corresponding to the last timestamp in
+        self.timestamps.
 
         If warning_message is not None, calls write_warning_message_to_text_file
         which creates a text file with warning_message in the folder
@@ -258,13 +259,16 @@ class BaseDataAnalysis(object):
         :param warning_textfile_name: string with name of the file without
             extension.
         """
-        destination_path = a_tools.get_folder(self.timestamps[-1])
-        raise_warning_image(destination_path)
+        if not self.check_plotting_delegation():
+            # else, the warning image and text file will be generated twice
+            # when the AnalysisDaemon is active
+            destination_path = a_tools.get_folder(self.timestamps[-1])
+            raise_warning_image(destination_path)
 
-        if warning_message is not None:
-            write_warning_message_to_text_file(destination_path,
-                                               warning_message,
-                                               warning_textfile_name)
+            if warning_message is not None:
+                write_warning_message_to_text_file(destination_path,
+                                                   warning_message,
+                                                   warning_textfile_name)
 
     def create_job(self, *args, **kwargs):
         """
