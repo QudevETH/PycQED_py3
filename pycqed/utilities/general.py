@@ -848,19 +848,10 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     # message.
     message += '\n\n'
 
-    write_message = True
-    if filename in os.listdir(destination_path):
-        # Opening with "a+" should open for reading and writing but
-        # file.read() or file.readlines() returns empty (bug?).
-        # So we use "r" and reopen with "a" later.
-        file = open(destination_path + f"\\{filename}", 'r')
-        file_message = file.read()
-        file.close()
-        if message in file_message:
-            # Do not add message if already exists.
-            write_message = False
+    # Prepend timestamp to the message
+    message = f'{datetime.datetime.now():%Y%m%d_%H%M%S}\n{message}'
 
-    if write_message:
-        file = open(destination_path + f"\\{filename}", 'a+')
-        file.writelines(message)
-        file.close()
+    # Write message to file
+    file = open(destination_path + f"\\{filename}", 'a+')
+    file.writelines(message)
+    file.close()
