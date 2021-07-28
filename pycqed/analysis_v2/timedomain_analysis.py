@@ -6094,9 +6094,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 textstr += '\n$f_{qubit \_ old}$ = '+'{:.6f} GHz '.format(
                     old_qb_freq*1e-9)
-                textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(
-                    (ramsey_pars_dict[exp_dec_k]['new_qb_freq'] -
-                    old_qb_freq)*1e-6) + '$\pm$ {:.3f} kHz'.format(
+                art_det = ramsey_pars_dict[exp_dec_k][
+                              'artificial_detuning']*1e-6
+                delta_f = (ramsey_pars_dict[exp_dec_k]['new_qb_freq'] -
+                           old_qb_freq)*1e-6
+                textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(delta_f) +
+                            '$\pm$ {:.3f} kHz'.format(
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].stderr*1e-3) +
                     '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.3f} kHz'.format(
@@ -6105,8 +6108,30 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].stderr*1e-3))
                 textstr += T2_star_str
-                textstr += '\nartificial detuning = {:.2f} MHz'.format(
-                    ramsey_pars_dict[exp_dec_k]['artificial_detuning']*1e-6)
+                textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+
+                color = 'k'
+                if np.abs(delta_f) > np.abs(art_det):
+                    # We don't want this: if the qubit detuning is larger than
+                    # the artificial detuning, the sign of the qubit detuning
+                    # cannot be determined from a single Ramsey measurement.
+                    # Save a warning image and highlight in red
+                    # the Delta f and artificial detuning rows in textstr
+                    self._warning_message += (f'\nQubit {qbn} frequency change '
+                                        f'({np.abs(delta_f):.5f} MHz) is larger'
+                                        f' than the artificial detuning of '
+                                        f'{art_det:.5f} MHz. In this case, the '
+                                        f'sign of the qubit detuning cannot be '
+                                        f'determined from a single Ramsey '
+                                        f'measurement.')
+                    self._raise_warning_image = True
+                    textstr = textstr.split('\n')
+                    color = ['black']*len(textstr)
+                    idx = [i for i, s in enumerate(textstr) if 'Delta f' in s][0]
+                    color[idx] = 'red'
+                    idx = [i for i, s in enumerate(textstr) if
+                           'artificial detuning' in s][0]
+                    color[idx] = 'red'
 
                 self.plot_dicts['text_msg_' + outer_key] = {
                     'fig_id': base_plot_name,
@@ -6114,6 +6139,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xpos': -0.025,
                     'horizontalalignment': 'left',
                     'verticalalignment': 'top',
+                    'color': color,
                     'plotfn': self.plot_text,
                     'text_string': textstr}
 
