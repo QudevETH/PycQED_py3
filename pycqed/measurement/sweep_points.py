@@ -278,8 +278,8 @@ class SweepPoints(list):
 
         :param measurement_objects: list of strings to be used as keys in the
             returned dictionary. These are the measured object names.
-            Can also be list of QuDev_transmon instanced in which case
-            this function gets the list of names.
+            Can also be list of measurement object instances with a name
+            attribute, in which case this function gets the list of names.
         :return: dict of the form
          {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
@@ -292,7 +292,8 @@ class SweepPoints(list):
 
         for i, mobj in enumerate(measurement_objects):
             if hasattr(mobj, 'name'):
-                # list of QuDev_transmon instances was provided
+                # A list of measurement object instances with a
+                # name attribute was provided
                 measurement_objects[i] = mobj.name
 
         sweep_points_map = {mobjn: [] for mobjn in measurement_objects}
@@ -309,7 +310,7 @@ class SweepPoints(list):
                 all_pars = []
                 for mobjn in measurement_objects:
                     # Find all sweep param names that contain the mobj name
-                    pars = [k for k in list(d) if mobjn in k]
+                    pars = [k for k in list(d) if k.startswith(mobjn)]
                     all_pars += pars
                     if len(pars):
                         # Append found sweep param names to the sweep_points_map
