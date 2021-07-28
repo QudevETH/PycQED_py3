@@ -913,7 +913,14 @@ def process_tomography_analysis(data_dict, Uideal=None,
          this list.
     :param verbose: whether to show progress print statements
     :param params: keyword arguments
-        Expects to find either in data_dict or in params:
+        Expects to find either in params, data_dict, or metadata:
+            -  process_name: name of the process Uideal for which the error is
+                estimated. process_name will be used in the key name for storing
+                the results, so the user must ensure process_name corresponds
+                to the process Uideal for meaningful storing names.
+                If Uideal is None, specifying process_name = 'CZ' or 'CNOT'
+                will create the corresponding Uideal. Other gates are not
+                recofnized yet.
             - only if n_qubits is None:
                 - meas_obj_names: list of measurement object names
             - only if prep_pulses_list is None:
@@ -924,20 +931,19 @@ def process_tomography_analysis(data_dict, Uideal=None,
             - measured_rhos as {est_type.rho: list of meas ops for est_type
             in estimation_types}
     :return: adds to data_dict:
-        - chi_{gate_name}.{estimation_type} and
-            measured_error_{gate_name}.{estimation_type} for estimation_type
+        - chi_{process_name}.{estimation_type} and
+            measured_error_{process_name}.{estimation_type} for estimation_type
             in estimation_types.
-        -  process_name: name of the gate for which the error is estimated.
-         MUST CORRESPOND TO Uideal IF THE LATTER IS PROVIDED, since gate_name
-         will be used in the key name for storing the results
     """
     if n_qubits is None:
         meas_obj_names = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
             **params)
         n_qubits = len(meas_obj_names)
+
+    process_name = hlp_mod.get_param('process_name', data_dict,
+                                     raise_error=True, **params)
     if Uideal is None:
-        process_name = hlp_mod.get_param('process_name', data_dict, **params)
         if process_name == 'CZ':
             Uideal = qtp.qip.operations.cphase(np.pi)
         elif process_name == 'CNOT':
@@ -945,7 +951,6 @@ def process_tomography_analysis(data_dict, Uideal=None,
         else:
             raise ValueError(f'Unknown gate of interest {process_name}. '
                              f'Please provide the process unitary, Uideal.')
-    print(Uideal)
     Uideal = qtp.to_chi(Uideal)/16
 
     if prep_pulses_list is None:
