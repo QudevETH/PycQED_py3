@@ -3,6 +3,7 @@ File containing the BaseDataAnalyis class.
 """
 from inspect import signature
 import os
+import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -12,11 +13,13 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.general import NumpyJsonEncoder
+from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
+    write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
-    set_axis_label, flex_colormesh_plot_vs_xy, flex_color_plot_vs_x)
+    set_axis_label, flex_colormesh_plot_vs_xy,
+    flex_color_plot_vs_x, rainbow_text)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -31,7 +34,6 @@ import traceback
 import logging
 log = logging.getLogger(__name__)
 log.addHandler(logging.StreamHandler())
-
 
 class BaseDataAnalysis(object):
     """
@@ -204,6 +206,12 @@ class BaseDataAnalysis(object):
             if type(self.auto_keys) is str:
                 self.auto_keys = [self.auto_keys]
 
+            # Warning message to be used in self._raise_warning.
+            # Children will append to this variable.
+            self._warning_message = ''
+            # Whether self.raise_warning should save a warning image.
+            self._raise_warning_image = False
+
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -234,12 +242,52 @@ class BaseDataAnalysis(object):
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
                         'close_figs', False))
+            self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
                 raise e
             else:
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
+
+    def _raise_warning(self):
+        """
+        If delegate_plotting is False:
+
+        - calls raise_warning_image if self._raise_warning_image is True.
+        A warning image will be saved in the folder corresponding to the last
+        timestamp in self.timestamps.
+        - calls write_warning_message_to_text_file if warning_message (see
+        params below) + self._warning_message is not an empty string.
+        A text file with warning_message will be created in the folder
+        corresponding to the last timestamp in self.timestamps. If text file
+        already exists, the warning message will be append to it.
+
+        Params that can be passed in the options_dict:
+        :param warning_message: string with the message to be written into the
+            text file. self.warning_message will be appended to this
+        :param warning_textfile_name: string with name of the file without
+            extension.
+        """
+        if not self.check_plotting_delegation():
+            # The warning image and text file will be generated twice
+            # when the AnalysisDaemon is active
+            return
+
+        destination_path = a_tools.get_folder(self.timestamps[-1])
+        warning_message = self.get_param_value('warning_message')
+        warning_textfile_name = self.get_param_value('warning_textfile_name')
+
+        if self._raise_warning_image:
+            raise_warning_image(destination_path)
+
+        if warning_message is None:
+            warning_message = ''
+        warning_message += self._warning_message
+        if len(warning_message):
+            write_warning_message_to_text_file(destination_path,
+                                               warning_message,
+                                               warning_textfile_name)
 
     def create_job(self, *args, **kwargs):
         """
@@ -647,9 +695,11 @@ class BaseDataAnalysis(object):
             self.raw_data_dict = tuple(temp_dict_list)
             if 'TwoD' not in self.options_dict:
                 if not all(twod_list):
-                    raise ValueError('Not all measurements have the same '
-                                     'number of sweep dimensions.')
-                self.options_dict['TwoD'] = twod_list[0]
+                    log.info('Not all measurements have the same '
+                             'number of sweep dimensions. TwoD flag '
+                             'will remain unset.')
+                else:
+                    self.options_dict['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -1860,18 +1910,28 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
-
+        color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
         if box_props == 'fancy':
             box_props = self.fancy_box_props
 
-        # pfunc is expected to be ax.text
-        pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
-              transform=axs.transAxes,
-              verticalalignment=verticalalignment,
-              horizontalalignment=horizontalalignment,
-              bbox=box_props)
+        if isinstance(color, (list, tuple)):
+            assert isinstance(plot_text_string, (list, tuple))
+            assert len(color) == len(plot_text_string)
+            orientation = pdict.get('orientation', 'vertical')
+            rainbow_text(x=plot_xpos, y=plot_ypos,
+                         strings=plot_text_string, colors=color,
+                         ax=axs, orientation=orientation,
+                         verticalalignment=verticalalignment,
+                         horizontalalignment=horizontalalignment)
+        else:
+            # pfunc is expected to be ax.text
+            pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
+                  transform=axs.transAxes,
+                  verticalalignment=verticalalignment,
+                  horizontalalignment=horizontalalignment,
+                  bbox=box_props)
 
     def plot_vlines(self, pdict, axs):
         """

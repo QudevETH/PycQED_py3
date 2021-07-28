@@ -222,6 +222,13 @@ class CircuitBuilder:
                 raise KeyError(f'Gate "{op}" not found.')
             angle, qbn = op_name[1:], op_info[1]
             if angle[-1] == 's' and angle[:-1].isnumeric():
+                # For non-parametric gates, an alternative syntax for
+                # simultaneous pulses with appended s instead of prepended s
+                # is allowed. This code branch treats, e.g., simultaneous
+                # virtual Z pulses (like 'Z90s qb1') and simultaneous X/Y
+                # rotations with angles different from 90 and 180
+                # (like 'X45s qb1'; X90s and X180s are contained in the
+                # operations dict anyways, but no other angles).
                 op_info[0] = 's' + op_info[0]
                 angle = angle[:-1]
             param = None
@@ -906,6 +913,14 @@ class CircuitBuilder:
                             'values', 'all', 'finalize')[dims[sweep_dim_final]],
                         qb_names=all_ro_qubits, **final_kwargs)
 
+                # As we loop over all sweep points, some of the blocks will be
+                # built multiple times (e.g., ro), but they will only be
+                # built once per segment. It is thus not necessary to append
+                # a counter that is increased each time the block is built.
+                # Quite the contrary, it is much more intuitive to have the
+                # same block names in each segment, while only the segment
+                # name reflects the index of the sweep point. Thus, we call
+                # sequential_blocks with disable_block_counter=True.
                 segblock = self.sequential_blocks(
                     'segblock', [prep, this_body_block, final, ro],
                     disable_block_counter=True)
