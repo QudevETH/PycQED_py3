@@ -56,6 +56,7 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.timer = Timer(self.name)
+        self.pulse_pars = []
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -66,6 +67,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
+        self.pulse_pars.append(deepcopy(pulse_pars))
         pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
@@ -1256,7 +1258,7 @@ class Segment:
                 len(channel_map)
             if axes is not None:
                 if np.ndim(axes) == 0:
-                    axes = [[axes]]
+                    axes = np.array([[axes]])
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
