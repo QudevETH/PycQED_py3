@@ -6408,13 +6408,6 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                                    default_value=[])
         self.gates_list = self.get_param_value('gates_list', default_value=[])
 
-        # FIXME: Nathan @Author of the next 4 lines: this code seems to be
-        #  a bit hacky and should at least be commented.
-        if not len(self.gates_list):
-            leakage_qbnames_temp = len(self.ramsey_qbnames) * ['']
-            self.gates_list = [(qbl, qbr) for qbl, qbr in
-                               zip(leakage_qbnames_temp, self.ramsey_qbnames)]
-
     def process_data(self):
         super().process_data()
 
