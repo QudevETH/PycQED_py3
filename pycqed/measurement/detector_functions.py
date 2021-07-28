@@ -606,11 +606,20 @@ class UHFQC_Base(Hard_Detector):
                         else:
                             n_acq = [UHF.qas_0_monitor_acquired() for UHF in
                                      self.UHFs]
-                        # FIXME: This workaround is needed because the
-                        #  UHF truncates qas_0_result_acquired at 2**18.
-                        #  Moreover, it reports 0 when it is done. In this case,
-                        #  we keep the old value during data transfer,
-                        #  and MC will update the progress after data transfer.
+                        # Two special cases are treated in the following lines.
+                        # - The UHF reports 0 when it is done. In this case,
+                        #   we keep the last known progress values n_acq_last.
+                        #   This means that the progress indicator will stay
+                        #   at that last known progress value during data
+                        #   transfer, and MC will update the progress to the
+                        #   correct value once it takes over control after
+                        #   the end of the data transfer.
+                        # - A workaround is needed because the UHF truncates
+                        #   qas_0_result_acquired at 2**18 (and starts
+                        #   counting from 0 again). A decrease in n_acq
+                        #   compared to the last function call indicates
+                        #   that this has happened and that we need to add
+                        #   2**18 to the progess values.
                         n_acq_add = [
                             n_add + (2 ** 18 if n < n_last else 0) if n > 0
                             else n_add + n_last
