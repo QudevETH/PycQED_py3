@@ -265,7 +265,7 @@ class Sequence:
         # compress names
         for ms in merged_seqs:
             name_parts = ms.name.split(Sequence.RENAMING_SEPARATOR)
-            if len(name_parts) > 1:
+            if len(name_parts) > 2:
                 ms.rename(f"compressed_{name_parts[0]}-{name_parts[-1]}")
         return merged_seqs
 
