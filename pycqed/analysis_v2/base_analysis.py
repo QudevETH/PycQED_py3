@@ -252,14 +252,16 @@ class BaseDataAnalysis(object):
 
     def _raise_warning(self):
         """
-        If delegate_plotting is False, calls raise_warning_image which saves a
-        warning image to the folder corresponding to the last timestamp in
-        self.timestamps.
+        If delegate_plotting is False:
 
-        If warning_message is not None, calls write_warning_message_to_text_file
-        which creates a text file with warning_message in the folder
+        - calls raise_warning_image if self._raise_warning_image is True.
+        A warning image will be saved in the folder corresponding to the last
+        timestamp in self.timestamps.
+        - calls write_warning_message_to_text_file if warning_message (see
+        params below) + self._warning_message is not an empty string.
+        A text file with warning_message will be created in the folder
         corresponding to the last timestamp in self.timestamps. If text file
-        already exists, it will append to it.
+        already exists, the warning message will be append to it.
 
         Params that can be passed in the options_dict:
         :param warning_message: string with the message to be written into the
@@ -268,23 +270,24 @@ class BaseDataAnalysis(object):
             extension.
         """
         if not self.check_plotting_delegation():
-            # else, the warning image and text file will be generated twice
+            # The warning image and text file will be generated twice
             # when the AnalysisDaemon is active
+            return
 
-            destination_path = a_tools.get_folder(self.timestamps[-1])
-            warning_message = self.get_param_value('warning_message')
-            warning_textfile_name = self.get_param_value('warning_textfile_name')
+        destination_path = a_tools.get_folder(self.timestamps[-1])
+        warning_message = self.get_param_value('warning_message')
+        warning_textfile_name = self.get_param_value('warning_textfile_name')
 
-            if self._raise_warning_image:
-                raise_warning_image(destination_path)
+        if self._raise_warning_image:
+            raise_warning_image(destination_path)
 
-            if warning_message is None:
-                warning_message = ''
-            warning_message += self._warning_message
-            if len(warning_message):
-                write_warning_message_to_text_file(destination_path,
-                                                   warning_message,
-                                                   warning_textfile_name)
+        if warning_message is None:
+            warning_message = ''
+        warning_message += self._warning_message
+        if len(warning_message):
+            write_warning_message_to_text_file(destination_path,
+                                               warning_message,
+                                               warning_textfile_name)
 
     def create_job(self, *args, **kwargs):
         """
