@@ -66,6 +66,8 @@ class QuDev_transmon(Qubit):
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
+        self.add_parameter('instr_switch',
+            parameter_class=InstrumentRefParameter)
 
         # device parameters for user only
         # could be cleaned up
@@ -94,13 +96,19 @@ class QuDev_transmon(Qubit):
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T1_ef', label='Qubit relaxation', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T1_fh', label='Qubit relaxation', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2', label='Qubit dephasing Echo', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_ef', label='Qubit dephasing Echo', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T2_fh', label='Qubit dephasing Echo', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_star', label='Qubit dephasing', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('T2_star_ef', label='Qubit dephasing', unit='s',
+                           initial_value=0, parameter_class=ManualParameter)
+        self.add_parameter('T2_star_fh', label='Qubit dephasing', unit='s',
                            initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('anharmonicity', label='Qubit anharmonicity',
                            unit='Hz', initial_value=0,
@@ -371,6 +379,28 @@ class QuDev_transmon(Qubit):
                                  'cancellation_params', initial_value={},
                                  vals=vals.Dict())
 
+        # qubit 2nd excitation drive pulse parameters
+        self.add_parameter('fh_freq', label='Qubit fh drive frequency',
+                           unit='Hz', initial_value=0,
+                           parameter_class=ManualParameter)
+        self.add_operation('X180_fh')
+        self.add_pulse_parameter('X180_fh', 'fh_pulse_type', 'pulse_type',
+                                 initial_value='SSB_DRAG_pulse',
+                                 vals=vals.Enum('SSB_DRAG_pulse'))
+        self.add_pulse_parameter('X180_fh', 'fh_amp180', 'amplitude',
+                                 initial_value=0.001, vals=vals.Numbers())
+        self.add_pulse_parameter('X180_fh', 'fh_amp90_scale', 'amp90_scale',
+                                 initial_value=0.5, vals=vals.Numbers(0, 1))
+        self.add_pulse_parameter('X180_fh', 'fh_delay', 'pulse_delay',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter('X180_fh', 'fh_sigma', 'sigma',
+                                 initial_value=10e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('X180_fh', 'fh_nr_sigma', 'nr_sigma',
+                                 initial_value=5, vals=vals.Numbers())
+        self.add_pulse_parameter('X180_fh', 'fh_motzoi', 'motzoi',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter('X180_fh', 'fh_X_phase', 'phase',
+                                 initial_value=0, vals=vals.Numbers())
 
         # add qubit spectroscopy parameters
         self.add_parameter('spec_power', unit='dBm', initial_value=-20,
@@ -474,6 +504,12 @@ class QuDev_transmon(Qubit):
         self.add_parameter('ge_lo_leakage_cal',
                            parameter_class=ManualParameter,
                            initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           vals=vals.Dict())
+
+        # switch parameters
+        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        self.add_parameter('switch_modes', parameter_class=ManualParameter,
+                           initial_value=DEFAULT_SWITCH_MODES,
                            vals=vals.Dict())
 
     def get_idn(self):
@@ -831,7 +867,7 @@ class QuDev_transmon(Qubit):
                 nr_samples=nr_samples,
             )
 
-    def prepare(self, drive='timedomain'):
+    def prepare(self, drive='timedomain', switch='default'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -865,6 +901,8 @@ class QuDev_transmon(Qubit):
                 ge_lo.get_instr().on()
             elif drive == 'pulsed_spec':
                 ge_lo.get_instr().pulsemod_state('On')
+                if 'pulsemod_source' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().pulsemod_source('EXT')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
                 ge_lo.get_instr().on()
@@ -882,6 +920,12 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        if switch == 'default':
+            self.set_switch(
+                'spec' if drive is not None and drive.endswith('_spec')
+                else 'modulated')
+        else:
+            self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         if weights_type is None:
@@ -972,6 +1016,16 @@ class QuDev_transmon(Qubit):
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
 
+    def set_switch(self, switch_mode):
+        if self.instr_switch() is None:
+            return
+        switch = self.instr_switch.get_instr()
+        mode = self.switch_modes().get(switch_mode, None)
+        if mode is None:
+            log.warning(f'Switch mode {switch_mode} not configured for '
+                        f'{self.name}.')
+        switch.set_switch(mode)
+
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
 
@@ -987,6 +1041,9 @@ class QuDev_transmon(Qubit):
     def get_ef_pars(self):
         return self.get_operation_dict()['X180_ef ' + self.name]
 
+    def get_fh_pars(self):
+        return self.get_operation_dict()['X180_fh ' + self.name]
+
     def get_operation_dict(self, operation_dict=None):
         if operation_dict is None:
             operation_dict = {}
@@ -995,16 +1052,25 @@ class QuDev_transmon(Qubit):
         operation_dict['RO ' + self.name]['operation_type'] = 'RO'
         operation_dict['X180 ' + self.name]['operation_type'] = 'MW'
         operation_dict['X180_ef ' + self.name]['operation_type'] = 'MW'
+        operation_dict['X180_fh ' + self.name]['operation_type'] = 'MW'
         operation_dict['X180 ' + self.name]['basis'] = self.name
-        operation_dict['X180_ef ' + self.name]['basis'] = self.name + \
-                                                                   '_ef'
+        operation_dict['X180_ef ' + self.name]['basis'] = self.name + '_ef'
+        operation_dict['X180_fh ' + self.name]['basis'] = self.name + '_fh'
         operation_dict['X180_ef ' + self.name]['I_channel'] = \
+            operation_dict['X180 ' + self.name]['I_channel']
+        operation_dict['X180_fh ' + self.name]['I_channel'] = \
             operation_dict['X180 ' + self.name]['I_channel']
         operation_dict['X180_ef ' + self.name]['Q_channel'] = \
             operation_dict['X180 ' + self.name]['Q_channel']
+        operation_dict['X180_fh ' + self.name]['Q_channel'] = \
+            operation_dict['X180 ' + self.name]['Q_channel']
         operation_dict['X180_ef ' + self.name]['phi_skew'] = \
             operation_dict['X180 ' + self.name]['phi_skew']
+        operation_dict['X180_fh ' + self.name]['phi_skew'] = \
+            operation_dict['X180 ' + self.name]['phi_skew']
         operation_dict['X180_ef ' + self.name]['alpha'] = \
+            operation_dict['X180 ' + self.name]['alpha']
+        operation_dict['X180_fh ' + self.name]['alpha'] = \
             operation_dict['X180 ' + self.name]['alpha']
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
@@ -1017,12 +1083,21 @@ class QuDev_transmon(Qubit):
             operation_dict['X180_ef ' + self.name]['mod_frequency'] = \
                 self.ef_freq() - self.ge_freq() + self.ge_mod_freq()
 
+        if self.fh_freq() == 0:
+            operation_dict['X180_fh ' + self.name]['mod_frequency'] = None
+        else:
+            operation_dict['X180_fh ' + self.name]['mod_frequency'] = \
+                self.fh_freq() - self.ge_freq() + self.ge_mod_freq()
+
         operation_dict.update(add_suffix_to_dict_keys(
             sq.get_pulse_dict_from_pars(
                 operation_dict['X180 ' + self.name]), ' ' + self.name))
         operation_dict.update(add_suffix_to_dict_keys(
             sq.get_pulse_dict_from_pars(
                 operation_dict['X180_ef ' + self.name]), '_ef ' + self.name))
+        operation_dict.update(add_suffix_to_dict_keys(
+            sq.get_pulse_dict_from_pars(
+                operation_dict['X180_fh ' + self.name]), '_fh ' + self.name))
         if np.ndim(self.ro_freq()) != 0:
             delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
             mods = [self.ro_mod_freq() + d for d in delta_freqs]
@@ -2023,7 +2098,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             self.instr_pulsar.get_instr().start()
             MC.run('ge_uc_spectrum' + self.msmt_suffix)
 
@@ -2053,7 +2128,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_sweep_function(s)
             MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
             MC.set_detector_function(self.scope_fft_det)
@@ -2095,7 +2170,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(det.IndexDetector(
                 self.int_avg_det_spec, 0))
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
@@ -2145,7 +2220,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             d = self.scope_fft_det
             d.AWG = None
             idx = np.argmin(np.abs(d.get_sweep_vals() -
@@ -2191,7 +2266,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2245,7 +2320,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2359,7 +2434,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             ):
-                self.prepare(drive='timedomain')
+                self.prepare(drive='timedomain', switch='calib')
                 MC.set_detector_function(self.int_avg_det)
                 MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
 
@@ -3452,7 +3527,7 @@ class QuDev_transmon(Qubit):
         else:
             total_dist = np.abs(trace['e'] - trace['g'])
         fmax = freqs[np.argmax(total_dist)]
-        # FIXME: just as debug plotting for now
+        # Plotting which works for qubit or qutrit
         fig, ax = plt.subplots(2)
         ax[0].plot(freqs, np.abs(trace['g']), label='g')
         ax[0].plot(freqs, np.abs(trace['e']), label='e')
@@ -3470,9 +3545,9 @@ class QuDev_transmon(Qubit):
         ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
                         + f"Optimal Freq: {fmax} Hz")
         plt.legend()
-
+        # Save figure into 'g' measurement folder
         m_a['g'].save_fig(fig, 'IQplane_distance')
-        plt.show()
+
         if kw.get('analyze', True):
             sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:

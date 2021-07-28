@@ -19,7 +19,7 @@ search_modules.add(hlp_mod)
 The pipeline is a list of dictionaries.
 Each dictionary contains
     - NECESSARILY the key "node_name" with value being a string specifying
-    the name of a processing function withing analysis_v3
+    the name of a processing function within analysis_v3
     - NECESSARILY the key "keys_in" with value a list of strings that
      specify the keys that are already in data_dict that correspond to
      the data arrays to be processed by the current node.

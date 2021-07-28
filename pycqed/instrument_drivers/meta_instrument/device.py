@@ -43,6 +43,10 @@ from pycqed.analysis_v3 import plotting as plot_mod
 log = logging.getLogger(__name__)
 
 class Device(Instrument):
+    # params that should not be loaded by pycqed.utilities.general.load_settings
+    _params_to_not_load = {'qubits'}
+
+
     def __init__(self, name, qubits, connectivity_graph, **kw):
         """
         Instantiates device instrument and adds its parameters.
@@ -581,8 +585,10 @@ class Device(Instrument):
                 calibs[round_ind][i][j] = dphi_dV
                 print(i, j, dphi_dV)
 
-    def plot_flux_crosstalk_matrix(self, round_ind=0, unit='m', vmax=None,
-                                   show_and_close=False):
+    def plot_flux_crosstalk_matrix(self, qubits='all', round_ind=0, unit='m',
+                                   vmax=None, show_and_close=False):
+        qubits = self.get_qubits(qubits)
+        qb_inds = self.get_qubits(qubits, return_type='ind')
         if unit not in ['', 'c', 'm', 'u', None]:
             log.warning(f'unit prefix "{unit}" not understood. Using "m".')
         if unit == 'u':
@@ -599,15 +605,15 @@ class Device(Instrument):
             def_vmax =  1
         vmax = vmax / phi_factor if vmax is not None else def_vmax
 
-        data_array = self.flux_crosstalk_calibs()[round_ind]
-        qubits_to_measure = self.get_qubits()
-        for i in range(len(qubits_to_measure)):
+        data_array = self.flux_crosstalk_calibs()[round_ind][
+                     qb_inds, :][:, qb_inds]
+        for i in range(len(qubits)):
             data_array[i, :] *= np.sign(data_array[i, i])
 
         fig, ax = plt.subplots()
         fig.set_size_inches(
-            2 + (plot_mod.FIGURE_WIDTH_2COL - 2) / 17 * len(qubits_to_measure),
-            1 + 6 / 17 * len(qubits_to_measure))
+            2 + (plot_mod.FIGURE_WIDTH_2COL - 2) / 17 * len(qubits),
+            1 + 6 / 17 * len(qubits))
 
         cmap = mpl.cm.RdBu
         cmap.set_over('k')
@@ -615,10 +621,10 @@ class Device(Instrument):
                       cmap=cmap)
         cbar = fig.colorbar(i)
 
-        ax.set_xticks(np.arange(len(qubits_to_measure)))
-        ax.set_yticks(np.arange(len(qubits_to_measure)))
-        ax.set_xticklabels(['FL' + qb.name[2:] for qb in qubits_to_measure])
-        ax.set_yticklabels(['Q' + qb.name[2:] for qb in qubits_to_measure])
+        ax.set_xticks(np.arange(len(qubits)))
+        ax.set_yticks(np.arange(len(qubits)))
+        ax.set_xticklabels(['FL' + qb.name[2:] for qb in qubits])
+        ax.set_yticklabels(['Q' + qb.name[2:] for qb in qubits])
         ax.set_xlabel('Fluxline')
         ax.set_ylabel('Coupled qubit')
         ax.tick_params(direction='out')
@@ -626,8 +632,8 @@ class Device(Instrument):
             f'Flux coupling, $\\mathrm{{d}}\Phi/\\mathrm{{d}}V$ '
             f'($\\mathrm{{{phi_unit}}}$/V)')
 
-        for i in range(len(qubits_to_measure)):
-            for j in range(len(qubits_to_measure)):
+        for i in range(len(qubits)):
+            for j in range(len(qubits)):
                 if i != j:
                     ax.text(i, j, f'{data_array[j, i] / phi_factor:.2f}',
                             color='k', fontsize='small', ha='center',

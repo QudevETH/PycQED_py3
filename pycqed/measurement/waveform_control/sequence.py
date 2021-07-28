@@ -126,6 +126,9 @@ class Sequence:
                     if seg.allow_filter is not None:
                         sequences[awg][elname]['metadata']['allow_filter'] = \
                             seg.allow_filter
+                # Experimental feature to sweep values of nodes of ZI HDAWGs
+                # in a hard sweep. See the comments above the sweep_params
+                # property in Segment.
                 if seg.sweep_params is not None and len(seg.sweep_params):
                     sequences[awg][elnames[0]]['metadata']['loop'] = len(
                         list(seg.sweep_params.values())[0])
@@ -355,7 +358,7 @@ class Sequence:
         # compress names
         for ms in merged_seqs:
             name_parts = ms.name.split(Sequence.RENAMING_SEPARATOR)
-            if len(name_parts) > 1:
+            if len(name_parts) > 2:
                 ms.rename(f"compressed_{name_parts[0]}-{name_parts[-1]}")
         return merged_seqs
 

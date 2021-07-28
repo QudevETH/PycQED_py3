@@ -146,6 +146,8 @@ class MeasurementControl(Instrument):
         self._last_percdone_change_time = 0
         self._last_percdone_log_time = 0
 
+        self.parameter_checks = {}
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -352,17 +354,18 @@ class MeasurementControl(Instrument):
                         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
+                    sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    # If the soft sweep function has the filtered_sweep
+                    # attribute, the AWGs are programmed in a way that only
+                    # the subset of acquisitions indicated by the filter is
+                    # performed. In this case, the sweep points passed to
+                    # the detector function need to be filtered, and the
+                    # filter needs to be passed to measure_hard.
                     filtered_sweep = getattr(self.sweep_functions[1],
                                              'filtered_sweep', None)
-                    if filtered_sweep is None:
-                        self.detector_function.prepare(
-                            sweep_points=sweep_points[
-                                start_idx:start_idx+self.xlen, 0])
-                    else:
-                        self.detector_function.prepare(
-                            sweep_points=sweep_points[
-                                         start_idx:start_idx + self.xlen,
-                                         0][filtered_sweep])
+                    if filtered_sweep is not None:
+                        sp = sp[filtered_sweep]
+                    self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
             raise Exception('Sweep and Detector functions not '
@@ -435,11 +438,17 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure_hard(self, filtered_sweep=None):
+        """
+        :param filtered_sweep: (list of bools) indicates which of the
+            acquisition elements will be played by the AWGs (True) and which
+            ones will be skipped (False)
+        """
         self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
         self.detector_function.progress_callback = None
 
         if filtered_sweep is not None:
+            # Fill the data points that were not measured with NaN.
             shape = list(new_data.shape)
             shape[0] = len(filtered_sweep)
             new_data_full = np.zeros(shape) * np.nan
@@ -1666,6 +1675,7 @@ class MeasurementControl(Instrument):
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
+                parameter_checks_ins = self.parameter_checks.get(iname, {})
                 instrument_grp = set_grp.create_group(iname)
                 par_snap = ins.snapshot()['parameters']
                 parameter_list = dict_to_ordered_tuples(par_snap)
@@ -1674,6 +1684,17 @@ class MeasurementControl(Instrument):
                         val = repr(p['value'])
                     except KeyError:
                         val = ''
+                    if p_name in parameter_checks_ins:
+                        try:
+                            res = parameter_checks_ins[p_name](p['value'])
+                            if res is not True:
+                                log.warning(
+                                    f'Parameter {iname}.{p_name} has an '
+                                    f'uncommon value: {val}.' +
+                                    (f" ({res})" if res is not False else ''))
+                        except Exception as e:
+                            log.warning(f'Could not run parameter check for '
+                                        f'{iname}.{p_name}: {e}')
                     instrument_grp.attrs[p_name] = val
         numpy.set_printoptions(**opt)
 
@@ -1733,6 +1754,13 @@ class MeasurementControl(Instrument):
             except Exception:
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
+
+    def add_parameter_check(self, parameter, check_function):
+        iname = parameter.instrument.name
+        if iname not in self.parameter_checks:
+            self.parameter_checks[iname] = {}
+        self.parameter_checks[iname].update(
+            {parameter.name: check_function})
 
     def get_percdone(self, current_acq=0):
         percdone = (self.total_nr_acquired_values + current_acq) / (
