@@ -140,7 +140,11 @@ class Pulse:
             channels = self.channels
         else:
             channels = [ch for m, ch in zip(channel_mask, self.channels) if m]
-        return set(channels) | set(self.crosstalk_cancellation_channels)
+        if any([ch in self.crosstalk_cancellation_channels for ch in
+                channels]):
+            return set(channels) | set(self.crosstalk_cancellation_channels)
+        else:
+            return set(channels)
 
     def pulse_area(self, channel, tvals):
         """
