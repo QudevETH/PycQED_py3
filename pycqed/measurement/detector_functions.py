@@ -898,6 +898,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
                                           mode=self.ro_mode)
 
 
+
 class UHFQC_scope_detector(Hard_Detector):
     """
     Detector used for acquiring averaged timetraces and their Fourier'
