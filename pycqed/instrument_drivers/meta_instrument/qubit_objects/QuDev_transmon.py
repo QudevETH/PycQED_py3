@@ -4155,7 +4155,8 @@ class QuDev_transmon(Qubit):
             ch = self.get(f'ge_{quad}_channel')
             if f'{ch}_mod_freq' in pulsar.parameters:
                 pulsar.parameters[f'{ch}_mod_freq'](None)
-            pulsar.parameters[f'{ch}_amplitude_scaling'](1)
+            if f'{ch}_amplitude_scaling' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
         # set offsets and turn on AWG outputs
         self.configure_offsets()
         # set flux distortion
