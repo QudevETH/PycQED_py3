@@ -1007,7 +1007,7 @@ class QuDev_transmon(Qubit):
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
 
-    def set_switch(self, switch_mode):
+    def set_switch(self, switch_mode='modulated'):
         if self.instr_switch() is None:
             return
         switch = self.instr_switch.get_instr()
