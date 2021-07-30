@@ -1760,7 +1760,7 @@ class T1(SingleQubitGateCalib):
         t1_block = self.block_from_ops(f'pi_pulse_{qb}',
                                        [f'X180{transition_name} {qb}'])
         # create ParametricValue
-        t1_block.block_end.update({'ref_point': 'middle',
+        t1_block.block_end.update({'ref_point': 'end',
                                    'pulse_delay': ParametricValue('pulse_delay')
                                    })
         return self.sequential_blocks(f't1_{qb}', [prepend_block, t1_block])
