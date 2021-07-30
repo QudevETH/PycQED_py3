@@ -823,10 +823,45 @@ class UHFQC_input_average_detector(UHFQC_Base):
                                           loop_cnt=int(self.nr_averages),
                                           mode='iavg')
 
+
 class UHFQC_scope_detector(Hard_Detector):
     """
     Detector used for acquiring averaged timetraces and their Fourier'
-    transforms using the scope module of the UHF
+    transforms using the scope module of the UHF.
+
+    Requires the DIG option on the UHF to work. Required for the segmented
+    acquisition, that is needed to square the signal before averaging.
+
+    Args:
+        UHFQC: An UHFQC instance to use.
+        AWG: A pulsar or an AWG to start at the beginning of the measurement.
+            Typically used to generate pulses to look at and or provide
+            triggers.
+        channels: Tuple of UHFQA hardware channel indices.
+            Indices can be either 0 or 1, as the UHF has 2 input channels.
+        nr_averages: Number of times to average.
+        nr_samples: Number of samples in a scope trace.
+            Actual value will be rounded to the highest power of two that is at
+            most the provided value.
+        fft_mode: Data processing mode.
+            Can be one of the following:
+                'timedomain': Records timedomain traces.
+                'fft': Returns the absolute value of the Fourier' transform
+                       of the data.
+                'fft_power': Squares the data before averaging and taking the
+                             Fourier' transform.
+    Keyword arguments:
+        trigger: Boolean, whether to wait for a trigger to start acquisition.
+            Defaults to True if AWG instance is given, False otherwise.
+        trigger_channel: Integer, specifing the triggering channel.
+            Typical values here are
+                0: Signal Input 1,
+                1: Signal Input 2,
+                2: Trigger Input 1,
+                3: Trigger Input 2.
+            See the UHFQA manual for a full list. Defaults to Trigger Input 1.
+        trigger_level: Trigger activation level. Defaults to 0.1 V.
+
     """
     def __init__(self, UHFQC, AWG=None, channels=(0, 1),
                  nr_averages=20, nr_samples=4096, fft_mode='timedomain',
@@ -857,7 +892,6 @@ class UHFQC_scope_detector(Hard_Detector):
         self.scope.finish()
 
     def get_values(self):
-        # self.scope.set('scopeModule/averager/restart', 1)
         self.UHFQC.scopes_0_single(1)
         self.UHFQC.scopes_0_enable(1)
         self.scope.subscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
@@ -909,6 +943,7 @@ class UHFQC_scope_detector(Hard_Detector):
             return np.linspace(0, self.nr_samples/1.8e9, self.nr_samples, endpoint=False)
         elif self.fft_mode in ('fft', 'fft_power'):
             return np.linspace(0, 0.9e9, self.nr_samples//2, endpoint=False)
+
 
 class UHFQC_integrated_average_detector(UHFQC_Base):
 
