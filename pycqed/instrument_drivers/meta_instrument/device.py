@@ -32,11 +32,16 @@ import pycqed.measurement.waveform_control.pulse as bpl
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
+from pycqed.analysis_v3 import helper_functions as hlp_mod
 
 log = logging.getLogger(__name__)
 
 
 class Device(Instrument):
+    # params that should not be loaded by pycqed.utilities.general.load_settings
+    _params_to_not_load = {'qubits'}
+
+
     def __init__(self, name, qubits, connectivity_graph, **kw):
         """
         Instantiates device instrument and adds its parameters.
@@ -319,6 +324,53 @@ class Device(Instrument):
         prep_params['threshold_mapping'] = thresh_map
 
         return prep_params
+
+    def get_meas_obj_value_names_map(self, qubits, multi_uhf_det_func):
+        # we cannot just use the value_names from the qubit detector functions
+        # because the UHF_multi_detector function adds suffixes
+
+        qubits = self.get_qubits(qubits)
+        if multi_uhf_det_func.detectors[0].name == 'raw_UHFQC_classifier_det':
+            meas_obj_value_names_map = {
+                qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
+                    multi_uhf_det_func.value_names,
+                    qb.int_avg_classif_det.value_names)
+                for qb in qubits}
+        elif multi_uhf_det_func.detectors[0].name == \
+                'UHFQC_input_average_detector':
+            meas_obj_value_names_map = {
+                qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
+                    multi_uhf_det_func.value_names, qb.inp_avg_det.value_names)
+                for qb in qubits}
+        else:
+            meas_obj_value_names_map = {
+                qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
+                    multi_uhf_det_func.value_names, qb.int_avg_det.value_names)
+                for qb in qubits}
+
+        meas_obj_value_names_map.update({
+            name + '_object': [name] for name in
+            [vn for vn in multi_uhf_det_func.value_names if vn not in
+             hlp_mod.flatten_list(list(meas_obj_value_names_map.values()))]})
+
+        return meas_obj_value_names_map
+
+    def get_msmt_suffix(self, qubits='all'):
+        """
+        Function to get measurement label suffix from the measured qubit names.
+        :param qubits: list of QuDev_transmon instances.
+        :return: string with the measurement label suffix
+        """
+        qubits = self.get_qubits(qubits)
+        qubit_names = self.get_qubits(qubits, "str")
+        if len(qubit_names) == 1:
+            msmt_suffix = qubits[0].msmt_suffix
+        elif len(qubit_names) > 5:
+            msmt_suffix = '_{}qubits'.format(len(qubit_names))
+        else:
+            msmt_suffix = '_{}'.format(''.join([qbn for qbn in qubit_names]))
+
+        return msmt_suffix
 
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """

@@ -34,11 +34,12 @@ def n_qubit_off_on(pulse_pars_list, RO_pars_list, return_seq=False,
     RO_pars_list_presel = deepcopy(RO_pars_list)
     
     for i, RO_pars in enumerate(RO_pars_list):
-        RO_pars['pulse_name'] = 'RO_{}'.format(i)
+        RO_pars['name'] = 'RO_{}'.format(i)
         RO_pars['element_name'] = 'RO'
         if i != 0:
             RO_pars['ref_point'] = 'start'
     for i, RO_pars_presel in enumerate(RO_pars_list_presel):
+        RO_pars_presel['ref_pulse'] = RO_pars_list[-1]['name']
         RO_pars_presel['ref_point'] = 'start'
         RO_pars_presel['element_name'] = 'RO_presel'
         RO_pars_presel['pulse_delay'] = -RO_spacing
@@ -89,9 +90,10 @@ def n_qubit_off_on(pulse_pars_list, RO_pars_list, return_seq=False,
 
 
 def two_qubit_randomized_benchmarking_seqs(
-        qb1n, qb2n, operation_dict, cliffords, nr_seeds,
+        qb1n, qb2n, operation_dict, cliffords, nr_seeds=None,
         max_clifford_idx=11520, cz_pulse_name=None, cal_points=None,
         net_clifford=0, clifford_decomposition_name='HZ',
+        cl_sequence=None, sampling_seeds=None,
         interleaved_gate=None, upload=True, prep_params=dict()):
 
     """
@@ -100,37 +102,97 @@ def two_qubit_randomized_benchmarking_seqs(
         qb2n (str): name of qb2
         operation_dict (dict): dict with all operations from both qubits and
             with the multiplexed RO pulse pars
-        nr_cliffords_value (int): number of random Cliffords to generate
+        cliffords (array): array of ints specifying the number of random
+            Cliffords to generate in each sequence
         nr_seeds (array): array of the form np.arange(nr_seeds_value)
+        max_clifford_idx (int): specifies up to which index of the elements in
+            the two-qubit Clifford group to include in the random generation.
+            See measurement/randomized_benchmarking/two_qubit_clifford_group.py.
         CZ_pulse_name (str): pycqed name of the CZ pulse
+        cal_points (CalibrationPoints): instance of CalibrationPoints
         net_clifford (int): 0 or 1; whether the recovery Clifford returns
             qubits to ground statea (0) or puts them in the excited states (1)
         clifford_decomp_name (str): the decomposition of Clifford gates
             into primitives; can be "XY", "HZ", or "5Primitives"
+        cl_sequence (list): the Clifford sequence to use for all seeds. Can
+            also be lists of lists in which case the user must ensure that
+            len(nr seeds) % len(cl_sequence) == 0.
+        sampling_seeds (array of ints): ints that will be used as seeds for
+            the random generation of Cliffords. Should have the same length
+            as nr_seeds.
         interleaved_gate (str): pycqed name for a gate
         upload (bool): whether to upload sequence to AWGs
+        prep_params (dict): qubit preparation_params dict
     """
+
+    # This is used for checking that the recovery is correct
+    import qutip as qtp
+    standard_pulses = {
+        'I': qtp.qeye(2),
+        'Z0': qtp.qeye(2),
+        'X180': qtp.sigmax(),
+        'mX180': qtp.sigmax(),
+        'Y180': qtp.sigmay(),
+        'mY180': qtp.sigmay(),
+        'X90': qtp.rotation(qtp.sigmax(), np.pi / 2),
+        'mX90': qtp.rotation(qtp.sigmax(), -np.pi / 2),
+        'Y90': qtp.rotation(qtp.sigmay(), np.pi / 2),
+        'mY90': qtp.rotation(qtp.sigmay(), -np.pi / 2),
+        'Z90': qtp.rotation(qtp.sigmaz(), np.pi / 2),
+        'mZ90': qtp.rotation(qtp.sigmaz(), -np.pi / 2),
+        'Z180': qtp.sigmaz(),
+        'mZ180': qtp.sigmaz(),
+        'CZ': qtp.cphase(np.pi)
+    }
+
     seq_name = '2Qb_RB_sequence'
+
+    if sampling_seeds is None:
+        if nr_seeds is None:
+            raise ValueError('Please provide either "sampling_seeds" or '
+                             '"nr_seeds."')
+        sampling_seeds = [None] * len(nr_seeds)
+    else:
+        nr_seeds = np.arange(len(sampling_seeds))
 
     # Set Clifford decomposition
     tqc.gate_decomposition = rb.get_clifford_decomposition(
         clifford_decomposition_name)
+    if cl_sequence is not None:
+        if isinstance(cl_sequence[0], list):
+            # if cl_sequence is a list of lists such that
+            # len(nr_seeds) != len(cl_sequence) but
+            # len(nr_seeds) % len(cl_sequence) == 0,
+            # then create as many copies of the lists in cl_sequence until
+            # len(cl_sequence) == len(nr_seeds).
+            assert len(nr_seeds) % len(cl_sequence) == 0
+            k = len(nr_seeds) // len(cl_sequence)
+            cl_seq_temp = k * cl_sequence
 
     sequences = []
     for nCl in cliffords:
         pulse_list_list_all = []
-        for _ in nr_seeds:
-            cl_seq = rb.randomized_benchmarking_sequence_new(
-                nCl,
-                number_of_qubits=2,
-                max_clifford_idx=max_clifford_idx,
-                interleaving_cl=interleaved_gate,
-                desired_net_cl=net_clifford)
+        for s in nr_seeds:
+            if cl_sequence is None:
+                cl_seq = rb.randomized_benchmarking_sequence_new(
+                    nCl,
+                    number_of_qubits=2,
+                    max_clifford_idx=max_clifford_idx,
+                    interleaving_cl=interleaved_gate,
+                    desired_net_cl=net_clifford,
+                    seed=sampling_seeds[s])
+            elif isinstance(cl_sequence[0], list):
+                cl_seq = cl_seq_temp[s]
+            else:
+                cl_seq = cl_sequence
 
             pulse_list = []
             pulsed_qubits = {qb1n, qb2n}
+            pulse_tuples_list_all = []
             for idx in cl_seq:
                 pulse_tuples_list = tqc.TwoQubitClifford(idx).gate_decomposition
+                pulse_tuples_list_all += pulse_tuples_list
+
                 for j, pulse_tuple in enumerate(pulse_tuples_list):
                     if isinstance(pulse_tuple[1], list):
                         pulse_list += [operation_dict[cz_pulse_name]]
@@ -146,6 +208,20 @@ def two_qubit_randomized_benchmarking_seqs(
                             pulsed_qubits |= {qb_name}
                         pulse_list += [
                             operation_dict[pulse_name + ' ' + qb_name]]
+
+            # check recovery
+            gproduct = qtp.tensor(qtp.identity(2), qtp.identity(2))
+            for i, cl_tup in enumerate(pulse_tuples_list_all):
+                if cl_tup[0] == 'CZ':
+                    gproduct = standard_pulses[cl_tup[0]] * gproduct
+                else:
+                    eye_2qb = [qtp.identity(2), qtp.identity(2)]
+                    eye_2qb[int(cl_tup[1][-1])] = standard_pulses[cl_tup[0]]
+                    gproduct = qtp.tensor(eye_2qb) * gproduct
+            x = gproduct.full() / gproduct.full()[0][0]
+            assert (np.all((np.allclose(np.real(x), np.eye(4)),
+                            np.allclose(np.imag(x), np.zeros(4)))))
+
             pulse_list += generate_mux_ro_pulse_list(
                 [qb1n, qb2n], operation_dict)
             pulse_list_w_prep = add_preparation_pulses(
@@ -892,6 +968,8 @@ def parity_single_round_seq(ancilla_qubit_name, data_qubit_names, CZ_map,
     # add calibration segments
     if cal_points is not None:
         seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+
+    [seq.repeat_ro(f"RO {qbn}", operation_dict) for qbn in qb_names]
 
     if upload:
        ps.Pulsar.get_instance().program_awgs(seq)
@@ -1842,6 +1920,83 @@ def drive_cancellation_seq(
         sequence_name=sequence_name, upload=upload)
 
 
+def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
+                           crosstalk_qubits_amplitudes, sweep_points,
+                           operation_dict, crosstalk_fluxpulse_length,
+                           target_fluxpulse_length, prep_params,
+                           cal_points, upload=True,
+                           sequence_name='fluxline_crosstalk_seq'):
+    """
+    Applies a flux pulse on the target qubit with various amplitudes.
+    Measure the phase shift due to these pulses on the crosstalk qubits which
+    are measured in a Ramsey setting and fluxed to a more sensitive frequency.
+
+    Args:
+        target_qubit_name: the qubit to which a fluxpulse with varying amplitude
+            is applied
+        crosstalk_qubits_names: a list of qubits to do a Ramsey on.
+        crosstalk_qubits_amplitudes: A dictionary from crosstalk qubit names
+            to flux pulse amplitudes that are applied to them to increase their
+            flux sensitivity. Missing amplitudes are set to 0.
+        sweep_points: A SweepPoints object, where the first sweep dimension is
+            over Ramsey phases and must be called 'phase' and the second sweep
+            dimenstion is over the target qubit pulse amplitudes and must be
+            called 'target_amp'.
+        operation_dict: A dictionary of pulse dictionaries corresponding to the
+            various operations that can be done.
+        target_fluxpulse_length: length of the flux pulse on the target qubit.
+        crosstalk_fluxpulse_length: length of the flux pulses on the crosstalk
+            qubits
+        prep_params: Perparation parameters dictionary specifying the type
+            of state preparation.
+        cal_points: CalibrationPoints object determining the used calibration
+            points
+        upload: Whether the experimental sequence should be uploaded.
+            Defaults to True.
+        sequence_name: Overwrite the sequence name. Defaults to
+            'fluxline_crosstalk_seq'.
+    """
+
+    interleaved_pulse_list_list = []
+    buffer_start = 0
+    buffer_end = 0
+    pi_len = 0
+    for qbn in crosstalk_qubits_names:
+        buffer_start = max(buffer_start,
+                           operation_dict[f'FP {qbn}']['buffer_length_start'])
+        buffer_end = max(buffer_end,
+                           operation_dict[f'FP {qbn}']['buffer_length_end'])
+        pi_len = max(pi_len, operation_dict[f'X180 {qbn}']['nr_sigma'] *
+                             operation_dict[f'X180 {qbn}']['sigma'])
+
+    for amp in sweep_points[1]['target_amp'][0]:
+        interleaved_pulse_list = []
+        for i, qbn in enumerate(crosstalk_qubits_names):
+            pulse = deepcopy(operation_dict[f'FP {qbn}'])
+            if i > 0:
+                pulse['ref_point'] = 'middle'
+                pulse['ref_point_new'] = 'middle'
+            pulse['amplitude'] = crosstalk_qubits_amplitudes.get(qbn, 0)
+            pulse['pulse_length'] = crosstalk_fluxpulse_length
+            pulse['buffer_length_start'] = buffer_start
+            pulse['buffer_length_end'] = buffer_end
+            interleaved_pulse_list += [pulse]
+        pulse = deepcopy(operation_dict[f'FP {target_qubit_name}'])
+        pulse['amplitude'] = amp
+        pulse['pulse_length'] = target_fluxpulse_length
+        pulse['ref_point'] = 'middle'
+        pulse['ref_point_new'] = 'middle'
+        interleaved_pulse_list += [pulse]
+        interleaved_pulse_list_list += [interleaved_pulse_list]
+
+    pihalf_spacing = buffer_start + crosstalk_fluxpulse_length + buffer_end + \
+        pi_len
+    return interleaved_pulse_list_list_equatorial_seq(
+        crosstalk_qubits_names, operation_dict, interleaved_pulse_list_list,
+        sweep_points[0]['phase'][0], pihalf_spacing=pihalf_spacing,
+        prep_params=prep_params, cal_points=cal_points,
+        sequence_name=sequence_name, upload=upload)
+
 def multi_parity_multi_round_seq(ancilla_qubit_names,
                                  data_qubit_names,
                                  parity_map,
@@ -1854,42 +2009,24 @@ def multi_parity_multi_round_seq(ancilla_qubit_names,
                                  parity_loops=1,
                                  cal_points=None,
                                  prep_params=None,
-                                 upload=True):
+                                 upload=True,
+                                 max_acq_length=1e-6,
+                                 ):
     seq_name = 'Multi_Parity_{}_round_sequence'.format(parity_loops)
     qb_names = ancilla_qubit_names + data_qubit_names
 
-    # dummy pulses
-    dummy_ro_1 = {'pulse_type': 'GaussFilteredCosIQPulse',
-                 'I_channel': 'UHF1_ch1',
-                 'Q_channel': 'UHF1_ch2',
-                 'amplitude': 0.00001,
+    # Dummy pulses are used to make sure that all UHFs are triggered even if
+    # only part of the qubits are read out.
+    # First get all RO pulses, then throw away all except one per channel pair.
+    dummy_pulses = [deepcopy(operation_dict['RO ' + qbn]) for qbn in qb_names]
+    dummy_pulses = {(p['I_channel'], p['Q_channel']): p for p in dummy_pulses}
+    for p in dummy_pulses.values():
+        p.update({'amplitude': 0.00001,
                  'pulse_length': 50e-09,
                  'pulse_delay': 0,
                  'mod_frequency': 900.0e6,
-                 'phase': 0,
-                 'phi_skew': 0,
-                 'alpha': 1,
-                 'gaussian_filter_sigma': 1e-09,
-                 'nr_sigma': 2,
-                 'phase_lock': True,
-                 'basis_rotation': {},
-                 'operation_type': 'RO'}
-    dummy_ro_2 = {'pulse_type': 'GaussFilteredCosIQPulse',
-                 'I_channel': 'UHF2_ch1',
-                 'Q_channel': 'UHF2_ch2',
-                 'amplitude': 0.00001,
-                 'pulse_length': 50e-09,
-                 'pulse_delay': 0,
-                 'mod_frequency': 900.0e6,
-                 'phase': 0,
-                 'phi_skew': 0,
-                 'alpha': 1,
-                 'gaussian_filter_sigma': 1e-09,
-                 'nr_sigma': 2,
-                 'phase_lock': True,
-                 'basis_rotation': {},
-                 'operation_type': 'RO'}
-
+                 'op_code': ''})
+    
     echo_pulses = [('Y180' + 's ' + dqb)
                    for n, dqb in enumerate(data_qubit_names)]
 
@@ -1922,12 +2059,12 @@ def multi_parity_multi_round_seq(ancilla_qubit_names,
             op = 'CZ ' + anc_name + ' ' + dqb
             op = CZ_map.get(op, [op])
             ops = parity_ops+op
-            if n==1 and anc_name=='qb4':
+            if n==1 and parity_map[i]['type'] == 'X':
                 ops.append('Y180 ' + anc_name)
                 ops.append('Z180 ' + parity_map[i]['data'][-1])
                 ops.append('Z180 ' + parity_map[i]['data'][-2])
                 print('ECHO')
-            elif n==0 and (anc_name=='qb3' or anc_name=='qb5'):
+            elif n==0 and parity_map[i]['type'] == 'Z':
                 ops.append('Y180 ' + anc_name)
                 ops.append('Z180 ' + parity_map[i]['data'][-1])
                 print('ECHO')
@@ -2032,20 +2169,15 @@ def multi_parity_multi_round_seq(ancilla_qubit_names,
 
                         first_readout[round] = False
 
-                # more hacking for dummy
-                all_pulses.append(deepcopy(dummy_ro_1))
-                all_pulses[-1]['element_name'] = f'ro_{round}_loop' + \
-                                                 f'_{m}_tomo_{t}'
-                all_pulses[-1]['ref_pulse'] = f'first_ro_{round}' + \
-                                              f'_loop_{m}_tomo_{t}'
-                all_pulses[-1]['ref_point'] = 'start'
+                # Add dummy pulses for all UHFs
+                for p in dummy_pulses.values():
+                    all_pulses.append(deepcopy(p))
+                    all_pulses[-1]['element_name'] = f'ro_{round}_loop' + \
+                                                     f'_{m}_tomo_{t}'
+                    all_pulses[-1]['ref_pulse'] = f'first_ro_{round}' + \
+                                                  f'_loop_{m}_tomo_{t}'
+                    all_pulses[-1]['ref_point'] = 'start'
 
-                all_pulses.append(deepcopy(dummy_ro_2))
-                all_pulses[-1]['element_name'] = f'ro_{round}_loop' + \
-                                                 f'_{m}_tomo_{t}'
-                all_pulses[-1]['ref_pulse'] = f'first_ro_{round}' + \
-                                              f'_loop_{m}_tomo_{t}'
-                all_pulses[-1]['ref_point'] = 'start'
             # if  (m!=parity_loops-1)  or ( (parity_loops%2==0)
             #                               and  m==parity_loops-1):
             if m != parity_loops - 1:
@@ -2061,8 +2193,8 @@ def multi_parity_multi_round_seq(ancilla_qubit_names,
             pulse['element_name'] = f'drive_tomo_{t}'
             pulse['ref_pulse'] = f'first_ro_{rounds}' + \
                                  f'_loop_{parity_loops-1}_tomo_{t}'
-            pulse['pulse_delay'] = 200e-9 # to account for UHF deadtime
-            pulse['ref_point'] = 'end'
+            pulse['pulse_delay'] = max_acq_length + 5e-9 # account for UHF deadtime
+            pulse['ref_point'] = 'start'
         all_pulses += end_pulses
         all_pulses += generate_mux_ro_pulse_list(qb_names, operation_dict)
         all_pulsess.append(all_pulses)

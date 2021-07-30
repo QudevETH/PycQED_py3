@@ -5,6 +5,11 @@ import lmfit
 import itertools
 import logging
 
+from pycqed.simulations import transmon
+from pycqed.utilities.timer import Timer
+
+log = logging.getLogger(__name__)
+
 
 #################################
 #   Fitting Functions Library   #
@@ -96,8 +101,8 @@ def TwinLorentzFunc(f, A_gf_over_2, A, f0_gf_over_2, f0,
 
 
 def Qubit_dac_to_freq(dac_voltage, f_max,
-                      dac_sweet_spot, V_per_phi0=None,
-                      dac_flux_coefficient=None,
+                      dac_sweet_spot=None, V_per_phi0=None, phi_park=None,
+                      dac_flux_coefficient=None, E_c=0,
                       asymmetry=0.5):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
@@ -112,15 +117,22 @@ def Qubit_dac_to_freq(dac_voltage, f_max,
 
     # using E_c as fit parameter is numerically not stable (changing E_c does only
     # slightly change the function. Set E_c to zero
-    E_c = 0
 
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
 
     if dac_flux_coefficient is not None:
-        logging.warning('"dac_flux_coefficient" deprecated. Please use the '
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
                         'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
 
     qubit_freq = (f_max + E_c) * (
             asymmetry ** 2 + (1 - asymmetry ** 2) *
@@ -128,6 +140,156 @@ def Qubit_dac_to_freq(dac_voltage, f_max,
                    (dac_voltage - dac_sweet_spot)) ** 2) ** 0.25 - E_c
     return qubit_freq
 
+def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None
+                              ):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    dac_voltage (V)
+    Ejmax (Hz): Maximum Ej of qubit
+    Ec (Hz): charging energy of the qubit
+    d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux
+    '''
+    if np.ndim(dac_voltage) == 0:
+        dac_voltage = np.array([dac_voltage])
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                    'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
+    Ej = 2 * np.pi * Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    E_c = 2 * np.pi * E_c
+    freqs = []
+    for ej in Ej:
+        freqs.append((transmon.transmon_levels(E_c, ej) / (2 * np.pi))[0])
+    qubit_freq = np.array(freqs)
+    return qubit_freq
+
+def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None, dim_charge=31,
+                              ):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    dac_voltage (V)
+    Ejmax (Hz): Maximum Ej of qubit
+    Ec (Hz): charging energy of the qubit
+    d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
+    phi_park
+    '''
+    return_float = False
+    if np.ndim(dac_voltage) == 0:
+        dac_voltage = np.array([dac_voltage])
+        return_float = True
+
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                    'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
+    Ej =  Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    with Timer('fitmod.loop', verbose=False):
+        freqs = [(transmon.transmon_resonator_levels(E_c,
+                                                     ej,
+                                                     fr,
+                                                     coupling,
+                                                     states=[(1, 0), (2, 0)],
+                                                     dim_charge=dim_charge
+                                                         ))[0]
+                 for ej in Ej]
+    qubit_freq = np.array(freqs)
+    return qubit_freq[0] if return_float else qubit_freq
+
+def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None,
+                      branch='smallest'):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    This function implements the inverse of "Qubit_dac_to_freq"
+
+    frequency (Hz)
+    Ej_max (Hz): Maximum josephson energy
+    E_c (Hz): charging energy of the qubit
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
+    asym (dimensionless asymmetry param) = abs((EJ1-EJ2)/(EJ1+EJ2))
+    couping (Hz): coupling to resonator
+    fr (Hz): frequency of resonator
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    branch (enum: 'positive' 'negative' or "smallest")
+    '''
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    return_float = False
+    if np.ndim(frequency) == 0:
+        frequency = [frequency]
+        return_float = True
+    E_j = [transmon.transmon_resonator_ej_anh_frg_chi(
+            f, ec=E_c, frb=fr, gb=coupling)[0]
+            for f in frequency]
+    E_j = np.array(E_j)
+
+    r = E_j / Ej_max
+    if np.any(r > 1):
+        log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
+                    f'indices {np.argwhere(r > 1)}.Truncating to 1.')
+        r[r>1] = 1
+    phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
+
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                        'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    dac_voltage_pos = phi * V_per_phi0 / np.pi + dac_sweet_spot
+    dac_voltage_neg = -phi * V_per_phi0 / np.pi + dac_sweet_spot
+    if branch == 'positive':
+        dac_voltage = dac_voltage_pos
+    elif branch == 'negative':
+        dac_voltage = dac_voltage_neg
+    elif branch == 'smallest':
+        if np.ndim(phi) != 0:
+            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
+            idxs0 = np.argmin(np.abs(dac_voltage), 0)
+            idxs1 = np.arange(len(dac_voltage_pos))
+            dac_voltage = dac_voltage[idxs0, idxs1]
+        else:
+            dac_voltage = dac_voltage_pos \
+                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
+                else dac_voltage_neg
+    else:
+        raise ValueError('branch {} not recognized'.format(branch))
+
+    return dac_voltage[0] if return_float else dac_voltage
 
 def Resonator_dac_to_freq(dac_voltage, f_max_qubit, f_0_res,
                           E_c, dac_sweet_spot,
@@ -165,9 +327,10 @@ def Qubit_dac_to_detun(dac_voltage, f_max, E_c, dac_sweet_spot, V_per_phi0,
 
 
 def Qubit_freq_to_dac(frequency, f_max,
-                      dac_sweet_spot, V_per_phi0=None,
-                      dac_flux_coefficient=None, asymmetry=0,
-                      branch='positive'):
+                      dac_sweet_spot=None, V_per_phi0=None,
+                      dac_flux_coefficient=None, asymmetry=0, E_c=0,
+                      phi_park=None,
+                      branch='smallest'):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
     This function implements the inverse of "Qubit_dac_to_freq"
@@ -182,10 +345,14 @@ def Qubit_freq_to_dac(frequency, f_max,
     '''
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
 
-    # using E_c as fit parameter is numerically not stable (changing E_c does only
-    # slightly change the function. Set E_c to zero
-    E_c = 0
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
 
     # asymm_term = (asymmetry**2 + (1-asymmetry**2))
     # dac_term = np.arccos(((frequency+E_c)/((f_max+E_c) * asymm_term))**2)
@@ -195,14 +362,26 @@ def Qubit_freq_to_dac(frequency, f_max,
         (1 - asymmetry ** 2)))
 
     if dac_flux_coefficient is not None:
-        logging.warning('"dac_flux_coefficient" deprecated. Please use the '
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
                         'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
 
+    dac_voltage_pos = dac_term * V_per_phi0 / np.pi + dac_sweet_spot
+    dac_voltage_neg = -dac_term * V_per_phi0 / np.pi + dac_sweet_spot
     if branch == 'positive':
-        dac_voltage = dac_term * V_per_phi0 / np.pi + dac_sweet_spot
+        dac_voltage = dac_voltage_pos
     elif branch == 'negative':
-        dac_voltage = -dac_term * V_per_phi0 / np.pi + dac_sweet_spot
+        dac_voltage = dac_voltage_neg
+    elif branch == 'smallest':
+        if np.ndim(dac_term) != 0:
+            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
+            idxs0 = np.argmin(np.abs(dac_voltage), 0)
+            idxs1 = np.arange(len(dac_voltage_pos))
+            dac_voltage = dac_voltage[idxs0, idxs1]
+        else:
+            dac_voltage = dac_voltage_pos \
+                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
+                else dac_voltage_neg
     else:
         raise ValueError('branch {} not recognized'.format(branch))
 
@@ -225,7 +404,7 @@ def Qubit_dac_sensitivity(dac_voltage, f_max: float, E_c: float,
 
 def QubitFreqDac(dac_voltage, f_max, E_c,
                  dac_sweet_spot, dac_flux_coefficient, asymmetry=0):
-    logging.warning('deprecated, replace QubitFreqDac with Qubit_dac_to_freq')
+    log.warning('deprecated, replace QubitFreqDac with Qubit_dac_to_freq')
     return Qubit_dac_to_freq(dac_voltage, f_max, E_c,
                              dac_sweet_spot, dac_flux_coefficient, asymmetry)
 
@@ -446,6 +625,13 @@ def double_gaussianCDF(x, A_amplitude, A_mu, A_sigma,
     CDF_A = gaussianCDF(x, amplitude=A_amplitude, mu=A_mu, sigma=A_sigma)
     CDF_B = gaussianCDF(x, amplitude=B_amplitude, mu=B_mu, sigma=B_sigma)
     return CDF_A + CDF_B
+
+def TwoErrorFunc(x, amp, mu_A, mu_B, sigma, offset):
+    '''
+    parameters:
+
+    '''
+    return offset + double_gaussianCDF(x, amp, mu_A, sigma, -amp, mu_B, sigma)
 
 def ro_gauss(x, A_center, B_center, A_sigma, B_sigma, A_amplitude,
              B_amplitude, A_spurious, B_spurious):
@@ -759,7 +945,7 @@ def fit_hanger_with_pf(model, data, simultan=False):
         fit_out.params['omega_ro'].value *= 1e9
 
     if fit_out.chisqr > tol:
-            logging.warning('The fit did not converge properly: chi^2 = '
+            log.warning('The fit did not converge properly: chi^2 = '
                             ''+str(fit_out.chisqr))
 
     #Unpack simultan fits
@@ -923,20 +1109,99 @@ def Resonator_dac_arch_guess(model, freq, dac_voltage, f_max_qubit: float = None
     return params
 
 
-def Qubit_dac_arch_guess(model, data, dac_voltage):
+def Qubit_dac_arch_guess(model, data, dac_voltage, fixed_params=None):
     f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
     f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
     V_per_phi0 = abs(2*(dac_ss-dac_lss))
     d = (f_min)**2/(f_max)**2
-    model.set_param_hint('f_max', value=f_max, min=0)
-    model.set_param_hint('dac_sweet_spot', value=dac_ss, min=-3, max=3)
-    model.set_param_hint('V_per_phi0', value=V_per_phi0, min=0)
-    model.set_param_hint('asymmetry', value=d, min=0, max=1)
 
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('f_max', value=fixed_params.get('f_max', f_max),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
     params = model.make_params()
     return params
 
+def Qubit_dac_arch_guess_precise(model, data, dac_voltage, fixed_params=None):
+    f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
+    f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
+    V_per_phi0 = abs(2*(dac_ss-dac_lss))
+    d = (f_min)**2/(f_max)**2
 
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('Ej_max', value=fixed_params.get('Ej_max'),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
+    params = model.make_params()
+    return params
+
+def Qubit_dac_arch_guess_res(model, data, dac_voltage, fixed_params=None):
+    f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
+    f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
+    V_per_phi0 = abs(2*(dac_ss-dac_lss))
+    d = (f_min)**2/(f_max)**2
+
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('Ej_max', value=fixed_params.get('Ej_max'),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    model.set_param_hint('coupling', value=fixed_params.get('coupling', 100e6),
+                         vary=not 'coupling' in fixed_params)
+    model.set_param_hint('fr', value=fixed_params.get('fr', 7e9),
+                         vary=not 'fr' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
+    params = model.make_params()
+    return params
 def idle_err_rate_guess(model, data, N):
     '''
     Assumes exponential decay in estimating the parameters
@@ -952,7 +1217,7 @@ def idle_err_rate_guess(model, data, N):
     return params
 
 
-def fft_freq_phase_guess(data, t):
+def fft_freq_phase_guess(data, t, freq_guess=None):
     '''
     Guess for a cosine fit using FFT, only works for evenly spaced points
     '''
@@ -961,11 +1226,12 @@ def fft_freq_phase_guess(data, t):
     # negative frequecy components, and we want a positive frequency.
     w = np.fft.fft(data)[:len(data) // 2]
     f = np.fft.fftfreq(len(data), t[1] - t[0])[:len(w)]
-    w[0] = 0  # Removes DC component from fourier transform
+    if freq_guess is None:
+        w[0] = 0  # Removes DC component from fourier transform
 
-    # Use absolute value of complex valued spectrum
-    abs_w = np.abs(w)
-    freq_guess = abs(f[abs_w == max(abs_w)][0])
+        # Use absolute value of complex valued spectrum
+        abs_w = np.abs(w)
+        freq_guess = abs(f[abs_w == max(abs_w)][0])
     ph_guess = 2 * np.pi - (2 * np.pi * t[data == max(data)] * freq_guess)[0]
     # the condition data == max(data) can have several solutions
     #               (for example when discretization is visible)
@@ -984,7 +1250,7 @@ def Cos_guess(model, data, t, **kwargs):
     amp_guess = abs(max(data) - min(data)) / 2  # amp is positive by convention
     offs_guess = np.mean(data)
 
-    freq_guess, ph_guess = fft_freq_phase_guess(data, t)
+    freq_guess, ph_guess = fft_freq_phase_guess(data, t, **kwargs)
 
     model.set_param_hint('period', expr='1/frequency')
     params = model.make_params(amplitude=amp_guess,
@@ -1211,7 +1477,16 @@ def sum_int(x,y):
     return np.cumsum(y[:-1]*(x[1:]-x[:-1]))
 
 
-def Gaussian(freq,sigma,mu,ampl,offset):
+def DoubleGaussian(freq, sigma, mu, ampl, sigma0, mu0, ampl0, offset):
+    '''
+    Double Gaussian function
+    '''
+    return ampl/(sigma*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu)/sigma)**2) + \
+           ampl0/(sigma0*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu0)/sigma0)**2) + \
+           offset
+
+
+def Gaussian(freq, sigma, mu, ampl, offset):
     '''
     Gaussian function
     '''
@@ -1276,6 +1551,19 @@ def half_feed_line_S12_J_guess(model,data):
     params=model.make_params()
     return params
 
+def TwoErrorFunc_guess(model, delays, data):
+    offset_guess = data[1]
+    amp_guess = data[data.size//2] - data[1]
+    delay_interval = (delays[-1]-delays[1])
+    mu_A_guess = delays[1] + 0.1*delay_interval
+    mu_B_guess = delays[1] + 0.9*delay_interval
+    sigma_guess = 3e-9
+    params = model.make_params(amp=amp_guess,
+                               mu_A=mu_A_guess,
+                               mu_B=mu_B_guess,
+                               sigma=sigma_guess,
+                               offset = offset_guess)
+    return params
 
 #################################
 #     User defined Models       #

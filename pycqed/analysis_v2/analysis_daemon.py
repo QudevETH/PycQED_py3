@@ -60,9 +60,9 @@ class AnalysisDaemon:
     def run(self):
         try:
             while (True):
-                self.check_job()
-                for i in range(self.poll_interval):
-                    time.sleep(1)
+                if not self.check_job():
+                    for i in range(self.poll_interval):
+                        time.sleep(1)
         except KeyboardInterrupt as e:
             pass
         except Exception as e:
@@ -73,7 +73,8 @@ class AnalysisDaemon:
     def check_job(self):
         """
         Checks whether new jobs have been found and processes them
-        Returns:
+        Returns: True if a job was found and processed (done or failed),
+            False otherwise.
 
         """
         try:
@@ -100,16 +101,33 @@ class AnalysisDaemon:
 
                     job = self.read_job(filename)
                     errl = len(self.job_errs)
+                    os.rename(filename, filename + '.running')
                     self.run_job(job)
-                    if errl == len(self.errs):
-                        os.rename(filename, filename + '.done')
+                    time.sleep(1)  # wait to make sure that files are written
+                    t = self.get_datetimestamp()
+                    if os.path.isfile(filename):
+                        os.rename(filename,
+                                  f"{filename}_{t}.loop_detected")
+                        log.warning(f'A loop was detected! Job {filename} '
+                                    f'tries to delegate plotting.')
+                    if errl == len(self.job_errs):
+                        os.rename(filename + '.running',
+                                  f"{filename}_{t}.done")
                     else:
-                        os.rename(filename, filename + '.failed')
-                        new_errors = self.errs[errl:]
-                        self.write_to_job(filename + '.failed', new_errors)
+                        new_filename = f"{filename}_{t}.failed"
+                        os.rename(filename + '.running', new_filename)
+                        new_errors = self.job_errs[errl:]
+                        self.write_to_job(new_filename, new_errors)
                     self.last_ts = ts
         if not found_jobs:
             log.info(f"No new job found.")
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def get_datetimestamp():
+        return time.strftime('%Y%m%d_%H%M%S', time.localtime())
 
     @staticmethod
     def read_job(filename):
@@ -117,10 +135,11 @@ class AnalysisDaemon:
         job = "".join(job_file.readlines())
         job_file.close()
         return job
+
     @staticmethod
     def write_to_job(filename, new_lines):
-        job_file = open(filename, 'r+')
-        job_file.write("\n")
+        job_file = open(filename, 'a+')
+        job_file.write("\n\n")
         job_file.write("".join(new_lines))
         job_file.close()
 
