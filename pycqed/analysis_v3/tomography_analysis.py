@@ -951,7 +951,10 @@ def process_tomography_analysis(data_dict, Uideal=None,
         else:
             raise ValueError(f'Unknown gate of interest {process_name}. '
                              f'Please provide the process unitary, Uideal.')
-    Uideal = qtp.to_chi(Uideal)/16
+    chi_ideal = qtp.to_chi(Uideal)/16
+    # add ideal chi matrix to data_dict
+    hlp_mod.add_param(f'chi_ideal_{process_name}',
+                      chi_ideal.full(), data_dict, **params)
 
     if prep_pulses_list is None:
         basis_rots = hlp_mod.get_param(
@@ -1063,8 +1066,8 @@ def process_tomography_analysis(data_dict, Uideal=None,
             print('lambda_array.flatten().size ', lambda_array.flatten().size)
 
         chi = np.linalg.solve(beta_array_reshaped, lambda_array.flatten())
-        chi = chi.reshape(Uideal.shape)
-        chi_qtp = qtp.Qobj(chi, dims=Uideal.dims)
+        chi = chi.reshape(chi_ideal.shape)
+        chi_qtp = qtp.Qobj(chi, dims=chi_ideal.dims)
 
         # add found chi matrix to data_dict
         hlp_mod.add_param(f'chi_{process_name}.{estimation_type}',
@@ -1072,7 +1075,7 @@ def process_tomography_analysis(data_dict, Uideal=None,
 
         # add gate error to data_dict
         hlp_mod.add_param(f'measured_error_{process_name}.{estimation_type}',
-                          1-np.real(qtp.process_fidelity(chi_qtp, Uideal)),
+                          1-np.real(qtp.process_fidelity(chi_qtp, chi_ideal)),
                           data_dict, **params)
 
 
