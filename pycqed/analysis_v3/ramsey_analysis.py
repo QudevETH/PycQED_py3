@@ -3,19 +3,18 @@ log = logging.getLogger(__name__)
 
 import numpy as np
 from collections import OrderedDict
-from pycqed.analysis_v3 import fitting as fit_module
-from pycqed.analysis_v3 import plotting as plot_module
+from pycqed.analysis_v3 import fitting as fit_mod
+from pycqed.analysis_v3 import plotting as plot_mod
 from pycqed.analysis_v3 import helper_functions as hlp_mod
-from pycqed.analysis_v3 import processing_pipeline as ppmod
+from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from copy import deepcopy
 
 import sys
-from pycqed.analysis_v3 import pipeline_analysis as pla
-pla.search_modules.add(sys.modules[__name__])
+pp_mod.search_modules.add(sys.modules[__name__])
 
 # Create pipelines
 def ramsey_iq_pipeline(meas_object_name):
-    pp = ppmod.ProcessingPipeline()
+    pp = pp_mod.ProcessingPipeline()
     pp.add_node('rotate_iq', keys_in='raw', meas_obj_names=meas_object_name)
     pp.add_node('ramsey_analysis',
                 keys_in=f'previous {meas_object_name}.rotate_iq',
@@ -31,7 +30,7 @@ def ramsey_analysis(data_dict, keys_in, **params):
 
     prep_fit_dicts = params.pop('prep_fit_dicts', True)
     do_fitting = params.pop('do_fitting', True)
-    prep_plot_dicts = params.pop('prep_plot_dicts', True)
+    prepare_plotting = params.pop('prepare_plotting', True)
     do_plotting = params.pop('do_plotting', True)
 
     # prepare fitting
@@ -46,16 +45,16 @@ def ramsey_analysis(data_dict, keys_in, **params):
         prepare_ramsey_fitting(data_dict, keys_in, **params)
 
     if do_fitting:
-        getattr(fit_module, 'run_fitting')(data_dict, keys_in=list(
+        getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
                 data_dict['fit_dicts']),**params)
         # calculate new qubit frequecy, extract T2 star
         analyze_ramsey_fit_results(data_dict, keys_in, **params)
 
     # prepare plots
-    if prep_plot_dicts:
+    if prepare_plotting:
         prepare_ramsey_plots(data_dict, data_to_proc_dict, **params)
     if do_plotting:
-        getattr(plot_module, 'plot')(data_dict, keys_in=list(
+        getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
 
 
@@ -65,7 +64,7 @@ def prepare_ramsey_fitting(data_dict, keys_in, **params):
         data_dict, props_to_extract=['sp', 'mospm', 'mobjn'], **params)
     physical_swpts = sp[0][mospm[mobjn][0]][0]
     for i, fit_name in enumerate(fit_names):
-        fit_module.prepare_expdamposc_fit_dict(
+        fit_mod.prepare_expdamposc_fit_dict(
             data_dict, keys_in=keys_in,
             meas_obj_names=mobjn, fit_name=fit_name,
             indep_var_array=physical_swpts,
@@ -98,23 +97,23 @@ def analyze_ramsey_fit_results(data_dict, keys_in, **params):
         if old_qb_freq != old_qb_freq:
             old_qb_freq = 0
         hlp_mod.add_param(f'{mobjn}.old_freq', old_qb_freq, data_dict,
-                          replace_value=True)
+                          add_param_method='replace')
         for fit_name in fit_names:
             key = fit_name + keyi
             fit_res = fit_dicts[key]['fit_res']
             hlp_mod.add_param(f'{mobjn}.new_freq ' + fit_name,
                               old_qb_freq + artificial_detuning_dict[mobjn] -
                               fit_res.best_values['frequency'],
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.new_freq ' + fit_name + '_stderr',
                               fit_res.params['frequency'].stderr,
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.T2_star ' + fit_name,
                               fit_res.best_values['tau'],
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
             hlp_mod.add_param(f'{mobjn}.T2_star ' + fit_name + '_stderr',
                               fit_res.params['tau'].stderr,
-                              data_dict, replace_value=True)
+                              data_dict, add_param_method='replace')
 
 
 def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
@@ -135,16 +134,16 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
                 physical_swpts, cp, mobjn)])
         swpts = np.repeat(swpts, reset_reps+1)
         swpts = np.arange(len(swpts))
-        plot_module.prepare_1d_raw_data_plot_dicts(
+        plot_mod.prepare_1d_raw_data_plot_dicts(
             data_dict, xvals=swpts, **params)
 
         filtered_raw_keys = [k for k in data_dict.keys() if 'filter' in k]
         if len(filtered_raw_keys) > 0:
-            plot_module.prepare_1d_raw_data_plot_dicts(
+            plot_mod.prepare_1d_raw_data_plot_dicts(
                 data_dict=data_dict, keys_in=filtered_raw_keys,
                 figure_name='raw_data_filtered', **params)
     else:
-        plot_module.prepare_1d_raw_data_plot_dicts(data_dict, **params)
+        plot_mod.prepare_1d_raw_data_plot_dicts(data_dict, **params)
 
     fit_names = hlp_mod.pop_param('fit_names', params, raise_error=True)
     artificial_detuning_dict = hlp_mod.get_param('artificial_detuning_dict',
@@ -159,14 +158,14 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
         figure_name = 'Ramsey_' + keyi
         sp_name = mospm[mobjn][0]
         # plot data
-        plot_module.prepare_1d_plot_dicts(data_dict=data_dict, keys_in=[keyi],
+        plot_mod.prepare_1d_plot_dicts(data_dict=data_dict, keys_in=[keyi],
                                           figure_name=figure_name,
                                           sp_name=sp_name, do_plotting=False,
                                           **params)
 
         if len(cp.states) != 0:
             # plot cal states
-            plot_module.prepare_cal_states_plot_dicts(data_dict=data_dict,
+            plot_mod.prepare_cal_states_plot_dicts(data_dict=data_dict,
                                                       keys_in=[keyi],
                                                       figure_name=figure_name,
                                                       sp_name=sp_name,
@@ -177,7 +176,7 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
             textstr = ''
             T2_star_str = ''
             for i, fit_name in enumerate(fit_names):
-                plot_module.prepare_fit_plot_dicts(
+                plot_mod.prepare_fit_plot_dicts(
                     data_dict=data_dict,
                     figure_name=figure_name,
                     fit_names=[fit_name + keyi],
@@ -243,5 +242,5 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
             'colors': 'gray'}
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
-                      update_value=True)
+                      add_param_method='update')
 

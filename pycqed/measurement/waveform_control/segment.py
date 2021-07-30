@@ -8,6 +8,10 @@
 import numpy as np
 import math
 import logging
+
+import datetime
+from pycqed.utilities.timer import Timer
+
 log = logging.getLogger(__name__)
 from copy import deepcopy
 import pycqed.measurement.waveform_control.pulse as bpl
@@ -22,7 +26,15 @@ class Segment:
     Consists of a list of UnresolvedPulses, each of which contains information 
     about in which element the pulse is played and when it is played 
     (reference point + delay) as well as an instance of class Pulse.
+
+    Property distortion_dicts: a key of the form {AWG}_{channel} specifies
+        that the respective val should be used as distortion dict instead of
+        self.pulsar.{AWG}_{channel}_distortion_dict.
     """
+
+    trigger_pulse_length = 20e-9
+    trigger_pulse_amplitude = 0.5
+    trigger_pulse_start_buffer = 25e-9
 
     def __init__(self, name, pulse_pars_list=[]):
         self.name = name
@@ -33,15 +45,18 @@ class Segment:
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
+        self.distortion_dicts = {}
         self.trigger_pars = {
-            'pulse_length': 50e-9,
-            'amplitude': 0.5,
-            'buffer_length_start': 25e-9
+            'pulse_length': self.trigger_pulse_length,
+            'amplitude': self.trigger_pulse_amplitude,
+            'buffer_length_start': self.trigger_pulse_start_buffer,
         }
         self.trigger_pars['length'] = self.trigger_pars['pulse_length'] + \
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
         self.acquisition_elements = set()
+        self.timer = Timer(self.name)
+        self.pulse_pars = []
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -52,6 +67,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
+        self.pulse_pars.append(deepcopy(pulse_pars))
         pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
@@ -115,7 +131,8 @@ class Segment:
         for p in pulses:
             self.add(p)
 
-    def resolve_segment(self):
+    @Timer()
+    def resolve_segment(self, store_segment_length_timer=True):
         """
         Top layer method of Segment class. After having addded all pulses,
             * pulse elements are updated to enforce single element per segment
@@ -127,20 +144,63 @@ class Segment:
         """
         self.enforce_single_element()
         self.resolve_timing()
+        self.resolve_mirror()
         self.resolve_Z_gates()
+        self.add_flux_crosstalk_cancellation_channels()
         self.gen_trigger_el()
         self.add_charge_compensation()
+        if store_segment_length_timer:
+            try:
+                # FIXME: we currently store 1e3*length because datetime
+                #  does not support nanoseconds. Find a cleaner solution.
+                self.timer.checkpoint(
+                    'length.dt', log_init=False, values=[
+                        datetime.datetime.utcfromtimestamp(0)
+                        + datetime.timedelta(microseconds=1e9*np.diff(
+                                self.get_segment_start_end())[0])])
+            except Exception as e:
+                # storing segment length is not crucial for the measurement
+                log.warning(f"Could not store segment length timer: {e}")
 
     def enforce_single_element(self):
-        self.resolved_pulses = deepcopy(self.unresolved_pulses)
-        for p in self.resolved_pulses:
+        self.resolved_pulses = []
+        for p in self.unresolved_pulses:
+            ch_mask = []
             for ch in p.pulse_obj.channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                if self.pulsar.get(f'{ch_awg}_enforce_single_element'):
-                    p.pulse_obj.element_name = f'default_{self.name}'
-                    break
+                ch_mask.append(
+                    self.pulsar.get(f'{ch_awg}_enforce_single_element'))
+            if all(ch_mask) and len(ch_mask) != 0:
+                p = deepcopy(p)
+                p.pulse_obj.element_name = f'default_ese_{self.name}'
+                self.resolved_pulses.append(p)
+            elif any(ch_mask):
+                p0 = deepcopy(p)
+                p0.pulse_obj.channel_mask = [not x for x in ch_mask]
+                self.resolved_pulses.append(p0)
 
-    def resolve_timing(self):
+                p1 = deepcopy(p)
+                p1.pulse_obj.element_name = f'default_ese_{self.name}'
+                p1.pulse_obj.channel_mask = ch_mask
+                p1.ref_pulse = p.pulse_obj.name
+                p1.ref_point = 0
+                p1.ref_point_new = 0
+                p1.basis_rotation = {}
+                p1.delay = 0
+                p1.pulse_obj.name += '_ese'
+                p1.is_ese_copy = True
+                if p1.pulse_obj.codeword == "no_codeword":
+                   self.resolved_pulses.append(p1)
+                else:
+                    ese_chs = [ch for m, ch in zip(ch_mask, p.pulse_obj.channels) if m]
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(ese_chs)}')
+            else:
+                p = deepcopy(p)
+                self.resolved_pulses.append(p)
+
+    def resolve_timing(self, resolve_block_align=True):
         """
         For each pulse in the resolved_pulses list, this method:
             * updates the _t0 of the pulse by using the timing description of
@@ -149,6 +209,9 @@ class Segment:
               ascending element start time and the pulses in each element by 
               ascending _t0
             * orderes the resolved_pulses list by ascending pulse middle
+
+        :param resolve_block_align: (bool) whether to resolve alignment of
+            simultaneous blocks (default True)
         """
 
         self.elements = odict()
@@ -233,6 +296,27 @@ class Segment:
             raise Exception(f'Not all pulses have been resolved: '
                             f'{self.resolved_pulses}')
 
+        if resolve_block_align:
+            re_resolve = False
+            for i in range(len(visited_pulses)):
+                p = visited_pulses[i][2]
+                if p.block_align is not None:
+                    n = p.pulse_obj.name
+                    end_pulse = ref_pulses_dict_all[n[:-len('start')] + 'end']
+                    simultaneous_end_pulse = ref_pulses_dict_all[
+                        n[:n[:-len('-|-start')].rfind('-|-') + 3] +
+                        'simultaneous_end_pulse']
+                    Delta_t = p.block_align * (
+                            simultaneous_end_pulse.pulse_obj.algorithm_time() -
+                            end_pulse.pulse_obj.algorithm_time())
+                    if abs(Delta_t) > 1e-14:
+                        p.delay += Delta_t
+                        re_resolve = True
+                    p.block_align = None
+            if re_resolve:
+                self.resolve_timing(resolve_block_align=False)
+                return
+
         # adds the resolved pulses to the elements OrderedDictionary
         for (t0, i, p) in sorted(visited_pulses):
             if p.pulse_obj.element_name not in self.elements:
@@ -253,6 +337,18 @@ class Segment:
             ordered_unres_pulses.append(p)
 
         self.resolved_pulses = ordered_unres_pulses
+
+    def add_flux_crosstalk_cancellation_channels(self):
+        if self.pulsar.flux_crosstalk_cancellation():
+            for p in self.resolved_pulses:
+                if any([ch in self.pulsar.flux_channels() for ch in
+                        p.pulse_obj.channels]):
+                    p.pulse_obj.crosstalk_cancellation_channels = \
+                        self.pulsar.flux_channels()
+                    p.pulse_obj.crosstalk_cancellation_mtx = \
+                        self.pulsar.flux_crosstalk_cancellation_mtx()
+                    p.pulse_obj.crosstalk_cancellation_shift_mtx = \
+                        self.pulsar.flux_crosstalk_cancellation_shift_mtx()
 
     def add_charge_compensation(self):
         """
@@ -288,7 +384,7 @@ class Segment:
                 # Find the end of the last pulse of the segment
                 t_end = max(t_end, pulse.algorithm_time() + pulse.length)
 
-                for c in pulse.channels:
+                for c in pulse.masked_channels():
                     if c not in compensation_chan:
                         continue
                     awg = self.pulsar.get('{}_awg'.format(c))
@@ -358,7 +454,9 @@ class Segment:
                 'amplitude': amp,
                 'buffer_length_start': comp_delay,
                 'buffer_length_end': comp_delay,
-                'pulse_length': length
+                'pulse_length': length,
+                'gaussian_filter_sigma': self.pulsar.get(
+                    '{}_compensation_pulse_gaussian_filter_sigma'.format(c))
             }
             pulse = pl.BufferedSquarePulse(
                 last_element, c, name='compensation_pulse_{}'.format(i), **kw)
@@ -379,6 +477,11 @@ class Segment:
             el_start = self.get_element_start(el, awg)
             new_end = t_end + length_comp
             new_samples = self.time2sample(new_end - el_start, awg=awg)
+            # make sure that element length is multiple of
+            # sample granularity
+            gran = self.pulsar.get('{}_granularity'.format(awg))
+            if new_samples % gran != 0:
+                new_samples += gran - new_samples % gran
             self.element_start_end[el][awg][1] = new_samples
 
     def gen_refpoint_dict(self):
@@ -412,7 +515,7 @@ class Segment:
 
         for element in self.elements:
             for pulse in self.elements[element]:
-                for channel in pulse.channels:
+                for channel in pulse.masked_channels():
                     awg = self.pulsar.get(channel + '_awg')
                     if awg in self.elements_on_awg and \
                         element not in self.elements_on_awg[awg]:
@@ -534,7 +637,8 @@ class Segment:
                         **self.trigger_pars)
                     i += 1
 
-                    trig_pulse.algorithm_time(trigger_pulse_time)
+                    trig_pulse.algorithm_time(trigger_pulse_time -
+                                              0.25/self.pulsar.clock(channel))
 
                     # Add trigger element and pulse to seg.elements
                     if trig_pulse.element_name in self.elements:
@@ -612,6 +716,25 @@ class Segment:
         """
         return self.element_start_end[element][awg][0]
 
+    def get_segment_start_end(self):
+        """
+        Returns the start and end of the segment in algorithm_time
+        """
+        for i in range(2):
+            start_end_times = np.array(
+                [[self.get_element_start(el, awg),
+                  self.get_element_end(el, awg)]
+                 for awg, v in self.elements_on_awg.items() for el in v])
+            if len(start_end_times) > 0:
+                # the segment has been resolved before
+                break
+            # Resolve the segment and retry. We set store_segment_length_timer
+            # to False to avoid that resolve_segment calls
+            # get_segment_start_end, which might cause an infinite loop in
+            # some pathological cases.
+            self.resolve_segment(store_segment_length_timer=False)
+        return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
+
     def _test_overlap(self):
         """
         Tests for all AWGs if any of their elements overlap.
@@ -661,6 +784,67 @@ class Segment:
                 raise ValueError(
                     'There is more than one element on {}'.format(awg))
 
+    def resolve_mirror(self):
+        """
+        Resolves amplitude mirroring for pulses that have a mirror_pattern
+        property.
+
+        Pulses are categorized by their op_code and by whether or not they
+        are a copy created by enforce_single_element. The mirror_pattern
+        decides which pulses within a category get mirrored. The mirroring
+        is performed by multiplying all pulse parameters that contain
+        'amplitude' in their name by -1 (and adding a mirror_correction if
+        it is provided).
+
+        mirror_pattern:
+        - 'none'/'all': no/all pulses are mirrored
+        - 'odd'/'even': the i-th occurrence of a pulse from the category is
+          mirrored if i is odd (1, 3, ...) / even (2, 4, ...). Note that i is
+          meant as a natural number (i.e., 1-indexed and not 0-indexed).
+        - a list of bools (or of anything that can be interpreted as a bool).
+          In this case, the j-th element of the list indicates whether the
+          j-th occurrence of a pulse from the category is mirrored. If there
+          are more occurrences than elements in the list, the list is
+          repeated periodically.
+
+        mirror_correction:
+        None (no corrections) or a dict, where each key is a pulse
+        parameter name and the corresponding value specifies an additive
+        constant to be added after mirroring of this parameter. For parameters
+        not found in the dict, no correction is applied.
+        """
+        op_counts = {}
+        for p in self.resolved_pulses:
+            pulse_category = (p.op_code, getattr(p, "is_ese_copy", False))
+            if pulse_category not in op_counts:
+                op_counts[pulse_category] = 0
+            op_counts[pulse_category] += 1
+            pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            # interpret string pattern ('none'/'all'/'odd'/'even')
+            if pattern is None or pattern == 'none':
+                continue  # do not mirror
+            for pa1, pa2 in [('all', [1]), ('even', [0, 1]), ('odd', [1, 0])]:
+                if pattern == pa1:
+                    pattern = pa2
+            # periodically extend pattern if needed
+            pattern = deepcopy(pattern)
+            while len(pattern) < op_counts[pulse_category]:
+                pattern += pattern
+            # check whether the pulse should be mirrored
+            if not pattern[op_counts[pulse_category] - 1]:
+                continue  # do not mirror
+            # mirror all parameters that have 'amplitude' in their name
+            # (and apply mirror correction if applicable)
+            mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
+            if mirror_correction is None:
+                mirror_correction = {}
+            for k in p.pulse_obj.__dict__:
+                if 'amplitude' in k:
+                    amp = -getattr(p.pulse_obj, k)
+                    if k in mirror_correction:
+                        amp += mirror_correction[k]
+                    setattr(p.pulse_obj, k, amp)
+
     def resolve_Z_gates(self):
         """
         The phase of a basis rotation is acquired by an basis pulse, if the
@@ -692,6 +876,11 @@ class Segment:
         t_end = -float('inf')
 
         for pulse in self.elements[element]:
+            for ch in pulse.masked_channels():
+                if self.pulsar.get(f'{ch}_awg') == awg:
+                    break
+            else:
+                continue
             t_start = min(pulse.algorithm_time(), t_start)
             t_end = max(pulse.algorithm_time() + pulse.length, t_end)
 
@@ -761,7 +950,7 @@ class Segment:
                 element_start_time = self.get_element_start(element, awg)
                 for pulse in self.elements[element]:
                     # checks whether pulse is played on AWG
-                    pulse_channels = set(pulse.channels) & set(channel_list)
+                    pulse_channels = set(pulse.masked_channels()) & set(channel_list)
                     if pulse_channels == set():
                         continue
                     if codewords is not None and \
@@ -826,9 +1015,18 @@ class Segment:
 
                         wf = wfs[codeword][c]
 
-                        distortion_dictionary = self.pulsar.get(
-                            '{}_distortion_dict'.format(c))
-                        fir_kernels = distortion_dictionary.get('FIR', None)
+                        distortion_dict = self.distortion_dicts.get(c, None)
+                        if distortion_dict is None:
+                            distortion_dict = self.pulsar.get(
+                                '{}_distortion_dict'.format(c))
+                        else:
+                            distortion_dict = \
+                                flux_dist.process_filter_coeffs_dict(
+                                    distortion_dict,
+                                    default_dt=1 / self.pulsar.clock(
+                                        channel=c))
+
+                        fir_kernels = distortion_dict.get('FIR', None)
                         if fir_kernels is not None:
                             if hasattr(fir_kernels, '__iter__') and not \
                             hasattr(fir_kernels[0], '__iter__'): # 1 kernel
@@ -836,7 +1034,7 @@ class Segment:
                             else:
                                 for kernel in fir_kernels:
                                     wf = flux_dist.filter_fir(kernel, wf)
-                        iir_filters = distortion_dictionary.get('IIR', None)
+                        iir_filters = distortion_dict.get('IIR', None)
                         if iir_filters is not None:
                             wf = flux_dist.filter_iir(iir_filters[0],
                                                       iir_filters[1], wf)
@@ -884,7 +1082,7 @@ class Segment:
         if awg is not None:
             channels = set(self.pulsar.find_awg_channels(awg))
         for pulse in self.elements[element]:
-            if awg is not None and len(set(pulse.channels) & channels) == 0:
+            if awg is not None and len(set(pulse.masked_channels()) & channels) == 0:
                 continue
             codewords.add(pulse.codeword)
         return codewords
@@ -895,9 +1093,9 @@ class Segment:
             awg_channels = set(self.pulsar.find_awg_channels(awg))
         for pulse in self.elements[element]:
             if awg is not None:
-                channels |= set(pulse.channels) & awg_channels
+                channels |= set(pulse.masked_channels()) & awg_channels
             else:
-                channels |= set(pulse.channels)
+                channels |= set(pulse.masked_channels())
         return channels
 
     def calculate_hash(self, elname, codeword, channel):
@@ -923,9 +1121,43 @@ class Segment:
 
         for pulse in self.elements[elname]:
             if pulse.codeword in {'no_codeword', codeword}:
-                hashlist += pulse.hashables(tstart, channel)
+                hashlist += self.hashables(pulse, tstart, channel)
         return tuple(hashlist)
 
+    @staticmethod
+    def hashables(pulse, tstart, channel):
+        """
+        Wrapper for Pulse.hashables making sure to deal correctly with
+        crosstalk cancellation channels.
+
+        The hashables of a cancellation pulse has to include the hashables
+        of all pulses that it cancels. This is needed to ensure that the
+        cancellation pulse gets re-uploaded when any of the cancelled pulses
+        changes. In addition it has to include the parameters of
+        cancellation calibration, i.e., the relevant entries of the
+        crosstalk cancellation matrix and of the shift matrix.
+
+        :param pulse: a Pulse object
+        :param tstart: (float) start time of the element
+        :param channel: (str) channel name
+        """
+        if channel in pulse.crosstalk_cancellation_channels:
+            hashables = []
+            idx_c = pulse.crosstalk_cancellation_channels.index(channel)
+            for c in pulse.channels:
+                if c in pulse.crosstalk_cancellation_channels:
+                    idx_c2 = pulse.crosstalk_cancellation_channels.index(c)
+                    factor = pulse.crosstalk_cancellation_mtx[idx_c, idx_c2]
+                    shift = pulse.crosstalk_cancellation_shift_mtx[
+                        idx_c, idx_c2] \
+                        if pulse.crosstalk_cancellation_shift_mtx is not \
+                           None else 0
+                    if factor != 0:
+                        hashables += pulse.hashables(tstart, c)
+                        hashables += [factor, shift]
+            return hashables
+        else:
+            return pulse.hashables(tstart, channel)
 
     def tvals(self, channel_list, element):
         """
@@ -972,28 +1204,38 @@ class Segment:
 
     def plot(self, instruments=None, channels=None, legend=True,
              delays=None, savefig=False, prop_cycle=None, frameon=True,
-             channel_map=None, plot_kwargs=None, axes=None, demodulate=False):
+             channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
+             show_and_close=True, col_ind=0, normalized_amplitudes=True):
         """
         Plots a segment. Can only be done if the segment can be resolved.
-        :param instruments (list): instruments for which pulses have to be plotted.
-            defaults to all.
+        :param instruments (list): instruments for which pulses have to be
+            plotted. Defaults to all.
         :param channels (list):  channels to plot. defaults to all.
-        :param delays (dict): keys are instruments, values are additional delays.
-            if passed, the delay is substracted to the time values of this
-            instrument, such that the pulses are plotted at timing when they
-            physically occur.
+        :param delays (dict): keys are instruments, values are additional
+            delays. If passed, the delay is substracted to the time values of
+            this instrument, such that the pulses are plotted at timing when
+            they physically occur. A key 'default' can be used to specify a
+            delay for all instruments that are not explicitly given as keys.
         :param savefig: save the plot
-        :param channel_map (dict): indicates which instrument channels correspond to
-            whichqubits. Keys = qb names, values = list of channels. eg.
-            dict(qb2=['AWG8_ch3', "UHF_ch1"]). If provided, will plot each qubit
-            on individual subplots.
+        :param channel_map (dict): indicates which instrument channels
+            correspond to which qubits. Keys = qb names, values = list of
+            channels. eg. dict(qb2=['AWG8_ch3', "UHF_ch1"]). If provided,
+            will plot each qubit on individual subplots.
         :param prop_cycle (dict):
         :param frameon (dict, bool):
-        :param axes (array or axis): 2D array of matplotlib axes. if single axes,
-            will be converted internally to array.
-        :param demodulate (bool): plot only envelope of pulses by temporarily setting
-            modulation and phase to 0. Need to recompile the sequence
-        :return:
+        :param axes (array or axis): 2D array of matplotlib axes. if single
+            axes, will be converted internally to array.
+        :param demodulate (bool): plot only envelope of pulses by temporarily
+            setting modulation and phase to 0. Need to recompile the sequence
+        :param show_and_close: (bool) show and close the plot (default: True)
+        :param col_ind: (int) when passed together with axes, this specifies
+            in which column of subfigures the plots should be added
+            (default: 0)
+        :param normalized_amplitudes: (bool) whether amplitudes
+            should be normalized to the voltage range of the channel
+            (default: True)
+        :return: The figure and axes objects if show_and_close is False,
+            otherwise no return value.
         """
         import matplotlib.pyplot as plt
         if delays is None:
@@ -1012,10 +1254,11 @@ class Segment:
                         if hasattr(pulse, "phase"):
                             pulse.phase = 0
             wfs = self.waveforms(awgs=instruments, channels=None)
-            n_instruments = len(wfs) if channel_map is None else len(channel_map)
+            n_instruments = len(wfs) if channel_map is None else \
+                len(channel_map)
             if axes is not None:
                 if np.ndim(axes) == 0:
-                    axes = [[axes]]
+                    axes = np.array([[axes]])
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
@@ -1023,13 +1266,21 @@ class Segment:
                                        squeeze=False,
                                        figsize=(16, n_instruments * 3))
             if prop_cycle is not None:
-                for a in ax[:,0]:
+                for a in ax[:,col_ind]:
                     a.set_prop_cycle(**prop_cycle)
-            for i, instr in enumerate(wfs):
+            sorted_keys = sorted(wfs.keys()) if instruments is None \
+                else [i for i in instruments if i in wfs]
+            for i, instr in enumerate(sorted_keys):
+                if instr not in delays and 'default' in delays:
+                    delays[instr] = delays['default']
                 # plotting
                 for elem_name, v in wfs[instr].items():
                     for k, wf_per_ch in v.items():
-                        for n_wf, (ch, wf) in enumerate(wf_per_ch.items()):
+                        sorted_chans = sorted(wf_per_ch.keys())
+                        for n_wf, ch in enumerate(sorted_chans):
+                            wf = wf_per_ch[ch]
+                            if not normalized_amplitudes:
+                                wf = wf * self.pulsar.get(f'{instr}_{ch}_amp')
                             if channels is None or \
                                     ch in channels.get(instr, []):
                                 tvals = \
@@ -1037,28 +1288,35 @@ class Segment:
                                     f"{instr}_{ch}"] - delays.get(instr, 0)
                                 if channel_map is None:
                                     # plot per device
-                                    ax[i, 0].plot(tvals * 1e6, wf,
-                                                  label=f"{elem_name[1]}_{k}_{ch}",
-                                                  **plot_kwargs)
+                                    ax[i, col_ind].set_title(instr)
+                                    ax[i, col_ind].plot(
+                                        tvals * 1e6, wf,
+                                        label=f"{elem_name[1]}_{k}_{ch}",
+                                        **plot_kwargs)
                                 else:
                                     # plot on each qubit subplot which includes
                                     # this channel in the channel map
-                                    match = [i for i, (_, qb_chs) in
-                                                     enumerate(channel_map.items())
-                                                     if f"{instr}_{ch}" in qb_chs]
-                                    for qbi in match:
-                                        ax[qbi, 0].plot(tvals * 1e6, wf,
-                                                      label=f"{elem_name[1]}_{k}_{ch}",
-                                                      **plot_kwargs)
+                                    match = {i: qb_name
+                                             for i, (qb_name, qb_chs) in
+                                             enumerate(channel_map.items())
+                                             if f"{instr}_{ch}" in qb_chs}
+                                    for qbi, qb_name in match.items():
+                                        ax[qbi, col_ind].set_title(qb_name)
+                                        ax[qbi, col_ind].plot(
+                                            tvals * 1e6, wf,
+                                            label=f"{elem_name[1]}"
+                                                  f"_{k}_{instr}_{ch}",
+                                            **plot_kwargs)
                                         if demodulate: # filling
-                                            ax[qbi, 0].fill_between(tvals * 1e6, wf,
-                                                            label=f"{elem_name[1]}_{k}_{ch}",
-                                                            alpha=0.05,
-                                                            **plot_kwargs)
-
+                                            ax[qbi, col_ind].fill_between(
+                                                tvals * 1e6, wf,
+                                                label=f"{elem_name[1]}_"
+                                                      f"{k}_{instr}_{ch}",
+                                                alpha=0.05,
+                                                **plot_kwargs)
 
             # formatting
-            for a in ax[:,0]:
+            for a in ax[:, col_ind]:
                 if isinstance(frameon, bool):
                     frameon = {k: frameon for k in ['top', 'bottom',
                                                     "right", "left"]}
@@ -1068,17 +1326,25 @@ class Segment:
                 a.spines["left"].set_visible(frameon.get("left", True))
                 if legend:
                     a.legend(loc=[1.02, 0], prop={'size': 8})
-                a.set_ylabel('Voltage (V)')
-            ax[-1, 0].set_xlabel('time ($\mu$s)')
-            fig.suptitle(f'{self.name}')
+                if normalized_amplitudes:
+                    a.set_ylabel('Amplitude (norm.)')
+                else:
+                    a.set_ylabel('Voltage (V)')
+            ax[-1, col_ind].set_xlabel('time ($\mu$s)')
+            fig.suptitle(f'{self.name}', y=1.01)
             plt.tight_layout()
             if savefig:
                 plt.savefig(f'{self.name}.png')
-            # plt.show()
-            return fig, ax
+            if show_and_close:
+                plt.show()
+                plt.close(fig)
+                return
+            else:
+                return fig, ax
         except Exception as e:
             log.error(f"Could not plot: {self.name}")
             raise e
+
     def __repr__(self):
         string_repr = f"---- {self.name} ----\n"
 
@@ -1168,8 +1434,10 @@ class Segment:
     def rename(self, new_name):
         """
         Renames a segment with the given new name. Hunts down element names in
-        unresolved pulses that might have made use of the old segment_name and renames
-        them too.
+        unresolved pulses and acquisition elements that might have made use of
+        the old segment_name and renames them too.
+        Note: this function relies on the convention that the element_name ends with
+        "_segmentname".
         Args:
             new_name:
 
@@ -1186,8 +1454,29 @@ class Segment:
                 p.pulse_obj.element_name = \
                     p.pulse_obj.element_name[:-(len(old_name) + 1)] + '_' \
                     + new_name
+
+        # rebuild acquisition elements that used the old segment name
+        new_acq_elements = set()
+        for el in self.acquisition_elements:
+            if el.endswith(f"_{old_name}"):
+                new_acq_elements.add(el[:-(len(old_name) + 1)] + '_' \
+                                     + new_name)
+            else:
+                new_acq_elements.add(el)
+                log.warning(f'Acquisition element name: {el} not ending'
+                            f' with "_segmentname": {old_name}. Keeping '
+                            f'current element name when renaming '
+                            f'the segment.')
+        self.acquisition_elements = new_acq_elements
+        # enforce that start and end times get recalculated using the new
+        # element names
+        self.element_start_end = {}
+
         # rename segment name
         self.name = new_name
+
+        # rename timer
+        self.timer.name = new_name
 
     def __deepcopy__(self, memo):
         cls = self.__class__
@@ -1214,6 +1503,7 @@ class UnresolvedPulse:
 
     def __init__(self, pulse_pars):
         self.ref_pulse = pulse_pars.get('ref_pulse', 'previous_pulse')
+        alignments = {'start': 0, 'middle': 0.5, 'center': 0.5, 'end': 1}
         if pulse_pars.get('ref_point', 'end') == 'end':
             self.ref_point = 1
         elif pulse_pars.get('ref_point', 'end') == 'middle':
@@ -1235,6 +1525,10 @@ class UnresolvedPulse:
                 'values are: start, end, middle. Default value: start')
 
         self.ref_function = pulse_pars.get('ref_function', 'max')
+        self.block_align = pulse_pars.get('block_align', None)
+        if self.block_align is not None:
+            self.block_align = alignments.get(self.block_align,
+                                              self.block_align)
         self.delay = pulse_pars.get('pulse_delay', 0)
         self.original_phase = pulse_pars.get('phase', 0)
         self.basis = pulse_pars.get('basis', None)

@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
 import pycqed.measurement.hdf5_data as h5d
-from pycqed.measurement.calibration_points import CalibrationPoints
+from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import scipy.optimize as optimize
 import lmfit
 import textwrap
@@ -162,7 +162,17 @@ class MeasurementAnalysis(object):
 
     def save_fig(self, fig, figname=None, xlabel='x',
                  ylabel='measured_values',
-                 fig_tight=True, **kw):
+                 fig_tight=True,
+                 print_filepath=False,
+                 **kw):
+        """Save a figure
+
+        Arguments:
+            print_filepath: Boolean. Whether to print the full filepath
+                of the figure followed by '::loc'or not. Defaults to
+                False.
+        """
+
         # N.B. this save_fig method is the one from the base
         # MeasurementAnalysis class
         plot_formats = kw.pop('plot_formats', ['png'])
@@ -183,7 +193,8 @@ class MeasurementAnalysis(object):
                 figname = (figname + '.' + plot_format)
             self.savename = os.path.abspath(os.path.join(
                 self.folder, figname))
-            print(self.savename,'::loc')
+            if print_filepath:
+                print(self.savename, '::loc')
             if fig_tight:
                 try:
                     fig.tight_layout()
@@ -267,14 +278,14 @@ class MeasurementAnalysis(object):
             names = self.get_key('sweep_parameter_names')
 
             ind = names.index(key)
-            values = self.g['Data'].value[:, ind]
+            values = self.g['Data'][:, ind]
         elif key in self.get_key('value_names'):
             names = self.get_key('value_names')
             ind = (names.index(key) +
                    len(self.get_key('sweep_parameter_names')))
-            values = self.g['Data'].value[:, ind]
+            values = self.g['Data'][:, ind]
         else:
-            values = self.g[key].value
+            values = self.g[key][()]
         # Makes sure all data is np float64
         return np.asarray(values, dtype=np.float64)
 
@@ -285,11 +296,11 @@ class MeasurementAnalysis(object):
         '''
         s = self.g.attrs[key]
         # converts byte type to string because of h5py datasaving
-        if type(s) == bytes:
+        if isinstance(s, bytes):
             s = s.decode('utf-8')
         # If it is an array of value decodes individual entries
-        if type(s) == np.ndarray:
-            s = [s.decode('utf-8') for s in s]
+        if isinstance(s, np.ndarray) or isinstance(s, list):
+            s = [s.decode('utf-8') if isinstance(s, bytes) else s for s in s]
         return s
 
     def group_values(self, group_name):
@@ -297,7 +308,7 @@ class MeasurementAnalysis(object):
         Returns values for group with the name "group_name" from the
         hdf5 data file.
         '''
-        group_values = self.g[group_name].value
+        group_values = self.g[group_name][()]
         return np.asarray(group_values, dtype=np.float64)
 
     def add_analysis_datagroup_to_file(self, group_name='Analysis'):
@@ -6720,7 +6731,8 @@ class FluxPulse_Scope_Analysis(MeasurementAnalysis):
         if plot:
             fig, ax = plt.subplots()
             if return_stds:
-                ax.errorbar(delays/1e-9, fitted_freqs/1e6, yerr=fitted_stds/1e6)
+                ax.errorbar(delays/1e-9, fitted_freqs/1e6,
+                            yerr=fitted_stds/1e6)
             else:
                 ax.plot(delays/1e-9, fitted_freqs/1e6)
             ax.set_xlabel(r'delay, $\tau$ (ns)')

@@ -160,6 +160,9 @@ class SegmentHardSweep(swf.Hard_Sweep):
                                                   awgs=awgs_to_upload)
             time.sleep(0.1)
 
+    def set_parameter(self, value):
+        pass
+
 
 class SegmentSoftSweep(swf.Soft_Sweep):
 

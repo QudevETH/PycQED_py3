@@ -23,32 +23,44 @@ def update_cz_amplitude(qbc, qbt, phases, amplitudes, target_phase=np.pi,
 
 
 def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
-                    classified_ro=False, tangent_fit=False):
+                    classified_ro=False, tangent_fit=False,
+                    parfit=False,
+                    analysis_object=None, **kw):
 
-    if classified_ro:
-        channel_map = {qb.name: [vn + ' ' +
-                                 qb.instr_uhf() for vn in
-                                 qb.int_avg_classif_det.value_names]
-                       for qb in [qbc, qbt]}
+    if analysis_object is None:
+        if classified_ro:
+            channel_map = {qb.name: [vn + ' ' +
+                                     qb.instr_uhf() for vn in
+                                     qb.int_avg_classif_det.value_names]
+                           for qb in [qbc, qbt]}
+        else:
+            channel_map = {qb.name: [vn + ' ' +
+                                     qb.instr_uhf() for vn in
+                                     qb.int_avg_det.value_names]
+                           for qb in [qbc, qbt]}
+        tdma = tda.CPhaseLeakageAnalysis(
+            t_start=timestamp,
+            qb_names=[qbc.name, qbt.name],
+            options_dict={'TwoD': True, 'plot_all_traces': False,
+                          'plot_all_probs': False,
+                          'delegate_plotting': False,
+                          'channel_map': channel_map})
     else:
-        channel_map = {qb.name: [vn + ' ' +
-                                 qb.instr_uhf() for vn in
-                                 qb.int_avg_det.value_names]
-                       for qb in [qbc, qbt]}
-    tdma = tda.CPhaseLeakageAnalysis(
-        t_start=timestamp,
-        qb_names=[qbc.name, qbt.name],
-        options_dict={'TwoD': True, 'plot_all_traces': False,
-                      'plot_all_probs': False,
-                      'channel_map': channel_map})
+        tdma = analysis_object
     cphases = tdma.proc_data_dict[
-        'analysis_params_dict']['cphase']['val']
+        'analysis_params_dict'][f'cphase_{qbt.name}']['val']
 
     sweep_pts = list(soft_sweep_points.values())[0]['values']
     if tangent_fit:
         fit_res = lmfit.Model(lambda x, m, b: m*np.tan(x/2-np.pi/2) + b).fit(
             x=cphases, data=sweep_pts,
             m=(max(sweep_pts)-min(sweep_pts))/((max(cphases)-min(cphases))),
+            b=np.min(sweep_pts))
+    elif parfit:
+        fit_res = lmfit.Model(lambda x, m, b, c: m*x + c*x**2 + b).fit(
+            x=cphases, data=sweep_pts,
+            m=(max(sweep_pts)-min(sweep_pts))/((max(cphases)-min(cphases))),
+            c=0.001,
             b=np.min(sweep_pts))
     else:
         fit_res = lmfit.Model(lambda x, m, b: m*x + b).fit(
@@ -58,7 +70,7 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
     plot_and_save_cz_amp_sweep(cphases=cphases, timestamp=timestamp,
                                soft_sweep_params_dict=soft_sweep_points,
                                fit_res=fit_res, save_fig=True, plot_guess=False,
-                               qbc_name=qbc.name, qbt_name=qbt.name)
+                               qbc_name=qbc.name, qbt_name=qbt.name, **kw)
     return fit_res
 
 

@@ -691,22 +691,70 @@ def single_state_active_reset(operation_dict, qb_name,
 
 
 def randomized_renchmarking_seqs(
-        qb_name, operation_dict, cliffords, nr_seeds, net_clifford=0,
+        qb_name, operation_dict, cliffords, nr_seeds=None, net_clifford=0,
         gate_decomposition='HZ', interleaved_gate=None, upload=True,
+        cl_sequence=None, sampling_seeds=None,
         cal_points=None, prep_params=dict()):
-
+    """
+    Args
+        qb_name (str): name of qubit
+        operation_dict (dict): dict with all pulse dicts of qubit
+        cliffords (array): array of ints specifying the number of random
+            Cliffords to generate in each sequence
+        nr_seeds (array): array of the form np.arange(nr_seeds_value)
+        net_clifford (int): 0 or 1; whether the recovery Clifford returns
+            qubits to ground statea (0) or puts them in the excited states (1)
+        gate_decomposition (str): the decomposition of Clifford gates
+            into primitives; can be "XY", "HZ", or "5Primitives"
+        interleaved_gate (str): pycqed name for a gate
+        upload (bool): whether to upload sequence to AWGs
+        cl_sequence (list): the Clifford sequence to use for all seeds. Can
+            also be lists of lists in which case the user must ensure that
+            len(nr seeds) % len(cl_sequence) == 0.
+        sampling_seeds (array of ints): ints that will be used as seeds for
+            the random generation of Cliffords. Should have the same length
+            as nr_seeds.
+        cal_points (CalibrationPoints): instance of CalibrationPoints
+        prep_params (dict): qubit preparation_params dict
+    """
     seq_name = '1Qb_RB_sequence'
+    if sampling_seeds is None:
+        if nr_seeds is None:
+            raise ValueError('Please provide either "sampling_seeds" or '
+                             '"nr_seeds."')
+        sampling_seeds = [None] * len(nr_seeds)
+    else:
+        nr_seeds = np.arange(len(sampling_seeds))
+
+    if cl_sequence is not None:
+        if isinstance(cl_sequence[0], list):
+            # if cl_sequence is a list of lists such that
+            # len(nr_seeds) != len(cl_sequence) but
+            # len(nr_seeds) % len(cl_sequence) == 0,
+            # then create as many copies of the lists in cl_sequence until
+            # len(cl_sequence) == len(nr_seeds).
+            assert len(nr_seeds) % len(cl_sequence) == 0
+            k = len(nr_seeds) // len(cl_sequence)
+            cl_seq_temp = k * cl_sequence
 
     sequences = []
     for nCl in cliffords:
         pulse_list_list_all = []
-        for _ in nr_seeds:
-            cl_seq = rb.randomized_benchmarking_sequence(
-                nCl, desired_net_cl=net_clifford,
-                interleaved_gate=interleaved_gate)
+        for s in nr_seeds:
+            if cl_sequence is None:
+                cl_seq = rb.randomized_benchmarking_sequence(
+                    nCl, desired_net_cl=net_clifford,
+                    interleaved_gate=interleaved_gate,
+                    seed=sampling_seeds[s])
+            elif isinstance(cl_sequence[0], list):
+                cl_seq = cl_seq_temp[s]
+            else:
+                cl_seq = cl_sequence
+
             pulse_keys = rb.decompose_clifford_seq(
                 cl_seq, gate_decomp=gate_decomposition)
-            pulse_keys = ['I'] + pulse_keys #to avoid having only virtual gates in segment
+            # to avoid having only virtual gates in segment:
+            pulse_keys = ['I'] + pulse_keys
             pulse_list = [operation_dict[x + ' ' + qb_name] for x in pulse_keys]
             pulse_list += [operation_dict['RO ' + qb_name]]
             pulse_list_w_prep = add_preparation_pulses(

@@ -17,6 +17,14 @@ import numpy as np
 import logging
 log = logging.getLogger(__name__)
 
+try:
+    import qutip
+    qutip_imported = True
+except Exception:
+    log.warning('qutip was not imported. qutip objects will be stored as '
+                'strings.')
+    qutip_imported = False
+
 
 class DateTimeGenerator:
     """
@@ -153,7 +161,10 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 log.error(e)
                 log.error('Exception occurred while writing'
                       ' {}:{} of type {}'.format(key, item, type(item)))
-        elif isinstance(item, np.ndarray):
+        elif isinstance(item, np.ndarray) or (
+                qutip_imported and isinstance(item, qutip.qobj.Qobj)):
+            if qutip_imported and isinstance(item, qutip.qobj.Qobj):
+                item = item.full()
             try:
                 entry_point.create_dataset(key, data=item)
             except RuntimeError:
@@ -162,7 +173,6 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                     entry_point.create_dataset(key, data=item)
                 else:
                     raise
-
         elif item is None:
             # as h5py does not support saving None as attribute
             # I create special string, note that this can create
@@ -187,7 +197,8 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 # Lists of a single type, are stored as an hdf5 dset
                 if (all(isinstance(x, elt_type) for x in item) and
                         not isinstance(item[0], dict) and
-                        not isinstance(item, tuple)):
+                        not isinstance(item, tuple) and
+                        not isinstance(item[0], list)):
                     if isinstance(item[0], (int, float,
                                             np.int32, np.int64)):
                         try:
@@ -282,15 +293,16 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
                                                  item)
         else:  # item either a group or a dataset
             if 'list_type' not in item.attrs:
-                data_dict[key] = item.value
+                data_dict[key] = item[()]
             elif item.attrs['list_type'] == 'str':
                 # lists of strings needs some special care, see also
                 # the writing part in the writing function above.
-                list_of_str = [x[0] for x in item.value]
-                data_dict[key] = list_of_str
+                list_of_str = [x[0] for x in item[()]]
+                data_dict[key] = [x.decode('utf-8') if isinstance(x, bytes)
+                                  else x for x in list_of_str]
 
             else:
-                data_dict[key] = list(item.value)
+                data_dict[key] = list(item[()])
     for key, item in h5_group.attrs.items():
         if isinstance(item, str):
             # Extracts "None" as an exception as h5py does not support

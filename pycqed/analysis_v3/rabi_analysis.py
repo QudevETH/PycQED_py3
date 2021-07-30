@@ -3,20 +3,19 @@ log = logging.getLogger(__name__)
 
 import numpy as np
 from collections import OrderedDict
-from pycqed.analysis_v3 import fitting as fit_module
-from pycqed.analysis_v3 import plotting as plot_module
+from pycqed.analysis_v3 import fitting as fit_mod
+from pycqed.analysis_v3 import plotting as plot_mod
 from pycqed.analysis_v3 import helper_functions as hlp_mod
-from pycqed.analysis_v3 import processing_pipeline as ppmod
+from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from copy import deepcopy
 
 import sys
-from pycqed.analysis_v3 import pipeline_analysis as pla
-pla.search_modules.add(sys.modules[__name__])
+pp_mod.search_modules.add(sys.modules[__name__])
 
 
 # Create pipelines
 def rabi_iq_pipeline(meas_object_name):
-    pp = ppmod.ProcessingPipeline()
+    pp = pp_mod.ProcessingPipeline()
     pp.add_node('rotate_iq', keys_in='raw', meas_obj_names=meas_object_name)
     pp.add_node('rabi_analysis',
                 keys_in=f'previous {meas_object_name}.rotate_iq',
@@ -32,7 +31,7 @@ def rabi_analysis(data_dict, keys_in, **params):
 
     prep_fit_dicts = params.pop('prep_fit_dicts', True)
     do_fitting = params.pop('do_fitting', True)
-    prep_plot_dicts = params.pop('prep_plot_dicts', True)
+    prepare_plotting = params.pop('prepare_plotting', True)
     do_plotting = params.pop('do_plotting', True)
 
     # prepare fitting
@@ -40,21 +39,21 @@ def rabi_analysis(data_dict, keys_in, **params):
         prepare_rabi_fitting(data_dict, keys_in, **params)
 
     if do_fitting:
-        getattr(fit_module, 'run_fitting')(data_dict, keys_in=list(
+        getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
                 data_dict['fit_dicts']),**params)
         # calculate new pi-pulse amplitude
         analyze_rabi_fit_results(data_dict, keys_in, **params)
 
     # prepare plots
-    if prep_plot_dicts:
-        prepare_rabi_plots(data_dict, data_to_proc_dict, **params)
+    if prepare_plotting:
+        prepare_plotting(data_dict, data_to_proc_dict, **params)
     if do_plotting:
-        getattr(plot_module, 'plot')(data_dict, keys_in=list(
+        getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
 
 
 def prepare_rabi_fitting(data_dict, keys_in, **params):
-    fit_module.prepare_cos_fit_dict(data_dict, keys_in=keys_in,
+    fit_mod.prepare_cos_fit_dict(data_dict, keys_in=keys_in,
                                     fit_name='rabi_fit', **params)
 
 
@@ -68,7 +67,8 @@ def analyze_rabi_fit_results(data_dict, keys_in, **params):
         rabi_amps_dict = extract_rabi_amplitudes(fit_res=fit_res,
                                                  sweep_points=physical_swpts)
         for k, v in rabi_amps_dict.items():
-            hlp_mod.add_param(f'{mobjn}.{k}', v, data_dict, replace_value=True)
+            hlp_mod.add_param(f'{mobjn}.{k}', v, data_dict,
+                              add_param_method='replace')
 
 
 def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
@@ -89,16 +89,16 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 physical_swpts, cp, mobjn)])
         swpts = np.repeat(swpts, reset_reps+1)
         swpts = np.arange(len(swpts))
-        plot_module.prepare_1d_raw_data_plot_dicts(
+        plot_mod.prepare_1d_raw_data_plot_dicts(
             data_dict, xvals=swpts, **params)
 
         filtered_raw_keys = [k for k in data_dict.keys() if 'filter' in k]
         if len(filtered_raw_keys) > 0:
-            plot_module.prepare_1d_raw_data_plot_dicts(
+            plot_mod.prepare_1d_raw_data_plot_dicts(
                 data_dict=data_dict, keys_in=filtered_raw_keys,
                 figure_name='raw_data_filtered', **params)
     else:
-        plot_module.prepare_1d_raw_data_plot_dicts(data_dict, **params)
+        plot_mod.prepare_1d_raw_data_plot_dicts(data_dict, **params)
 
     plot_dicts = OrderedDict()
     # the prepare plot dict functions below also iterate over data_to_proc_dict,
@@ -109,14 +109,14 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
         figure_name = 'Rabi_' + keyi
         sp_name = mospm[mobjn][0]
         # plot data
-        plot_module.prepare_1d_plot_dicts(data_dict=data_dict, keys_in=[keyi],
+        plot_mod.prepare_1d_plot_dicts(data_dict=data_dict, keys_in=[keyi],
                                           figure_name=figure_name,
                                           sp_name=sp_name, do_plotting=False,
                                           **params)
 
         if len(cp.states) != 0:
             # plot cal states
-            plot_module.prepare_cal_states_plot_dicts(data_dict=data_dict,
+            plot_mod.prepare_cal_states_plot_dicts(data_dict=data_dict,
                                                       keys_in=[keyi],
                                                       figure_name=figure_name,
                                                       sp_name=sp_name,
@@ -128,7 +128,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
             fit_dicts = data_dict['fit_dicts']
             fit_name = 'rabi_fit' + keyi
             textstr = ''
-            plot_module.prepare_fit_plot_dicts(data_dict=data_dict,
+            plot_mod.prepare_fit_plot_dicts(data_dict=data_dict,
                                                figure_name=figure_name,
                                                fit_names=[fit_name],
                                                do_plotting=False, **params)
@@ -146,7 +146,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'setlabel': '$\pi$ amp',
                 'color': 'r',
                 'marker': 'o',
-                'line_kws': {'markersize': plot_module.get_default_plot_params(
+                'line_kws': {'markersize': plot_mod.get_default_plot_params(
                     set_params=False).get('lines.markersize', 2) + 2},
                 'linestyle': '',
                 'legend_ncol': 2,
@@ -176,7 +176,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'setlabel': '$\pi /2$ amp',
                 'color': 'm',
                 'marker': 'o',
-                'line_kws': {'markersize': plot_module.get_default_plot_params(
+                'line_kws': {'markersize': plot_mod.get_default_plot_params(
                     set_params=False).get('lines.markersize', 2) + 2},
                 'linestyle': '',
                 'do_legend': True,
@@ -208,7 +208,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'text_string': textstr}
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
-                      update_value=True)
+                      add_param_method='update')
 
 
 def get_rabi_textbox_properties(data_dict, textstr='',
