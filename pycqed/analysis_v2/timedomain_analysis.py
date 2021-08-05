@@ -4931,8 +4931,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = s+f'.{trans_name}_amp180'
             params_dict[f'{trans_name}_amp90scale_'+qbn] = s+f'.{trans_name}_amp90_scale'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
         super().get_params_from_file(params_dict, numeric_params)
 
     def prepare_fitting(self):
@@ -5255,8 +5253,6 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 f'Instrument settings.{qbn}.ge_I_channel'
             params_dict[f'ge_freq_{qbn}'] = \
                 f'Instrument settings.{qbn}.ge_freq'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
         super().get_params_from_file(params_dict, numeric_params)
 
     def extract_data(self):
