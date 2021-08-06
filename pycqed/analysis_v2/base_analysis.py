@@ -270,9 +270,9 @@ class BaseDataAnalysis(object):
             extension.
         """
         if self.check_plotting_delegation():
-            # Only execute this function if the AnalysisDaemon is not running.
-            # The warning image and text file will be generated twice
-            # when the AnalysisDaemon is running.
+            # Do not execute this function if plotting is delegated to the
+            # AnalysisDaemon, in order to avoid that the warning image and
+            # text file are generated twice.
             return
 
         destination_path = a_tools.get_folder(self.timestamps[-1])
