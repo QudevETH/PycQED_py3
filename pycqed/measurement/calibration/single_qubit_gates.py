@@ -1375,7 +1375,8 @@ class SingleQubitGateCalib(CalibBuilder):
                     self.meas_obj_names)
 
             if 'qscale' in self.experiment_name.lower() or \
-                    'inphase_amp_calib' in self.experiment_name.lower():
+                    'inphase_amp_calib' in self.experiment_name.lower() or \
+                        'drive_amp_calib' in self.experiment_name.lower():
                 if len(self.sweep_points[1]) == 0:
                     # Internally, 1D and 2D sweeps are handled as 2D sweeps.
                     # With this dummy soft sweep, exactly one sequence will be
@@ -1916,6 +1917,130 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
                 qubit.set(f'{task["transition_name_input"]}_amp180',
                           self.analysis.proc_data_dict['analysis_params_dict'][
                               qubit.name]['corrected_amp'])
+
+
+class DriveAmpCalib(SingleQubitGateCalib):
+    """
+    Calibration measurement for the qubit drive amplitude that makes use of
+    error amplification from application of N subsequent pulses. The qubit is
+    brought into superposition with a pi-half pulse, after which N pairs of
+    pulses are applied with amplitudes of the first and second pulse in each
+    pair chosen such that the pair implements a rotation of pi.
+
+    This is a multitasking experiment, see docstrings of MultiTaskingExperiment
+    and of CalibBuilder for general information. Each task corresponds to one
+    qubit specified by the key 'qb' (either name of QuDev_transmon instance)
+    i.e., multiple qubit can be measured in parallel.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb:   |X90|  ---  [ |Rx(phi)| --- |Rx(pi - phi)| ] x n_pulses  ---  |RO|
+
+    Expected sweep points, either global or per task
+     - n_pulses in dimension 0: number of pairs of pulses after the initial
+        pi-half pulse.
+     - amp_scalings in dimension 1: dimensionless fractions of a pi rotation
+        around the x-axis of the Bloch sphere.
+
+    Idea behind this calibration measurement:
+     If the pulses are perfectly calibrated, the qubit will remain in the
+     superposition state with 50% excited state probability independent of
+     n_pulses and amp_scalings. Miscalibrations will be signaled by an
+     oscillation of the excited state probability around 50% with increasing N.
+     By minimizing the standard deviation of this oscillation away from the 50%
+     line as a function of the amp_scalings we can calibrate any drive amplitude
+     with high precision.
+
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun,
+        and to the parent classes.
+
+        The following keyword arguments will be copied as entries in
+        sweep_points:
+        - n_pulses: int
+        - amp_scalings: list or array
+    """
+    kw_for_sweep_points = {
+        'n_pulses': dict(param_name='n_pulses', unit='',
+                         label='Nr. $\\pi$-pulses, $N$', dimension=0,
+                         values_func=lambda nr_p:
+                         np.arange(nr_p + 1)),
+        'amp_scalings': dict(param_name='amp_scalings', unit='',
+                         label='Amplitude Scaling, $r$', dimension=1),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 n_pulses=None, amp_scalings=None, **kw):
+        try:
+            # Define experiment_name and call the parent class __init__
+            self.experiment_name = f'Drive_amp_calib_{n_pulses}'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             n_pulses=n_pulses,
+                             amp_scalings=amp_scalings, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, sweep_points, **kw):
+        """
+        This function creates the block at the current iteration in sweep
+        points, specified by sp1d_idx and sp2d_idx.
+        :param sp1d_idx: current index in the first sweep dimension
+        :param sp2d_idx: current index in the second sweep dimension
+        :param sweep_points: SweepPoints object
+        :param kw: keyword arguments (to allow pass through kw even if it
+            contains entries that are not needed)
+
+        Assumes self.preprocessed_task_list has been defined and that it
+        contains the entries specified by the following keys:
+         - 'qb'
+         - 'sweep_points'
+         - 'transition_name' (see docstring of parent class. TODO: add it! 090821)
+
+        :return: instance of Block created with simultaneous_blocks from a list
+            of blocks corresponding to the tasks in preprocessed_task_list.
+        """
+
+        # Define list to gather the final blocks for each task
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            transition_name = task['transition_name']
+            sweep_points = task['sweep_points']
+            qb = task['qb']
+
+            # Get the block to prepend from the parent class
+            # (see docstring there)
+            prepend_block = super().sweep_block(qb, sweep_points,
+                                                transition_name)
+
+            # Create the pulse list for n_pulses specified by sp1d_idx
+            n_pulses = sweep_points.get_sweep_params_property(
+                'values', 0, 'n_pulses')[sp1d_idx]
+            pulse_list = [f'X90{transition_name} {qb}'] + \
+                         (n_pulses * [f'X180{transition_name} {qb}',
+                                      f'X180{transition_name} {qb}'])
+            # Create a block from this list of pulses
+            drive_calib_block = self.block_from_ops(f'pulses_{qb}', pulse_list)
+
+            # Scale the amplitudes of the X180 pulses based on amp_scaling
+            # specified by sp2d_idx
+            amp_scaling = sweep_points.get_sweep_params_property(
+                'values', 1)[sp2d_idx]
+            # Scale amp of all even pulses after the first by amp_scaling
+            for pulse_dict in drive_calib_block.pulses[1:][0::2]:
+                pulse_dict['amplitude'] *= amp_scaling
+            # Scale amp of all odd pulses after the first by 1-amp_scaling
+            for pulse_dict in drive_calib_block.pulses[1:][1::2]:
+                pulse_dict['amplitude'] *= (1-amp_scaling)
+
+            # Append the final block for this task to parallel_block_list
+            parallel_block_list += [self.sequential_blocks(
+                f'drive_calib_{qb}', [prepend_block, drive_calib_block])]
+
+        return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
+                                        parallel_block_list, block_align='end')
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
