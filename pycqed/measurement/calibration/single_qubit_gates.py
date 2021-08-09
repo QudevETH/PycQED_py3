@@ -1842,13 +1842,16 @@ class DriveAmpCalib(SingleQubitGateCalib):
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
 
-        qb: |X90| --- [ |Rx(pi/amp_scaling)| ] x n_pulses x amp_scaling --- |RO|
+        qb: |X90| --- [ |Rx(pi/amp_scaling)| ] x n_pulses x n_pulses_pi --- |RO|
 
     Expected sweep points, either global or per task
      - n_pulses in dimension 0: number of pairs of pulses after the initial
         pi-half pulse.
-     - amp_scalings in dimension 1: integers implementing rotations of
-        pi/amp_scaling around the x-axis of the Bloch sphere.
+     - amp_scalings in dimension 1:
+        - if n_pulses_pi is specified in kw or task: dimensionless fractions of
+        a pi rotation around the x-axis of the Bloch sphere.
+        - if n_pulses_pi is NOT specified in kw or task: integers implementing
+        rotations of pi/amp_scaling around the x-axis of the Bloch sphere.
 
 
     Idea behind this calibration measurement:
@@ -1869,10 +1872,14 @@ class DriveAmpCalib(SingleQubitGateCalib):
         - n_pulses: int
         - amp_scalings: list or array
 
-        Moreover, the following keyword arguments are understood:
-        continuous_scaling: (bool, default: False) toggles between the two modes
-            of this experiment
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - n_pulses_pi (see sweep_block docstring)
 
+        Moreover, the following keyword arguments are understood:
+        two_pulse_scaling: (bool, default: False) toggles between the two ways
+            of running this experiment explained above.
     """
     kw_for_sweep_points = {
         'n_pulses': dict(param_name='n_pulses', unit='',
@@ -1883,12 +1890,14 @@ class DriveAmpCalib(SingleQubitGateCalib):
                          label='Amplitude Scaling, $r$', dimension=1),
     }
 
+    kw_for_task_keys = ['n_pulses_pi']
+
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  n_pulses=None, amp_scalings=None, **kw):
         try:
             # Define experiment_name and call the parent class __init__
             self.experiment_name = f'Drive_amp_calib_{n_pulses}'
-            self.continuous_scaling = kw.get('continuous_scaling', False)
+            self.two_pulse_scaling = kw.get('two_pulse_scaling', False)
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              n_pulses=n_pulses,
@@ -1909,9 +1918,17 @@ class DriveAmpCalib(SingleQubitGateCalib):
 
         Assumes self.preprocessed_task_list has been defined and that it
         contains the entries specified by the following keys:
-         - 'qb'
-         - 'sweep_points'
+         - 'qb': qubit name
+         - 'sweep_points': SweepPoints instance
          - 'transition_name' (see docstring of parent class. TODO: add it! 090821)
+         - 'n_pulses_pi': (optional) int specifying the number of pulses that
+         will implement a pi rotation.
+            - If specified, n_pulses * n_pulses_pi identical pulses will be
+             added after the initial pi-half pulse and their amplitudes will be
+             scaled by amp_scaling.
+            - If not specified, n_pulses * amp_scaling identical pulses will be
+             added after the initial pi-half pulse and their amplitudes will be
+             scaled by 1/amp_scaling. amp_scaling must be an integer.
 
         :return: instance of Block created with simultaneous_blocks from a list
             of blocks corresponding to the tasks in preprocessed_task_list.
@@ -1929,15 +1946,13 @@ class DriveAmpCalib(SingleQubitGateCalib):
             prepend_block = super().sweep_block(qb, sweep_points,
                                                 transition_name)
 
-
             n_pulses = sweep_points.get_sweep_params_property(
                 'values', 0, 'n_pulses')[sp1d_idx]
-
             amp_scaling = sweep_points.get_sweep_params_property(
                 'values', 1)[sp2d_idx]
 
-            if self.continuous_scaling:
-                # Scale the amplitudes pairs of X180 pulses based on amp_scaling
+            if self.two_pulse_scaling:
+                # Scale the amplitude pairs of X180 pulses based on amp_scaling
                 # specified by sp2d_idx.
                 # amp_scaling is not an int
 
@@ -1959,15 +1974,21 @@ class DriveAmpCalib(SingleQubitGateCalib):
                 # after the initial pi-half pulse, and divide the amplitude of
                 # these X180 pulses by amp_scaling
 
+                n_pulses_pi = task.get('n_pulses_pi', amp_scaling)
+                scaling = amp_scaling if 'n_pulses_pi' in task \
+                    else 1/amp_scaling
                 # Create the pulse list for n_pulses specified by sp1d_idx
                 try:
                     pulse_list = [f'X90{transition_name} {qb}'] + \
-                                 (n_pulses * amp_scaling *
+                                 (n_pulses * n_pulses_pi *
                                   [f'X180{transition_name} {qb}'])
                 except TypeError as e:
-                    # amp_scaling is not an integer
+                    # n_pulses_pi is not an integer
                     print('amp_scalings (2nd sweep dimension) must '
-                          'be integers when continuous_scaling==True.')
+                          'be integers when continuous_scaling==True and '
+                          'n_pulses_pi not specified. Please either provide '
+                          'n_pulses_pi or set continuous_scaling==False, '
+                          'or specify amp_scalings as integers.')
                     raise e
 
                 # Create a block from this list of pulses
@@ -1975,7 +1996,7 @@ class DriveAmpCalib(SingleQubitGateCalib):
                                                         pulse_list)
                 # Divide amp of all pulses after the first by amp_scaling
                 for pulse_dict in drive_calib_block.pulses[1:]:
-                    pulse_dict['amplitude'] /= amp_scaling
+                    pulse_dict['amplitude'] *= scaling
 
             # Append the final block for this task to parallel_block_list
             parallel_block_list += [self.sequential_blocks(
