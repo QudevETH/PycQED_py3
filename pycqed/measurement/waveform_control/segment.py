@@ -56,6 +56,7 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.timer = Timer(self.name)
+        self.pulse_pars = []
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -66,6 +67,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
+        self.pulse_pars.append(deepcopy(pulse_pars))
         pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
@@ -170,7 +172,7 @@ class Segment:
                     self.pulsar.get(f'{ch_awg}_enforce_single_element'))
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
-                p.pulse_obj.element_name = f'default_{self.name}'
+                p.pulse_obj.element_name = f'default_ese_{self.name}'
                 self.resolved_pulses.append(p)
             elif any(ch_mask):
                 p0 = deepcopy(p)
@@ -178,7 +180,7 @@ class Segment:
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
-                p1.pulse_obj.element_name = f'default_{self.name}'
+                p1.pulse_obj.element_name = f'default_ese_{self.name}'
                 p1.pulse_obj.channel_mask = ch_mask
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
@@ -569,6 +571,10 @@ class Segment:
                   AWG, placed in a suitable element on the triggering AWG,
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
+
+        For debugging, self.skip_trigger can be set to a list of AWG names
+        for which the triggering should be skipped (by using a 0-amplitude
+        trigger pulse).
         """
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
@@ -628,11 +634,14 @@ class Segment:
                         '{}_trigger_channels'.format(awg)):
 
                     trigger_awg = self.pulsar.get('{}_awg'.format(channel))
+                    kw = deepcopy(self.trigger_pars)
+                    if awg in getattr(self, 'skip_trigger', []):
+                        kw['amplitude'] = 0
                     trig_pulse = pl.BufferedSquarePulse(
                         trigger_elements[trigger_awg],
                         channel=channel,
                         name='trigger_pulse_{}'.format(i),
-                        **self.trigger_pars)
+                        **kw)
                     i += 1
 
                     trig_pulse.algorithm_time(trigger_pulse_time -
@@ -1256,7 +1265,7 @@ class Segment:
                 len(channel_map)
             if axes is not None:
                 if np.ndim(axes) == 0:
-                    axes = [[axes]]
+                    axes = np.array([[axes]])
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
@@ -1466,6 +1475,9 @@ class Segment:
                             f'current element name when renaming '
                             f'the segment.')
         self.acquisition_elements = new_acq_elements
+        # enforce that start and end times get recalculated using the new
+        # element names
+        self.element_start_end = {}
 
         # rename segment name
         self.name = new_name
