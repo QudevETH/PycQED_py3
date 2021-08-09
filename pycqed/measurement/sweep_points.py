@@ -273,9 +273,11 @@ class SweepPoints(list):
             - first adds to the list for each mobj only those sweep
             param names that contain the mobj_name.
 
-            ! Currently this only does the correct thing if each sweep
-            parameter name contains only one measurement object name. So for
-            example, qb1qb9_amplitude will not be found for both qb1 and qb9 !
+            ! Currently assumes the mobj names substrings are separated by '_'
+            from each other and from the rest of the substrings in
+            the sweep parameter names. So for example, qb1qb9_amplitude will not
+            be found for either qb1 or qb9. Neither will qb8 be found in
+            qb8amplitude !
 
             - if some parameters remain that do not contain any of the
             measurement_objects names, it is assumed that all
@@ -301,11 +303,6 @@ class SweepPoints(list):
                 # name attribute was provided
                 measurement_objects[i] = mobj.name
 
-        # sort measurement_objects (which are not strings) by length
-        # This is needed in the else statement below in order to distinguish
-        # between, for example, 'qb1' and 'qb13' (or 'TWPA' and 'TWPA_A')
-        measurement_objects.sort(key=len)
-
         sweep_points_map = {mobjn: [] for mobjn in measurement_objects}
 
         for dim, d in enumerate(self):
@@ -319,17 +316,11 @@ class SweepPoints(list):
             else:
                 all_pars = []
                 for i, mobjn in enumerate(measurement_objects):
-                    # Find all sweep param names that contain the mobj name
-                    pars = []
-                    for k in list(d):
-                        if mobjn in k:
-                            # k really contains mobjn if none of the other,
-                            # longer mobjn in measurement_objects are in k
-                            longer_mobjns_not_in_k = all([
-                                omon not in k for omon in
-                                measurement_objects[i+1:]])
-                            if longer_mobjns_not_in_k:
-                                pars += [k]
+                    # Find all sweep param names that contain the mobj name.
+                    # Assumes the mobj names substrings are separated by '_'
+                    # from each other and from the rest of the substrings in
+                    # the sweep parameter name
+                    pars = [k for k in list(d) if mobjn in k.split('_')]
                     if len(pars):
                         # Append found sweep param names to the sweep_points_map
                         # for this mobj
