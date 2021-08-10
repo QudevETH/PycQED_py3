@@ -77,6 +77,10 @@ class Sequence:
         :return: a tuple of waveforms, sequences as described above if
             get_channel_hashes==False. Otherwise, a tuple channel_hashes,
             sequences.
+            Note that the information contained in channel_hashes is the
+            same as in sequences, but in a different structure, which has the
+            channel name as highest-level key:
+            sequences[awg][elname][cw][chid] == channel_hashes[ch][elname][cw]
         """
         waveforms = {}
         sequences = {}
@@ -123,9 +127,8 @@ class Sequence:
                         sequences[awg][elname]['metadata']['acq'] = True
                     else:
                         sequences[awg][elname]['metadata']['acq'] = False
-                    if seg.allow_filter is not None:
-                        sequences[awg][elname]['metadata']['allow_filter'] = \
-                            seg.allow_filter
+                    sequences[awg][elname]['metadata']['allow_filter'] = \
+                        seg.allow_filter
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
@@ -149,7 +152,7 @@ class Sequence:
         elements that the element length is the same in all sequences. This is
         done by setting the length of each AWG element to the maximum length
         across all sequences. After this, overlap is checked and the sequences
-        are markes as resolved.
+        are marked as resolved.
         :param sequences: a list of sequences
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
