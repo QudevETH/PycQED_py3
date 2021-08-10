@@ -400,7 +400,7 @@ class FilteredSweep(multi_sweep_function):
         # The filtered_sweep property stores a mask indicating which
         # acquisition elements are recorded (will be accessed by MC to
         # handle the acquired data correctly).
-        seg_mask = np.invert(self.allow_filter)
+        seg_mask = np.logical_not(self.allow_filter)
         seg_mask[filter_segments[0]:filter_segments[1] + 1] = True
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
