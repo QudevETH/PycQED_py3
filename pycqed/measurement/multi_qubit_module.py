@@ -629,10 +629,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         unique, counts = np.unique(uhf_names, return_counts=True)
         for u, c in zip(unique, counts):
             if c != 1:
-                raise ValueError(f"{np.array(qubits)[uhf_names == u]}"
-                                 f" share the same UHF ({u}) and therefore"
-                                 f" their timetraces cannot be computed "
-                                 f"simultaneously.")
+                log.warning(f"{np.array(qubits)[uhf_names == u]} "
+                            f"share the same UHF ({u}) and therefore their "
+                            f"timetraces should not be measured simultaneously, "
+                            f"except you know what you are doing.")
 
         # combine operations and preparation dictionaries
         operation_dict = dev.get_operation_dict(qubits=qubits)
@@ -2580,7 +2580,7 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
                     classified=False, n_cal_points_per_state=1,
                     num_cz_gates=1, cal_states=('g', 'e', 'f'),
                     prep_params=None, exp_metadata=None, analyze=True,
-                    return_seq=False, channels_to_upload=None, **kw):
+                    return_seq=False, **kw):
 
     if isinstance(qbc, str):
         qbc = dev.get_qb(qbc)
@@ -2643,15 +2643,10 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
     MC.set_sweep_function(hard_sweep_func)
     MC.set_sweep_points(hard_sweep_points)
 
-    # sweep over flux pulse amplitude of qbc
-    if channels_to_upload is None:
-        channels_to_upload = [qbc.flux_pulse_channel(),
-                              qbt.flux_pulse_channel()]
-
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences,
-        list(soft_sweep_params)[0], list(soft_sweep_params.values())[0]['unit'],
-        channels_to_upload=channels_to_upload))
+        list(soft_sweep_params)[0],
+        list(soft_sweep_params.values())[0]['unit']))
     MC.set_sweep_points_2D(soft_sweep_points)
     det_func = qbr.int_avg_classif_det if classified else qbr.int_avg_det
     MC.set_detector_function(det_func)
@@ -2779,16 +2774,10 @@ def measure_cphase(dev, qbc, qbt, soft_sweep_params, cz_pulse_name,
     MC.set_sweep_function(hard_sweep_func)
     MC.set_sweep_points(hard_sweep_points)
 
-    channels_to_upload = [operation_dict[cz_pulse_name +
-                                         f' {qbc.name} {qbt.name}']['channel']]
-    if 'channel2' in operation_dict[cz_pulse_name + f' {qbc.name} {qbt.name}']:
-        channels_to_upload += [operation_dict[cz_pulse_name +
-                                         f' {qbc.name} {qbt.name}']['channel2']]
-
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences,
-        list(soft_sweep_params)[0], list(soft_sweep_params.values())[0]['unit'],
-        channels_to_upload=channels_to_upload))
+        list(soft_sweep_params)[0],
+        list(soft_sweep_params.values())[0]['unit']))
     MC.set_sweep_points_2D(soft_sweep_points)
 
     det_get_values_kws_to_set = {'classified': classified,

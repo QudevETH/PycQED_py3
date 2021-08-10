@@ -325,11 +325,11 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                             self.block_from_ops(f'blk{k}_{j}_{qbn}', gates)
                                     for qbn, gates in single_qb_gates.items()]))
                         single_qb_gates = {qb_1: [], qb_2: []}
-                        if idx == interleaved_gate:
-                            pulse_modifs = {0: {'amplitude': 0.05,
-                                                'amplitude2': 0.05}}
-                        else:
-                            pulse_modifs = None
+                        # if idx == interleaved_gate:
+                        #     pulse_modifs = {0: {'amplitude': 0.05,
+                        #                         'amplitude2': 0.05}}
+                        # else:
+                        pulse_modifs = None
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
@@ -368,7 +368,8 @@ class SingleQubitXEB(MultiTaskingExperiment):
     }
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, sweep_type=None, **kw):
+                 nr_seqs=None, cycles=None, sweep_type=None,
+                 init_rotation='X90', **kw):
         """
         Class to run cross-entropy benchmarking experiment on
         one or several qubits in parallel.
@@ -388,6 +389,7 @@ class SingleQubitXEB(MultiTaskingExperiment):
         :param sweep_type: dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
             the integers specify which parameter should correspond to the inner
             sweep (0), and which to the outer sweep (1).
+        :param init_rotation: string specifying the preparation pulse name
         :param kw: keyword arguments
             passed to CalibBuilder; see docstring there
 
@@ -446,6 +448,7 @@ class SingleQubitXEB(MultiTaskingExperiment):
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
             if self.experiment_name is None:
                 self.experiment_name = f'XEB'
+            self.init_rotation = init_rotation
             self.identical_pulses = nr_seqs is not None and all([
                 task.get('nr_seqs', None) is None for task in task_list])
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -455,6 +458,7 @@ class SingleQubitXEB(MultiTaskingExperiment):
                 ro_qubits=self.meas_obj_names, **kw)
 
             self.exp_metadata['identical_pulses'] = self.identical_pulses
+            self.exp_metadata['init_rotation'] = self.init_rotation
 
             self.add_processing_pipeline(**kw)
             self.autorun(**kw)
@@ -473,8 +477,8 @@ class SingleQubitXEB(MultiTaskingExperiment):
             z_angles = task['sweep_points'].get_sweep_params_property(
                 'values', self.sweep_type['seqs'], 'z_rots')[seq_idx][nrcyc_idx]
             l = [['Y90', f'Z{zang}'] for zang in z_angles]
-            # flatten l, prepend init pulse Y90, append to pulse_op_codes_list
-            pulse_op_codes_list += [['Y90'] + [e1 for e2 in l for e1 in e2]]
+            # flatten l, prepend init pulse, append to pulse_op_codes_list
+            pulse_op_codes_list += [[self.init_rotation] + [e1 for e2 in l for e1 in e2]]
 
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
@@ -620,26 +624,27 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
                 gates.append(s_gates[2][0:3] + sim_str + "qb_2")
                 gates.append("CZ " + "qb_1 qb_2")
-                while i < length:
-                    last_1_gate1 = gates[-3][0:4]
+                if length > 0:
+                    while i < (length - 1):
+                        last_1_gate1 = gates[-3][0:4]
 
-                    choice1 = []
-                    for gate in s_gates:
-                        choice1.append(gate)
-                    choice1.remove(last_1_gate1)
-                    gate1 = random.choice(choice1)
-                    gates.append(gate1 + 'qb_1')
+                        choice1 = []
+                        for gate in s_gates:
+                            choice1.append(gate)
+                        choice1.remove(last_1_gate1)
+                        gate1 = random.choice(choice1)
+                        gates.append(gate1 + 'qb_1')
 
-                    last_1_gate2 = gates[-3][0:3] + ' '
-                    choice2 = []
-                    for gate in s_gates:
-                        choice2.append(gate)
-                    choice2.remove(last_1_gate2)
-                    gate2 = random.choice(choice2)
-                    sim_str = ' ' if 'Z' in gate2[:3] else 's '
-                    gates.append(gate2[:3] + sim_str + 'qb_2')
-                    gates.append("CZ " + 'qb_1 qb_2')
-                    i += 1
+                        last_1_gate2 = gates[-3][0:3] + ' '
+                        choice2 = []
+                        for gate in s_gates:
+                            choice2.append(gate)
+                        choice2.remove(last_1_gate2)
+                        gate2 = random.choice(choice2)
+                        sim_str = ' ' if 'Z' in gate2[:3] else 's '
+                        gates.append(gate2[:3] + sim_str + 'qb_2')
+                        gates.append("CZ " + 'qb_1 qb_2')
+                        i += 1
                 lis.append(gates)
             return lis
         return [gen_random(cycles) for _ in range(nr_seqs)]

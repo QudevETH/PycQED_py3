@@ -169,7 +169,6 @@ def state_tomography_analysis(data_dict, keys_in,
         if cp is not None and (correct_readout or correct_readout is None):
             dat_proc_mod.calculate_meas_ops_and_covariations_cal_points(
                 data_dict, keys_in, n_readouts=n_readouts,
-                meas_obj_names=meas_obj_names,
                 keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
                 observables=observables, **params)
         else:
@@ -341,6 +340,12 @@ def density_matrices(data_dict,
                 state vector as qutip object
             - use_covariance_matrix (bool; default: False): whether to use the
                 covariance matrices in the estimations
+            - tolerance (float; default: None): custom tolerance threshold for
+                iterative maximum likelihood estimation.
+            - iterations (int; default: None): custom iteration threshold for
+                iterative maximum likelihood estimation.
+            - rho_guess (qutip Qobj; default: None): initial rho used in Maximum
+                likelihood estimation (mle) or iterative mle instead of default
     :return: adds to data_dict
         - rho_target if not already there
         - est_type.purity, (est_type.concurrence if len(meas_obj_names) == 2),
@@ -383,6 +388,24 @@ def density_matrices(data_dict,
                                      default_value=False, **params) else None,
                 rho_guess=rho_guess)
             hlp_mod.add_param('max_likelihood.rho', rho_mle, data_dict, **params)
+        elif estimation_type == 'iterative_mle':
+            rho_imle = tomo.imle_tomography(
+                hlp_mod.get_param('all_measurement_results', data_dict,
+                                  raise_error=True, **params),
+                hlp_mod.get_param('all_measurement_operators', data_dict,
+                                  raise_error=True, **params),
+                hlp_mod.get_param('iterations', data_dict, **params),
+                hlp_mod.get_param('tolerance', data_dict, **params),
+                hlp_mod.get_param('rho_guess', data_dict, **params))
+            hlp_mod.add_param('iterative_mle.rho', rho_imle, data_dict, **params)
+        elif estimation_type == 'pauli_values':
+            rho_pauli = tomo.pauli_values_tomography(
+                hlp_mod.get_param('all_measurement_results', data_dict,
+                                  raise_error=True, **params),
+                [qtp.Qobj(F) for F in hlp_mod.get_param('measurement_ops',
+                                                        data_dict)],
+                hlp_mod.get_param('basis_rots', data_dict))
+            hlp_mod.add_param('pauli_values.rho', rho_pauli, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
@@ -645,8 +668,13 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         base_title = 'Least squares fit of the density matrix\n'
     elif estimation_type == 'max_likelihood':
         base_title = 'Maximum likelihood fit of the density matrix\n'
+    elif estimation_type == 'iterative_mle':
+        base_title = 'Iterative maximum likelihood fit of the density matrix\n'
+    elif estimation_type == 'pauli_values':
+        base_title = 'Density matrix reconstructed from measured Pauli values\n'
     else:
         base_title = 'Density matrix\n'
+
 
     legend_entries = get_legend_artists_labels(data_dict,
                                                estimation_type=estimation_type,
@@ -750,6 +778,10 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
         fit_type = 'least squares fit\n'
     elif estimation_type == 'max_likelihood':
         fit_type = 'maximum likelihood estimation\n'
+    elif estimation_type == 'iterative_mle':
+        fit_type = 'iterative maximum likelihood estimation'
+    elif estimation_type == 'pauli_values':
+        fit_type = 'measured pauli values'
     else:
         fit_type = '\n'
 
@@ -852,7 +884,7 @@ def get_legend_artists_labels(data_dict, estimation_type='least_squares',
     return legend_entries
 
 
-def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
+def process_tomography_analysis(data_dict, Uideal=None,
                                 n_qubits=None, prep_pulses_list=None,
                                 estimation_types=('least_squares',
                                                   'max_likelihood'),
@@ -868,10 +900,8 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
          the density matrices from doing state tomography for each prep state)
          - or must contain the key measured_rhos containing a dict of the form
          {est_type.rho: (list of meas ops) for est_type in estimation_types}
-    :param gate_name: name of the gate for which the error is estimated.
-         MUST CORRESPOND TO Uideal IF THE LATTER IS PROVIDED, since gate_name
-         will be used in the key name for storing the results
-    :param Uideal: qutip Qobj of the ideal unitary operator for gate_name
+    :param Uideal: qutip Qobj of the ideal unitary operator for the process.
+        Can also be specified with process_name, see keyword arguments below.
     :param n_qubits: number of qubits
     :param prep_pulses_list: list of tuples with length nr_qubits contanining
          strings indicating the preparation pulses for each state tomography
@@ -883,7 +913,14 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
          this list.
     :param verbose: whether to show progress print statements
     :param params: keyword arguments
-        Expects to find either in data_dict or in params:
+        Expects to find either in params, data_dict, or metadata:
+            -  process_name: name of the process Uideal for which the error is
+                estimated. process_name will be used in the key name for storing
+                the results, so the user must ensure process_name corresponds
+                to the process Uideal for meaningful storing names.
+                If Uideal is None, specifying process_name = 'CZ' or 'CNOT'
+                will create the corresponding Uideal. Other gates are not
+                recofnized yet.
             - only if n_qubits is None:
                 - meas_obj_names: list of measurement object names
             - only if prep_pulses_list is None:
@@ -894,8 +931,8 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
             - measured_rhos as {est_type.rho: list of meas ops for est_type
             in estimation_types}
     :return: adds to data_dict:
-        - chi_{gate_name}.{estimation_type} and
-            measured_error_{gate_name}.{estimation_type} for estimation_type
+        - chi_{process_name}.{estimation_type} and
+            measured_error_{process_name}.{estimation_type} for estimation_type
             in estimation_types.
     """
     if n_qubits is None:
@@ -903,12 +940,22 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
             data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
             **params)
         n_qubits = len(meas_obj_names)
+
+    process_name = hlp_mod.get_param('process_name', data_dict,
+                                     raise_error=True, **params)
     if Uideal is None:
-        if gate_name == 'CZ':
-            Uideal = qtp.to_chi(qtp.cphase(np.pi))/16
+        if process_name == 'CZ':
+            Uideal = qtp.qip.operations.cphase(np.pi)
+        elif process_name == 'CNOT':
+            Uideal = qtp.qip.operations.cnot()
         else:
-            raise ValueError(f'Unknown gate of interest {gate_name}. '
-                             f'Please provide the Uideal.')
+            raise ValueError(f'Unknown gate of interest {process_name}. '
+                             f'Please provide the process unitary, Uideal.')
+    chi_ideal = qtp.to_chi(Uideal)/16
+    # add ideal chi matrix to data_dict
+    hlp_mod.add_param(f'chi_ideal_{process_name}',
+                      chi_ideal.full(), data_dict, **params)
+
     if prep_pulses_list is None:
         basis_rots = hlp_mod.get_param(
             'basis_rots', data_dict, raise_error=True,
@@ -1019,16 +1066,16 @@ def process_tomography_analysis(data_dict, gate_name='CZ', Uideal=None,
             print('lambda_array.flatten().size ', lambda_array.flatten().size)
 
         chi = np.linalg.solve(beta_array_reshaped, lambda_array.flatten())
-        chi = chi.reshape(Uideal.shape)
-        chi_qtp = qtp.Qobj(chi, dims=Uideal.dims)
+        chi = chi.reshape(chi_ideal.shape)
+        chi_qtp = qtp.Qobj(chi, dims=chi_ideal.dims)
 
         # add found chi matrix to data_dict
-        hlp_mod.add_param(f'chi_{gate_name}.{estimation_type}',
+        hlp_mod.add_param(f'chi_{process_name}.{estimation_type}',
                           chi_qtp.full(), data_dict, **params)
 
         # add gate error to data_dict
-        hlp_mod.add_param(f'measured_error_{gate_name}.{estimation_type}',
-                          1-np.real(qtp.process_fidelity(chi_qtp, Uideal)),
+        hlp_mod.add_param(f'measured_error_{process_name}.{estimation_type}',
+                          1-np.real(qtp.process_fidelity(chi_qtp, chi_ideal)),
                           data_dict, **params)
 
 

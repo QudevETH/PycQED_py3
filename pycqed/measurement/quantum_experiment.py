@@ -160,7 +160,6 @@ class QuantumExperiment(CircuitBuilder):
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
         self.harmonize_element_lengths = harmonize_element_lengths
-        self.channels_to_upload = []
         # The experiment_name might have been set by the user in kw or by a
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
@@ -479,7 +478,8 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.arange(len(self.sequences))
             elif self.sweep_points is not None and len(self.sweep_points) > 1:
                 # second dimension can be inferred from sweep points
-                self.mc_points[1] = list(self.sweep_points[1].values())[0][0]
+                self.mc_points[1] = self.sweep_points.get_sweep_params_property(
+                    'values', 1)
             else:
                 raise ValueError("The second dimension of mc_points must be provided "
                                  "if the sweep function isn't 'SegmentSoftSweep' and"
@@ -516,7 +516,8 @@ class QuantumExperiment(CircuitBuilder):
 
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
-            unit = list(self.sweep_points[0].values())[0][1]
+            unit = self.sweep_points.get_sweep_params_property(
+                'unit', 0, param_names=sweep_param_name)
         except TypeError:
             sweep_param_name, unit = "None", ""
         if self.sweep_functions[0] == awg_swf.SegmentHardSweep:
@@ -537,15 +538,13 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
                 sweep_param_name = list(self.sweep_points[1])[0]
-                unit = list(self.sweep_points[1].values())[0][1]
+                unit = self.sweep_points.get_sweep_params_property(
+                    'unit', 1, param_names=sweep_param_name)
             except TypeError:
                 sweep_param_name, unit = "None", ""
-            if len(self.channels_to_upload) == 0:
-                self.channels_to_upload = "all"
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
                 sweep_func_2nd_dim = self.sweep_functions[1](
-                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit,
-                    self.channels_to_upload)
+                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
@@ -560,10 +559,13 @@ class QuantumExperiment(CircuitBuilder):
                             "filter_segments_mask.")
             elif self.filter_segments_mask is not None:
                 mask = np.array(self.filter_segments_mask)
+                # Only segments with indices included in the mask can be
+                # filtered out. The others will always be measured.
                 for seq in self.sequences:
                     for i, seg in enumerate(seq.segments.values()):
                         if i < mask.shape[0]:
                             seg.allow_filter = True
+                # Create filter lookup table for FilteredSweep
                 lookup = {}
                 for i, sp in enumerate(self.mc_points[1]):
                     if i >= mask.shape[1]:
@@ -591,15 +593,15 @@ class QuantumExperiment(CircuitBuilder):
 
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
-        df = mqm.get_multiplexed_readout_detector_functions(
+        self.df = mqm.get_multiplexed_readout_detector_functions(
             self.meas_objs, **self.df_kwargs)[self.df_name]
-        self.MC.set_detector_function(df)
+        self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
-                self.meas_objs, df)
+                self.meas_objs, self.df)
         else:
             meas_obj_value_names_map = mqm.get_meas_obj_value_names_map(
-                self.meas_objs, df)
+                self.meas_objs, self.df)
         self.exp_metadata.update(
             {'meas_obj_value_names_map': meas_obj_value_names_map})
         if 'meas_obj_sweep_points_map' not in self.exp_metadata:
