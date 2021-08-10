@@ -208,8 +208,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             the data.
         - 'PCA': ignores cal points and does pca; in the case of TwoD data it
             does PCA row by row
-        - 'column_PCA': cal points and does pca; in the case of TwoD data it
-            does PCA column by column
+        - 'column_PCA': ignored cal points and does pca; in the case of TwoD
+            data it does PCA column by column
         - 'global_PCA' (only for TwoD): does PCA on the whole 2D array
      - main_sp (default: None): dict with keys qb_name used to specify which
         sweep parameter should be used as axis label in plot
@@ -318,18 +318,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         # get data_to_fit
         self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if self.data_to_fit is None:
+        if self.data_to_fit is None or not len(self.data_to_fit):
             # If we have cal points, but data_to_fit is not specified,
             # choose a reasonable default value. In cases with only two cal
             # points, this decides which projected plot is generated. (In
             # cases with three cal points, we will anyways get all three
             # projected plots.)
-            if 'e' in self.cal_states_dict.keys():
-                self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
-            elif 'g' in self.cal_states_dict.keys():
-                self.data_to_fit = {qbn: 'pg' for qbn in self.qb_names}
-            else:
-                self.data_to_fit = {}
+            self.data_to_fit = {}
+            for qbn in self.qb_names:
+                if not len(self.cal_states_dict[qbn]) or \
+                        'PCA' in self.rotation_type:
+                    self.data_to_fit[qbn] = 'pca'
+                else:
+                    csr = [(k, v) for k, v in
+                           self.cal_states_rotations[qbn].items()]
+                    csr.sort(key=lambda t: t[1])
+                    self.data_to_fit[qbn] = f'p{csr[-1][0]}'
+                
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit. These lists are
         # currently only supported by MultiCZgate_CalibAnalysis
@@ -370,14 +375,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         last_ge_pulses = self.get_param_value('last_ge_pulses',
                                               default_value=False)
 
-        cal_states_rotations = {qbn: [] for qbn in self.qb_names}
+        cal_states_rotations = {qbn: {} for qbn in self.qb_names}
         try:
             self.cp = CalibrationPoints.from_string(cal_points)
             # for now assuming the same for all qubits.
-            self.cal_states_dict = self.cp.get_indices(
-                self.qb_names)[self.qb_names[0]]
+            self.cal_states_dict = self.cp.get_indices(self.qb_names)
             cal_states_rots = self.cp.get_rotations(
-                last_ge_pulses, self.qb_names[0])[self.qb_names[0]] if \
+                last_ge_pulses, self.qb_names) if \
                 self.rotate else cal_states_rotations
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rots)
@@ -389,11 +393,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rotations) \
                 if self.rotate else cal_states_rotations
-            self.cal_states_dict = self.get_param_value('cal_states_dict',
-                                                        default_value={})
+            self.cal_states_dict = self.get_param_value('cal_states_dict')
         if self.cal_states_rotations is None:
             self.cal_states_rotations = cal_states_rotations
-        if not len(self.cal_states_dict):
+        if self.cal_states_dict is None or not len(self.cal_states_dict):
+            self.cal_states_dict = {qbn: {} for qbn in self.qb_names}
             self.rotation_type = 'global_PCA' if \
                 self.get_param_value('TwoD', default_value=False) else 'PCA'
 
@@ -710,10 +714,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.measurement_strings[qbn] += f' ({p}: {v})'
 
     def get_num_cal_points(self):
-        if self.cal_states_dict is None:
-            self.cal_states_dict = {}
         self.num_cal_points = np.array(list(
-            self.cal_states_dict.values())).flatten().size
+            self.cal_states_dict[
+                list(self.cal_states_dict)[0]].values())).flatten().size
 
         spd = self.proc_data_dict['sweep_points_dict']
         num_sp = len(spd[list(spd)[0]]['sweep_points'])
@@ -734,50 +737,32 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         do_PCA = self.rotation_type == 'PCA' or \
                  self.rotation_type == 'column_PCA'
         self.cal_states_dict_for_rotation = OrderedDict()
-        states = False
         cal_states_rotations = self.cal_states_rotations
-        for key in cal_states_rotations.keys():
-            if key == 'g' or key == 'e' or key == 'f':
-                states = True
         for qbn in self.qb_names:
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
-            if states:
-                cal_states_rot_qb = cal_states_rotations
-            else:
-                cal_states_rot_qb = cal_states_rotations.get(qbn, [])
+            cal_states_rot_qb = cal_states_rotations.get(qbn, {})
             for i in range(len(cal_states_rot_qb)):
                 cal_state = \
                     [k for k, idx in cal_states_rot_qb.items()
                      if idx == i][0]
-                if do_PCA and self.num_cal_points != 3:
+                if do_PCA and len(cal_states_rot_qb) != 3:
+                    # Cannot do PCA for 3 cal states.
                     self.cal_states_dict_for_rotation[qbn][cal_state] = None
                 else:
-                    if not len(self.cal_states_dict):
+                    if not len(self.cal_states_dict[qbn]):
                         self.cal_states_dict_for_rotation[qbn][cal_state] = None
                         if self.get_param_value('TwoD', default_value=False):
                             self.rotation_type = 'global_PCA'
                     else:
                         self.cal_states_dict_for_rotation[qbn][cal_state] = \
-                            self.cal_states_dict[cal_state]
+                            self.cal_states_dict[qbn][cal_state]
 
     def cal_states_analysis(self):
         self.get_cal_data_points()
         self.proc_data_dict['projected_data_dict'] = OrderedDict(
             {qbn: '' for qbn in self.qb_names})
 
-        if len(self.data_to_fit):
-            if not len(self.cal_states_dict):
-                self.data_to_fit = {qbn: 'pca' for qbn in self.qb_names}
-            storing_keys = self.data_to_fit
-        else:
-            if len(self.cal_states_dict):
-                csr = [(k, v) for k, v in self.cal_states_rotations.items()]
-                csr.sort(key=lambda t: t[1])
-                storing_keys = {qbn: f'p{csr[-1][0]}' for qbn in self.qb_names}
-            else:
-                storing_keys = {qbn: 'pca' for qbn in self.qb_names}
-            self.data_to_fit = storing_keys
-
+        storing_keys = self.data_to_fit
         for qbn in self.qb_names:
             cal_states_dict = self.cal_states_dict_for_rotation[qbn]
             if len(cal_states_dict) not in [0, 2, 3]:
@@ -788,6 +773,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                  default_value=True)
             if self.get_param_value('TwoD', default_value=False):
                 if self.rotation_type == 'global_PCA':
+                    storing_keys[qbn] = 'pca'
                     self.proc_data_dict['projected_data_dict'].update(
                         self.global_pca_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
@@ -810,6 +796,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.proc_data_dict['rotation_coordinates'] = \
                         [zero_coord, one_coord]
                 else:
+                    if 'PCA' in self.rotation_type:
+                        storing_keys[qbn] = 'pca'
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
@@ -824,11 +812,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
                 else:
+                    if 'PCA' in self.rotation_type:
+                        storing_keys[qbn] = 'pca'
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
                             storing_keys, data_mostly_g=data_mostly_g))
+
+        self.data_to_fit.update(storing_keys)
 
     @staticmethod
     def rotate_data_3_cal_states(qb_name, meas_results_per_qb, channel_map,
@@ -1155,12 +1147,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         return rotated_data_dict, zero_coord, one_coord
 
     def get_transition_name(self, qb_name):
-        task_list = self.get_param_value('task_list')
         trans_name = self.get_param_value('transition_name')
-        if task_list is not None:
-            task = [t for t in task_list if t['qb'] == qb_name][0]
-            trans_name = task.get('transition_name_input', None)
+
         if trans_name is None:
+            task_list = self.get_param_value('preprocessed_task_list')
+            if task_list is not None:
+                task = [t for t in task_list if t['qb'] == qb_name][0]
+                trans_name = task.get('transition_name_input', None)
+
+        if trans_name is None:
+            # is really a fallback but not ideal because data_to_fit get
+            # overwritten by this class for certain rotation types.
             if 'h' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'fh'
             elif 'f' in self.data_to_fit.get(qb_name, ''):
@@ -1221,7 +1218,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def get_yaxis_label(self, data_key=None, qb_name=None):
         if self.rotate and ('pca' in self.rotation_type.lower() or
-                            not len(self.cal_states_dict)):
+                            not len(self.cal_states_dict[
+                                        list(self.cal_states_dict)[0]])):
             return 'Strongest principal component (arb.)'
         else:
             if data_key is None:
@@ -1678,14 +1676,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'sweep_points']
         plot_names_cal = []
         if plot_cal_points and self.num_cal_points != 0 and \
-                len(self.cal_states_dict):
+                len(self.cal_states_dict[qb_name]):
             yvals = data[:-self.num_cal_points]
             xvals = sweep_points[:-self.num_cal_points]
             # plot cal points
             for i, cal_pts_idxs in enumerate(
-                    self.cal_states_dict.values()):
+                    self.cal_states_dict[qb_name].values()):
                 plot_dict_name_cal = fig_name + '_' + \
-                                     list(self.cal_states_dict)[i] + '_' + \
+                                     list(self.cal_states_dict[qb_name])[i] + '_' + \
                                      plot_name_suffix
                 plot_names_cal += [plot_dict_name_cal]
                 self.plot_dicts[plot_dict_name_cal] = {
@@ -1694,13 +1692,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'plotsize': plotsize,
                     'xvals': sweep_points[cal_pts_idxs],
                     'yvals': data[cal_pts_idxs],
-                    'setlabel': list(self.cal_states_dict)[i],
+                    'setlabel': list(self.cal_states_dict[qb_name])[i],
                     'do_legend': do_legend_cal_states,
                     'legend_bbox_to_anchor': (1, 0.5),
                     'legend_pos': 'center left',
                     'linestyle': 'none',
                     'line_kws': {'color': self.get_cal_state_color(
-                        list(self.cal_states_dict)[i])},
+                        list(self.cal_states_dict[qb_name])[i])},
                     'yrange': yrange,
                 }
 
@@ -3968,8 +3966,8 @@ class RODynamicPhaseAnalysis(MultiQubit_TimeDomain_Analysis):
 
                     # plot cal points
                     for i, cal_pts_idxs in enumerate(
-                            self.cal_states_dict.values()):
-                        key = list(self.cal_states_dict)[i] + meas_qbn
+                            self.cal_states_dict[meas_qbn].values()):
+                        key = list(self.cal_states_dict[meas_qbn])[i] + meas_qbn
                         self.plot_dicts[key] = {
                             'fig_id': 'dyn_phase_plot_' + meas_qbn,
                             'plotfn': self.plot_line,
@@ -3985,13 +3983,13 @@ class RODynamicPhaseAnalysis(MultiQubit_TimeDomain_Analysis):
                                 self.proc_data_dict['projected_data_dict'][meas_qbn][
                                     '_measure'][cal_pts_idxs]],
                                              axis=0),
-                            'setlabel': list(self.cal_states_dict)[i],
+                            'setlabel': list(self.cal_states_dict[meas_qbn])[i],
                             'do_legend': True,
                             'legend_bbox_to_anchor': (1, 0.5),
                             'legend_pos': 'center left',
                             'linestyle': 'none',
                             'line_kws': {'color': self.get_cal_state_color(
-                                list(self.cal_states_dict)[i])}}
+                                list(self.cal_states_dict[meas_qbn])[i])}}
 
                 else:
                     yvals = [self.proc_data_dict['projected_data_dict'][meas_qbn][
@@ -6561,8 +6559,8 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
             # plot cal points
             if self.num_cal_points != 0:
                 for i, cal_pts_idxs in enumerate(
-                        self.cal_states_dict.values()):
-                    plot_dict_name = list(self.cal_states_dict)[i] + \
+                        self.cal_states_dict[qbn].values()):
+                    plot_dict_name = list(self.cal_states_dict[qbn])[i] + \
                                      '_' + qbn
                     self.plot_dicts[plot_dict_name] = {
                         'fig_id': base_plot_name,
@@ -6575,13 +6573,13 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                             axis=0),
                         'yvals': self.proc_data_dict[
                             'data_to_fit'][qbn][cal_pts_idxs],
-                        'setlabel': list(self.cal_states_dict)[i],
+                        'setlabel': list(self.cal_states_dict[qbn])[i],
                         'do_legend': True,
                         'legend_bbox_to_anchor': (1, 0.5),
                         'legend_pos': 'center left',
                         'linestyle': 'none',
                         'line_kws': {'color': self.get_cal_state_color(
-                            list(self.cal_states_dict)[i])}}
+                            list(self.cal_states_dict[qbn])[i])}}
 
                     self.plot_dicts[plot_dict_name + '_line'] = {
                         'fig_id': base_plot_name,
@@ -7027,21 +7025,46 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
         super().process_data()
 
+        # Deal with the case when self.data_to_fit[qbn] are lists with multiple
+        # entries. The parent class takes the first entry in
+        # self.data_to_fit[qbn] and forces its type to str. Then it figures out
+        # the appropriate self.data_to_fit based on cal_points (ex. 'pca').
+        # Here we want to allow lists with multiple entries so.
+
         # TODO: Steph 15.09.2020
-        # This is a hack. It should be done in MultiQubit_TimeDomain_Analysis
-        # but would break every analysis inheriting from it but we just needed
-        # it to work for this analysis :)
-        self.data_to_fit = self.get_param_value('data_to_fit', {})
+        # This is a hack. MultiQubit_TimeDomain_Analysis should be upgraded to
+        # allow lists of multiple entries here but this would break every
+        # analysis inheriting from it.
+        # For now, we just needed it to work for this analysis :)
+
+        # Take the data_to_fit provided by the user:
+        data_to_fit = self.get_param_value('data_to_fit')
+        if data_to_fit is None or not(len(data_to_fit)):
+            data_to_fit = {qbn: [] for qbn in self.qb_names}
         for qbn in self.data_to_fit:
-            # make values of data_to_fit be lists
+            # The entries can be different for each qubit so make sure
+            # entries are lists. As mentioned above, the parent class sets them
+            # to strings.
             if isinstance(self.data_to_fit[qbn], str):
                 self.data_to_fit[qbn] = [self.data_to_fit[qbn]]
+            if isinstance(data_to_fit[qbn], str):
+                data_to_fit[qbn] = [data_to_fit[qbn]]
 
-        # Overwrite data_to_fit in proc_data_dict
+        # Overwrite data_to_fit in proc_data_dict, as well as self.data_to_fit
+        # if needed.
         self.proc_data_dict['data_to_fit'] = OrderedDict()
         for qbn, prob_data in self.proc_data_dict[
                 'projected_data_dict'].items():
             if qbn in self.data_to_fit:
+                if len(self.data_to_fit[qbn]) < len(data_to_fit[qbn]) and \
+                        self.data_to_fit[qbn][0] != 'pca':
+                    # The entry that the parent class assigned if shorter than
+                    # the one specified by the user. We only want to keep the
+                    # former if it was 'pca', otherwise overwrite the entry to
+                    # allow lists with several values.
+                    self.data_to_fit[qbn] = data_to_fit[qbn]
+                # Add the data from projected_data_dict specified by
+                # self.data_to_fit[qbn]
                 self.proc_data_dict['data_to_fit'][qbn] = {
                     prob_label: prob_data[prob_label] for prob_label in
                     self.data_to_fit[qbn]}
@@ -7120,10 +7143,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
             if self.num_cal_points > 0:
                 data_w_cal = data_2d_cal_reshaped[row][0][0]
                 for i, cal_pts_idxs in enumerate(
-                        self.cal_states_dict.values()):
+                        self.cal_states_dict[qbn].values()):
                     s = '{}_{}_{}'.format(row, qbn, prob_label)
                     ref_state_plot_name = list(
-                        self.cal_states_dict)[i] + '_' + s
+                        self.cal_states_dict[qbn])[i] + '_' + s
                     ref_states_plot_dicts[ref_state_plot_name] = {
                         'fig_id': figure_name,
                         'plotfn': self.plot_line,
@@ -7134,7 +7157,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             cal_pts_idxs],
                         'yvals': data_w_cal[cal_pts_idxs],
                         'setlabel': list(
-                            self.cal_states_dict)[i] if
+                            self.cal_states_dict[qbn])[i] if
                         row == 0 else '',
                         'do_legend': row == 0,
                         'legend_bbox_to_anchor':
@@ -7144,7 +7167,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                         'linestyle': 'none',
                         'line_kws': {'color':
                             self.get_cal_state_color(
-                                list(self.cal_states_dict)[i])}}
+                                list(self.cal_states_dict[qbn])[i])}}
 
             xlabel, xunit = self.get_xaxis_label_unit(qbn)
             self.plot_dicts['data_{}_{}_{}'.format(
@@ -7237,7 +7260,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                         prob_label][row, :]
                     key = 'fit_{}{}_{}_{}'.format(labels[row % 2], row,
                                                    prob_label, qbn)
-                    if qbn in self.leakage_qbnames and prob_label == 'pf':
+                    if qbn in self.leakage_qbnames and (prob_label == 'pf'
+                            or prob_label == 'pca'):
                         if self.get_param_value('classified_ro', False):
                             self.leakage_values = np.append(self.leakage_values,
                                                             np.mean(data))
@@ -7250,7 +7274,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                 'fit_xvals': {'x': phases},
                                 'fit_yvals': {'data': data},
                                 'guess_pars': guess_pars}
-                    elif prob_label == 'pe' or prob_label == 'pg':
+                    else:
                         # fit ramsey qb results to a cosine
                         model = lmfit.Model(fit_mods.CosFunc)
                         guess_pars = fit_mods.Cos_guess(
@@ -7403,7 +7427,9 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                     if qbn in self.ramsey_qbnames:
                         # add the cphase + leakage textboxes to the
                         # cphase_qbr_pe figure
-                        figure_name = f'{self.phase_key}_{qbn}_pe'
+                        figure_name = f'{self.phase_key}_{qbn}_'
+                        figure_name += 'pca' if \
+                            self.data_to_fit[qbn][0] == 'pca' else 'pe'
                         textstr = '{} = \n{:.2f}'.format(
                             self.phase_key,
                             self.proc_data_dict['analysis_params_dict'][
@@ -9143,7 +9169,7 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
             fr_fit = self.freq_ranges_to_fit.get(qbn, [])
             if not fit_first_cal_state.get(qbn, True):
                 first_cal_state = list(self.cal_states_dict_for_rotation[qbn])[0]
-                first_cal_state_idxs = self.cal_states_dict[first_cal_state]
+                first_cal_state_idxs = self.cal_states_dict[qbn][first_cal_state]
                 if first_cal_state_idxs is None:
                     first_cal_state_idxs = []
             for i, delay in enumerate(delays):
