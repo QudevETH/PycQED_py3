@@ -48,7 +48,7 @@ class Segment:
         self.distortion_dicts = {}
         # The sweep_params dict is processed by generate_waveforms_sequences
         # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
-        # Keys are of the form awgname_chY_nodename (with _ instead of / in
+        # Keys are of the form awgname_chid_nodename (with _ instead of / in
         # the node name) and values are lists of hard sweep values.
         # The segment will be repeated as many times as there are hard
         # sweep values given in this property.
