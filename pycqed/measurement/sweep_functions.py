@@ -306,10 +306,20 @@ class Indexed_Sweep(Transformed_Sweep):
 
 
 class MajorMinorSweep(Soft_Sweep):
-    """A soft sweep function that combines two sweep function such that the
+    """
+    A soft sweep function that combines two sweep function such that the
     major sweep function takes only discrete values from a given set while
     the minor sweep function takes care of the difference between the
-    discrete values and the desired sweep values."""
+    discrete values and the desired sweep values.
+
+    (further parameters as in multi_sweep_function)
+    :param major_sweep_function: (obj) a soft sweep function or QCoDeS
+        parameter to perform large steps of the sweep parameter
+    :param minor_sweep_function: (obj) a soft sweep function or QCoDeS
+        parameter to perform small steps of the sweep parameter
+    :param major_values: (array, list) allowed values of the
+        major_sweep_function
+    """
 
     def __init__(self,
                  major_sweep_function,
@@ -347,13 +357,28 @@ class MajorMinorSweep(Soft_Sweep):
         self.minor_sweep_function.finish(*args, **kwargs)
 
     def set_parameter(self, val):
+        # find the closes allowed value of the major_sweep_function
         ind = np.argmin(np.abs(self.major_values - val))
         mval = self.major_values[ind]
         self.major_sweep_function.set_parameter(mval)
+        # use the minor_sweep_function to bridge the difference to the
+        # target value
         self.minor_sweep_function.set_parameter(val - mval)
 
 
 class FilteredSweep(multi_sweep_function):
+    """
+    Records only a specified consecutive subset of segments of a
+    SegmentHardSweep for each soft sweep point while performing the soft
+    sweep defined in sweep_functions.
+
+    (further parameters as in multi_sweep_function)
+    :param sequence: The Sequence programmed to the AWGs.
+    :param filter_lookup: (dict) A dictionary where each key is a soft sweep
+        point and the corresponding value is a tuple of indices
+        indicating the first and the last segment to be measured. (Segments
+        with the property allow_filter set to False are always measured.)
+    """
     def __init__(self,
                  sequence,
                  filter_lookup,
@@ -369,11 +394,16 @@ class FilteredSweep(multi_sweep_function):
         super().__init__(sweep_functions, parameter_name, name, **kw)
 
     def set_parameter(self, val):
+        # Determine the current segment filter and inform Pulsar.
         filter_segments = self.filter_lookup[val]
         self.sequence.pulsar.filter_segments(filter_segments)
+        # The filtered_sweep property stores a mask indicating which
+        # acquisition elements are recorded (will be accessed by MC to
+        # handle the acquired data correctly).
         seg_mask = np.invert(self.allow_filter)
         seg_mask[filter_segments[0]:filter_segments[1] + 1] = True
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
                                range(a)]
+        # set the soft sweep parameter in the sweep_functions
         super().set_parameter(val)
