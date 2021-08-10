@@ -1434,7 +1434,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         sequence cache if this is the case. To make this check possible,
         the pulsar object ID is written to a file in the pycqed app data dir.
         """
-        filename = os.path.join(gen.get_pycqed_dir(), 'pulsar_id')
+        filename = os.path.join(gen.get_pycqed_appdata_dir(), 'pulsar_id')
         current_id = f"{id(self)}"
         try:
             with open(filename, 'r') as f:

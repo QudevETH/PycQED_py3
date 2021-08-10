@@ -802,7 +802,7 @@ def find_symmetry_index(data):
     return np.argmax(corr), corr
 
 
-def get_pycqed_dir():
+def get_pycqed_appdata_dir():
     """
     Returns the path to the pycqed application data dir.
     """
