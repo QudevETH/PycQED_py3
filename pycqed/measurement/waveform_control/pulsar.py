@@ -53,7 +53,6 @@ class UHFQCPulsar:
     class
     """
     _supportedAWGtypes = (UHFQC, dummy_UHFQC)
-    _num_awgs = 1
     
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -149,7 +148,7 @@ class UHFQCPulsar:
             group.append(name)
         # all channels are considered as a single group
         for name in group:
-            self.channel_groups.update({name: group})
+            self.channel_groups[name] = group
 
     def _uhfqc_create_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
@@ -315,7 +314,7 @@ class UHFQCPulsar:
                         allow_filter[seg_indices[-1]] += 1
                 else:  # segment
                     seg_indices.append(index)
-                    allow_filter[seg_indices[-1]] = 0
+                    allow_filter[index] = 0
             el_total = len(real_indicies)
             if any(allow_filter.values()):
                 if repeat_pattern[1] != 1:
@@ -738,7 +737,6 @@ class HDAWG8Pulsar:
                         if cw == 'no_codeword':
                             if nr_cw != 0:
                                 continue
-                        wave_idx_lookup[element][cw] = {}
                         chid_to_hash = awg_sequence_element[cw]
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
@@ -827,8 +825,14 @@ class HDAWG8Pulsar:
                 # prevent ZI_base_instrument.start() from starting this sub AWG
                 obj._awg_program[awg_nr] = None
                 continue
-            # tell ZI_base_instrument.start() to start this sub AWG
+            # tell ZI_base_instrument that it should not compile a
+            # program on this sub AWG (because we already do it here)
             obj._awg_needs_configuration[awg_nr] = False
+            # tell ZI_base_instrument.start() to start this sub AWG
+            # (The base class will start sub AWGs for which _awg_program
+            # is not None. Since we set _awg_needs_configuration to False,
+            # we do not need to put the actual program here, but anything
+            # different from None is sufficient.)
             obj._awg_program[awg_nr] = True
 
             # Having determined whether the sub AWG should be started or
@@ -868,7 +872,7 @@ class HDAWG8Pulsar:
                     run_compiler = True
 
             if run_compiler:
-                # We have to retrieve the folllowing parameter to set it
+                # We have to retrieve the following parameter to set it
                 # again after programming the AWG.
                 prev_dio_valid_polarity = obj.get(
                     'awgs_{}_dio_valid_polarity'.format(awg_nr))
@@ -1374,6 +1378,11 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',
                            initial_value=None, parameter_class=ManualParameter)
+        # This parameter can be used to record only a specified consecutive
+        # subset of segments of a programmed hard sweep. This is used by the
+        # sweep function FilteredSweep. The parameter expects a tuple of indices
+        # indicating the first and the last segment to be measured. (Segments
+        # with the property allow_filter set to False are always measured.)
         self.add_parameter('filter_segments',
                            set_cmd=self._set_filter_segments,
                            get_cmd=self._get_filter_segments,
@@ -1409,10 +1418,15 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
 
     def reset_sequence_cache(self):
         self._sequence_cache = {}
-        self._sequence_cache['settings'] = {}
-        self._sequence_cache['metadata'] = {}
-        self._sequence_cache['hashes'] = {}
-        self._sequence_cache['length'] = {}
+        # The following dicts are used in _program_awgs to store information
+        # about the last sequence programmed to each AWGs. The keys of the
+        # dicts are AWG names and/or channel names. See the code and
+        # comments of _program_awgs for details about the structure of the
+        # dicts.
+        self._sequence_cache['settings'] = {}  # for pulsar settings
+        self._sequence_cache['metadata'] = {}  # for segment/element metadata
+        self._sequence_cache['hashes'] = {}  # for waveform hashes
+        self._sequence_cache['length'] = {}  # for element lengths
 
     def check_for_other_pulsar(self):
         """
