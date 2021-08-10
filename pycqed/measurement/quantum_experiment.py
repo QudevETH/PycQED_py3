@@ -478,7 +478,8 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.arange(len(self.sequences))
             elif self.sweep_points is not None and len(self.sweep_points) > 1:
                 # second dimension can be inferred from sweep points
-                self.mc_points[1] = list(self.sweep_points[1].values())[0][0]
+                self.mc_points[1] = self.sweep_points.get_sweep_params_property(
+                    'values', 1)
             else:
                 raise ValueError("The second dimension of mc_points must be provided "
                                  "if the sweep function isn't 'SegmentSoftSweep' and"
@@ -515,7 +516,8 @@ class QuantumExperiment(CircuitBuilder):
 
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
-            unit = list(self.sweep_points[0].values())[0][2]
+            unit = self.sweep_points.get_sweep_params_property(
+                'unit', 0, param_names=sweep_param_name)
         except TypeError:
             sweep_param_name, unit = "None", ""
         sweep_func_1st_dim = self.sweep_functions[0](
@@ -529,7 +531,8 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
                 sweep_param_name = list(self.sweep_points[1])[0]
-                unit = list(self.sweep_points[1].values())[0][2]
+                unit = self.sweep_points.get_sweep_params_property(
+                    'unit', 1, param_names=sweep_param_name)
             except TypeError:
                 sweep_param_name, unit = "None", ""
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:

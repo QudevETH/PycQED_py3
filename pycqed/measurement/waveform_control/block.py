@@ -64,7 +64,7 @@ class Block:
             (ref)pulse name (before a potential change in a previous build())
             matches.
 
-            'attr=X, key_1=val_1, ..., key_N=val_N, occurence=i'
+            'attr=X, key_1=val_1, ..., key_N=val_N, occurrence=i'
             Sweep the attribute only for the ith pulse matching the
             criteria, where i is an integer (zero-indexed)
 
@@ -243,8 +243,13 @@ class Block:
                 if getattr(s, '_is_parametric_value', False):
                     for sweep_dict, ind in zip(sweep_dicts_list, index_list):
                         if s.param in sweep_dict:
-                            p[attr], p['op_code'] = s.resolve(
-                                sweep_dict, ind, p['op_code'])
+                            if 'op_code' in p:
+                                p[attr], p['op_code'] = s.resolve(
+                                    sweep_dict, ind, p['op_code'])
+                            else:
+                                # allows to add ParametricValues to block_start
+                                # or block_end. See for ex the T1 class
+                                p[attr] = s.resolve(sweep_dict, ind)
 
         # resolve pulse modifiers now (they could overwrite parametric values)
         def check_candidate(k, v, p):

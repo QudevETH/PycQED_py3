@@ -6,7 +6,6 @@ import datetime
 import os
 import lmfit
 from copy import deepcopy
-import pygsti
 import logging
 log = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ from pycqed.utilities.general import temporary_value
 from pycqed.analysis_v2 import tomography_qudev as tomo
 import pycqed.analysis.analysis_toolbox as a_tools
 
-
 try:
     import \
         pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQuantumController as uhfqc
@@ -39,7 +37,6 @@ except ModuleNotFoundError:
     log.warning('"UHFQuantumController" not imported.')
 
 from pycqed.measurement.optimization import generate_new_training_set
-from pygsti import construction as constr
 
 
 def multiplexed_pulse(readouts, f_LO, upload=True):
@@ -3508,6 +3505,9 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
                    thresholded=True, analyze_shots=True, analyze_pygsti=True,
                    preselection=True, ro_spacing=1e-6, label=None,
                    MC=None, UHFQC=None, pulsar=None, run=True, **kw):
+
+    import pygsti
+
     if UHFQC is None:
         UHFQC = qubits[0].UHFQC
         log.warning("Unspecified UHFQC instrument. Using {}.UHFQC.".format(
@@ -3538,7 +3538,7 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
             listOfExperiments = pygsti.construction.list_lgst_gatestrings(
                 prep_fiducials, meas_fiducials, gs_target)
         else:
-            listOfExperiments = constr.make_lsgst_experiment_list(
+            listOfExperiments = pygsti.construction.make_lsgst_experiment_list(
                 gs_target, prep_fiducials, meas_fiducials, germs, maxLengths)
     else:
         prep_fiducials = kw.pop('prep_fiducials', None)
@@ -3551,7 +3551,7 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
         #     raise ValueError('Please provide either pyGSTi gate set or the '
         #                      'kwargs "prep_fiducials", "meas_fiducials", '
         #                      '"germs", "gs_target".')
-        # listOfExperiments = constr.make_lsgst_experiment_list(
+        # listOfExperiments = pygsti.construction.make_lsgst_experiment_list(
         #     gs_target, prep_fiducials, meas_fiducials, germs, maxLengths)
 
     nr_exp = len(listOfExperiments)

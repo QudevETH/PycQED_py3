@@ -1,15 +1,12 @@
 import numpy as np
-from copy import copy
-from copy import deepcopy
+from copy import copy, deepcopy
 import traceback
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
-from pycqed.analysis import fitting_models as fit_mods
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.analysis import measurement_analysis as ma
 from pycqed.utilities.general import temporary_value
 import logging
 
@@ -73,7 +70,8 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
-            self.add_amplitude_sweep_points()
+            self.task_list = self.add_amplitude_sweep_points(
+                [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.sequences, self.mc_points = \
@@ -94,7 +92,7 @@ class T1FrequencySweep(CalibBuilder):
             self.exception = x
             traceback.print_exc()
 
-    def add_amplitude_sweep_points(self, task_list=None):
+    def add_amplitude_sweep_points(self, task_list=None, **kw):
         """
         If flux pulse amplitudes are not in the sweep_points in each task, but
         qubit frequencies are, then amplitudes will be calculated based on
@@ -113,32 +111,41 @@ class T1FrequencySweep(CalibBuilder):
             if len(sweep_points) == 1:
                 sweep_points.add_sweep_dimension()
             if 'qubit_freqs' in sweep_points[1]:
-                qubit_freqs = sweep_points[1]['qubit_freqs'][0]
+                qubit_freqs = sweep_points['qubit_freqs']
             elif len(self.sweep_points) >= 2 and \
                     'qubit_freqs' in self.sweep_points[1]:
-                qubit_freqs = self.sweep_points[1]['qubit_freqs'][0]
+                qubit_freqs = self.sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
-            if qubit_freqs is not None:
-                qubits, _ = self.get_qubits(task['qb'])
+            if 'amplitude' in sweep_points[1]:
+                amplitudes = sweep_points['amplitude']
+            elif len(self.sweep_points) >= 2 and \
+                    'amplitude' in self.sweep_points[1]:
+                amplitudes = self.sweep_points['amplitude']
+            else:
+                amplitudes = None
+            qubits, _ = self.get_qubits(task['qb'])
+            if qubit_freqs is None and qubits is not None:
+                qb = qubits[0]
+                qubit_freqs = qb.calculate_frequency(
+                    amplitude=amplitudes,
+                    **kw.get('vfc_kwargs', {})
+                )
+                freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
+                                                'Hz', 'Qubit frequency')
+                sweep_points.update([{}] + freq_sweep_points)
+            if amplitudes is None:
                 if qubits is None:
                     raise KeyError('qubit_freqs specified in sweep_points, '
                                    'but no qubit objects available, so that '
                                    'the corresponding amplitudes cannot be '
                                    'computed.')
-                this_qb = qubits[0]
-                fit_paras = deepcopy(this_qb.fit_ge_freq_from_flux_pulse_amp())
-                if len(fit_paras) == 0:
-                    raise ValueError(
-                        f'fit_ge_freq_from_flux_pulse_amp is empty'
-                        f' for {this_qb.name}. Cannot calculate '
-                        f'amplitudes from qubit frequencies.')
-                amplitudes = np.array(fit_mods.Qubit_freq_to_dac(
-                    qubit_freqs, **fit_paras))
-                if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-                    amplitudes -= fit_paras['V_per_phi0']
-                elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-                    amplitudes += fit_paras['V_per_phi0']
+                qb = qubits[0]
+                amplitudes = qb.calculate_flux_voltage(
+                    frequency=qubit_freqs,
+                    flux=qb.flux_parking(),
+                    **kw.get('vfc_kwargs', {})
+                )
                 if np.any(np.isnan(amplitudes)):
                     raise ValueError('Specified frequencies resulted in nan '
                                      'amplitude. Check frequency range!')
@@ -766,7 +773,6 @@ class Cryoscope(CalibBuilder):
             concatenation of the truncation_lengths array for each pulse,
             defined between 0 and total length of each pulse.
         """
-        from pprint import pprint
         parallel_block_list = []
         for i, task in enumerate(self.preprocessed_task_list):
             sweep_points = task['sweep_points']
