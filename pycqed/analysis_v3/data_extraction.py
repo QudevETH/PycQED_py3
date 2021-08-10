@@ -113,7 +113,8 @@ def extract_data_hdf(data_dict=None, timestamps=None,
     params_dict.update(params_dict_temp)
     hlp_mod.get_params_from_hdf_file(
         data_dict, params_dict=params_dict, numeric_params=numeric_params,
-        folder=data_dict['folders'][-1], add_param_method='replace')
+        folder=data_dict['folders'][-1],
+        add_param_method=params.get('add_param_method', 'replace'))
 
     # add entries in data_dict for each readout channel and its corresponding
     # data array.
