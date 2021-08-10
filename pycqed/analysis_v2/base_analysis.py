@@ -269,9 +269,10 @@ class BaseDataAnalysis(object):
         :param warning_textfile_name: string with name of the file without
             extension.
         """
-        if not self.check_plotting_delegation():
-            # The warning image and text file will be generated twice
-            # when the AnalysisDaemon is active
+        if self.check_plotting_delegation():
+            # Do not execute this function if plotting is delegated to the
+            # AnalysisDaemon, in order to avoid that the warning image and
+            # text file are generated twice.
             return
 
         destination_path = a_tools.get_folder(self.timestamps[-1])
