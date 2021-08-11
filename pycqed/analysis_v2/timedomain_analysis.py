@@ -6361,10 +6361,10 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                                         qbn]['msmt_sweep_points'])
             # check if the sweep points are repeated 3 times as they have to be
             # for the qscale analysis:
-            # Takes the first 3 entries and check if they are all the same or different.
-            # Needed For backwards compatibility with QudevTransmon.measure_qscale()
-            # that does not (yet) use Sweeppoints object.
-
+            # Takes the first 3 entries and check if they are all the same or
+            # different. Needed For backwards compatibility with
+            # QudevTransmon.measure_qscale()  that does not (yet) use
+            # Sweeppoints object.
             unique_sp = np.unique(sweep_points[:3])
             if unique_sp.size > 1:
                 sweep_points = np.repeat(sweep_points, 3)
@@ -6375,8 +6375,6 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                 'sweep_points'] = np.concatenate([
                 sweep_points, self.proc_data_dict['sweep_points_dict'][qbn][
                     'cal_points_sweep_points']])
-
-            self.get_num_cal_points()
 
             data = self.proc_data_dict['data_to_fit'][qbn]
             if self.num_cal_points != 0:
