@@ -277,6 +277,12 @@ class UHFQCPulsar:
                                                          defined_waves)
 
             acq = metadata.get('acq', False)
+            # Remark on allow_filter in the call to _zi_playback_string:
+            # the element may be skipped via segment filtering only if
+            # play_element was called with allow_filter=True *and* the
+            # element metadata allows segment filtering. (Use case for
+            # calling play_element with allow_filter=False: repeat patterns,
+            # see below.)
             playback_strings += self._zi_playback_string(
                 name=obj.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
@@ -346,13 +352,33 @@ class UHFQCPulsar:
 
             def repeat_func(n, el_played, index, playback_strings,
                             wave_definitions):
-                if isinstance(n, tuple):
+                """
+                Helper function to resolve a repeat pattern. It can call
+                itself recursively to resolve nested pattern.
+
+                :param n: a repeat pattern or an integer that specifies the
+                    number of elements inside a loop, see pattern in the
+                    docstring of Sequence.repeat
+                :param el_played: helper variable for recursive function
+                    calls to keep track of the number of elements that will
+                    be played according with the resolved pattern.
+                :param index: helper variable for recursive function
+                    calls to keep track of the index of the next element
+                    to be added.
+                :param playback_strings: list of str to which the newly
+                    generated SeqC code lines will be appended
+                :param wave_definitions: list of wave definitions to which
+                    the new wave definitions will be appended
+                """
+                if isinstance(n, tuple):  # repeat pattern definition
                     el_played_list = []
                     if isinstance(n[0], str):
+                        # number of repetitions specified by a SeqC variable
                         playback_strings.append(
                             f'for (var i_rep = 0; i_rep < {n[0]}; '
                             f'i_rep += 1) {{')
                     elif n[0] > 1:
+                        # interpret as integer number of repetitions
                         playback_strings.append('repeat ('+str(n[0])+') {')
                     for t in n[1:]:
                         el_cnt, playback_strings, wave_definitions = repeat_func(t,
@@ -363,16 +389,21 @@ class UHFQCPulsar:
                                                                wave_definitions)
                         el_played_list.append(el_cnt)
                     if isinstance(n[0], str) or n[0] > 1:
+                        # A loop was started above. End it here.
                         playback_strings.append('}')
                     if isinstance(n[0], str):
+                        # For variable numbers of repetitions, counting the
+                        # number of played elements does not work and we
+                        # just return that it is a variable number.
                         return 'variable', playback_strings, wave_definitions
                     return int(n[0] * np.sum(el_played_list)), playback_strings, wave_definitions
-                else:
+                else:  # n is the number of elements inside a loop
                     for k in range(n):
+                        # Get the element that is meant to be played repeatedly
                         el_index = real_indicies[int(index)+k]
                         element = list(awg_sequence.keys())[el_index]
                         # Pass allow_filter=False since segment filtering is
-                        # already covered by the repeat pattern.
+                        # already covered by the repeat pattern if needed.
                         playback_strings, wave_definitions = play_element(
                             element, playback_strings, wave_definitions,
                             allow_filter=False)
