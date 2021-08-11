@@ -921,9 +921,12 @@ class QuDev_transmon(Qubit):
         self.update_detector_functions()
         self.set_readout_weights()
         if switch == 'default':
-            self.set_switch(
-                'spec' if drive is not None and drive.endswith('_spec')
-                else 'modulated')
+            if drive is None and 'no_drive' in self.switch_modes():
+                self.set_switch('no_drive')
+            else:
+                self.set_switch(
+                    'spec' if drive is not None and drive.endswith('_spec')
+                    else 'modulated')
         else:
             self.set_switch(switch)
 
@@ -1016,7 +1019,7 @@ class QuDev_transmon(Qubit):
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
 
-    def set_switch(self, switch_mode):
+    def set_switch(self, switch_mode='modulated'):
         if self.instr_switch() is None:
             return
         switch = self.instr_switch.get_instr()
@@ -4397,7 +4400,8 @@ class QuDev_transmon(Qubit):
             ch = self.get(f'ge_{quad}_channel')
             if f'{ch}_mod_freq' in pulsar.parameters:
                 pulsar.parameters[f'{ch}_mod_freq'](None)
-            pulsar.parameters[f'{ch}_amplitude_scaling'](1)
+            if f'{ch}_amplitude_scaling' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
         # set offsets and turn on AWG outputs
         self.configure_offsets()
         # set flux distortion
