@@ -105,6 +105,14 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            initial_value=False)
         self.add_parameter('max_attempts',
+                           docstring='Maximum number of attempts. Values '
+                                     'larger than 1 will mean that MC '
+                                     'automatically retries in case of '
+                                     'crashes during measurements. A list of '
+                                     'callback functions can be assigned to '
+                                     'the retry_cleanup_functions property '
+                                     'of MC, which will than be called '
+                                     'between attempts.',
                            vals=vals.Ints(),
                            parameter_class=ManualParameter,
                            initial_value=1)
@@ -142,9 +150,11 @@ class MeasurementControl(Instrument):
         self.exp_metadata = {}
         self._plotmon_axes_info = None
         self._persist_plotmon_axes_info = None
-        self._last_percdone_value = 0
-        self._last_percdone_change_time = 0
-        self._last_percdone_log_time = 0
+
+        # the following properties are used by get_percdone
+        self._last_percdone_value = 0  # last progress
+        self._last_percdone_change_time = 0  # last time progress changed
+        self._last_percdone_log_time = 0  # last time progress was logged
 
     ##############################################
     # Functions used to control the measurements #
@@ -195,10 +205,14 @@ class MeasurementControl(Instrument):
                     This is an argument instead of a parameter because this
                     should always be explicitly diabled in order to prevent
                     accidentally leaving it off.
-
+            previous_attempts (int): indicates how many times the measurement
+                    has already been tried. This is usually not passed by
+                    the calling function, but only used by run() when it
+                    calls itself recursively.
         '''
 
         self.timer = Timer("MeasurementControl")
+        # reset properties that are used by get_percdone
         self._last_percdone_value = 0
         self._last_percdone_change_time = 0
         # Setting to zero at the start of every run, used in soft avg
@@ -218,6 +232,9 @@ class MeasurementControl(Instrument):
 
         # update sweep_points based on self.acq_data_len_scaling
         if previous_attempts == 0:
+            # The following call modifies the sweep points and should thus
+            # only be called in the first attempt (to avoid modifying them
+            # multiple times).
             self.update_sweep_points()
 
         # needs to be defined here because of the with statement below
@@ -276,6 +293,10 @@ class MeasurementControl(Instrument):
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
+                # We store the exception instead of raising it directly.
+                # After creating the results dict and storing end time +
+                # metadata, the exception will be either logged (if an
+                # automatic retry is triggered) or raised.
                 exception = e
                 formatted_exc = traceback.format_exc()
             result = self.dset[()]
@@ -290,25 +311,30 @@ class MeasurementControl(Instrument):
             #  saved.
             self.save_timers(self.data_object)
             return_dict = self.create_experiment_result_dict()
-            if exception is not None:
+            if exception is not None:  # exception occurred in above try-block
                 if previous_attempts + 1 < self.max_attempts():
+                    # Maximum number of attempts not reached. Log to logger
+                    # and to slack, and retry.
                     msg = f'MC: Error during measurement (attempt ' \
                           f'{previous_attempts + 1} of {self.max_attempts()}' \
                           f'). Retrying.'
                     self.log_to_slack(msg)
                     log.error(msg)
                     log.error(formatted_exc)
+                    # Call the retry_cleanup_functions if there are any.
                     [fnc() for fnc in getattr(
                         self, 'retry_cleanup_functions', [])]
                     # sweep points should be extracted again from the sweep
                     # function to avoid tiling them multiple times (in every
                     # attempt)
                     del self.sweep_points
+                    # Call run recursively to start the next attempt
                     return_dict = self.run(
                         name=name, exp_metadata=exp_metadata, mode=mode,
                         disable_snapshot_metadata=disable_snapshot_metadata,
                         previous_attempts=previous_attempts + 1, **kw)
                 else:
+                    # maximum number of attempts reached
                     raise exception
 
         self.finish(result)
@@ -427,6 +453,8 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure_hard(self):
+        # Tell the detector_function to call print_progress for intermediate
+        # progress reports during get_detector_function.values.
         self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
         self.detector_function.progress_callback = None
@@ -1717,11 +1745,28 @@ class MeasurementControl(Instrument):
                 traceback.print_exc()
 
     def get_percdone(self, current_acq=0):
+        """
+        Determine the current progress (in percent) based on how much data
+        MC has already received and possibly based on the progress of the
+        current acquisition.
+
+        In addition, get_percdone monitors whether progress has been made
+        since the last call to get_percdone, and it can log a warning to
+        slack and/or raise an exception if no progress is made for a
+        specified number of seconds (self.no_progress_interval and
+        self.no_progress_kill_interval, respectively).
+
+        :param current_acq: number of acquired samples in the current
+            acquisition. (Example: if 40 samples with averaging over 2**10
+            will be acquired in the current acquisition, and the current
+            averaging progress is 300, then current_acq should be set to
+            40*300/2**10.)
+        """
         percdone = (self.total_nr_acquired_values + current_acq) / (
             np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
         try:
             now = time.time()
-            if percdone != self._last_percdone_value:
+            if percdone != self._last_percdone_value:  # progress was made
                 self._last_percdone_value = percdone
                 self._last_percdone_change_time = now
                 log.debug(f'MC: percdone = {self._last_percdone_value} at '
@@ -1730,7 +1775,7 @@ class MeasurementControl(Instrument):
                 # first progress check: initialize _last_percdone_change_time
                 self._last_percdone_change_time = now
                 self._last_percdone_log_time = self._last_percdone_change_time
-            else:
+            else:  # no progress was made
                 no_prog_inter = getattr(self, 'no_progress_interval', 600)
                 no_prog_inter2 = getattr(self, 'no_progress_kill_interval',
                                          np.inf)
@@ -1753,6 +1798,11 @@ class MeasurementControl(Instrument):
         return percdone
 
     def print_progress(self, current_acq=0):
+        """
+        Prints the progress of the current measurement.
+
+        :param current_acq: see docstring of get_percdone
+        """
         if self.verbose():
             acquired_points = self.dset.shape[0]
             total_nr_pts = len(self.get_sweep_points())
