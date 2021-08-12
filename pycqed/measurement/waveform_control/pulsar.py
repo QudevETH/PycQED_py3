@@ -1425,7 +1425,7 @@ class AWG5014Pulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        # not implemented for AWG5014Pulsar
+        awg.set(f"{self.get(ch + '_id')}_state", on)
         return
 
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):

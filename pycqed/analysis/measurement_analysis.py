@@ -680,7 +680,7 @@ class MeasurementAnalysis(object):
             self.exp_metadata = {}
 
     def plot_results_vs_sweepparam(self, x, y, fig, ax, show=False, marker='-o',
-                                       log=False, ticks_around=True, label=None,
+                                       log=False, ticks_around=False, label=None,
                                        **kw):
 
         save = kw.get('save', False)

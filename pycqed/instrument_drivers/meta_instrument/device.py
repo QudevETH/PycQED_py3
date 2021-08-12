@@ -531,23 +531,25 @@ class Device(Instrument):
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
         pulsar = self.instr_pulsar.get_instr()
-        calib = self.flux_crosstalk_calibs()
+        calib = deepcopy(self.flux_crosstalk_calibs())
         if calib is None:
             calib = [np.identity(len(self.get_qubits()))]
         if rounds == -1:
             rounds = len(calib)
-        mtx_all = functools.reduce(np.dot, calib[:rounds])
 
         xtalk_qbs = self.get_qubits('all' if qubits == 'auto' else qubits)
         if qubits == 'auto':
             mask = [True] * len(xtalk_qbs)
-            for mtx in calib:
+            for mtx in calib[:rounds]:
                 mask = np.logical_and(mask, np.diag(mtx) != 1)
             xtalk_qbs = [qb for i, qb in enumerate(xtalk_qbs) if mask[i]]
         if len(xtalk_qbs) == 0:
             pulsar.flux_crosstalk_cancellation(False)
             return
 
+        for i in range(rounds):
+            calib[i] = np.diag(1 / np.diag(calib[i])) @ calib[i]
+        mtx_all = functools.reduce(np.dot, calib[:rounds])
         qb_inds = {qb: ind for qb, ind in
                    zip(xtalk_qbs, self.get_qubits(xtalk_qbs, 'ind'))}
         mtx = np.zeros([len(xtalk_qbs)] * 2)
@@ -557,10 +559,16 @@ class Device(Instrument):
 
         pulsar.flux_channels([qb.flux_pulse_channel() for qb in xtalk_qbs])
         pulsar.flux_crosstalk_cancellation_mtx(
-            np.linalg.inv(np.diag(1 / np.diag(mtx)) @ mtx))
+            np.linalg.inv(mtx))
+            # np.linalg.inv(np.diag(1 / np.diag(mtx)) @ mtx))
         pulsar.flux_crosstalk_cancellation(True)
 
-    def load_crosstalk_measurements(self, timestamps, round_ind=0):
+    def load_crosstalk_measurements(self, timestamps, round_ind=0,
+                                    extract_only=True, options_dict=None):
+        if options_dict is None:
+            options_dict = {}
+        if 'TwoD' not in options_dict:
+            options_dict['TwoD'] = True
         all_qubits = self.get_qubits()
         calibs = self.flux_crosstalk_calibs()
         if calibs is None:
@@ -576,8 +584,8 @@ class Device(Instrument):
                                      crosstalk_qubit_names.split('qb')[1:]]
             MA = tda.FluxlineCrosstalkAnalysis(t_start=ts,
                                                qb_names=crosstalk_qubit_names,
-                                               extract_only=True,
-                                               options_dict={'TwoD': True})
+                                               extract_only=extract_only,
+                                               options_dict=options_dict)
             for qbn in crosstalk_qubit_names:
                 i = self.get_qubits(qbn, 'ind')[0]
                 j = self.get_qubits(target_qubit_name, 'ind')[0]
