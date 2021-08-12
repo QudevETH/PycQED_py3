@@ -222,6 +222,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             Stored in self.measurement_strings which specify the plot title.
             The selected parameter must also be part of the split_params for
             that qubit.
+
+    If an instance of SweepPoints (or its repr) is provided, then the
+    corresponding meas_obj_sweep_points_map must also be specified in
+    options_dict.
+
+    To analyse data obtained with classifier detector, pass rotate = False
+    in options_dict.
     """
     def __init__(self,
                  qb_names: list=None, label: str='',
@@ -255,6 +262,30 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.run_analysis()
 
     def extract_data(self):
+        """
+        Extracts data and other relevant metadata.
+
+        Creates the following attributes:
+            - self.measurement_strings
+            - self.data_filter
+            - self.prep_params
+            - self.channel_map
+            - self.rotate
+            - self.predict_proba
+            - self.rotation_type
+            - self.data_to_fit
+            - self.data_with_reset
+
+        Calls the following methods (see docstrings there):
+            - self.get_sweep_points()
+            - self.get_cal_points()
+            - self.get_params_from_file()
+            - self.create_meas_results_per_qb()
+            - self.create_sweep_points_dict()
+            - self.get_num_cal_points()
+            - self.update_sweep_points_dict()
+            - (if TwoD) self.create_sweep_points_2D_dict()
+        """
         super().extract_data()
 
         if self.qb_names is None:
@@ -306,6 +337,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if self.get_param_value('global_PCA') is not None:
             log.warning('Parameter "global_PCA" is deprecated. Please set '
                         'rotation_type="global_PCA" instead.')
+        # Get the rotation_type. See class docstring
         self.rotation_type = self.get_param_value(
             'rotation_type',
             default_value='cal_states' if self.rotate else 'no_rotation')
@@ -358,7 +390,28 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # add extra parameters from file that children might need
         self.get_params_from_file()
 
+        # These calls need to stay here because otherwise QScaleAnalysis will
+        # fail: in process_data, this child needs the correctly created
+        # sweep_points_dict.
+        self.create_meas_results_per_qb()
+        self.create_sweep_points_dict()
+        self.get_num_cal_points()
+        self.update_sweep_points_dict()
+        if self.options_dict.get('TwoD', False):
+            self.create_sweep_points_2D_dict()
+
     def get_params_from_file(self, params_dict=None, numeric_params=None):
+        """
+        Calls get_data_from_timestamp_list in the parent class with params_dict
+        and numeric_params.
+        :param params_dict: dict of the form {param_name: path to param inside
+            the hdf file (separated by .)}
+        :param numeric_params: list with the keys in params_dict that correspond
+            to parameters that are numeric (int, float)
+
+        Updates raw_data_dict with extracted paramteres under the keys of
+        params_dict.
+        """
         if numeric_params is None:
             numeric_params = {}
         if params_dict is not None:
@@ -366,19 +419,72 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.get_data_from_timestamp_list(params_dict, numeric_params))
 
     def get_sweep_points(self):
+        """
+        Create the SweepPoints class instance if sweep points or their repr
+        were passed to the analysis.
+
+        Creates self.sp
+        """
         self.sp = self.get_param_value('sweep_points')
         if self.sp is not None:
             self.sp = SweepPoints(self.sp)
 
     def get_cal_points(self):
+        """
+        Extracts information about calibration points.
+
+        First checks if an instance of Calibration points (or its repr) was
+        passed and extract information from there.
+        If this fails (no such instance was passed), it falls back to the legacy
+        way of passing calibration points information: by directly specifying
+        cal_states_rotations and cal_states_dict.
+
+        ! Updates self.rotation_type if no calibration points information w
+        was found !
+
+        Creates the following attributes:
+            - self.cp: CalibrationPoints instance
+            - self.cal_states_dict: dict of the form
+                {qbn: {
+                    'cal_state': [data array indices for this state]
+                    }
+                }
+                Ex: {'qb13': {'e': [-1, -2], 'g': [-3, -4]},
+                      'qb5': {'e': [-1, -2], 'g': [-3, -4]}}
+
+                If this dict is None or empty, rotation_type
+                is updated to principle component analysis.
+
+                Note: this dict has an entry for each qubit in order to adhere
+                to the general structure of this class, but the inner dicts must
+                be identical for each qubit, since each calibration point is a
+                separate segment and the measurement cannot be configured to
+                have different number of segments for different qubit in the
+                same measurement.
+            - self.cal_states_rotations: dict of the form
+                {qbn: {
+                    'cal_state': int specifying the transmon state
+                        level (0, 1, ...)
+                    }
+                }
+                Ex.: {'qb12': {'g': 0, 'e': 1, 'f': 2},
+                      'qb13': {'g': 0, 'e': 1}}
+                This attribute tells the analysis what kind of rotation to do
+                for each qubit. In the above example, qb12 data will undergo
+                a 3-state rotation, while qb13 data will be projected along
+                the line between g and e (for this qubit, the f-state cal point
+                is ignored).
+        """
+        # Looks for instance of CalibrationPoints (or its repr)
         cal_points = self.get_param_value('cal_points')
         last_ge_pulses = self.get_param_value('last_ge_pulses',
                                               default_value=False)
 
         cal_states_rotations = {qbn: {} for qbn in self.qb_names}
         try:
+            # try to take cal points information from CalibrationPoints instance
+            # or its repr
             self.cp = CalibrationPoints.from_string(cal_points)
-            # for now assuming the same for all qubits.
             self.cal_states_dict = self.cp.get_indices(self.qb_names)
             cal_states_rots = self.cp.get_rotations(
                 last_ge_pulses, self.qb_names) if \
@@ -386,6 +492,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rots)
         except TypeError as e:
+            # look for cal_states_dict and cal_states_rotations in metadata
+            # or options_dict
             log.error(e)
             log.warning("Failed retrieving cal point objects or states. "
                         "Please update measurement to provide cal point object "
@@ -394,14 +502,50 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'cal_states_rotations', default_value=cal_states_rotations) \
                 if self.rotate else cal_states_rotations
             self.cal_states_dict = self.get_param_value('cal_states_dict')
+
         if self.cal_states_rotations is None:
             self.cal_states_rotations = cal_states_rotations
+
         if self.cal_states_dict is None or not len(self.cal_states_dict):
+            # no cal points information: do principle component analysis
             self.cal_states_dict = {qbn: {} for qbn in self.qb_names}
             self.rotation_type = 'global_PCA' if \
                 self.get_param_value('TwoD', default_value=False) else 'PCA'
 
     def create_sweep_points_dict(self):
+        """
+        Creates self.proc_data_dict['sweep_points_dict'][qbn]['sweep_points']
+        containing the hard sweep points (1st sweep dimension).
+        It can be created from the following given parameters (the priority in
+        which these parameters are considered is the following):
+            - 1D sweep points taken from a SweepPoints instance or its repr
+            based on the meas_obj_sweep_points_map or main_sp (used with split
+            data, see self.split_data).
+            ! If SweepPoints are given then the meas_obj_sweep_points_map must
+            also be specified !
+            - sweep_points_dict of the form {qbn: swpts_1d_array}
+            - swpts_1d_array from hard_sweep_params of the form
+            {sweep_param_name: {'values': swpts_1d_array, 'unit': unit_str}}
+            - self.raw_data_dict['hard_sweep_points'] created by the base class
+                Only for this case, the self.data_filter is applied to the
+                sweep_points. TODO: understand why! (Steph, 12.08.2021)
+
+        Creates the following attributes if SweepPoints are given:
+            - self.mospm (the meas_ibj_sweep_points_map)
+
+        Possible keyword arguments taken from metadata or options_dict:
+            - sp_filter: function to filter or process the sweep points
+            - sweep_points_dict: dict of the form {qbn: swpts_1d_array}
+            - hard_sweep_params: dict of the form
+                {sweep_param_name: {'values': swpts_1d_array, 'unit': unit_str}}
+            - meas_obj_sweep_points_map: dict of the form {qbn: sp_param_names}
+                where sp_param_names is a list of the sweep parameters in
+                SweepPoints corresponding to qbn
+            - main_sp: dict of the form {qbn: sp_param_name} where sp_param_name
+                if a sweep param name inside SweepPoints indicating which sweep
+                points values to be taken.
+        """
+        sp1d_filter = self.get_param_value('sp1d_filter', lambda x: x)
         sweep_points_dict = self.get_param_value('sweep_points_dict')
         hard_sweep_params = self.get_param_value('hard_sweep_params')
         if self.sp is not None:
@@ -419,36 +563,55 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         log.warning(f"main_sp is only implemented for sweep "
                                     f"dimension 0, but {p} is in dimension 1.")
                     self.proc_data_dict['sweep_points_dict'][qbn] = \
-                        {'sweep_points': self.sp.get_sweep_params_property(
-                            'values', dim, p)}
+                        {'sweep_points': sp1d_filter(
+                            self.sp.get_sweep_params_property('values', dim, p))}
             else:
                 self.proc_data_dict['sweep_points_dict'] = \
-                    {qbn: {'sweep_points': self.sp.get_sweep_params_property(
-                        'values', 0, self.mospm[qbn])[0]}
+                    {qbn: {'sweep_points': sp1d_filter(
+                        self.sp.get_sweep_params_property(
+                        'values', 0, self.mospm[qbn])[0])}
                      for qbn in self.qb_names}
         elif sweep_points_dict is not None:
             # assumed to be of the form {qbn1: swpts_array1, qbn2: swpts_array2}
             self.proc_data_dict['sweep_points_dict'] = \
-                {qbn: {'sweep_points': sweep_points_dict[qbn]}
+                {qbn: {'sweep_points': sp1d_filter(sweep_points_dict[qbn])}
                  for qbn in self.qb_names}
         elif hard_sweep_params is not None:
             self.proc_data_dict['sweep_points_dict'] = \
-                {qbn: {'sweep_points': list(hard_sweep_params.values())[0][
-                    'values']} for qbn in self.qb_names}
+                {qbn: {'sweep_points': sp1d_filter(
+                    list(hard_sweep_params.values())[0][
+                    'values'])} for qbn in self.qb_names}
         else:
             self.proc_data_dict['sweep_points_dict'] = \
-                {qbn: {'sweep_points': self.data_filter(
-                    self.raw_data_dict['hard_sweep_points'])}
+                {qbn: {'sweep_points': sp1d_filter((self.data_filter(
+                    self.raw_data_dict['hard_sweep_points'])))}
                     for qbn in self.qb_names}
 
-        if hasattr(self, 'cp'):
-            sweep_points_w_calpts = \
-                {qbn: {'sweep_points': self.cp.extend_sweep_points(
-                    self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'], qbn)} for qbn in self.qb_names}
-            self.proc_data_dict['sweep_points_dict'] = sweep_points_w_calpts
-
     def create_sweep_points_2D_dict(self):
+        """
+        Creates self.proc_data_dict['sweep_points_2D_dict'][qbn][2d_sp_par_name]
+        containing the soft sweep points (2st sweep dimension).
+        It can be created from the following given parameters (the priority in
+        which these parameters are considered is the following):
+            - 2D sweep points taken from a SweepPoints instance or its repr
+            based on the meas_obj_sweep_points_map.
+            ! If SweepPoints are given then the meas_obj_sweep_points_map must
+            also be specified !
+            - sweep_points_dict of the form {qbn: swpts_1d_array}
+            - swpts_1d_array from hard_sweep_params of the form
+            {sweep_param_name: {'values': swpts_1d_array, 'unit': unit_str}}
+            - self.raw_data_dict['hard_sweep_points'] created by the base class
+
+        Creates the following attributes if SweepPoints are given:
+            - self.mospm (the meas_ibj_sweep_points_map)
+
+        Possible keyword arguments taken from metadata or options_dict:
+            - soft_sweep_params: dict of the form
+                {sweep_param_name: {'values': swpts_2d_array, 'unit': unit_str}}
+            - percentage_done: int between 0 and 100 indicating for what
+                percentage of an interrupted measurement data was acquired and
+                stored.
+        """
         soft_sweep_params = self.get_param_value('soft_sweep_params')
         if self.sp is not None:
             self.proc_data_dict['sweep_points_2D_dict'] = OrderedDict()
@@ -475,6 +638,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.proc_data_dict['sweep_points_2D_dict'] = \
                     {qbn: {sspn[i]: self.raw_data_dict['soft_sweep_points'][i]
                            for i in range(len(sspn))} for qbn in self.qb_names}
+
         if self.get_param_value('percentage_done', 100) < 100:
             # This indicated an interrupted measurement.
             # Remove non-measured sweep points in that case.
@@ -488,6 +652,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     sps[k] = v[:ssl]
 
     def create_meas_results_per_qb(self):
+        """
+        Creates
+         - self.proc_data_dict['meas_results_per_qb_raw']: dict of the form
+            {qbn: {ro_channel: data}
+         - self.proc_data_dict['meas_results_per_qb']: same as
+            meas_results_per_qb_raw but with self.data_filter applied
+        These are created from self.raw_data_dict['measured_data" created by
+        the base class using the self.channel_map.
+        """
+
         measured_RO_channels = list(self.raw_data_dict['measured_data'])
         meas_results_per_qb_raw = {}
         meas_results_per_qb = {}
@@ -526,12 +700,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             meas_results_per_qb
 
     def process_data(self):
+        """
+        Handles the following data processing, if applicable:
+            - single shot processing
+            - data rotation and projection
+            - creation of self.proc_data_dict['data_to_fit'] based on
+                self.data_to_fit. This contains the data to be fitted by the
+                children.
+            - correction of probabilities by calibration matrix
+            - data splitting
+        """
         super().process_data()
 
-        self.create_sweep_points_dict()
-        self.create_meas_results_per_qb()
-        self.get_num_cal_points()
-
+        # handle single shot data
         if self.get_param_value("data_type", "averaged") == "singleshot":
             self.process_single_shots(
                 predict_proba=self.predict_proba,
@@ -540,7 +721,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         # create projected_data_dict
         if self.rotate or self.rotation_type == 'global_PCA':
-            self.cal_states_analysis()
+            self.rotate_and_project_data()
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
@@ -583,7 +764,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             qbn].update({state_prob: data for key, data in
                              zip(["pg", "pe", "pf"], probas_corrected)})
 
-        # get data_to_fit
+        # add data_to_fit to proc_data_dict based on self.data_to_fit
         suffix = "_corrected" if self.get_param_value("correction_matrix")\
                                  is not None else ""
         self.proc_data_dict['data_to_fit'] = OrderedDict()
@@ -592,26 +773,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             if len(prob_data) and qbn in self.data_to_fit:
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
-
-        # create msmt_sweep_points, sweep_points, cal_points_sweep_points
-        for qbn in self.qb_names:
-            if self.num_cal_points > 0:
-                self.proc_data_dict['sweep_points_dict'][qbn][
-                    'msmt_sweep_points'] = \
-                    self.proc_data_dict['sweep_points_dict'][qbn][
-                    'sweep_points'][:-self.num_cal_points]
-                self.proc_data_dict['sweep_points_dict'][qbn][
-                    'cal_points_sweep_points'] = \
-                    self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][-self.num_cal_points::]
-            else:
-                self.proc_data_dict['sweep_points_dict'][qbn][
-                    'msmt_sweep_points'] = self.proc_data_dict[
-                    'sweep_points_dict'][qbn]['sweep_points']
-                self.proc_data_dict['sweep_points_dict'][qbn][
-                    'cal_points_sweep_points'] = []
-        if self.options_dict.get('TwoD', False):
-            self.create_sweep_points_2D_dict()
 
         # handle data splitting if needed
         self.split_data()
@@ -714,51 +875,145 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.measurement_strings[qbn] += f' ({p}: {v})'
 
     def get_num_cal_points(self):
+        """
+        Figures out how many cal points were used in the experiment.
+
+        First tries to get this information from the cal_states_dict (i.e. from
+        provided cal points info, see get_cal_points method).
+
+        Then checks whether the number of sweep points matches the size of the
+        data. If not, then no cal points information was provided but cal
+        points were used in the experiment.
+            In this case, the no_cp_but_cp_in_data is set to True (will be
+            checked in update_sweep_points_dict).
+
+        Creates the attributes
+            - self.num_cal_points
+            - self.no_cp_but_cp_in_data
+        """
+
+        # Count num_cal_points from self.cal_states_dict
         self.num_cal_points = np.array(list(
             self.cal_states_dict[
                 list(self.cal_states_dict)[0]].values())).flatten().size
 
+        self.no_cp_but_cp_in_data = False
         spd = self.proc_data_dict['sweep_points_dict']
         num_sp = len(spd[list(spd)[0]]['sweep_points'])
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
         if self.num_cal_points == 0 and num_data_points != num_sp:
+            # No cal_points information was provided but cal points were part
+            # of the measurement.
             self.num_cal_points = num_data_points - num_sp
-            sweep_points_w_calpts = \
-                {qbn: {'sweep_points':
-                    CalibrationPoints.extend_sweep_points_by_n_cal_pts(
+            # Will be checked in update_sweep_points_dict
+            self.no_cp_but_cp_in_data = True
+
+    def update_sweep_points_dict(self):
+        """
+        Updates self.proc_data_dict['sweep_points_dict']:
+            - 'sweep_points' are updated to include calibration points if
+            these were part of the measurement (sweep points are extended
+            with CalibrationPoints.extend_sweep_points_by_n_cal_pts)
+            - 'msm_sweep_points' is added: sweep points corresponding to the
+            data (i.e. without cal points); same as 'sweep_points' if no
+            cal points were part of the measurement
+            - 'cal_points_sweep_points' is added: sweep points corresponding
+            to cal points; [] if no cal points were part of the measurement
+        """
+        cp_obj = None
+        if hasattr(self, 'cp'):
+            cp_obj = self.cp
+        elif self.no_cp_but_cp_in_data:
+            # self.no_cp_but_cp_in_data created in get_num_cal_points
+            cp_obj = CalibrationPoints
+
+        sweep_points_dict = {}
+        for qbn in self.qb_names:
+            sweep_points_dict[qbn] = {}
+            if cp_obj is not None:
+                sweep_points_dict[qbn]['sweep_points'] = \
+                    cp_obj.extend_sweep_points_by_n_cal_pts(
                         self.num_cal_points,
                         self.proc_data_dict['sweep_points_dict'][qbn][
-                            'sweep_points'])} for qbn in self.qb_names}
-            self.proc_data_dict['sweep_points_dict'] = sweep_points_w_calpts
+                            'sweep_points'])
+                sweep_points_dict[qbn]['msmt_sweep_points'] = \
+                    sweep_points_dict[qbn]['sweep_points'][:-self.num_cal_points]
+                sweep_points_dict[qbn]['cal_points_sweep_points'] = \
+                    sweep_points_dict[qbn]['sweep_points'][-self.num_cal_points::]
+            else:
+                sweep_points_dict[qbn]['sweep_points'] = \
+                    self.proc_data_dict['sweep_points_dict'][qbn]['sweep_points']
+                sweep_points_dict[qbn]['msmt_sweep_points'] = \
+                    sweep_points_dict[qbn]['sweep_points']
+                sweep_points_dict[qbn]['cal_points_sweep_points'] = []
 
-    def get_cal_data_points(self):
+        self.proc_data_dict['sweep_points_dict'] = sweep_points_dict
+
+    def get_cal_states_dict_for_rotation(self):
+        """
+        Prepares for data rotation and projection by resolving what type of
+        rotation/projection should be done on each qubit based on the
+        information in self.cal_states_rotations, self.cal_states_dict, and
+        self.rotation_type.
+
+        Creates the attribute:
+            - self.cal_states_dict_for_rotation: same as self.cal_states_dict
+                but ordered based on transmon state levels.
+                Will be used by self.rotate_and_project_data.
+                Ex: self.cal_states_dict =
+                        {'qb2': {'e': [-2], 'f': [-1], 'g': [-3]}}
+                    self.cal_states_dict_for_rotation =
+                        {'qb2': {'g': [-3], 'e': [-2], 'f': [-1]}}
+                If pca is to be done on a qubit, then {qbn: None}.
+        """
         do_PCA = self.rotation_type == 'PCA' or \
                  self.rotation_type == 'column_PCA'
+
         self.cal_states_dict_for_rotation = OrderedDict()
         cal_states_rotations = self.cal_states_rotations
         for qbn in self.qb_names:
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
             cal_states_rot_qb = cal_states_rotations.get(qbn, {})
             for i in range(len(cal_states_rot_qb)):
+                # cal state corresponding to transmon level i
                 cal_state = \
                     [k for k, idx in cal_states_rot_qb.items()
                      if idx == i][0]
                 if do_PCA and len(cal_states_rot_qb) != 3:
                     # Cannot do PCA for 3 cal states.
+                    # A None entry tells that pca should be done
                     self.cal_states_dict_for_rotation[qbn][cal_state] = None
                 else:
                     if not len(self.cal_states_dict[qbn]):
+                        # no cal point information given --> do pca
                         self.cal_states_dict_for_rotation[qbn][cal_state] = None
                         if self.get_param_value('TwoD', default_value=False):
+                            # For TwoD measurement, we default to global_PCA
                             self.rotation_type = 'global_PCA'
                     else:
+                        # take data array index for cal_state
                         self.cal_states_dict_for_rotation[qbn][cal_state] = \
                             self.cal_states_dict[qbn][cal_state]
 
-    def cal_states_analysis(self):
-        self.get_cal_data_points()
+    def rotate_and_project_data(self):
+        """
+        Handles data rotation and projection based on calibration points
+        information and self.rotation_type (see class docstring for what
+        rotations types are recognized by the class).
+
+        Can handle rotation and projection based on 0, 2, 3 (not for pca)
+        calibration states.
+
+        Creates self.proc_data_dict['projected_data_dict'].
+
+        ! Note: self.data_to_fit is updated to reflect what was doe here for
+        each qubit, in particular, whether pca was done or rotation based on
+        calibration states. This cannot be done in self.extract_data with
+        significant code duplication (going through the if/else statements).
+        """
+        self.get_cal_states_dict_for_rotation()
         self.proc_data_dict['projected_data_dict'] = OrderedDict(
             {qbn: '' for qbn in self.qb_names})
 
@@ -820,6 +1075,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map, self.cal_states_dict_for_rotation,
                             storing_keys, data_mostly_g=data_mostly_g))
 
+        # Update this attribute to reflect what was done for each qubit
         self.data_to_fit.update(storing_keys)
 
     @staticmethod
@@ -6352,11 +6608,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
         super().get_params_from_file(params_dict, numeric_params)
 
     def process_data(self):
-        super().process_data()
-
-        self.proc_data_dict['qscale_data'] = OrderedDict()
         for qbn in self.qb_names:
-            self.proc_data_dict['qscale_data'][qbn] = OrderedDict()
             sweep_points = deepcopy(self.proc_data_dict['sweep_points_dict'][
                                         qbn]['msmt_sweep_points'])
             # check if the sweep points are repeated 3 times as they have to be
@@ -6364,18 +6616,32 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
             # Takes the first 3 entries and check if they are all the same or
             # different. Needed For backwards compatibility with
             # QudevTransmon.measure_qscale()  that does not (yet) use
-            # Sweeppoints object.
+            # SweepPoints class.
             unique_sp = np.unique(sweep_points[:3])
             if unique_sp.size > 1:
-                sweep_points = np.repeat(sweep_points, 3)
-            # replace in proc_data_dict; otherwise plotting in base class fails
-            self.proc_data_dict['sweep_points_dict'][qbn][
-                'msmt_sweep_points'] = sweep_points
-            self.proc_data_dict['sweep_points_dict'][qbn][
-                'sweep_points'] = np.concatenate([
-                sweep_points, self.proc_data_dict['sweep_points_dict'][qbn][
-                    'cal_points_sweep_points']])
+                if 'sp1d_filter' in self.options_dict:
+                    log.warning('Passing sp1d_filter might not work '
+                                'for this QScaleAnalysis because the sweep '
+                                'points need to be repeated 3x for it to '
+                                'match the data size.')
+                else:
+                    # repeat each sweep points 3x
+                    self.options_dict['sp1d_filter'] = \
+                        lambda sp: np.repeat(sp, 3)
+                    # update self.num_cal_points and
+                    # self.proc_data_dict['sweep_points_dict']
+                    self.create_sweep_points_dict()
+                    self.get_num_cal_points()
+                    self.update_sweep_points_dict()
 
+        super().process_data()
+        # Separate data and sweep points into those corresponding to the
+        # xx, xy, xmy lines
+        self.proc_data_dict['qscale_data'] = OrderedDict()
+        for qbn in self.qb_names:
+            self.proc_data_dict['qscale_data'][qbn] = OrderedDict()
+            sweep_points = deepcopy(self.proc_data_dict['sweep_points_dict'][
+                                        qbn]['msmt_sweep_points'])
             data = self.proc_data_dict['data_to_fit'][qbn]
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
