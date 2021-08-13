@@ -920,7 +920,7 @@ def process_tomography_analysis(data_dict, Uideal=None,
                 to the process Uideal for meaningful storing names.
                 If Uideal is None, specifying process_name = 'CZ' or 'CNOT'
                 will create the corresponding Uideal. Other gates are not
-                recofnized yet.
+                recognized yet.
             - only if n_qubits is None:
                 - meas_obj_names: list of measurement object names
             - only if prep_pulses_list is None:

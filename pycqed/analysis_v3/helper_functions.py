@@ -1064,6 +1064,8 @@ def read_analysis_file(timestamp=None, filepath=None, data_dict=None,
             try:
                 ana_file.close()
             except AttributeError:
+                # there was an exception before reaching the line above where
+                # ana_file is opened
                 pass
         raise e
     return data_dict
