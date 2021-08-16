@@ -208,7 +208,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             the data.
         - 'PCA': ignores cal points and does pca; in the case of TwoD data it
             does PCA row by row
-        - 'column_PCA': ignored cal points and does pca; in the case of TwoD
+        - 'column_PCA': ignores cal points and does pca; in the case of TwoD
             data it does PCA column by column
         - 'global_PCA' (only for TwoD): does PCA on the whole 2D array
      - main_sp (default: None): dict with keys qb_name used to specify which
@@ -266,25 +266,30 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Extracts data and other relevant metadata.
 
         Creates the following attributes:
-            - self.measurement_strings
-            - self.data_filter
-            - self.prep_params
-            - self.channel_map
-            - self.rotate
-            - self.predict_proba
-            - self.rotation_type
-            - self.data_to_fit
-            - self.data_with_reset
+            - self.measurement_strings: {qbn: measurement_string}
+            - self.data_filter: callable used to filter or modify
+            - self.prep_params: preparation parameters dict
+            - self.channel_map: {qbn: [ro channels]}, ro channels = value names
+                typically
+            - self.rotate: bool; whether to do data rotation and projection.
+                Must be False if raw data is already classified.
+            - self.predict_proba: bool (only used for SSRO data);
+                whether to classify shots
 
         Calls the following methods (see docstrings there):
             - self.get_sweep_points()
             - self.get_cal_points()
+            - self.get_rotation_type()
+            - self.get_data_to_fit()
+            - self.get_data_filter()
             - self.get_params_from_file()
             - self.create_meas_results_per_qb()
             - self.create_sweep_points_dict()
             - self.get_num_cal_points()
             - self.update_sweep_points_dict()
             - (if TwoD) self.create_sweep_points_2D_dict()
+        These methods must be called in the order given above because they
+        depend on attributes created in the calls preceding them.
         """
         super().extract_data()
 
@@ -334,58 +339,20 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if self.get_param_value("classified_ro", False) or self.predict_proba:
             self.rotate = False
 
-        if self.get_param_value('global_PCA') is not None:
-            log.warning('Parameter "global_PCA" is deprecated. Please set '
-                        'rotation_type="global_PCA" instead.')
-        # Get the rotation_type. See class docstring
-        self.rotation_type = self.get_param_value(
-            'rotation_type',
-            default_value='cal_states' if self.rotate else 'no_rotation')
-
         # creates self.sp
         self.get_sweep_points()
 
         # creates self.cp if found else defaults to legacy extraction
         self.get_cal_points()
 
-        # get data_to_fit
-        self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if self.data_to_fit is None or not len(self.data_to_fit):
-            # If we have cal points, but data_to_fit is not specified,
-            # choose a reasonable default value. In cases with only two cal
-            # points, this decides which projected plot is generated. (In
-            # cases with three cal points, we will anyways get all three
-            # projected plots.)
-            self.data_to_fit = {}
-            for qbn in self.qb_names:
-                if not len(self.cal_states_dict[qbn]) or \
-                        'PCA' in self.rotation_type:
-                    self.data_to_fit[qbn] = 'pca'
-                else:
-                    csr = [(k, v) for k, v in
-                           self.cal_states_rotations[qbn].items()]
-                    csr.sort(key=lambda t: t[1])
-                    self.data_to_fit[qbn] = f'p{csr[-1][0]}'
-                
-        # TODO: Steph 15.09.2020
-        # This is a hack to allow list inside data_to_fit. These lists are
-        # currently only supported by MultiCZgate_CalibAnalysis
-        for qbn in self.data_to_fit:
-            if isinstance(self.data_to_fit[qbn], (list, tuple)):
-                self.data_to_fit[qbn] = self.data_to_fit[qbn][0]
+        # creates self.rotation_type
+        self.get_rotation_type()
 
-        # get data_filter
-        self.data_with_reset = False
-        if self.data_filter is None:
-            if 'active' in self.prep_params.get('preparation_type', 'wait'):
-                reset_reps = self.prep_params.get('reset_reps', 1)
-                self.data_filter = lambda x: x[reset_reps::reset_reps+1]
-                self.data_with_reset = True
-            elif "preselection" in self.prep_params.get('preparation_type',
-                                                        'wait'):
-                self.data_filter = lambda x: x[1::2]  # filter preselection RO
-        if self.data_filter is None:
-            self.data_filter = lambda x: x
+        # creates self.data_to_fit
+        self.get_data_to_fit()
+
+        # creates self.data_filter and self.data_with_reset
+        self.get_data_filter()
 
         # add extra parameters from file that children might need
         self.get_params_from_file()
@@ -409,7 +376,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         :param numeric_params: list with the keys in params_dict that correspond
             to parameters that are numeric (int, float)
 
-        Updates raw_data_dict with extracted paramteres under the keys of
+        Updates raw_data_dict with extracted parameters under the keys of
         params_dict.
         """
         if numeric_params is None:
@@ -480,37 +447,169 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         last_ge_pulses = self.get_param_value('last_ge_pulses',
                                               default_value=False)
 
+        # default value for cal_states_rotations
         cal_states_rotations = {qbn: {} for qbn in self.qb_names}
         try:
             # try to take cal points information from CalibrationPoints instance
             # or its repr
             self.cp = CalibrationPoints.from_string(cal_points)
+            # get cal_states_dict from self.cp
             self.cal_states_dict = self.cp.get_indices(self.qb_names)
+            # if self.rotate (do rotation and projection, i.e. the raw data
+            # is not classified), get cal_states_rots from self.cp. If rotation
+            # should not be done, take the default value defined above
             cal_states_rots = self.cp.get_rotations(
                 last_ge_pulses, self.qb_names) if \
                 self.rotate else cal_states_rotations
+            # get cal_states_rotations from options_dict or metadata and
+            # default to cal_states_rots above if not found
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rots)
         except TypeError as e:
-            # look for cal_states_dict and cal_states_rotations in metadata
+            # Handles legacy measurements that do not use CalibrationPoints.
+            # Look for cal_states_dict and cal_states_rotations in metadata
             # or options_dict
             log.error(e)
             log.warning("Failed retrieving cal point objects or states. "
                         "Please update measurement to provide cal point object "
                         "in metadata. Trying to get them using the old way ...")
+            # Get cal_states_rotations from options_dict or metadata and
+            # default to cal_states_rotations above if not found.
+            # Also set to the default cal_states_rotations defined above if
+            # rotation and projection should not be done
+            # (self.rotation == False, i.e. raw data is already classified).
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rotations) \
                 if self.rotate else cal_states_rotations
+            # get cal_states_dict from options_dict or metadata
             self.cal_states_dict = self.get_param_value('cal_states_dict')
 
         if self.cal_states_rotations is None:
+            # this variable may have been set to None by mistake in the metadata
+            # or by the user
+            log.warning('cal_states_rotations cannot be None. Setting it to '
+                        '{qbn: {} for qbn in self.qb_names}.')
             self.cal_states_rotations = cal_states_rotations
 
         if self.cal_states_dict is None or not len(self.cal_states_dict):
             # no cal points information: do principle component analysis
             self.cal_states_dict = {qbn: {} for qbn in self.qb_names}
-            self.rotation_type = 'global_PCA' if \
-                self.get_param_value('TwoD', default_value=False) else 'PCA'
+
+    def get_rotation_type(self):
+        """
+        Extracts the rotation_type parameter from the options_dict or metadata
+        and updates it if necessary (no cal points information provided but
+        rotation type indicates these are needed).
+
+        Creates the following attribute:
+            - self.rotation_type: string or dict with qubit names as keys and
+            strings indicating rotation type as values. See class docstring
+            for the recognized rotation types.
+        """
+        if self.get_param_value('global_PCA') is not None:
+            log.warning('Parameter "global_PCA" is deprecated. Please set '
+                        'rotation_type="global_PCA" instead.')
+        # Get the rotation_type. See class docstring
+        # Without deepcopy, the value in the options_dict/metadata will be
+        # modified as well.
+        self.rotation_type = deepcopy(self.get_param_value(
+            'rotation_type',
+            default_value='cal_states' if self.rotate else 'no_rotation'))
+
+        if isinstance(self.rotation_type, str):
+            self.rotation_type = {qbn: self.rotation_type
+                                  for qbn in self.qb_names}
+
+        for qbn in self.qb_names:
+            if not len(self.cal_states_dict[qbn]):
+                if 'pca' not in self.rotation_type[qbn].lower():
+                    # If no cal states information was provided
+                    # (i.e. self.cal_states_dict = {qbn: {} for qbn in
+                    # self.qb_names}, see self.get_cal_points()), the analysis
+                    # class will do pca (the only options to project the raw
+                    # data), so here we update self.rotation_type to reflect
+                    # this if not already set to some form of PCA.
+                    orig_rot_type = self.rotation_type[qbn]
+                    self.rotation_type[qbn] = 'global_PCA' if \
+                        self.get_param_value('TwoD', default_value=False) \
+                        else 'PCA'
+                    log.warning(f'rotation_type is set to {orig_rot_type} but '
+                                f'no calibration points information was found. '
+                                f'Setting rotation_type for {qbn} to '
+                                f'{self.rotation_type[qbn]}.')
+
+    def get_data_to_fit(self):
+        """
+        Extracts the data_to_fit parameter from the options_dict or metadata
+        and assigns it a reasonable default value based on the cal points
+        information.
+
+        Creates the following attribute:
+            - self.data_to_fit: dict of the form {qbn: proj_data_name} where
+            proj_data_name is a string corresponding to a key in
+            self.proc_data_dict['projected_data_dict'] indicating which
+            projected data the children should fit.
+
+        ! If proj_data_name is a list or tuple of string, this method takes the
+        first entry only !
+        These lists are currently only supported by MultiCZgate_CalibAnalysis
+        and allowing them in this class would break all children.
+        It remains as a to do to upgrade this module in that
+        direction (13.08.2021).
+
+        """
+        # Without deepcopy, the value in the options_dict/metadata will be
+        # modified as well. This will break MultiCZgate_Calib_Analysis which
+        # compares what this class sets for self.data_to_fit and what was given
+        # in options_dict/metadata
+        self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
+        if self.data_to_fit is None or not len(self.data_to_fit):
+            # If we have cal points, but data_to_fit is not specified,
+            # choose a reasonable default value. In cases with only two cal
+            # points, this decides which projected plot is generated. (In
+            # cases with three cal points, we will anyways get all three
+            # projected plots.)
+            self.data_to_fit = {}
+            for qbn in self.qb_names:
+                if not len(self.cal_states_dict[qbn]) or \
+                        'pca' in self.rotation_type[qbn].lower():
+                    self.data_to_fit[qbn] = self.rotation_type[qbn]
+                else:
+                    csr = [(k, v) for k, v in
+                           self.cal_states_rotations[qbn].items()]
+                    csr.sort(key=lambda t: t[1])
+                    self.data_to_fit[qbn] = f'p{csr[-1][0]}'
+
+        # TODO: Steph 15.09.2020
+        # This is a hack to allow list inside data_to_fit.
+        for qbn in self.data_to_fit:
+            if isinstance(self.data_to_fit[qbn], (list, tuple)):
+                self.data_to_fit[qbn] = self.data_to_fit[qbn][0]
+
+    def get_data_filter(self):
+        """
+        Extracts the data_filter parameter from the options_dict or metadata
+        and assigns it a reasonable default value based on the information in
+        self.prep_params.
+
+        Creates the following attribute:
+            - self.data_filter: function that will be used in
+                create_meas_results_per_qb to filter/process the data
+            - self.data_with_reset: bool that is checked in
+                prepare_raw_data_plots
+        """
+        # flag to be used in prepare_raw_data_plots
+        self.data_with_reset = False
+        if self.data_filter is None:
+            if 'active' in self.prep_params.get('preparation_type', 'wait'):
+                reset_reps = self.prep_params.get('reset_reps', 1)
+                self.data_filter = lambda x: x[reset_reps::reset_reps+1]
+                self.data_with_reset = True
+            elif "preselection" in self.prep_params.get('preparation_type',
+                                                        'wait'):
+                self.data_filter = lambda x: x[1::2]  # filter preselection RO
+            else:
+                self.data_filter = lambda x: x
 
     def create_sweep_points_dict(self):
         """
@@ -720,13 +819,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 states_map=self.get_param_value("states_map"))
 
         # create projected_data_dict
-        if self.rotate or self.rotation_type == 'global_PCA':
+        if self.rotate:
             self.rotate_and_project_data()
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
-            if not len(self.data_to_fit):
-                self.data_to_fit = {qbn: 'pe' for qbn in self.qb_names}
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
             for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
@@ -876,7 +973,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def get_num_cal_points(self):
         """
-        Figures out how many cal points were used in the experiment.
+        Figures out how many calibration segments were used in the experiment.
 
         First tries to get this information from the cal_states_dict (i.e. from
         provided cal points info, see get_cal_points method).
@@ -967,13 +1064,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.cal_states_dict_for_rotation =
                         {'qb2': {'g': [-3], 'e': [-2], 'f': [-1]}}
                 If pca is to be done on a qubit, then {qbn: None}.
+                A None entry will tell rotate_and_normalize_data_IQ that pca
+                should be done in the following methods:
+                - rotate_data
+                - rotate_data_TwoD
+                - rotate_data_TwoD_same_fixed_cal_idxs
         """
-        do_PCA = self.rotation_type == 'PCA' or \
-                 self.rotation_type == 'column_PCA'
-
         self.cal_states_dict_for_rotation = OrderedDict()
         cal_states_rotations = self.cal_states_rotations
         for qbn in self.qb_names:
+            do_PCA = 'pca' in self.rotation_type[qbn].lower()
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
             cal_states_rot_qb = cal_states_rotations.get(qbn, {})
             for i in range(len(cal_states_rot_qb)):
@@ -981,21 +1081,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 cal_state = \
                     [k for k, idx in cal_states_rot_qb.items()
                      if idx == i][0]
-                if do_PCA and len(cal_states_rot_qb) != 3:
-                    # Cannot do PCA for 3 cal states.
-                    # A None entry tells that pca should be done
+                if do_PCA or not len(self.cal_states_dict[qbn]):
+                    # rotation_type is some form of pca or no cal points
+                    # information was given --> do pca
                     self.cal_states_dict_for_rotation[qbn][cal_state] = None
                 else:
-                    if not len(self.cal_states_dict[qbn]):
-                        # no cal point information given --> do pca
-                        self.cal_states_dict_for_rotation[qbn][cal_state] = None
-                        if self.get_param_value('TwoD', default_value=False):
-                            # For TwoD measurement, we default to global_PCA
-                            self.rotation_type = 'global_PCA'
-                    else:
-                        # take data array index for cal_state
-                        self.cal_states_dict_for_rotation[qbn][cal_state] = \
-                            self.cal_states_dict[qbn][cal_state]
+                    # take data array index for cal_state
+                    self.cal_states_dict_for_rotation[qbn][cal_state] = \
+                        self.cal_states_dict[qbn][cal_state]
 
     def rotate_and_project_data(self):
         """
@@ -1027,20 +1120,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             data_mostly_g = self.get_param_value('data_mostly_g',
                                                  default_value=True)
             if self.get_param_value('TwoD', default_value=False):
-                if self.rotation_type == 'global_PCA':
-                    storing_keys[qbn] = 'pca'
+                if self.rotation_type[qbn] == 'global_PCA':
+                    storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.global_pca_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, storing_keys,
                             data_mostly_g=data_mostly_g))
-                elif len(cal_states_dict) == 3:
+                elif self.rotation_type[qbn] == 'cal_states' and \
+                        len(cal_states_dict) == 3:
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_3_cal_states_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
-                elif self.rotation_type == 'fixed_cal_points':
+                elif self.rotation_type[qbn] == 'fixed_cal_points':
                     rotated_data_dict, zero_coord, one_coord = \
                         self.rotate_data_TwoD_same_fixed_cal_idxs(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
@@ -1051,24 +1145,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.proc_data_dict['rotation_coordinates'] = \
                         [zero_coord, one_coord]
                 else:
-                    if 'PCA' in self.rotation_type:
-                        storing_keys[qbn] = 'pca'
+                    if 'pca' in self.rotation_type[qbn].lower():
+                        storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
                             storing_keys, data_mostly_g=data_mostly_g,
-                            column_PCA=self.rotation_type == 'column_PCA'))
+                            column_PCA=self.rotation_type[qbn] == 'column_PCA'))
             else:
-                if len(cal_states_dict) == 3 and 'PCA' not in self.rotation_type:
+                if self.rotation_type[qbn] == 'cal_states' and \
+                        len(cal_states_dict) == 3:
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_3_cal_states(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
                 else:
-                    if 'PCA' in self.rotation_type:
-                        storing_keys[qbn] = 'pca'
+                    if 'pca' in self.rotation_type[qbn].lower():
+                        storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
@@ -1472,15 +1567,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             return r'$|{}\rangle$'.format(prob_label)
 
-    def get_yaxis_label(self, data_key=None, qb_name=None):
-        if self.rotate and ('pca' in self.rotation_type.lower() or
+    def get_yaxis_label(self, qb_name, data_key=None):
+        if self.rotate and ('pca' in self.rotation_type[qb_name].lower() or
                             not len(self.cal_states_dict[
                                         list(self.cal_states_dict)[0]])):
             return 'Strongest principal component (arb.)'
         else:
             if data_key is None:
-                if qb_name is not None and \
-                        self.data_to_fit.get(qb_name, None) is not None:
+                if self.data_to_fit.get(qb_name, None) is not None:
                     return '{} state population'.format(
                         self.get_latex_prob_label(self.data_to_fit[qb_name]))
                 else:
@@ -1701,7 +1795,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             preselection_masks = self._get_preselection_masks(
                 presel_shots_per_qb,
                 preselection_qbs=self.get_param_value("preselection_qbs"),
-                predict_proba= not self.get_param_value('classified_ro', False),
+                predict_proba=not self.get_param_value('classified_ro', False),
                 classifier_params=classifier_params,
                 preselection_state_int=g_state_int)
             self.proc_data_dict['percent_data_after_presel'] = {} #initialize
@@ -1797,8 +1891,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             plot_name_suffix = ''
                             plot_cal_points = (
                                 not self.options_dict.get('TwoD', False))
-                        data_axis_label = self.get_yaxis_label(data_key,
-                                                               qb_name)
+                        data_axis_label = self.get_yaxis_label(qb_name,
+                                                               data_key)
                         tf = f'{data_key}_{title_suf}' if \
                             len(title_suf) else data_key
                         self.prepare_projected_data_plot(
@@ -7321,8 +7415,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'projected_data_dict'].items():
             if qbn in self.data_to_fit:
                 if len(self.data_to_fit[qbn]) < len(data_to_fit[qbn]) and \
-                        self.data_to_fit[qbn][0] != 'pca':
-                    # The entry that the parent class assigned if shorter than
+                        'pca' not in self.data_to_fit[qbn][0].lower():
+                    # The entry that the parent class assigned is shorter than
                     # the one specified by the user. We only want to keep the
                     # former if it was 'pca', otherwise overwrite the entry to
                     # allow lists with several values.
@@ -7443,7 +7537,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'xlabel': xlabel,
                 'xunit': xunit,
                 'yvals': data,
-                'ylabel': self.get_yaxis_label(prob_label),
+                'ylabel': self.get_yaxis_label(qbn, prob_label),
                 'yunit': '',
                 'yscale': self.get_param_value("yscale", "linear"),
                 'setlabel': 'Data - ' + self.legend_label_func(qbn, row)
@@ -7525,7 +7619,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                     key = 'fit_{}{}_{}_{}'.format(labels[row % 2], row,
                                                    prob_label, qbn)
                     if qbn in self.leakage_qbnames and (prob_label == 'pf'
-                            or prob_label == 'pca'):
+                            or 'pca' in prob_label.lower()):
                         if self.get_param_value('classified_ro', False):
                             self.leakage_values = np.append(self.leakage_values,
                                                             np.mean(data))
@@ -7692,8 +7786,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                         # add the cphase + leakage textboxes to the
                         # cphase_qbr_pe figure
                         figure_name = f'{self.phase_key}_{qbn}_'
-                        figure_name += 'pca' if \
-                            self.data_to_fit[qbn][0] == 'pca' else 'pe'
+                        figure_name += self.data_to_fit[qbn][0] if \
+                            'pca' in self.data_to_fit[qbn][0].lower() else 'pe'
                         textstr = '{} = \n{:.2f}'.format(
                             self.phase_key,
                             self.proc_data_dict['analysis_params_dict'][
@@ -9338,8 +9432,8 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
             self.sign_of_peaks = {qbn: None for qbn in self.qb_names}
         for qbn in self.qb_names:
             if self.sign_of_peaks.get(qbn, None) is None:
-                if self.rotation_type == 'fixed_cal_points'\
-                        or self.rotation_type.endswith('PCA'):
+                if self.rotation_type[qbn] == 'fixed_cal_points'\
+                        or 'pca' in self.rotation_type[qbn].lower():
                     # e state corresponds to larger values than g state
                     # (either due to cal points or due to set_majority_sign)
                     self.sign_of_peaks[qbn] = 1
