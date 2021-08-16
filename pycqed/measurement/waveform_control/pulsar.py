@@ -1078,6 +1078,7 @@ class HDAWG8Pulsar:
             return super().sigout_on(ch, on)
         awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
 
+
 class AWG5014Pulsar:
     """
     Defines the Tektronix AWG5014 specific functionality for the Pulsar class
@@ -1461,6 +1462,7 @@ class AWG5014Pulsar:
         awg.set(f"{self.get(ch + '_id')}_state", on)
         return
 
+
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
     """
     A meta-instrument responsible for all communication with the AWGs.
@@ -1520,6 +1522,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                                      'False to save time if it is ensured '
                                      'that the channels are switched on '
                                      'somewhere else.')
+
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
         self.awgs = set() # AWG names

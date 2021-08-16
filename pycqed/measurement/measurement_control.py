@@ -372,7 +372,6 @@ class MeasurementControl(Instrument):
                     # filter needs to be passed to measure_hard.
                     filtered_sweep = getattr(self.sweep_functions[1],
                                              'filtered_sweep', None)
-
                     if filtered_sweep is not None:
                         sp = sp[filtered_sweep]
                     self.detector_function.prepare(sweep_points=sp)
