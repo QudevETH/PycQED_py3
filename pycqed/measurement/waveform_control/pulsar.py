@@ -356,12 +356,10 @@ class UHFQCPulsar:
                     elif n[0] > 1:
                         playback_strings.append('repeat ('+str(n[0])+') {')
                     for t in n[1:]:
-                        el_cnt, playback_strings, wave_definitions = repeat_func(t,
-                                                               el_played,
-                                                               index + np.sum(
-                                                                  el_played_list),
-                                                               playback_strings,
-                                                               wave_definitions)
+                        el_cnt, playback_strings, wave_definitions = \
+                            repeat_func(t, el_played,
+                                        index + np.sum(el_played_list),
+                                        playback_strings, wave_definitions)
                         el_played_list.append(el_cnt)
                     if isinstance(n[0], str) or n[0] > 1:
                         playback_strings.append('}')
@@ -1462,10 +1460,6 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            set_parser=self._use_sequence_cache_parser)
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
-        # keep old parameter name for backwards compatibility
-        self.add_parameter('append_zeros', initial_value=0, vals=vals.Ints(),
-                           set_cmd=(lambda v, self=self: self.prepend_zeros(v)),
-                           get_cmd=(lambda self=self: self.prepend_zeros()))
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool())
         self.add_parameter('flux_channels', initial_value=[],

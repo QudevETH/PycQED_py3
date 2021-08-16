@@ -512,8 +512,7 @@ class QuantumExperiment(CircuitBuilder):
                                 "for now.")
 
         if self.harmonize_element_lengths:
-            self.sequences[0].harmonize_element_lengths(self.sequences)
-
+            Sequence.harmonize_element_lengths(self.sequences)
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
             unit = self.sweep_points.get_sweep_params_property(

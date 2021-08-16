@@ -1158,10 +1158,7 @@ class Segment:
         else:
             hashlist.append(self.pulsar.clock(channel=channel))  # clock rate
             for par in ['type', 'amp', 'internal_modulation']:
-                try:
-                    hashlist.append(self.pulsar.get(f'{channel}_{par}'))
-                except KeyError:
-                    hashlist.append(False)
+                hashlist.append(self.pulsar.get(f'{channel}_{par}', False))
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_charge_buildup_compensation'):
             for par in ['compensation_pulse_delay',
