@@ -104,18 +104,20 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
-        self.add_parameter('max_attempts',
-                           docstring='Maximum number of attempts. Values '
-                                     'larger than 1 will mean that MC '
-                                     'automatically retries in case of '
-                                     'crashes during measurements. A list of '
-                                     'callback functions can be assigned to '
-                                     'the retry_cleanup_functions property '
-                                     'of MC, which will than be called '
-                                     'between attempts.',
-                           vals=vals.Ints(),
-                           parameter_class=ManualParameter,
-                           initial_value=1)
+        self.add_parameter(
+            'max_attempts', docstring=
+            'Maximum number of attempts. Values larger than 1 will mean that '
+            'MC automatically retries in case of crashes during measurements. '
+            'Optional: A list of function handles can be assigned to the '
+            'retry_cleanup_functions property of the MeasurementControl '
+            'instrument, which will then be called as callback functions '
+            'between attempts (without passing any parameters to them). '
+            'This can, e.g., be used to clear errors in AWGs. It can be '
+            'useful to have setup-specific cleanup functions (e.g., defined '
+            'in a notebook or init script).',
+            vals=vals.Ints(),
+            parameter_class=ManualParameter,
+            initial_value=1)
 
         self.add_parameter(
             'cfg_clipping_mode', vals=vals.Bool(),
@@ -321,12 +323,13 @@ class MeasurementControl(Instrument):
                     self.log_to_slack(msg)
                     log.error(msg)
                     log.error(formatted_exc)
-                    # Call the retry_cleanup_functions if there are any.
+                    # Call the retry_cleanup_functions if there are any (see
+                    # docstring of parameter max_attempts).
                     [fnc() for fnc in getattr(
                         self, 'retry_cleanup_functions', [])]
                     # sweep points should be extracted again from the sweep
                     # function to avoid tiling them multiple times (in every
-                    # attempt)
+                    # attempt) in tile_sweep_pts_for_2D
                     del self.sweep_points
                     # Call run recursively to start the next attempt
                     return_dict = self.run(
@@ -457,7 +460,7 @@ class MeasurementControl(Instrument):
         # progress reports during get_detector_function.values.
         self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
-        self.detector_function.progress_callback = None
+        self.detector_function.progress_callback = None  # clean up
 
         ###########################
         # Shape determining block #
@@ -1813,7 +1816,10 @@ class MeasurementControl(Instrument):
             t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
                                   + t_left)) if percdone != 0 else '??'
             # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer.
+            # previous progress message was longer. (Due to \r, the string
+            # output will start at the beginning of the current line and
+            # each character of the new string will overwrite a character
+            # of the previous output in the current line.)
             progress_message = (
                 "\r{timestamp}\t{percdone}% completed \telapsed time: "
                 "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
@@ -2110,9 +2116,6 @@ class MeasurementControl(Instrument):
         Note: The webhook and the channel are properties and not parameters,
         to avoid that they get stored in the instruments settings snapshot.
         """
-        # The webhook and the channel are properties and not parameters,
-        # to avoid that they get stored in the instruments settings snapshot.
-        # If no channel is provided, the default channel of the webhook is used
         log.info(f'MC: {message}')
         if not hasattr(self, 'slack_webhook'):
             log.info(f'MC: Not logging to slack because slack_webhook is not '
