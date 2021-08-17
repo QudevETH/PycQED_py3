@@ -118,6 +118,20 @@ class MeasurementControl(Instrument):
             vals=vals.Ints(),
             parameter_class=ManualParameter,
             initial_value=1)
+        self.add_parameter(
+            'no_progress_interval', docstring=
+            'Time (in seconds) after which a measurement that does not make '
+            'progress is reported.',
+            vals=vals.Numbers(),
+            parameter_class=ManualParameter,
+            initial_value=600)
+        self.add_parameter(
+            'no_progress_kill_interval', docstring=
+            'Time (in seconds) after which a measurement that does not make '
+            'progress is interrupted.',
+            vals=vals.Numbers(),
+            parameter_class=ManualParameter,
+            initial_value=np.inf)
 
         self.add_parameter(
             'cfg_clipping_mode', vals=vals.Bool(),
@@ -1756,8 +1770,8 @@ class MeasurementControl(Instrument):
         In addition, get_percdone monitors whether progress has been made
         since the last call to get_percdone, and it can log a warning to
         slack and/or raise an exception if no progress is made for a
-        specified number of seconds (self.no_progress_interval and
-        self.no_progress_kill_interval, respectively).
+        specified number of seconds (specified by the qcodes parameters
+        no_progress_interval and no_progress_kill_interval, respectively).
 
         :param current_acq: number of acquired samples in the current
             acquisition. (Example: if 40 samples with averaging over 2**10
@@ -1779,9 +1793,8 @@ class MeasurementControl(Instrument):
                 self._last_percdone_change_time = now
                 self._last_percdone_log_time = self._last_percdone_change_time
             else:  # no progress was made
-                no_prog_inter = getattr(self, 'no_progress_interval', 600)
-                no_prog_inter2 = getattr(self, 'no_progress_kill_interval',
-                                         np.inf)
+                no_prog_inter = self.no_progress_interval()
+                no_prog_inter2 = self.no_progress_kill_interval()
                 no_prog_min = (now - self._last_percdone_change_time) / 60
                 log.debug(f'MC: no_prog_min = {no_prog_min}, '
                           f'percdone = {percdone}')
