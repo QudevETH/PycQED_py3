@@ -36,6 +36,8 @@ class Detector_Function(object):
         self.progress_callback = kw.get('progress_callback', None)
         self.progress_callback_interval = kw.get(
             'progress_callback_interval', 5)  # in seconds
+        # tells MC whether to show live plotting for the measurement
+        self.live_plot_enabled = kw.get('live_plot_enabled', True)
 
     def set_kw(self, **kw):
         '''
@@ -310,7 +312,7 @@ class None_Detector(Detector_Function):
 class Hard_Detector(Detector_Function):
 
     def __init__(self, **kw):
-        super().__init__()
+        super().__init__(**kw)
         self.detector_control = 'hard'
 
     def prepare(self, sweep_points=None):
@@ -562,8 +564,8 @@ class UHFQC_Base(Hard_Detector):
     """
     Base Class for all UHF detectors
     """
-    def __init__(self, UHFQC=None, detectors=None):
-        super().__init__()
+    def __init__(self, UHFQC=None, detectors=None, **kw):
+        super().__init__(**kw)
         if detectors is None:
             # if no detector is provided then itself is the only detector
             self.detectors = [self]
@@ -736,14 +738,16 @@ class UHFQC_multi_detector(UHFQC_Base):
     Combines several UHF detectors into a single detector
     """
     def __init__(self, detectors, **kw):
-        super().__init__(detectors=detectors)
+        super().__init__(detectors=detectors, **kw)
         self.AWG = None
         self.value_names = []
         self.value_units = []
+        self.live_plot_enabled = []  # to be used by MC
 
         for d in self.detectors:
             self.value_names += [vn + ' ' + d.UHFQC.name for vn in d.value_names]
             self.value_units += d.value_units
+            self.live_plot_enabled += [d.live_plot_enabled]
             if d.AWG is not None:
                 if self.AWG is None:
                     self.AWG = d.AWG
@@ -751,6 +755,10 @@ class UHFQC_multi_detector(UHFQC_Base):
                     raise Exception('Not all AWG instances in UHFQC_multi_detector'
                                     ' are the same')
                 d.AWG = None
+
+        # if any of the detectors is doing an SSRO acquisition, then disable
+        # live plotting
+        self.live_plot_enabled = all(self.live_plot_enabled)
         # to be used in MC.get_percdone()
         self.acq_data_len_scaling = \
             self.detectors[0].acq_data_len_scaling
@@ -872,7 +880,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
 
     def __init__(self, UHFQC, AWG=None, channels=(0, 1),
                  nr_averages=1024, nr_samples=4096, **kw):
-        super(UHFQC_input_average_detector, self).__init__(UHFQC)
+        super(UHFQC_input_average_detector, self).__init__(UHFQC, **kw)
         self.channels = channels
         self.value_names = ['']*len(self.channels)
         self.value_units = ['']*len(self.channels)
@@ -952,7 +960,7 @@ class UHFQC_scope_detector(Hard_Detector):
     def __init__(self, UHFQC, AWG=None, channels=(0, 1),
                  nr_averages=20, nr_samples=4096, fft_mode='timedomain',
                  **kw):
-        super().__init__()
+        super().__init__(**kw)
 
         self.UHFQC = UHFQC
         self.scope = UHFQC.daq.scopeModule()
@@ -1087,7 +1095,7 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
                  prepare_function=None, prepare_function_kwargs: dict=None,
                  **kw):
 
-        super().__init__(UHFQC)
+        super().__init__(UHFQC, **kw)
 
         self.name = '{}_UHFQC_integrated_average'.format(result_logging_mode)
         self.channels = deepcopy(channels)
@@ -1504,7 +1512,7 @@ class UHFQC_integration_logging_det(UHFQC_Base):
                  prepare_function_kwargs: dict=None,
                  **kw):
 
-        super().__init__(UHFQC)
+        super().__init__(UHFQC, **kw)
 
         self.name = '{}_UHFQC_integration_logging_det'.format(
             result_logging_mode)
@@ -1538,6 +1546,8 @@ class UHFQC_integration_logging_det(UHFQC_Base):
         self.always_prepare = always_prepare
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
+        # Disable MC live plotting by default for SSRO acquisition
+        self.live_plot_enabled = kw.get('live_plot_enabled', False)
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
@@ -1672,6 +1682,10 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             # the acquisition device since UHFQC_classifier_detector.prepare
             # passes averages=1 to qudev_acquisition_initialize.
             self.nr_averages = self.nr_shots
+            self.live_plot_enabled = kw.get('live_plot_enabled', True)
+        else:
+            # Disable MC live plotting by default for SSRO acquisition
+            self.live_plot_enabled = kw.get('live_plot_enabled', False)
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
