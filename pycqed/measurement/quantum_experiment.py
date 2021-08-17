@@ -78,8 +78,22 @@ class QuantumExperiment(CircuitBuilder):
             sequence_kwargs (dict): keyword arguments passed to the sequence_function.
                 see self._prepare_sequences()
             filter_segments_mask (array of bool): An array with dimension
-                n_0 x n_1, where n_i is the number of sweep points in
-                dimension i, indicating which segments need to be measured.
+                n_0 x n_1, indicating which segments need to be measured.
+                Here, n_1 is the number of sweep points in dimension 1 (soft sweep)
+                and n_0 <= N_0, where N_0 is the number of sweep points in
+                dimension 0 (hard sweep) including calibration points. If
+                n_0 < N_0, segments with index larger than n_0 will always
+                be measured (typical use case: calibration points, i.e.,
+                let n_0 be the number of sweep pooints without calibration
+                points).
+                The lower-level implementation in FilteredSweep and Pulsar
+                currently only supports a single consecutive range of
+                segments to be measured in each row of this array (plus the
+                segments with index >n_0, which are always measured). To
+                fulfill this requirement, QuantumExperiment will internally
+                change False-values to True in this array if needed, i.e.,
+                it can happen that segments are measured even though their
+                entry in this array is set to False.
             df_kwargs (dict): detector function keyword arguments.
             timer_kwargs (dict): keyword arguments for timer. See pycqed.utilities.timer.
                 Timer.
@@ -102,7 +116,11 @@ class QuantumExperiment(CircuitBuilder):
                 for the second dimension.
             harmonize_element_lengths (bool, default False): whether it
                 should be ensured for all AWGs and all elements that the
-                element length is the same in all sequences.
+                element length is the same in all sequences. Use case: If
+                pulsar.use_sequence_cache and pulsar.AWGX_use_placeholder_waves
+                are activated for a ZI HDAWG, harmonized element lengths across
+                a soft sweep avoid recompilation of SeqC code during the sweep
+                (replacing binary waveform data is sufficient in this case).
             compression_seg_lim (int): maximal number of segments that can be in a
                 single sequence. If not None and the QuantumExperiment is a 2D sweep
                 with more than 1 sequence, and the sweep_functions are
@@ -512,8 +530,7 @@ class QuantumExperiment(CircuitBuilder):
                                 "for now.")
 
         if self.harmonize_element_lengths:
-            self.sequences[0].harmonize_element_lengths(self.sequences)
-
+            Sequence.harmonize_element_lengths(self.sequences)
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
             unit = self.sweep_points.get_sweep_params_property(
@@ -565,23 +582,29 @@ class QuantumExperiment(CircuitBuilder):
                     for i, seg in enumerate(seq.segments.values()):
                         if i < mask.shape[0]:
                             seg.allow_filter = True
-                # Create filter lookup table for FilteredSweep
-                lookup = {}
+                # Create filter lookup table in the format expected by
+                # FilteredSweep: each key is a soft sweep point and the
+                # respective value is a tuple two of segment indices
+                # indicating the range of segments to be measured.
+                # The conversion to a tuple of start index and end index may
+                # require to measure segments that have a False-entry in the
+                # filter_segments_mask, see the class docstring.
+                filter_lookup = {}
                 for i, sp in enumerate(self.mc_points[1]):
                     if i >= mask.shape[1]:
                         # measure everything
-                        lookup[sp] = (0, 32767)
+                        filter_lookup[sp] = (0, 32767)
                     elif True in mask[:, i]:
                         # measure from the first True up to the last True
-                        lookup[sp] = (
+                        filter_lookup[sp] = (
                             list(mask[:, i]).index(True),
                             mask.shape[0] - list(mask[:, i])[::-1].index(
                                 True) - 1)
                     else:
                         # measure nothing (by setting last < first)
-                        lookup[sp] = (1, 0)
+                        filter_lookup[sp] = (1, 0)
                 sweep_func_2nd_dim = swf.FilteredSweep(
-                        self.sequences[0], lookup, [sweep_func_2nd_dim])
+                        self.sequences[0], filter_lookup, [sweep_func_2nd_dim])
 
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
@@ -606,6 +629,8 @@ class QuantumExperiment(CircuitBuilder):
             {'meas_obj_value_names_map': meas_obj_value_names_map})
         if 'meas_obj_sweep_points_map' not in self.exp_metadata:
             self.exp_metadata['meas_obj_sweep_points_map'] = {}
+        if self.MC.soft_repetitions() != 1:
+            self.exp_metadata['soft_repetitions'] = self.MC.soft_repetitions()
 
         if len(self.mc_points[1]) > 0:
             mmnt_mode = "2D"

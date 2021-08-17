@@ -53,7 +53,6 @@ class UHFQCPulsar:
     class
     """
     _supportedAWGtypes = (UHFQC, dummy_UHFQC)
-    _num_awgs = 1
     
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -149,7 +148,7 @@ class UHFQCPulsar:
             group.append(name)
         # all channels are considered as a single group
         for name in group:
-            self.channel_groups.update({name: group})
+            self.channel_groups[name] = group
 
     def _uhfqc_create_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
@@ -278,6 +277,12 @@ class UHFQCPulsar:
                                                          defined_waves)
 
             acq = metadata.get('acq', False)
+            # Remark on allow_filter in the call to _zi_playback_string:
+            # the element may be skipped via segment filtering only if
+            # play_element was called with allow_filter=True *and* the
+            # element metadata allows segment filtering. (Use case for
+            # calling play_element with allow_filter=False: repeat patterns,
+            # see below.)
             playback_strings += self._zi_playback_string(
                 name=obj.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
@@ -315,7 +320,7 @@ class UHFQCPulsar:
                         allow_filter[seg_indices[-1]] += 1
                 else:  # segment
                     seg_indices.append(index)
-                    allow_filter[seg_indices[-1]] = 0
+                    allow_filter[index] = 0
             el_total = len(real_indicies)
             if any(allow_filter.values()):
                 if repeat_pattern[1] != 1:
@@ -347,33 +352,56 @@ class UHFQCPulsar:
 
             def repeat_func(n, el_played, index, playback_strings,
                             wave_definitions):
-                if isinstance(n, tuple):
+                """
+                Helper function to resolve a repeat pattern. It can call
+                itself recursively to resolve nested pattern.
+
+                :param n: a repeat pattern or an integer that specifies the
+                    number of elements inside a loop, see pattern in the
+                    docstring of Sequence.repeat
+                :param el_played: helper variable for recursive function
+                    calls to keep track of the number of elements that will
+                    be played according with the resolved pattern.
+                :param index: helper variable for recursive function
+                    calls to keep track of the index of the next element
+                    to be added.
+                :param playback_strings: list of str to which the newly
+                    generated SeqC code lines will be appended
+                :param wave_definitions: list of wave definitions to which
+                    the new wave definitions will be appended
+                """
+                if isinstance(n, tuple):  # repeat pattern definition
                     el_played_list = []
                     if isinstance(n[0], str):
+                        # number of repetitions specified by a SeqC variable
                         playback_strings.append(
                             f'for (var i_rep = 0; i_rep < {n[0]}; '
                             f'i_rep += 1) {{')
                     elif n[0] > 1:
+                        # interpret as integer number of repetitions
                         playback_strings.append('repeat ('+str(n[0])+') {')
                     for t in n[1:]:
-                        el_cnt, playback_strings, wave_definitions = repeat_func(t,
-                                                               el_played,
-                                                               index + np.sum(
-                                                                  el_played_list),
-                                                               playback_strings,
-                                                               wave_definitions)
+                        el_cnt, playback_strings, wave_definitions = \
+                            repeat_func(t, el_played,
+                                        index + np.sum(el_played_list),
+                                        playback_strings, wave_definitions)
                         el_played_list.append(el_cnt)
                     if isinstance(n[0], str) or n[0] > 1:
+                        # A loop was started above. End it here.
                         playback_strings.append('}')
                     if isinstance(n[0], str):
+                        # For variable numbers of repetitions, counting the
+                        # number of played elements does not work and we
+                        # just return that it is a variable number.
                         return 'variable', playback_strings, wave_definitions
                     return int(n[0] * np.sum(el_played_list)), playback_strings, wave_definitions
-                else:
+                else:  # n is the number of elements inside a loop
                     for k in range(n):
+                        # Get the element that is meant to be played repeatedly
                         el_index = real_indicies[int(index)+k]
                         element = list(awg_sequence.keys())[el_index]
                         # Pass allow_filter=False since segment filtering is
-                        # already covered by the repeat pattern.
+                        # already covered by the repeat pattern if needed.
                         playback_strings, wave_definitions = play_element(
                             element, playback_strings, wave_definitions,
                             allow_filter=False)
@@ -824,7 +852,6 @@ class HDAWG8Pulsar:
                         if cw == 'no_codeword':
                             if nr_cw != 0:
                                 continue
-                        wave_idx_lookup[element][cw] = {}
                         chid_to_hash = awg_sequence_element[cw]
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
@@ -913,8 +940,14 @@ class HDAWG8Pulsar:
                 # prevent ZI_base_instrument.start() from starting this sub AWG
                 obj._awg_program[awg_nr] = None
                 continue
-            # tell ZI_base_instrument.start() to start this sub AWG
+            # tell ZI_base_instrument that it should not compile a
+            # program on this sub AWG (because we already do it here)
             obj._awg_needs_configuration[awg_nr] = False
+            # tell ZI_base_instrument.start() to start this sub AWG
+            # (The base class will start sub AWGs for which _awg_program
+            # is not None. Since we set _awg_needs_configuration to False,
+            # we do not need to put the actual program here, but anything
+            # different from None is sufficient.)
             obj._awg_program[awg_nr] = True
 
             # Having determined whether the sub AWG should be started or
@@ -954,7 +987,7 @@ class HDAWG8Pulsar:
                     run_compiler = True
 
             if run_compiler:
-                # We have to retrieve the folllowing parameter to set it
+                # We have to retrieve the following parameter to set it
                 # again after programming the AWG.
                 prev_dio_valid_polarity = obj.get(
                     'awgs_{}_dio_valid_polarity'.format(awg_nr))
@@ -1044,6 +1077,7 @@ class HDAWG8Pulsar:
         if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
         awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+
 
 class AWG5014Pulsar:
     """
@@ -1428,6 +1462,7 @@ class AWG5014Pulsar:
         awg.set(f"{self.get(ch + '_id')}_state", on)
         return
 
+
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
     """
     A meta-instrument responsible for all communication with the AWGs.
@@ -1462,10 +1497,6 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            set_parser=self._use_sequence_cache_parser)
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
-        # keep old parameter name for backwards compatibility
-        self.add_parameter('append_zeros', initial_value=0, vals=vals.Ints(),
-                           set_cmd=(lambda v, self=self: self.prepend_zeros(v)),
-                           get_cmd=(lambda self=self: self.prepend_zeros()))
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool())
         self.add_parameter('flux_channels', initial_value=[],
@@ -1474,6 +1505,11 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',
                            initial_value=None, parameter_class=ManualParameter)
+        # This parameter can be used to record only a specified consecutive
+        # subset of segments of a programmed hard sweep. This is used by the
+        # sweep function FilteredSweep. The parameter expects a tuple of indices
+        # indicating the first and the last segment to be measured. (Segments
+        # with the property allow_filter set to False are always measured.)
         self.add_parameter('filter_segments',
                            set_cmd=self._set_filter_segments,
                            get_cmd=self._get_filter_segments,
@@ -1486,6 +1522,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                                      'False to save time if it is ensured '
                                      'that the channels are switched on '
                                      'somewhere else.')
+
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
         self.awgs = set() # AWG names
@@ -1516,10 +1553,15 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
 
     def reset_sequence_cache(self):
         self._sequence_cache = {}
-        self._sequence_cache['settings'] = {}
-        self._sequence_cache['metadata'] = {}
-        self._sequence_cache['hashes'] = {}
-        self._sequence_cache['length'] = {}
+        # The following dicts are used in _program_awgs to store information
+        # about the last sequence programmed to each AWGs. The keys of the
+        # dicts are AWG names and/or channel names. See the code and
+        # comments of _program_awgs for details about the structure of the
+        # dicts.
+        self._sequence_cache['settings'] = {}  # for pulsar settings
+        self._sequence_cache['metadata'] = {}  # for segment/element metadata
+        self._sequence_cache['hashes'] = {}  # for waveform hashes
+        self._sequence_cache['length'] = {}  # for element lengths
 
     def check_for_other_pulsar(self):
         """
@@ -1527,7 +1569,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         sequence cache if this is the case. To make this check possible,
         the pulsar object ID is written to a file in the pycqed app data dir.
         """
-        filename = os.path.join(gen.get_pycqed_dir(), 'pulsar_id')
+        filename = os.path.join(gen.get_pycqed_appdata_dir(), 'pulsar_id')
         current_id = f"{id(self)}"
         try:
             with open(filename, 'r') as f:
