@@ -302,29 +302,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.data_filter = self.get_param_value('data_filter')
         self.prep_params = self.get_param_value('preparation_params',
-                                           default_value=dict())
-        self.channel_map = self.get_param_value('meas_obj_value_names_map')
-        if self.channel_map is None:
-            # if the new name meas_obj_value_names_map is not found, try with
-            # the old name channel_map
-            self.channel_map = self.get_param_value('channel_map')
-            if self.channel_map is None:
-                value_names = self.raw_data_dict['value_names']
-                if np.ndim(value_names) > 0:
-                    value_names = value_names
-                if 'w' in value_names[0]:
-                    self.channel_map = a_tools.get_qb_channel_map_from_hdf(
-                        self.qb_names, value_names=value_names,
-                        file_path=self.raw_data_dict['folder'])
-                else:
-                    self.channel_map = {}
-                    for qbn in self.qb_names:
-                        self.channel_map[qbn] = value_names
+                                                default_value=dict())
 
-        if len(self.channel_map) == 0:
-            raise ValueError('No qubit RO channels have been found.')
+        # creates self.channel_map
+        self.get_channel_map()
 
         # whether to rotate data or not
         self.rotate = self.get_param_value('rotate', default_value=True)
@@ -384,6 +366,39 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if params_dict is not None:
             self.raw_data_dict.update(
                 self.get_data_from_timestamp_list(params_dict, numeric_params))
+
+    def get_channel_map(self):
+        """
+        Creates the channel map as {qbn: [ro channels (usually value_names]}.
+        This is the same as the meas_obj_value_names_map, so this function first
+        tries to extract this parameter, which can thus be passed by the user in
+        the options_dict or metadata under that name.
+
+        Creates self.channel_map
+
+        """
+        self.channel_map = self.get_param_value('meas_obj_value_names_map')
+        if self.channel_map is None:
+            # if the new name meas_obj_value_names_map is not found, try with
+            # the old name channel_map
+            self.channel_map = self.get_param_value('channel_map')
+            if self.channel_map is None:
+                # if channel_map also not found, construct channel map from
+                # value names
+                value_names = self.raw_data_dict['value_names']
+                if np.ndim(value_names) > 0:
+                    value_names = value_names
+                if 'w' in value_names[0]:
+                    self.channel_map = a_tools.get_qb_channel_map_from_hdf(
+                        self.qb_names, value_names=value_names,
+                        file_path=self.raw_data_dict['folder'])
+                else:
+                    self.channel_map = {}
+                    for qbn in self.qb_names:
+                        self.channel_map[qbn] = value_names
+
+        if len(self.channel_map) == 0:
+            raise ValueError('No qubit RO channels have been found.')
 
     def get_sweep_points(self):
         """
@@ -600,6 +615,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         # flag to be used in prepare_raw_data_plots
         self.data_with_reset = False
+        self.data_filter = self.get_param_value('data_filter')
         if self.data_filter is None:
             if 'active' in self.prep_params.get('preparation_type', 'wait'):
                 reset_reps = self.prep_params.get('reset_reps', 1)
