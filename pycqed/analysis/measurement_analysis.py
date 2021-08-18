@@ -19,15 +19,6 @@ import pylab
 from pycqed.analysis.tools import data_manipulation as dm_tools
 import importlib
 from time import time
-
-try:
-    import pygsti
-except ImportError as e:
-    if str(e).find('pygsti') >= 0:
-        log.warning('Could not import pygsti')
-    else:
-        raise
-
 from scipy.constants import *
 from copy import deepcopy
 from pprint import pprint

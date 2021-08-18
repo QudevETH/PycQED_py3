@@ -571,6 +571,10 @@ class Segment:
                   AWG, placed in a suitable element on the triggering AWG,
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
+
+        For debugging, self.skip_trigger can be set to a list of AWG names
+        for which the triggering should be skipped (by using a 0-amplitude
+        trigger pulse).
         """
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
@@ -630,11 +634,14 @@ class Segment:
                         '{}_trigger_channels'.format(awg)):
 
                     trigger_awg = self.pulsar.get('{}_awg'.format(channel))
+                    kw = deepcopy(self.trigger_pars)
+                    if awg in getattr(self, 'skip_trigger', []):
+                        kw['amplitude'] = 0
                     trig_pulse = pl.BufferedSquarePulse(
                         trigger_elements[trigger_awg],
                         channel=channel,
                         name='trigger_pulse_{}'.format(i),
-                        **self.trigger_pars)
+                        **kw)
                     i += 1
 
                     trig_pulse.algorithm_time(trigger_pulse_time -

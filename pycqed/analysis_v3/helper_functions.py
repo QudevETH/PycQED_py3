@@ -160,6 +160,34 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r', file_id=
     return h5py.File(filepath, mode)
 
 
+def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extracts the value for the parameter specified by param_name for the
+    instrument specified by instr_name from an HDF file.
+    :param instr_name: str specifying the instrument name in the HDF file
+    :param param_name: str specifyin the name of the parameter to extract
+    :param timestamp: str of the form YYYYMMDD_hhmmss.
+    :param folder: path to HDF file
+    :param params: keyword arguments
+    :return: value corresponding to param_name
+    """
+    if folder is None:
+        if timestamp is None:
+            raise ValueError('Please provide either timestamp or folder.')
+        folder = a_tools.get_folder(timestamp)
+
+    d = {}
+    get_params_from_hdf_file(
+        d, {'instr_param_val': f'Instrument settings.{instr_name}.{param_name}'},
+        folder=folder)
+
+    if d['instr_param_val'] == 0:
+        raise KeyError(f'Parameter {param_name} not found for instrument '
+                       f'{instr_name}.')
+    return d['instr_param_val']
+
+
 def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
                              add_param_method=None, folder=None, **params):
     """
@@ -1023,16 +1051,22 @@ def read_analysis_file(timestamp=None, filepath=None, data_dict=None,
         if ana_file is None:
             if filepath is None:
                 if file_id is None:
-                    file_id = '_AnalysisResults'
+                    file_id = 'AnalysisResults'
                 folder = a_tools.get_folder(timestamp)
-                filepath = a_tools.measurement_filename(folder, file_id=file_id)
+                filepath = a_tools.measurement_filename(folder,
+                                                        file_id=f'_{file_id}')
             ana_file = h5py.File(filepath, mode)
         read_from_hdf(data_dict, ana_file)
         if close_file:
             ana_file.close()
     except Exception as e:
         if close_file:
-            ana_file.close()
+            try:
+                ana_file.close()
+            except AttributeError:
+                # there was an exception before reaching the line above where
+                # ana_file is opened
+                pass
         raise e
     return data_dict
 
