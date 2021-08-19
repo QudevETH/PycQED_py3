@@ -1140,8 +1140,10 @@ class Segment:
             hashlist.append(self.pulsar.clock(channel=channel))  # clock rate
             for par in ['type', 'amp', 'internal_modulation']:
                 chpar = f'{channel}_{par}'
-                hashlist.append(chpar in self.pulsar.parameters
-                                and self.pulsar.get(chpar))
+                if chpar in self.pulsar.parameters:
+                    hashlist.append(self.pulsar.get(chpar))
+                else:
+                    hashlist.append(False)
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_charge_buildup_compensation'):
             for par in ['compensation_pulse_delay',
