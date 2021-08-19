@@ -165,6 +165,8 @@ class UHFQC(zibase.ZI_base_instrument):
     USER_REG_WAIT_DLY = 2
     USER_REG_AVG_CNT = 3
     USER_REG_ERR_CNT = 4
+    USER_REG_FIRST_SEGMENT = 5
+    USER_REG_LAST_SEGMENT = 6
 
     ##########################################################################
     # 'public' functions: device control

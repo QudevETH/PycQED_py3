@@ -395,10 +395,19 @@ class MeasurementControl(Instrument):
                         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
-                    self.detector_function.prepare(
-                        sweep_points=sweep_points[
-                            start_idx:start_idx+self.xlen, 0])
-                    self.measure_hard()
+                    sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    # If the soft sweep function has the filtered_sweep
+                    # attribute, the AWGs are programmed in a way that only
+                    # the subset of acquisitions indicated by the filter is
+                    # performed. In this case, the sweep points passed to
+                    # the detector function need to be filtered, and the
+                    # filter needs to be passed to measure_hard.
+                    filtered_sweep = getattr(self.sweep_functions[1],
+                                             'filtered_sweep', None)
+                    if filtered_sweep is not None:
+                        sp = sp[filtered_sweep]
+                    self.detector_function.prepare(sweep_points=sp)
+                    self.measure_hard(filtered_sweep)
         else:
             raise Exception('Sweep and Detector functions not '
                             + 'of the same type. \nAborting measurement')
@@ -469,12 +478,30 @@ class MeasurementControl(Instrument):
         return
 
     @Timer()
-    def measure_hard(self):
+    def measure_hard(self, filtered_sweep=None):
+        """
+        :param filtered_sweep: (None or list of bools) indicates which of the
+            acquisition elements will be played by the AWGs (True) and which
+            ones will be skipped (False). Default: None, in which case all
+            acquisition elements will be played.
+        """
         # Tell the detector_function to call print_progress for intermediate
         # progress reports during get_detector_function.values.
         self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
         self.detector_function.progress_callback = None  # clean up
+
+        if filtered_sweep is not None:
+            # Extend the data array by adding NaN for data points that have
+            # not been measured.
+            shape = list(new_data.shape)
+            shape[0] = len(filtered_sweep)
+            new_data_full = np.zeros(shape) * np.nan
+            if len(shape) > 1:
+                new_data_full[filtered_sweep, :] = new_data
+            else:
+                new_data_full[filtered_sweep] = new_data
+            new_data = new_data_full
 
         ###########################
         # Shape determining block #
