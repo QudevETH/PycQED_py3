@@ -54,15 +54,6 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         self.sweep_points.add_sweep_parameter(
             'initialize', self.initializations, '', 'Init', dimension=1)
         self.two_qb_gates_off = two_qb_gates_off
-        self.sequences, self.mc_points = self.sweep_n_dim(
-            self.sweep_points, self.main_block(), repeat_ro=False,
-            init_kwargs={'pulse_modifs': {'all': {
-                'element_name': 'init_element'}}},
-            final_kwargs={'pulse_modifs': {'all': {
-                'element_name': 'final_element', 'pulse_delay': 5e-9}}},
-        )
-        if self.mc_points_override is not None:
-            self.mc_points[0] = self.mc_points_override
 
         # ensure enabled_cycle_mask has correct format
         for readout_round_pars in readout_rounds:
@@ -74,6 +65,16 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                 enabled_cycle_mask[-1] = \
                     readout_round_pars['enabled_last_cycle']
             readout_round_pars['enabled_cycle_mask'] = enabled_cycle_mask
+
+        self.sequences, self.mc_points = self.sweep_n_dim(
+            self.sweep_points, self.main_block(), repeat_ro=False,
+            init_kwargs={'pulse_modifs': {'all': {
+                'element_name': 'init_element'}}},
+            final_kwargs={'pulse_modifs': {'all': {
+                'element_name': 'final_element', 'pulse_delay': 5e-9}}},
+        )
+        if self.mc_points_override is not None:
+            self.mc_points[0] = self.mc_points_override
 
         # TODO (Nathan): in the future, we might want to put the experimental
         #  metadata update at the beginning of the measurement or in the
@@ -429,7 +430,7 @@ class ParityMap(dict):
             qbs = [self[qubits]]
 
         if return_type == "str":
-            # print(qbs)
+            # print(qbs)2
             qubits_to_return = tuple(
                 qb.name if qb is not None else None for qb in qbs)
         elif return_type == "obj":
