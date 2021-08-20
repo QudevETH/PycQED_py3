@@ -380,8 +380,12 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             if not readout_round_pars['enabled_cycle_mask'][cycle]:
                 continue
             pulses += g.build(ref_pulse='start', block_delay=round_delay)
+            readouts_remaining = np.count_nonzero([
+                rr_pars['enabled_cycle_mask'][cycle]
+                for rr_pars in self.readout_rounds[readout_round+1:]
+            ])
             if self.skip_last_ancilla_readout and cycle == self.nr_cycles - 1 \
-                    and readout_round == len(self.readout_rounds) - 1 and \
+                    and readouts_remaining == 0 and \
                     not (self.ancilla_reset == "late"):
                 continue
             ro_name = f'readouts_{readout_round}_{cycle}'
@@ -396,7 +400,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                                       block_delay=block_delay)
                     if self.skip_last_ancilla_readout and \
                             cycle == self.nr_cycles - 1 \
-                            and readout_round == len(self.readout_rounds) - 1:
+                            and readouts_remaining == 0:
                         continue
                     pulses += r.build(name=ro_name)
 
