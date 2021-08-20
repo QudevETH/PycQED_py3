@@ -4,6 +4,8 @@ import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.calibration.calibration_points as cp_mod
 from pycqed.measurement import sweep_points as sp_mod
 import numpy as np
+
+
 class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     block_align = 'center'
     type_to_ops_map = {
@@ -16,7 +18,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     def __init__(self, data_qubits, ancilla_qubits,
                  readout_rounds, nr_cycles, initializations=None,
                  finalizations=None, ancilla_reset=False,
-                 ancilla_dd=True, data_dd=False, data_dd_simple=False, skip_last_ancilla_readout=False,
+                 ancilla_dd=True, data_dd=False, data_dd_simple=False,
+                 skip_last_ancilla_readout=False,
                  two_qb_gates_off=False,
                  **kw):
         # provide default values
@@ -61,18 +64,27 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         if self.mc_points_override is not None:
             self.mc_points[0] = self.mc_points_override
 
+        # ensure enabled_cycle_mask has correct format
+        for readout_round_pars in readout_rounds:
+            enabled_cycle_mask = np.ones(self.nr_cycles, dtype=bool)
+            for i, e in enumerate(readout_round_pars.get('enabled_cycle_mask',
+                                                         [])):
+                enabled_cycle_mask[i] = e
+            if 'enabled_last_cycle' in readout_round_pars:
+                enabled_cycle_mask[-1] = \
+                    readout_round_pars['enabled_last_cycle']
+            readout_round_pars['enabled_cycle_mask'] = enabled_cycle_mask
+
         # TODO (Nathan): in the future, we might want to put the experimental
-        #  metadata update
-        #  at the beginning of the measurement or in the "prepare measurement", such that
-        #  we are sure that the "latest" values of these parameters are used when saving the
-        #  metadata.
+        #  metadata update at the beginning of the measurement or in the
+        #  "prepare measurement", such that we are sure that the "latest" values
+        #  of these parameters are used when saving the metadata.
         self.exp_metadata.update({"nr_cycles": self.nr_cycles,
                                   "ancilla_dd": self.ancilla_dd,
                                   "ancilla_reset": self.ancilla_reset,
                                   "two_qb_gates_off": self.two_qb_gates_off,
                                   'skip_last_ancilla_readout':
                                       self.skip_last_ancilla_readout})
-
 
     def _parse_finalizations(self, basis_rots):
         if self.finalizations is None or self.finalizations == 'logical_z':
@@ -152,8 +164,6 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                                         block_align=self.block_align)
 
     def _readout_round_gates_block(self, readout_round, cycle=0):
-
-
         round_parity_maps = self.readout_rounds[readout_round]['parity_maps']
         ancilla_steps = {pm['ancilla']: pm['data'] for pm in round_parity_maps}
         total_steps = max([len(v) for v in ancilla_steps.values()])
@@ -350,6 +360,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         for readout_round, readout_round_pars in enumerate(self.readout_rounds):
             g = self._readout_round_gates_block(readout_round, cycle)
             r, i = self._readout_round_readout_block(readout_round, cycle)
+            if not readout_round_pars['enabled_cycle_mask'][cycle]:
+                continue
             pulses += g.build(ref_pulse='start', block_delay=round_delay)
             if self.skip_last_ancilla_readout and cycle == self.nr_cycles - 1 \
                     and readout_round == len(self.readout_rounds) - 1 and \
