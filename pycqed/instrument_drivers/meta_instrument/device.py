@@ -351,14 +351,14 @@ class Device(Instrument):
         # because the UHF_multi_detector function adds suffixes
 
         qubits = self.get_qubits(qubits)
-        if multi_uhf_det_func.detectors[0].name == 'raw_UHFQC_classifier_det':
+        if multi_uhf_det_func.detectors[0].name == 'raw_classifier_det':
             meas_obj_value_names_map = {
                 qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                     multi_uhf_det_func.value_names,
                     qb.int_avg_classif_det.value_names)
                 for qb in qubits}
         elif multi_uhf_det_func.detectors[0].name == \
-                'UHFQC_input_average_detector':
+                'AveragingPollDetector':
             meas_obj_value_names_map = {
                 qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                     multi_uhf_det_func.value_names, qb.inp_avg_det.value_names)

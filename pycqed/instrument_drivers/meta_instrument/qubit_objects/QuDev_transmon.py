@@ -757,14 +757,14 @@ class QuDev_transmon(Qubit):
             channels = [self.acq_I_channel(), self.acq_Q_channel()]
 
         self.int_log_det = det.UHFQC_integration_logging_det(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             result_logging_mode='raw')
 
         self.int_avg_classif_det = det.UHFQC_classifier_detector(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_averages(),
             integration_length=self.acq_length(),
@@ -774,14 +774,14 @@ class QuDev_transmon(Qubit):
             })
 
         self.int_avg_det = det.UHFQC_integrated_average_detector(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             result_logging_mode='raw')
 
         self.dig_avg_det = det.UHFQC_integrated_average_detector(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
@@ -790,20 +790,20 @@ class QuDev_transmon(Qubit):
         nr_samples = int(self.acq_length() *
                          self.instr_uhf.get_instr().clock_freq())
         self.inp_avg_det = det.UHFQC_input_average_detector(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
             nr_samples=nr_samples)
 
         self.dig_log_det = det.UHFQC_integration_logging_det(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             result_logging_mode='digitized')
 
         self.int_avg_det_spec = det.UHFQC_integrated_average_detector(
-            UHFQC=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_uhf.get_instr(),
             channels=[self.acq_I_channel(), self.acq_Q_channel()],
             nr_averages=self.acq_averages(),
@@ -1840,7 +1840,7 @@ class QuDev_transmon(Qubit):
             nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffex=['_probe', '_measure'])
+            values_per_point=2, values_per_point_suffix=['_probe', '_measure'])
         MC.set_detector_function(d)
         MC.run_2D(label)
 
@@ -1911,7 +1911,7 @@ class QuDev_transmon(Qubit):
             nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffex=['_test', '_measure'])
+            values_per_point=2, values_per_point_suffix=['_test', '_measure'])
         MC.set_detector_function(d)
         MC.run_2D(label)
         self.artificial_detuning = artificial_detuning
@@ -1966,7 +1966,7 @@ class QuDev_transmon(Qubit):
             self.instr_uhf.get_instr(), self.instr_pulsar.get_instr(), nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffex=['_single_elem',
+            values_per_point=2, values_per_point_suffix=['_single_elem',
                                                          '_multi_elem'])
         MC.set_detector_function(d)
 

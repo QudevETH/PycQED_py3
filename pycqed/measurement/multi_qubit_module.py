@@ -141,36 +141,36 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
 
     individual_detectors = {uhf: {
             'int_log_det': det.UHFQC_integration_logging_det(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 result_logging_mode='raw', **kw),
             'dig_log_det': det.UHFQC_integration_logging_det(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 result_logging_mode='digitized', **kw),
             'int_avg_det': det.UHFQC_integrated_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages, **kw),
             'int_avg_classif_det': det.UHFQC_classifier_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 get_values_function_kwargs=det_get_values_kws[uhf],
                 result_logging_mode='raw', **kw),
             'dig_avg_det': det.UHFQC_integrated_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 result_logging_mode='digitized', **kw),
             'inp_avg_det': det.UHFQC_input_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
+                acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
                 nr_samples=nr_samples,
                 **kw),
             'int_corr_det': det.UHFQC_correlation_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], **kw),
             'dig_corr_det': det.UHFQC_correlation_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], thresholding=True, **kw),
@@ -203,13 +203,13 @@ def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
     # we cannot just use the value_names from the qubit detector functions
     # because the UHF_multi_detector function adds suffixes
 
-    if multi_uhf_det_func.detectors[0].name == 'raw_UHFQC_classifier_det':
+    if multi_uhf_det_func.detectors[0].name == 'raw_classifier_det':
         meas_obj_value_names_map = {
             qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                 multi_uhf_det_func.value_names,
                 qb.int_avg_classif_det.value_names)
             for qb in mobjs}
-    elif multi_uhf_det_func.detectors[0].name == 'UHFQC_input_average_detector':
+    elif multi_uhf_det_func.detectors[0].name == 'AveragingPollDetector':
         meas_obj_value_names_map = {
             qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                 multi_uhf_det_func.value_names, qb.inp_avg_det.value_names)
