@@ -143,11 +143,11 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
             'int_log_det': det.UHFQC_integration_logging_det(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                result_logging_mode='raw', **kw),
+                data_type='raw', **kw),
             'dig_log_det': det.UHFQC_integration_logging_det(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                result_logging_mode='digitized', **kw),
+                data_type='digitized', **kw),
             'int_avg_det': det.UHFQC_integrated_average_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages, **kw),
@@ -155,11 +155,11 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 get_values_function_kwargs=det_get_values_kws[uhf],
-                result_logging_mode='raw', **kw),
+                data_type='raw', **kw),
             'dig_avg_det': det.UHFQC_integrated_average_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                result_logging_mode='digitized', **kw),
+                data_type='digitized', **kw),
             'inp_avg_det': det.UHFQC_input_average_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
                 nr_samples=nr_samples,
@@ -168,12 +168,13 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], **kw),
+                correlations=correlations[uhf], data_type='raw_corr', **kw),
             'dig_corr_det': det.UHFQC_correlation_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], thresholding=True, **kw),
+                correlations=correlations[uhf], data_type='digitized_corr',
+                **kw),
         } for uhf in uhfs}
 
     combined_detectors = {det_type: det.UHFQC_multi_detector([

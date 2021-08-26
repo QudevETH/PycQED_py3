@@ -761,7 +761,7 @@ class QuDev_transmon(Qubit):
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
-            result_logging_mode='raw')
+            data_type='raw')
 
         self.int_avg_classif_det = det.UHFQC_classifier_detector(
             acq_dev=self.instr_uhf.get_instr(),
@@ -778,14 +778,14 @@ class QuDev_transmon(Qubit):
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            result_logging_mode='raw')
+            data_type='raw')
 
         self.dig_avg_det = det.UHFQC_integrated_average_detector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            result_logging_mode='digitized')
+            data_type='digitized')
 
         nr_samples = int(self.acq_length() *
                          self.instr_uhf.get_instr().clock_freq())
@@ -800,7 +800,7 @@ class QuDev_transmon(Qubit):
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
-            result_logging_mode='digitized')
+            data_type='digitized')
 
         self.int_avg_det_spec = det.UHFQC_integrated_average_detector(
             acq_dev=self.instr_uhf.get_instr(),
@@ -808,7 +808,7 @@ class QuDev_transmon(Qubit):
             channels=[self.acq_I_channel(), self.acq_Q_channel()],
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            result_logging_mode='raw', real_imag=False, single_int_avg=True)
+            data_type='raw', real_imag=False, single_int_avg=True)
 
         if hasattr(self.instr_uhf.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
