@@ -756,14 +756,14 @@ class QuDev_transmon(Qubit):
         else:
             channels = [self.acq_I_channel(), self.acq_Q_channel()]
 
-        self.int_log_det = det.UHFQC_integration_logging_det(
+        self.int_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='raw')
 
-        self.int_avg_classif_det = det.UHFQC_classifier_detector(
+        self.int_avg_classif_det = det.ClassifyingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_averages(),
@@ -773,14 +773,14 @@ class QuDev_transmon(Qubit):
                 'state_prob_mtx': [self.acq_state_prob_mtx()]
             })
 
-        self.int_avg_det = det.UHFQC_integrated_average_detector(
+        self.int_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw')
 
-        self.dig_avg_det = det.UHFQC_integrated_average_detector(
+        self.dig_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
@@ -789,20 +789,20 @@ class QuDev_transmon(Qubit):
 
         nr_samples = int(self.acq_length() *
                          self.instr_uhf.get_instr().clock_freq())
-        self.inp_avg_det = det.UHFQC_input_average_detector(
+        self.inp_avg_det = det.AveragingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
             nr_samples=nr_samples)
 
-        self.dig_log_det = det.UHFQC_integration_logging_det(
+        self.dig_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
-        self.int_avg_det_spec = det.UHFQC_integrated_average_detector(
+        self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_uhf.get_instr(),
             channels=[self.acq_I_channel(), self.acq_Q_channel()],

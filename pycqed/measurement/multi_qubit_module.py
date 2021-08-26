@@ -140,27 +140,27 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
         AWG = qbAWG
 
     individual_detectors = {uhf: {
-            'int_log_det': det.UHFQC_integration_logging_det(
+            'int_log_det': det.IntegratingSingleShotPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 data_type='raw', **kw),
-            'dig_log_det': det.UHFQC_integration_logging_det(
+            'dig_log_det': det.IntegratingSingleShotPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 data_type='digitized', **kw),
-            'int_avg_det': det.UHFQC_integrated_average_detector(
+            'int_avg_det': det.IntegratingAveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages, **kw),
-            'int_avg_classif_det': det.UHFQC_classifier_detector(
+            'int_avg_classif_det': det.ClassifyingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 get_values_function_kwargs=det_get_values_kws[uhf],
                 data_type='raw', **kw),
-            'dig_avg_det': det.UHFQC_integrated_average_detector(
+            'dig_avg_det': det.IntegratingAveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='digitized', **kw),
-            'inp_avg_det': det.UHFQC_input_average_detector(
+            'inp_avg_det': det.AveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
                 nr_samples=nr_samples,
                 **kw),
@@ -177,7 +177,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                 **kw),
         } for uhf in uhfs}
 
-    combined_detectors = {det_type: det.UHFQC_multi_detector([
+    combined_detectors = {det_type: det.MultiPollDetector([
         individual_detectors[uhf][det_type] for uhf in uhfs])
         for det_type in ['int_log_det', 'dig_log_det',
                          'int_avg_det', 'dig_avg_det', 'inp_avg_det',
