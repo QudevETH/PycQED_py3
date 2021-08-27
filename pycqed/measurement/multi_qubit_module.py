@@ -229,9 +229,7 @@ def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
     return meas_obj_value_names_map
 
 
-def measure_multiplexed_readout(dev, qubits, liveplot=False,
-                                shots=5000,
-                                RO_spacing=None, preselection=True,
+def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
                                 thresholds=None, thresholded=False,
                                 analyse=True, upload=True):
     for qb in qubits:
@@ -240,13 +238,15 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False,
     for qb in qubits:
         qb.prepare(drive='timedomain')
 
-    if RO_spacing is None:
-        UHFQC = qubits[0].instr_uhf.get_instr()
-        RO_spacing = UHFQC.qas_0_delay() * 2 / 1.8e9
-        RO_spacing += UHFQC.qas_0_integration_length() / 1.8e9
-        RO_spacing += 50e-9  # for slack
-        RO_spacing = np.ceil(RO_spacing * 225e6 / 3) / 225e6 * 3
-    
+    prep_params = \
+        get_multi_qubit_prep_params([qb.preparation_params() for qb in qubits])
+    preselection = prep_params.get(
+        'preparation_type', 'preselection') == 'preselection'
+    RO_spacing = prep_params.get('ro_separation', None)
+    if prep_params and RO_spacing is None:
+        log.warning('This measurement will do preselection but ro_separation '
+                    'is not specified in the prep_params.')
+
     operation_dict = dev.get_operation_dict(qubits=qubits)
     sf = awg_swf2.n_qubit_off_on(
         [operation_dict['X180 ' + qb.name] for qb in qubits],

@@ -350,25 +350,6 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
         raise e
 
 
-def get_qb_thresholds_from_file(qb_names, file_path, th_scaling=1, h5mode='r'):
-    data_file = h5py.File(measurement_filename(file_path), h5mode)
-    try:
-        instr_settings = data_file['Instrument settings']
-        thresholds = {}
-        for qbn in qb_names:
-            ro_channel = eval(instr_settings[qbn].attrs['acq_I_channel'])
-            instr_uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
-            thresholds[qbn] = eval(instr_settings[instr_uhf].attrs[
-                                       f'qas_0_thresholds_{ro_channel}_level'])
-            if thresholds[qbn] is not None:
-                thresholds[qbn] *= th_scaling
-        data_file.close()
-        return thresholds
-    except Exception as e:
-        data_file.close()
-        raise e
-
-
 def get_plot_title_from_folder(folder):
     measurementstring = os.path.split(folder)[1]
     timestamp = os.path.split(os.path.split(folder)[0])[1] \

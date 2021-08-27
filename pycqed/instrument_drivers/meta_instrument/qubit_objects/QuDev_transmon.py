@@ -2390,7 +2390,6 @@ class QuDev_transmon(Qubit):
 
     def find_ssro_fidelity(self, analyze=True, close_fig=True, no_fits=False,
                            upload=True, thresholded=False, label=None,
-                           RO_comm=3 / 225e6, RO_slack=150e-9,
                            qutrit=False, update=False, prep_params=None):
         """
         Conduct an off-on measurement on the qubit recording single-shot
@@ -2414,8 +2413,6 @@ class QuDev_transmon(Qubit):
                        Default `True`.
             no_fits: Boolean flag to disable finding the discrimination
                      fidelity. Default `False`.
-            preselection_pulse: Whether to do an additional readout pulse
-                                before state preparation. Default `True`.
             qutrit: SSRO for 3 levels readout
         Returns:
             If `no_fits` is `False` returns assigment fidelity, discrimination
@@ -2431,16 +2428,15 @@ class QuDev_transmon(Qubit):
         if prep_params is None:
             prep_params = self.preparation_params()
 
-        self.prepare(drive='timedomain')
-
-        RO_spacing = self.instr_uhf.get_instr().qas_0_delay() / 1.8e9
-        RO_spacing += self.acq_length()
-        RO_spacing += RO_slack  # for slack
-        RO_spacing = np.ceil(RO_spacing / RO_comm) * RO_comm
-
         if prep_params['preparation_type'] not in ['preselection', 'wait']:
             raise NotImplementedError()
         preselection = prep_params['preparation_type'] == 'preselection'
+        RO_spacing = prep_params.get('ro_separation', None)
+        if prep_params and RO_spacing is None:
+            log.warning('This measurement will do preselection but '
+                        'ro_separation is not specified in the prep_params.')
+
+        self.prepare(drive='timedomain')
 
         if thresholded:
             det_func = self.dig_log_det
