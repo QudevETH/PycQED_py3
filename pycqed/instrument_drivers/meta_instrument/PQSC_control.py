@@ -36,8 +36,11 @@ class PQSC_control(Instrument):
             vals=vals.Ints(1, int(1e15)),
             docstring=('Command for setting the number of repetitions'))
 
-    def start(self):
-        """Start the playback of trigger pulses at the PQSC device"""
+    def start(self, **kw):
+        """Start the playback of trigger pulses at the PQSC device
+        :param kw: currently ignored, added for compatibilty with other
+            instruments that accept kwargs in start().
+        """
 
         self.pqsc_instr.start()
 

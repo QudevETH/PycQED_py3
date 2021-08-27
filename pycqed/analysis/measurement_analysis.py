@@ -19,15 +19,6 @@ import pylab
 from pycqed.analysis.tools import data_manipulation as dm_tools
 import importlib
 from time import time
-
-try:
-    import pygsti
-except ImportError as e:
-    if str(e).find('pygsti') >= 0:
-        log.warning('Could not import pygsti')
-    else:
-        raise
-
 from scipy.constants import *
 from copy import deepcopy
 from pprint import pprint
@@ -162,7 +153,17 @@ class MeasurementAnalysis(object):
 
     def save_fig(self, fig, figname=None, xlabel='x',
                  ylabel='measured_values',
-                 fig_tight=True, **kw):
+                 fig_tight=True,
+                 print_filepath=False,
+                 **kw):
+        """Save a figure
+
+        Arguments:
+            print_filepath: Boolean. Whether to print the full filepath
+                of the figure followed by '::loc'or not. Defaults to
+                False.
+        """
+
         # N.B. this save_fig method is the one from the base
         # MeasurementAnalysis class
         plot_formats = kw.pop('plot_formats', ['png'])
@@ -183,7 +184,8 @@ class MeasurementAnalysis(object):
                 figname = (figname + '.' + plot_format)
             self.savename = os.path.abspath(os.path.join(
                 self.folder, figname))
-            print(self.savename,'::loc')
+            if print_filepath:
+                print(self.savename, '::loc')
             if fig_tight:
                 try:
                     fig.tight_layout()

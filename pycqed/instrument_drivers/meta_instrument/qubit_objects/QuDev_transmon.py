@@ -131,12 +131,20 @@ class QuDev_transmon(Qubit):
         self.add_operation('RO')
         self.add_pulse_parameter('RO', 'ro_pulse_type', 'pulse_type',
                                  vals=vals.Enum('GaussFilteredCosIQPulse',
-                                                'GaussFilteredCosIQPulseMultiChromatic'),
+                                                'GaussFilteredCosIQPulseMultiChromatic',
+                                                'GaussFilteredCosIQPulseWithFlux'),
                                  initial_value='GaussFilteredCosIQPulse')
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
                                  initial_value=None, vals=vals.Strings())
+        self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
+                                 initial_value=None, vals=vals.MultiType(
+                                     vals.Enum(None), vals.Strings()))
+        self.add_pulse_parameter('RO',
+                                 'ro_flux_disable_crosstalk_cancellation',
+                                 'disable_flux_crosstalk_cancellation',
+                                 initial_value=True, vals=vals.Bool())
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -159,8 +167,10 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_sigma',
                                  'gaussian_filter_sigma',
                                  initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('RO', 'ro_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_buffer_length_start', 'buffer_length_start',
+                                 initial_value=10e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_buffer_length_end', 'buffer_length_end',
+                                 initial_value=10e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_phase_lock', 'phase_lock',
                                  initial_value=False, vals=vals.Bool())
         self.add_pulse_parameter('RO', 'ro_basis_rotation',
@@ -170,6 +180,14 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter('RO', 'ro_flux_amplitude', 'flux_amplitude',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_extend_start', 'flux_extend_start',
+                                 initial_value=20e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_extend_end', 'flux_extend_end',
+                                 initial_value=150e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
+                                 initial_value=0.5e-9, vals=vals.Numbers())
 
         # acquisition parameters
         self.add_parameter('acq_I_channel', initial_value=0,
@@ -972,6 +990,7 @@ class QuDev_transmon(Qubit):
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0
+        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
         if self.ef_freq() == 0:
             operation_dict['X180_ef ' + self.name]['mod_frequency'] = None
@@ -3267,29 +3286,32 @@ class QuDev_transmon(Qubit):
             total_dist = np.abs(trace['e'] - trace['g']) + \
                          np.abs(trace['f'] - trace['g']) + \
                          np.abs(trace['f'] - trace['e'])
-            fmax = freqs[np.argmax(total_dist)]
-            # FIXME: just as debug plotting for now
-            fig, ax = plt.subplots(2)
-            ax[0].plot(freqs, np.abs(trace['g']), label='g')
-            ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        else:
+            total_dist = np.abs(trace['e'] - trace['g'])
+        fmax = freqs[np.argmax(total_dist)]
+        # Plotting which works for qubit or qutrit
+        fig, ax = plt.subplots(2)
+        ax[0].plot(freqs, np.abs(trace['g']), label='g')
+        ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        if qutrit:
             ax[0].plot(freqs, np.abs(trace['f']), label='f')
-            ax[0].set_ylabel('Amplitude')
-            ax[0].legend()
-            ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        ax[0].set_ylabel('Amplitude')
+        ax[0].legend()
+        ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        if qutrit:
             ax[1].plot(freqs, np.abs(trace['f'] - trace['g']), label='fg')
             ax[1].plot(freqs, np.abs(trace['e'] - trace['f']), label='ef')
-            ax[1].plot(freqs, total_dist, label='total distance')
-            ax[1].set_xlabel("Freq. [Hz]")
-            ax[1].set_ylabel('Distance in IQ plane')
-            ax[0].set_title("Current RO_freq: {} Hz\nOptimal Freq: {} Hz".format(
-                self.ro_freq(),
-                                                                          fmax))
-            plt.legend()
+        ax[1].plot(freqs, total_dist, label='total distance')
+        ax[1].set_xlabel("Freq. [Hz]")
+        ax[1].set_ylabel('Distance in IQ plane')
+        ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
+                        + f"Optimal Freq: {fmax} Hz")
+        plt.legend()
+        # Save figure into 'g' measurement folder
+        m_a['g'].save_fig(fig, 'IQplane_distance')
 
-            m_a['g'].save_fig(fig, 'IQplane_distance')
-            plt.show()
-            if kw.get('analyze', True):
-                sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
+        if kw.get('analyze', True):
+            sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:
             fmax = freqs[np.argmax(np.abs(trace['e'] - trace['g']))]
 

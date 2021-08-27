@@ -7,6 +7,7 @@ from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
 from pycqed.utilities.timer import Timer, Checkpoint
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
+from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
@@ -34,11 +35,12 @@ class QuantumExperiment(CircuitBuilder):
                  meas_objs=None, classified=False, MC=None,
                  label=None, exp_metadata=None, upload=True, measure=True,
                  analyze=True, temporary_values=(), drive="timedomain",
-                 sequences=(), sequence_function=None,
-                 sequence_kwargs=None, df_kwargs=None, df_name=None,
+                 sequences=(), sequence_function=None, sequence_kwargs=None,
+                 filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None,
                  mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
-                                                      awg_swf.SegmentSoftSweep),
+                                                  awg_swf.SegmentSoftSweep),
+                 harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
                  callback_condition=lambda : True, **kw):
         """
@@ -75,6 +77,23 @@ class QuantumExperiment(CircuitBuilder):
                 run_measurement if sequences is None
             sequence_kwargs (dict): keyword arguments passed to the sequence_function.
                 see self._prepare_sequences()
+            filter_segments_mask (array of bool): An array with dimension
+                n_0 x n_1, indicating which segments need to be measured.
+                Here, n_1 is the number of sweep points in dimension 1 (soft sweep)
+                and n_0 <= N_0, where N_0 is the number of sweep points in
+                dimension 0 (hard sweep) including calibration points. If
+                n_0 < N_0, segments with index larger than n_0 will always
+                be measured (typical use case: calibration points, i.e.,
+                let n_0 be the number of sweep pooints without calibration
+                points).
+                The lower-level implementation in FilteredSweep and Pulsar
+                currently only supports a single consecutive range of
+                segments to be measured in each row of this array (plus the
+                segments with index >n_0, which are always measured). To
+                fulfill this requirement, QuantumExperiment will internally
+                change False-values to True in this array if needed, i.e.,
+                it can happen that segments are measured even though their
+                entry in this array is set to False.
             df_kwargs (dict): detector function keyword arguments.
             timer_kwargs (dict): keyword arguments for timer. See pycqed.utilities.timer.
                 Timer.
@@ -95,6 +114,13 @@ class QuantumExperiment(CircuitBuilder):
                 sweep_functions has 2 entries, one for each dimension. Defaults to
                 SegmentHardSweep for the first sweep dimensions and SegmentSoftSweep
                 for the second dimension.
+            harmonize_element_lengths (bool, default False): whether it
+                should be ensured for all AWGs and all elements that the
+                element length is the same in all sequences. Use case: If
+                pulsar.use_sequence_cache and pulsar.AWGX_use_placeholder_waves
+                are activated for a ZI HDAWG, harmonized element lengths across
+                a soft sweep avoid recompilation of SeqC code during the sweep
+                (replacing binary waveform data is sufficient in this case).
             compression_seg_lim (int): maximal number of segments that can be in a
                 single sequence. If not None and the QuantumExperiment is a 2D sweep
                 with more than 1 sequence, and the sweep_functions are
@@ -145,12 +171,13 @@ class QuantumExperiment(CircuitBuilder):
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
         self.sequence_kwargs = {} if sequence_kwargs is None else sequence_kwargs
+        self.filter_segments_mask = filter_segments_mask
         self.sweep_points = self.sequence_kwargs.get("sweep_points", None)
         self.mc_points = mc_points if mc_points is not None else [[], []]
         self.sweep_functions = sweep_functions
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
-        self.channels_to_upload = []
+        self.harmonize_element_lengths = harmonize_element_lengths
         # The experiment_name might have been set by the user in kw or by a
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
@@ -469,7 +496,8 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.arange(len(self.sequences))
             elif self.sweep_points is not None and len(self.sweep_points) > 1:
                 # second dimension can be inferred from sweep points
-                self.mc_points[1] = list(self.sweep_points[1].values())[0][0]
+                self.mc_points[1] = self.sweep_points.get_sweep_params_property(
+                    'values', 1)
             else:
                 raise ValueError("The second dimension of mc_points must be provided "
                                  "if the sweep function isn't 'SegmentSoftSweep' and"
@@ -501,9 +529,12 @@ class QuantumExperiment(CircuitBuilder):
                                 "free to make a pull request ;). Skipping compression"
                                 "for now.")
 
+        if self.harmonize_element_lengths:
+            Sequence.harmonize_element_lengths(self.sequences)
         try:
             sweep_param_name = list(self.sweep_points[0])[0]
-            unit = list(self.sweep_points[0].values())[0][2]
+            unit = self.sweep_points.get_sweep_params_property(
+                'unit', 0, param_names=sweep_param_name)
         except TypeError:
             sweep_param_name, unit = "None", ""
         sweep_func_1st_dim = self.sweep_functions[0](
@@ -517,22 +548,58 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
                 sweep_param_name = list(self.sweep_points[1])[0]
-                unit = list(self.sweep_points[1].values())[0][2]
+                unit = self.sweep_points.get_sweep_params_property(
+                    'unit', 1, param_names=sweep_param_name)
             except TypeError:
                 sweep_param_name, unit = "None", ""
-            if len(self.channels_to_upload) == 0:
-                self.channels_to_upload = "all"
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
-                self.MC.set_sweep_function_2D(self.sweep_functions[1](
-                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit,
-                    self.channels_to_upload))
+                sweep_func_2nd_dim = self.sweep_functions[1](
+                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
                 # MC.
-                self.MC.set_sweep_function_2D(self.sweep_functions[1])
+                sweep_func_2nd_dim = self.sweep_functions[1]
 
+            if self.filter_segments_mask is not None and \
+                    self.compression_seg_lim is not None:
+                log.warning("Combining compression_seg_lim and "
+                            "filter_segments_mask is not supported. Ignoring "
+                            "filter_segments_mask.")
+            elif self.filter_segments_mask is not None:
+                mask = np.array(self.filter_segments_mask)
+                # Only segments with indices included in the mask can be
+                # filtered out. The others will always be measured.
+                for seq in self.sequences:
+                    for i, seg in enumerate(seq.segments.values()):
+                        if i < mask.shape[0]:
+                            seg.allow_filter = True
+                # Create filter lookup table in the format expected by
+                # FilteredSweep: each key is a soft sweep point and the
+                # respective value is a tuple two of segment indices
+                # indicating the range of segments to be measured.
+                # The conversion to a tuple of start index and end index may
+                # require to measure segments that have a False-entry in the
+                # filter_segments_mask, see the class docstring.
+                filter_lookup = {}
+                for i, sp in enumerate(self.mc_points[1]):
+                    if i >= mask.shape[1]:
+                        # measure everything
+                        filter_lookup[sp] = (0, 32767)
+                    elif True in mask[:, i]:
+                        # measure from the first True up to the last True
+                        filter_lookup[sp] = (
+                            list(mask[:, i]).index(True),
+                            mask.shape[0] - list(mask[:, i])[::-1].index(
+                                True) - 1)
+                    else:
+                        # measure nothing (by setting last < first)
+                        filter_lookup[sp] = (1, 0)
+                sweep_func_2nd_dim = swf.FilteredSweep(
+                        self.sequences[0], filter_lookup, [sweep_func_2nd_dim])
+
+            self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
 
         # check whether there is at least one measure object
