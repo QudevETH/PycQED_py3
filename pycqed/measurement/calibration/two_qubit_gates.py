@@ -522,10 +522,15 @@ class MultiTaskingExperiment(QuantumExperiment):
                     # assumes the string is the name of a self method
                     values_func = getattr(self, values_func, None)
 
+                # comma-separated strings correspond to different keys in task
+                # whose corresponding values can be used as input parameters
+                # for values_func
                 k_list = k.split(',')
                 # if the respective task parameter (or keyword argument) exists
                 if k_list[0] in task and task[k_list[0]] is not None:
                     if values_func is not None:
+                        # the entries in k_list point to input parameters
+                        # for values_func
                         values = values_func(*[task[key] for key in k_list])
                     elif isinstance(task[k_list[0]], int):
                         # A single int N as sweep value will be interpreted as
