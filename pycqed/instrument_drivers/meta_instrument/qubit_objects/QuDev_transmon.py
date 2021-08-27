@@ -181,6 +181,11 @@ class QuDev_transmon(Qubit):
                                  initial_value=0.5e-9, vals=vals.Numbers())
 
         # acquisition parameters
+        self.add_parameter('acq_unit', initial_value=0,
+                           vals=vals.Enum(0, 1, 2, 3),
+                           docstring='Acquisition device unit (only one for '
+                                     'UHFQA and up to 4 for SHFQA).',
+                           parameter_class=ManualParameter)
         self.add_parameter('acq_I_channel', initial_value=0,
                            vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
                            parameter_class=ManualParameter)
