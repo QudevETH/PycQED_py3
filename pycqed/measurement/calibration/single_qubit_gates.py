@@ -236,7 +236,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         the amplitude of the flux pulse assisted RO will be adjusted
         together with the DC offset during the frequency sweep in order to
         keep the qubit frequency during RO the same as in the calibration.
-        This required an HDAWG as flux AWG.
+        This requires an HDAWG as flux AWG.
 
     Note: parameters with a (*) have not been exhaustively tested for
     parallel measurements.
@@ -252,25 +252,25 @@ class ParallelLOSweepExperiment(CalibBuilder):
     :param adapt_drive_amp: (bool) (*) if True, the drive amplitude is adapted
         for each drive frequency based on the parameter
         fit_ge_amp180_over_ge_freq of the qubit using the output amplitude
-        scaling of the HDAWG. This requires drive AWG.
+        scaling of the HDAWG. This requires an HDAWG as drive AWG.
     :param adapt_ro_freq: (bool, default: False) (*) if True, the RO LO
         frequency is adapted for each drive frequency based on the parameter
         fit_ro_freq_over_ge_freq of the qubit
 
     :param kw: keyword arguments.
-        The following kw arguments are interpreted by resolve_lo_sweep_points:
+        The following kwargs are interpreted by resolve_freq_sweep_points:
         optimize_mod_freqs: (bool, default: False) If False, the ge_mod_freq
             setting of the first qb on an LO (according to the  ordering of
             the task list) determines the LO frequency for all qubits on
             that LO. If True, the ge_mod_freq settings will be optimized for
             the following situations:
-            - With allowed_lo_freqs set to False: the LO will be placed in
+            - With allowed_lo_freqs set to None: the LO will be placed in
                 the center of the band of drive frequencies of all qubits on
                 that LO (minimizing the maximum absolute value of
                 ge_mod_freq over all qubits). Do not use in case of a single
                 qubit per LO in this case, as it would result in a
                 ge_mod_freq of 0.
-            - With allowed_lo_freqs set to True: the ge_mod_freq setting of
+            - With a list allowed_lo_freqs provided: the ge_mod_freq setting of
                 the qubit would act as an unnecessary constant offset in the
                 IF sweep, and optimize_mod_freqs can be used to minimize
                 this offset. In this case optimize_mod_freqs can (and
@@ -316,12 +316,22 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
-        self.resolve_lo_sweep_points(**kw)
+        self.resolve_freq_sweep_points(**kw)
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
 
-    def resolve_lo_sweep_points(self, freq_sp_suffix='freq', **kw):
+    def resolve_freq_sweep_points(self, freq_sp_suffix='freq', **kw):
         """
+        This function is called from the init of the class to resolve the
+        frequency sweep points and the settings that need to be swept
+        together with the frequency. The results are stored in properties of
+        the object, which are then used in run_measurement. Aspects to be
+        resolved include (if applicable):
+        - (shared) LO freqs and (fixed or swept) IFs
+        - drive amplitude adaptation
+        - RO freq adaptation
+        - flux amplitude adaptation of flux-pulse-assisted RO
+
         :param freq_sp_suffix: (str, default 'freq') To identify the
             frequency sweep parameter, this string specifies a suffix that is
             contained at the end of the name of the frequency sweep parameter.
@@ -478,7 +488,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
     def run_measurement(self, **kw):
         """
         Configures additional sweep functions and temporary values for the
-        functionality configured in resolve_lo_sweep_points, before calling
+        functionality configured in resolve_freq_sweep_points, before calling
         the method of the base class.
         """
         temp_vals = []
