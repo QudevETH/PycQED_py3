@@ -1885,7 +1885,7 @@ class DriveAmpCalib(SingleQubitGateCalib):
         'n_pulses': dict(param_name='n_pulses', unit='',
                          label='Nr. $\\pi$-pulses, $N$', dimension=0,
                          values_func=lambda nr_p:
-                         np.arange(nr_p + 1)),
+                         np.arange(1, nr_p + 1, 2)),
         'amp_scalings': dict(param_name='amp_scalings', unit='',
                          label='Amplitude Scaling, $r$', dimension=1),
     }
@@ -1896,7 +1896,12 @@ class DriveAmpCalib(SingleQubitGateCalib):
                  n_pulses=None, amp_scalings=None, **kw):
         try:
             # Define experiment_name and call the parent class __init__
-            self.experiment_name = f'Drive_amp_calib_{n_pulses}'
+            self.experiment_name = f'Drive_amp_calib'
+            if n_pulses is not None:
+                self.experiment_name += f'_{n_pulses}pipulses'
+            n_pulses_pi = kw.get('n_pulses_pi', None)
+            if n_pulses_pi is not None:
+                self.experiment_name += f'_{n_pulses_pi}xpi_over_{n_pulses_pi}'
             self.two_pulse_scaling = kw.get('two_pulse_scaling', False)
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
