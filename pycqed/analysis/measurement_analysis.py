@@ -1090,7 +1090,7 @@ class MeasurementAnalysis(object):
                                                                self.value_units)]
 
     def get_best_fit_results(self, peak=False, weighted=False):
-        if len(self.data_file['Analysis']) is 1:
+        if len(self.data_file['Analysis']) == 1:
             return list(self.data_file['Analysis'].values())[0]
         else:
             normalized_chisquares = {}
@@ -2010,7 +2010,7 @@ class Rabi_Analysis(TD_Analysis):
         # we may have 0 cal pts, so writing self.sweep_points[:-self.NoCalPoints]
         # will give an error if self.NoCalPoints==0.
         self.sweep_pts_wo_cal_pts = deepcopy(self.sweep_points)
-        if self.NoCalPoints is not 0:
+        if self.NoCalPoints != 0:
             self.sweep_pts_wo_cal_pts = \
                 self.sweep_pts_wo_cal_pts[:-self.NoCalPoints]
 
