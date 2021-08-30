@@ -1314,6 +1314,30 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
+    """
+    Performs a series of ge Rabi experiments for multiple drive frequencies.
+    This is a ParallelLOSweepExperiment, see docstrings of
+    ParallelLOSweepExperiment, MultiTaskingExperiment and CalibBuilder
+    for general information.
+
+           |X180|          ---         |RO|
+      sweep amp & freq
+
+    Important notes (see docstring of ParallelLOSweepExperiment for details):
+    - Each task corresponds to a qubit (specified by the key qb in the
+      task), i.e., multiple qubits can be characterized in parallel.
+    - Some options of ParallelLOSweepExperiment have not yet been
+      exhaustively tested for parallel measurements.
+    - The key fluxline in a task can be set to a qcodes parameter to adjust
+      the DC flux offset of the qubit during the sweep.
+
+    :param kw:
+        Keyword arguments are passed on to the super class and to autorun.
+
+        The following kwargs are automatically converted to sweep points:
+        - amps: drive pulse amplitude (sweep dimension 0)
+        - freqs: drive frequency (sweep dimension 1)
+    """
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
                       label=r'drive frequency, $f_d$',
@@ -1334,6 +1358,12 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
             traceback.print_exc()
 
     def sweep_block(self, qb, **kw):
+        """
+        This function creates the block for a single RabiFrequencySweep
+        measurement task, see the pulse sequence in the class docstring.
+        :param qb: (str) the qubit name
+        :param kw: currently ignored
+        """
         b = self.block_from_ops(f'ge {qb}', [f'X180 {qb}'])
         b.pulses[0]['amplitude'] = ParametricValue('amplitude')
         self.data_to_fit.update({qb: 'pe'})
