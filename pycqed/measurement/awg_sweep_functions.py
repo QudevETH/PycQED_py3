@@ -11,6 +11,7 @@ from pycqed.measurement.waveform_control import pulsar as ps
 
 import time
 
+log = logging.getLogger(__name__)
 
 class File(swf.Hard_Sweep):
 
@@ -178,6 +179,10 @@ class SegmentSoftSweep(swf.Soft_Sweep):
         if channels_to_upload == 'all':
             self.awgs_to_upload = 'all'
         else:
+            log.warning('SegmentSoftSweep: reducing upload overhead manually '
+                        'with channels_to_upload is deprecated. Set '
+                        'pulsar.use_sequence_cache to True for automatic '
+                        'reduction of upload overhead.')
             pulsar = ps.Pulsar.get_instance()
             self.awgs_to_upload = set([pulsar.get(f'{ch}_awg')
                                             for ch in channels_to_upload])

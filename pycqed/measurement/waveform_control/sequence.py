@@ -36,6 +36,7 @@ class Sequence:
         self.repeat_patterns = {}
         self.extend(segments)
         self.timer = Timer(self.name)
+        self.is_resolved = False
 
     def add(self, segment):
         if segment.name in self.segments:
@@ -53,19 +54,42 @@ class Sequence:
             self.add(seg)
 
     @Timer()
-    def generate_waveforms_sequences(self, awgs=None):
+    def generate_waveforms_sequences(self, awgs=None,
+                                     get_channel_hashes=False,
+                                     resolve_segments=None):
         """
         Calculates and returns 
-            * a dictionary of waveforms used in the sequence, indexed
-                by their hash value
-            * For each awg, a list of elements, each element consisting of
-                a waveform-hash for each codeword and each channel
+            * waveforms: a dictionary of waveforms used in the sequence,
+                indexed by their hash value
+            * sequences: For each awg, a list of elements, each element
+                consisting of a waveform-hash for each codeword and each
+                channel
+        :param awgs: a list of AWG names. If None, waveforms will be
+            generated for all AWGs used in the sequence.
+        :param get_channel_hashes: (bool, default: False) do not create
+            waveforms, and instead return a dict of channel-elements indexed
+            by channel names, each channel-element consisting of a
+            waveform-hash for each codeword on that channel.
+        :param resolve_segments: (bool, optional) whether the segments in the
+            sequence still need to be resolved. If not provided,
+            self.is_resolved is checked to determine whether segments
+            need to be resolved.
+        :return: a tuple of waveforms, sequences as described above if
+            get_channel_hashes==False. Otherwise, a tuple channel_hashes,
+            sequences.
+            Note that the information contained in channel_hashes is the
+            same as in sequences, but in a different structure, which has the
+            channel name as highest-level key:
+            sequences[awg][elname][cw][chid] == channel_hashes[ch][elname][cw]
         """
         waveforms = {}
         sequences = {}
-        for seg in self.segments.values():
-            seg.resolve_segment()
-            seg.gen_elements_on_awg()
+        channel_hashes = {}
+        if resolve_segments or (resolve_segments is None
+                                and not self.is_resolved):
+            for seg in self.segments.values():
+                seg.resolve_segment()
+                seg.gen_elements_on_awg()
 
         if awgs is None:
             awgs = set()
@@ -77,7 +101,8 @@ class Sequence:
             for segname, seg in self.segments.items():
                 # Store the name of the segment
                 sequences[awg][segname] = None
-                for elname in seg.elements_on_awg.get(awg, []):
+                elnames = seg.elements_on_awg.get(awg, [])
+                for elname in elnames:
                     sequences[awg][elname] = {'metadata': {}}
                     for cw in seg.get_element_codewords(elname, awg=awg):
                         sequences[awg][elname][cw] = {}
@@ -85,18 +110,89 @@ class Sequence:
                             h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
                             sequences[awg][elname][cw][chid] = h
-                            if h not in waveforms:
-                                wf = seg.waveforms(awgs={awg}, 
-                                    elements={elname}, channels={ch}, 
-                                    codewords={cw})
-                                waveforms[h] = wf.popitem()[1].popitem()[1]\
-                                                 .popitem()[1].popitem()[1]
+                            if get_channel_hashes:
+                                if ch not in channel_hashes:
+                                    channel_hashes[ch] = {}
+                                if elname not in channel_hashes[ch]:
+                                    channel_hashes[ch][elname] = {}
+                                channel_hashes[ch][elname][cw] = h
+                            else:
+                                if h not in waveforms:
+                                    wf = seg.waveforms(awgs={awg},
+                                        elements={elname}, channels={ch},
+                                        codewords={cw})
+                                    waveforms[h] = wf.popitem()[1].popitem()[1]\
+                                                     .popitem()[1].popitem()[1]
                     if elname in seg.acquisition_elements:
                         sequences[awg][elname]['metadata']['acq'] = True
                     else:
                         sequences[awg][elname]['metadata']['acq'] = False
-        return waveforms, sequences
-                
+                    sequences[awg][elname]['metadata']['allow_filter'] = \
+                        seg.allow_filter
+                # Experimental feature to sweep values of nodes of ZI HDAWGs
+                # in a hard sweep. See the comments above the sweep_params
+                # property in Segment.
+                if seg.sweep_params is not None and len(seg.sweep_params):
+                    sequences[awg][elnames[0]]['metadata']['loop'] = len(
+                        list(seg.sweep_params.values())[0])
+                    sequences[awg][elnames[0]]['metadata']['sweep_params'] = \
+                        {k[len(awg) + 1:]: v for k, v in
+                         seg.sweep_params.items() if k.startswith(awg + '_')}
+                    sequences[awg][elnames[-1]]['metadata']['end_loop'] = True
+        self.is_resolved = True
+        if get_channel_hashes:
+            return channel_hashes, sequences
+        else:
+            return waveforms, sequences
+
+    @staticmethod
+    def harmonize_element_lengths(sequences, awgs=None):
+        """
+        Given a list of sequences, this function ensures for all AWGs and all
+        elements that the element length is the same in all sequences. This is
+        done by setting the length of each AWG element to the maximum length
+        across all sequences. After this, overlap is checked and the sequences
+        are marked as resolved.
+        :param sequences: a list of sequences
+        :param awgs: a list of AWG names. If None, lengths will be harmonized
+            for all AWGs.
+        """
+        seq_awgs = [awgs] * len(sequences)
+        # collect element lengths
+        lengths = odict()
+        for i, seq in enumerate(sequences):
+            for seg in seq.segments.values():
+                seg.resolve_segment()
+                seg.gen_elements_on_awg()
+            if awgs is None:
+                # find awgs for this sequence
+                seq_awgs[i] = set()
+                for seg in seq.segments.values():
+                    seq_awgs[i] |= set(seg.elements_on_awg)
+            for awg in seq_awgs[i]:
+                if awg not in lengths:
+                    lengths[awg] = odict()
+                for segname, seg in seq.segments.items():
+                    elnames = seg.elements_on_awg.get(awg, [])
+                    for elname in elnames:
+                        if elname not in lengths[awg]:
+                            lengths[awg][elname] = []
+                        lengths[awg][elname].append(
+                            seg.element_start_end[elname][awg][1])
+        # set element lengths to the maximum of the collected values
+        for i, seq in enumerate(sequences):
+            for awg in seq_awgs[i]:
+                for segname, seg in seq.segments.items():
+                    elnames = seg.elements_on_awg.get(awg, [])
+                    for elname in elnames:
+                        seg.element_start_end[elname][awg][1] = max(
+                            lengths[awg][elname])
+            # test for overlaps
+            for segname, seg in seq.segments.items():
+                seg._test_overlap()
+            # mark sequence as resolved
+            seq.is_resolved = True
+
     def n_acq_elements(self, per_segment=False):
         """
         Gets the number of acquisition elements in the sequence.

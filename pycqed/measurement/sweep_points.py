@@ -270,44 +270,74 @@ class SweepPoints(list):
 
         If the sweep dimension has more than one sweep parameter name (dict with
         several keys), then:
-            - first tries to add to the list for each mobj only those sweep
+            - first adds to the list for each mobj only those sweep
             param names that contain the mobj_name.
-            - If it can't find the mobj_name in the sweep param name, assumes
-            there is only one param per mobj in each sweep dimension, and that
-            the order of params in each sweep dimension corresponds to the
-            order of keys in keys_list.
-            I.e. key_i in sweep_points[0] contains the sweep information for
-            measured_objects[i].
 
-        :param measured_objects: list of strings to be used as keys in the
-            returned dictionary. These are the measured object names
+            ! Currently assumes the mobj names substrings are separated by '_'
+            from each other and from the rest of the substrings in
+            the sweep parameter names. So for example, qb1qb9_amplitude will not
+            be found for either qb1 or qb9. Neither will qb8 be found in
+            qb8amplitude !
+
+            - if some parameters remain that do not contain any of the
+            measurement_objects names, it is assumed that all
+            measurement_objects used them so they will be added for each mobj
+
+        :param measurement_objects: list of strings to be used as keys in the
+            returned dictionary. These are the measured object names.
+            Can also be list of measurement object instances with a name
+            attribute, in which case this function gets the list of names.
         :return: dict of the form
          {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
+
+        # Ensure measurement_objects is a list
         if isinstance(measurement_objects, list):
             measurement_objects = copy(measurement_objects)
         else:
             measurement_objects = [measurement_objects]
+
         for i, mobj in enumerate(measurement_objects):
             if hasattr(mobj, 'name'):
+                # A list of measurement object instances with a
+                # name attribute was provided
                 measurement_objects[i] = mobj.name
 
-        sweep_points_map = OrderedDict()
-        for i, mobjn in enumerate(measurement_objects):
-            sweep_points_map[mobjn] = []
-            for dim, d in enumerate(self):
-                if len(d) == 1:
-                    # assume all mobjs use the same param_name
+        sweep_points_map = {mobjn: [] for mobjn in measurement_objects}
+
+        for dim, d in enumerate(self):
+            # d is a dictionary with keys == sweep parameter names
+            if len(d) == 1:
+                # Only one sweep parameter.
+                # Assume all mobjs use the same param_name given by the key
+                # of d.
+                for mobjn in measurement_objects:
                     sweep_points_map[mobjn] += [next(iter(d))]
-                elif mobjn in list(d)[i]:
-                    sweep_points_map[mobjn] += [list(d)[i]]
-                else:
-                    if len(d) != len(measurement_objects):
-                        raise ValueError(
-                            f'{len(measurement_objects)} measurement objects '
-                            f'were given but there are {len(d)} '
-                            f'sweep parameters in dimension {dim}.')
-                    sweep_points_map[mobjn] += [list(d)[i]]
+            else:
+                all_pars = []
+                for i, mobjn in enumerate(measurement_objects):
+                    # Find all sweep param names that contain the mobj name.
+                    # Assumes the mobj names substrings are separated by '_'
+                    # from each other and from the rest of the substrings in
+                    # the sweep parameter name
+                    pars = [k for k in list(d) if mobjn in k.split('_')]
+                    if len(pars):
+                        # Append found sweep param names to the sweep_points_map
+                        # for this mobj
+                        sweep_points_map[mobjn] += pars
+                        
+                    # Collect all found pars, to be used below
+                    all_pars += pars
+
+                # Find the remaining sweep parameter names in this dimension
+                # that do not contain any of the mobj names. These are assumed
+                # to be used by all measurement_objects and will be appended
+                # in sweep_points_map for each mobj.
+                remaining_pars = [k for k in list(d) if k not in all_pars]
+                if len(remaining_pars):
+                    for mobjn in measurement_objects:
+                        sweep_points_map[mobjn] += remaining_pars
+
         return sweep_points_map
 
     def length(self, dimension='all'):

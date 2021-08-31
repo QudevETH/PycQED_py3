@@ -107,6 +107,9 @@ class ziDIOCalibrationError(Exception):
 
 class ZI_HDAWG8(zicore.ZI_HDAWG_core):
 
+    USER_REG_FIRST_SEGMENT = 5
+    USER_REG_LAST_SEGMENT = 6
+
     def __init__(self,
                  name: str,
                  device: str,
