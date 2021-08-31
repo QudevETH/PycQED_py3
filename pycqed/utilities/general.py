@@ -800,3 +800,70 @@ def find_symmetry_index(data):
         data_filtered = data[np.int(iflip-span):np.int(iflip+span+1)]
         corr.append((data_filtered*data_filtered[::-1]).sum())
     return np.argmax(corr), corr
+
+
+def get_pycqed_appdata_dir():
+    """
+    Returns the path to the pycqed application data dir.
+    """
+    if os.name == 'nt':
+        path = os.path.expandvars(r'%LOCALAPPDATA%\pycqed')
+    else:
+        path = os.path.expanduser('~/.pycqed')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def raise_warning_image(destination_path, warning_image_path=None):
+    """
+    Copy the image specified by warning_image_path to the folder specified by
+    destination_path.
+    :param destination_path: folder where the warning image is to be copied
+    :param image_path: full path, including image name and extension, to
+        the warning image to be copied. If None, assumes WARNING.png exists in
+        the module folder.
+    :return:
+    """
+    if 'WARNING.png' not in os.listdir(destination_path):
+        import shutil
+        if warning_image_path is None:
+            warning_image_path = os.path.abspath(sys.modules[__name__].__file__)
+            warning_image_path = os.path.split(warning_image_path)[0]
+            warning_image_path = os.path.abspath(os.path.join(
+                warning_image_path, 'WARNING.png'))
+
+        destination = os.path.abspath(os.path.join(destination_path,
+                                                   'WARNING.png'))
+        shutil.copy2(warning_image_path, destination)
+
+
+def write_warning_message_to_text_file(destination_path, message, filename=None):
+    """
+    Write a warning message to a text file.
+    :param destination_path: folder to the text file. If file does not yet
+        exist, it will be created.
+    :param message: string with the message to be written into the text file.
+    :param filename: string with name of the warning message file. If None,
+        uses 'warning_message'. If text file does not exist, it will be created.
+        If text file already exists, the message will be appended.
+    :return:
+    """
+    if filename is None:
+        filename = 'warning_message'
+
+    # Add extension if not contained in filename.
+    if not len(os.path.splitext(filename)[-1]):
+        filename += '.txt'
+
+    # Adding this will ensure that if a future message is appended to the file,
+    # the new message will be separated by an empty line from the current
+    # message.
+    message += '\n\n'
+
+    # Prepend timestamp to the message
+    message = f'{datetime.datetime.now():%Y%m%d_%H%M%S}\n{message}'
+
+    # Write message to file
+    file = open(destination_path + f"\\{filename}", 'a+')
+    file.writelines(message)
+    file.close()
