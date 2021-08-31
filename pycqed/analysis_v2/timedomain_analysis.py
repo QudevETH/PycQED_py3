@@ -5062,7 +5062,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                                period_const, cov=0):
         jacobian = np.array([-1 / (2 * np.pi * f),
                              - (period_const - phi) / (2 * np.pi * f**2)])
-        cov_matrix = np.array([[phi_err**2, cov**2], [cov**2, f_err**2]])
+        cov_matrix = np.array([[phi_err**2, cov], [cov, f_err**2]])
         return np.sqrt(jacobian @ cov_matrix @ jacobian.T)
 
     def prepare_plots(self):
