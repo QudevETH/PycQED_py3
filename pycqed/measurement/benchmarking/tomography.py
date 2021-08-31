@@ -218,35 +218,7 @@ class Tomography(CalibBuilder):
             )
         self.exp_metadata.update({'cal_points': repr(self.cal_points)})
 
-    def block_from_anything(self, pulses, block_name):
-        """
-        Convert various input formats into a `Block`.
-        Args:
-            pulses: A specification of a pulse sequence. Can have the following
-                formats:
-                    1) Block: A block class is returned unmodified.
-                    2) str: A single op code.
-                    3) dict: A single pulse dictionary. If the dictionary
-                           includes the key `op_code`, then the unspecified
-                           pulse parameters are taken from the corresponding
-                           operation.
-                    4) list of str: A list of op codes.
-                    5) list of dict: A list of pulse dictionaries, optionally
-                           including the op-codes, see also format 3).
-            block_name: Name of the resulting block
-        Returns: The input converted to a Block.
-        """
 
-        if hasattr(pulses, 'build'):  # Block
-            return pulses
-        elif isinstance(pulses, str):  # opcode
-            return self.block_from_ops(block_name, [pulses])
-        elif isinstance(pulses, dict):  # pulse dict
-            return self.prepend_pulses_block([pulses], block_name=block_name)
-        elif isinstance(pulses[0], str):  # list of opcodes
-            return self.block_from_ops(block_name, pulses)
-        elif isinstance(pulses[0], dict):  # list of pulse dicts
-            return self.prepend_pulses_block(pulses, block_name=block_name)
 
     def do_optimize_identity(self):
         def recursive_replace_op(in_this, this, with_that):
