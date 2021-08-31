@@ -1493,6 +1493,29 @@ def Gaussian(freq, sigma, mu, ampl, offset):
     return ampl/(sigma*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu)/sigma)**2) + offset
 
 
+def Gaussian_guess(model, data, freq, **kwargs):
+    """
+    Tip: to use this assign this guess function as a method to a model use:
+    model.guess = Gaussian_guess.__get__(
+        model, model.__class__)
+    """
+
+    mu_guess = freq[np.argmax(data)]
+    offs_guess = np.median(data)
+    p = (data - offs_guess)**2
+    p /= p.sum()
+    sigma_guess = np.sqrt(((freq - mu_guess)**2 * p).sum())/10
+    amp_guess = max(data - offs_guess)*sigma_guess*np.sqrt(2*np.pi)
+    params = model.make_params(sigma=sigma_guess,
+                               mu=mu_guess,
+                               ampl=amp_guess,
+                               offset=offs_guess)
+    params['mu'].min = np.min(freq)
+    params['mu'].max = np.max(freq)
+
+    return params
+
+
 def half_feed_line_S12_J_func(omega, J, kappaPF, gammaPF, gammaRR, omegaPF, omegaRR, phi, A , B, alpha):
     return abs( A+np.exp(-1j*phi)*2*B*((-1+np.exp(1j*alpha))*(4*J**2+(gammaPF-2*1j*(omegaPF-omega))*(gammaRR-2j*omegaRR+2j*omega)))/(16*J**2+(4*gammaPF+(3+np.exp(1j*alpha))*kappaPF-8j*(omegaPF-omega))*(gammaRR-2j*omegaRR+2j*omega)) )
 

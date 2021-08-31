@@ -1,28 +1,26 @@
 """
 Spectroscopy class
 
-This file contains the Spectroscopy class that forms the basis analysis of all the spectroscopy measurement analyses.
+This file contains the Spectroscopy class that forms the basis analysis of all
+the spectroscopy measurement analyses.
 """
 
-import pycqed.analysis_v2.base_analysis as ba
+import logging
 import numpy as np
+import lmfit
+import pycqed.analysis_v2.base_analysis as ba
+import pycqed.analysis.fitting_models as fit_mods
+
 import pandas as pd
 import matplotlib.pyplot as plt
-from pycqed.analysis import measurement_analysis as MA
-from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.analysis.tools import data_manipulation as dm_tools
-from pycqed.analysis import fitting_models as fit_mods
 import pycqed.analysis.fit_toolbox.geometry as geo
-import lmfit
-import logging
-log = logging.getLogger(__name__)
 from collections import OrderedDict
 from scipy import integrate
-import importlib
-importlib.reload(ba)
+
+log = logging.getLogger(__name__)
 
 
-class Spectroscopy(ba.BaseDataAnalysis):
+class SpectroscopyOld(ba.BaseDataAnalysis):
 
     def __init__(self, t_start: str = None,
                  t_stop: str = None,
@@ -31,11 +29,11 @@ class Spectroscopy(ba.BaseDataAnalysis):
                  extract_only: bool = False,
                  auto: bool = True,
                  do_fitting: bool = False):
-        super(Spectroscopy, self).__init__(t_start=t_start, t_stop=t_stop,
-                                           label=label,
-                                           options_dict=options_dict,
-                                           extract_only=extract_only,
-                                           do_fitting=do_fitting)
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         label=label,
+                         options_dict=options_dict,
+                         extract_only=extract_only,
+                         do_fitting=do_fitting)
         self.extract_fitparams = self.options_dict.get('fitparams', False)
         self.params_dict = {'freq_label': 'sweep_name',
                             'freq_unit': 'sweep_unit',
@@ -189,7 +187,7 @@ class Spectroscopy(ba.BaseDataAnalysis):
                                       }
 
     def plot_for_presentation(self, key_list=None, no_label=False):
-        super(Spectroscopy, self).plot_for_presentation(
+        super().plot_for_presentation(
             key_list=key_list, no_label=no_label)
         for key in key_list:
             pdict = self.plot_dicts[key]
@@ -200,217 +198,7 @@ class Spectroscopy(ba.BaseDataAnalysis):
                     self.axs[key].set_ylabel('Transmission amplitude (V rms)')
 
 
-class complex_spectroscopy(Spectroscopy):
-    def __init__(self, t_start,
-                 options_dict=None,
-                 t_stop=None,
-                 do_fitting=False,
-                 extract_only=False,
-                 auto=True):
-        super(complex_spectroscopy, self).__init__(t_start, t_stop=t_stop,
-                                                   options_dict=options_dict,
-                                                   extract_only=extract_only,
-                                                   auto=False,
-                                                   do_fitting=do_fitting)
-        self.params_dict = {'freq_label': 'sweep_name',
-                            'freq_unit': 'sweep_unit',
-                            'measurementstring': 'measurementstring',
-                            'measured_values': 'measured_values',
-                            'freq': 'sweep_points',
-                            'amp': 'amp',
-                            'phase': 'phase',
-                            'real': 'real',
-                            'imag': 'imag'}
-        self.options_dict.get('xwidth', None)
-
-        if self.extract_fitparams:
-            self.params_dict.update({'fitparams': 'fit_params'})
-
-        self.numeric_params = ['freq', 'amp', 'phase', 'real', 'imag']
-        self.do_fitting = do_fitting
-        self.fitparams_guess = self.options_dict.get('fitparams_guess', {})
-        if auto is True:
-            self.run_analysis()
-
-    def process_data(self):
-        super(complex_spectroscopy, self).process_data()
-        self.proc_data_dict['amp_label'] = 'Transmission amplitude (V rms)'
-        self.proc_data_dict['phase_label'] = 'Transmission phase (degrees)'
-        if len(self.raw_data_dict['timestamps']) == 1:
-            self.proc_data_dict['plot_phase'] = np.unwrap(np.pi / 180. * self.proc_data_dict['plot_phase']) * 180 / np.pi
-            self.proc_data_dict['plot_xlabel'] = 'Readout Frequency (Hz)'
-        else:
-            pass
-        self.raw_data_dict['real'] = [
-            self.raw_data_dict['measured_values'][0][2]]
-        self.raw_data_dict['imag'] = [
-            self.raw_data_dict['measured_values'][0][3]]
-        self.proc_data_dict['real'] = self.raw_data_dict['real'][0]
-        self.proc_data_dict['imag'] = self.raw_data_dict['imag'][0]
-        self.proc_data_dict['plot_real'] = self.proc_data_dict['real']
-        self.proc_data_dict['plot_imag'] = self.proc_data_dict['imag']
-        self.proc_data_dict['real_label'] = 'Real{S21} (V rms)'
-        self.proc_data_dict['imag_label'] = 'Imag{S21} (V rms)'
-        if len(self.raw_data_dict['timestamps']) == 1:
-            self.proc_data_dict['plot_phase'] = np.unwrap(np.pi / 180. * self.proc_data_dict['plot_phase']) * 180 / np.pi
-            self.proc_data_dict['plot_xlabel'] = 'Frequency (Hz)'
-        else:
-            pass
-
-    def prepare_plots(self):
-        super(complex_spectroscopy, self).prepare_plots()
-        proc_data_dict = self.proc_data_dict
-        plotsize = self.options_dict.get('plotsize')
-        if len(self.raw_data_dict['timestamps']) == 1:
-            plot_fn = self.plot_line
-            self.plot_dicts['amp']['title'] = 'S21 amp: %s' % (
-                self.timestamps[0])
-            self.plot_dicts['amp']['setlabel'] = 'amp'
-            self.plot_dicts['phase']['title'] = 'S21 phase: %s' % (
-                self.timestamps[0])
-            self.plot_dicts['phase']['setlabel'] = 'phase'
-            self.plot_dicts['real'] = {'plotfn': plot_fn,
-                                       'xvals': proc_data_dict['plot_frequency'],
-                                       'yvals': proc_data_dict['plot_real'],
-                                       'title': 'S21 amp: %s' % (self.timestamps[0]),
-                                       'xlabel': proc_data_dict['freq_label'],
-                                       'ylabel': proc_data_dict['real_label'],
-                                       'yrange': proc_data_dict['amp_range'],
-                                       'plotsize': plotsize
-                                       }
-            self.plot_dicts['imag'] = {'plotfn': plot_fn,
-                                       'xvals': proc_data_dict['plot_frequency'],
-                                       'yvals': proc_data_dict['plot_imag'],
-                                       'title': 'S21 phase: %s' % (self.timestamps[0]),
-                                       'xlabel': proc_data_dict['freq_label'],
-                                       'ylabel': proc_data_dict['imag_label'],
-                                       'yrange': proc_data_dict['amp_range'],
-                                       'plotsize': plotsize
-                                       }
-            pdict_names = ['amp', 'phase', 'real', 'imag']
-
-            self.figs['combined'], axs = plt.subplots(
-                nrows=4, ncols=1, sharex=True, figsize=(8, 6))
-
-            for i, name in enumerate(pdict_names):
-                combined_name = 'combined_' + name
-                self.axs[combined_name] = axs[i]
-                self.plot_dicts[combined_name] = self.plot_dicts[name].copy()
-                self.plot_dicts[combined_name]['ax_id'] = combined_name
-
-                # shorter label as the axes are now shared
-                self.plot_dicts[combined_name]['ylabel'] = name
-                self.plot_dicts[combined_name]['xlabel'] = None if i in [
-                    0, 1, 2, 3] else self.plot_dicts[combined_name]['xlabel']
-                self.plot_dicts[combined_name]['title'] = None if i in [
-                    0, 1, 2, 3] else self.plot_dicts[combined_name]['title']
-                self.plot_dicts[combined_name]['touching'] = True
-
-
-        else:
-            raise NotImplementedError('Not coded up yet for multiple traces')
-
-
-class VNA_analysis(complex_spectroscopy):
-    def __init__(self, t_start,
-                 options_dict=None,
-                 t_stop=None,
-                 do_fitting=False,
-                 extract_only=False,
-                 auto=True):
-        super(VNA_analysis, self).__init__(t_start, t_stop=t_stop,
-                                           options_dict=options_dict,
-                                           extract_only=extract_only,
-                                           auto=auto,
-                                           do_fitting=do_fitting)
-
-    def process_data(self):
-        super(VNA_analysis, self).process_data()
-
-    def prepare_plots(self):
-        super(VNA_analysis, self).prepare_plots()
-        if self.do_fitting:
-            self.plot_dicts['reso_fit'] = {
-                'ax_id': 'amp',
-                'plotfn': self.plot_fit,
-                'fit_res': self.fit_dicts['reso_fit']['fit_res'],
-                'plot_init': self.options_dict['plot_init'],
-                'setlabel': 'hanger',
-                'line_kws': {'color': 'r'},
-                'do_legend': True}
-
-    def prepare_fitting(self):
-        # Fitting function for one data trace. The fitted data can be
-        # either complex, amp(litude) or phase. The fitting models are
-        # HangerFuncAmplitude, HangerFuncComplex,
-        # PolyBgHangerFuncAmplitude, SlopedHangerFuncAmplitude,
-        # SlopedHangerFuncComplex.
-        fit_options = self.options_dict.get('fit_options', None)
-        subtract_background = self.options_dict.get(
-            'subtract_background', False)
-        if fit_options is None:
-            fitting_model = 'hanger'
-        else:
-            fitting_model = fit_options['model']
-        if subtract_background:
-            self.do_subtract_background(thres=self.options_dict['background_thres'],
-                                        back_dict=self.options_dict['background_dict'])
-        if fitting_model == 'hanger':
-            fit_fn = fit_mods.SlopedHangerFuncAmplitude
-            fit_guess_fn = fit_mods.SlopedHangerFuncAmplitudeGuess
-        elif fitting_model == 'simple_hanger':
-            fit_fn = fit_mods.HangerFuncAmplitude
-            raise NotImplementedError(
-                'This functions guess function is not coded up yet')
-            # TODO HangerFuncAmplitude Guess
-        elif fitting_model == 'lorentzian':
-            raise NotImplementedError(
-                'This functions guess function is not coded up yet')
-            fit_fn = fit_mods.Lorentzian
-            # TODO LorentzianGuess
-        elif fitting_model == 'complex':
-            raise NotImplementedError(
-                'This functions guess function is not coded up yet')
-            # hanger_fit = VNA_analysis(self.timestamps,
-            #                              do_fitting= True,
-            #                              options_dict= {'fit_options':
-            #                                             {'model':'hanger'}},
-            #                              extract_only= True)
-            # hanger_fit_res = hanger_fit.fit_dicts['reso_fit']['fit_res']
-            # complex_guess = hanger_fit_res.best_values
-
-            # delta_phase = np.unwrap(self.proc_data_dict['plot_phase'])[-1] - /
-            #               np.unwrap(self.proc_data_dict['plot_phase'])[0]
-            # delta_freq = self.proc_data_dict['plot_frequency'][-1] - /
-            #              self.proc_data_dict['plot_frequency'][0]
-            # phase_v = delta_phase/delta_freq
-            # fit_fn = fit_mods.SlopedHangerFuncComplex2
-
-            # TODO HangerFuncComplexGuess
-
-        if len(self.raw_data_dict['timestamps']) == 1:
-            if fitting_model == 'complex':
-                self.fit_dicts['reso_fit'] = {'fit_fn': fit_fn,
-                                              'fit_guess_fn': fit_guess_fn,
-                                              'fit_yvals': {'data': self.proc_data_dict['plot_amp']},
-                                              'fit_xvals': {'f': self.proc_data_dict['plot_frequency']}
-                                              }
-            else:
-                self.fit_dicts['reso_fit'] = {'fit_fn': fit_fn,
-                                              'fit_guess_fn': fit_guess_fn,
-                                              'fit_yvals': {'data': self.proc_data_dict['plot_amp']},
-                                              'fit_xvals': {'f': self.proc_data_dict['plot_frequency']}
-                                              }
-        else:
-            self.fit_dicts['reso_fit'] = {'fit_fn': fit_fn,
-                                          'fit_guess_fn': fit_guess_fn,
-                                          'fit_yvals': [{'data': np.squeeze(tt)} for tt in self.plot_amp],
-                                          'fit_xvals': np.squeeze([{'f': tt[0]} for tt in self.plot_frequency])}
-    def analyze_fit_results(self):
-        pass
-
-
-class ResonatorSpectroscopy(Spectroscopy):
+class ResonatorSpectroscopy(SpectroscopyOld):
     def __init__(self, t_start,
                  options_dict=None,
                  t_stop=None,
@@ -797,7 +585,7 @@ class ResonatorSpectroscopy(Spectroscopy):
             self.plot_fitting()
 
 
-class ResonatorSpectroscopy_v2(Spectroscopy):
+class ResonatorSpectroscopy_v2(SpectroscopyOld):
     def __init__(self, t_start=None,
                  options_dict=None,
                  t_stop=None,
@@ -1494,44 +1282,388 @@ class ResonatorSpectroscopy_v2(Spectroscopy):
             self.plot_fitting()
 
 
+class Spectroscopy(ba.BaseDataAnalysis):
+    """ A baseclass for spectroscopic measurements.
 
-class ResonatorDacSweep(ResonatorSpectroscopy):
-    def __init__(self, t_start,
-                 options_dict,
-                 t_stop=None,
-                 do_fitting=True,
-                 extract_only=False,
-                 auto=True):
-        super(ResonatorDacSweep, self).__init__(t_start, t_stop=t_stop,
-                                                options_dict=options_dict,
-                                                do_fitting=do_fitting,
-                                                extract_only=extract_only,
-                                                auto=False)
-        self.params_dict['dac_value'] = 'IVVI.dac12'
+    Supports analyzing data from 2d sweeps and also combining data from multiple
+    timestamps.
 
-        self.numeric_params = ['freq', 'amp', 'phase', 'dac_value']
-        if auto is True:
+    Args:
+        t_start, t_stop, options_dict, label, extract_only, do_fitting:
+            See dodcstring of `BaseDataAnalysis`.
+        auto: bool
+            Run the analysis as the last step of initialization.
+
+    Parameters used from the options_dict:
+        param_2d: A path to a parameter in the hdf5 file that is interpreted
+            as the second sweep dimension in case the sweep is split into
+            multiple 1d sweep files. Optional.
+
+    Parameters used either from metadata or options_dict:
+        calc_pca: Whether to calculate the principal component of the spectrum,
+            combining amplitude and phase. Default False.
+        global_pca: If calculating the principal component, whether to do it
+            globally or per-second-sweep-dimension-point. Default False.
+
+    Plotting related parameters either from metadata or options_dict:
+        plot_lines: Whether to do a line plots. Defaults to True if nr of 2d
+            sweep points is smaller than 4, False otherwise.
+        plot_color: Whether to do a 2d coulour-plots. Defaults to True if nr of
+            2d sweep points is larger than 3, False otherwise.
+        plot_amp: Whether to plot transmission amplitude. Default True.
+        plot_phase: Whether to plot transmission phase. Default True.
+        plot_pca: Whether to plot principal component of the spectrum.
+            Default False.
+        label_1d: Label for the first sweep dimension. Default 'Frequency'.
+        unit_1d: Unit for the first sweep dimension. Default 'Hz'.
+        label_2d: Label for the second sweep dimension. Default 'Frequency'.
+        unit_2d: Unit for the second sweep dimension. Default 'Frequency'.
+        label_amp: Label for the amplitude output. Default 'Amplitude'.
+        unit_amp: Unit for the amplitude output. Default 'V'.
+        range_amp: Range for the amplitude output. Default min-to-max.
+        label_phase: Label for the phase output. Default 'Phase'.
+        unit_phase: Unit for the phase output. Default 'deg'.
+        range_phase: Range for the phase output. Default Default min-to-max.
+        label_pca: Label for the principal component output.
+            Default 'Principal component'.
+        unit_pca: Unit for the principal component output. Default 'V'.
+        range_pca: Range for the principal component output. Default min-to-max.
+    """
+    def __init__(self, t_start: str = None,
+                 t_stop: str = None,
+                 options_dict: dict = None,
+                 label: str = None,
+                 extract_only: bool = False,
+                 auto: bool = True,
+                 do_fitting: bool = False):
+        if options_dict is None:
+            options_dict = {}
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         options_dict=options_dict,
+                         label=label,
+                         extract_only=extract_only,
+                         do_fitting=do_fitting)
+        self.params_dict = {'measurementstring': 'measurementstring'}
+        self.param_2d = options_dict.get('param_2d', None)
+        if self.param_2d is not None:
+            pname = 'Instrument settings.' + self.param_2d
+            self.params_dict.update({'param_2d': pname})
+            self.numeric_params = ['param_2d']
+
+        if auto:
             self.run_analysis()
 
     def process_data(self):
-        super(ResonatorDacSweep, self).process_data()
-        # self.plot_xvals = self.options_dict.get('xvals',np.array([[tt] for tt in range(len(self.raw_data_dict['timestamps']))]))
-        conversion_factor = self.options_dict.get('conversion_factor', 1)
+        pdd = self.proc_data_dict
+        rdds = self.raw_data_dict
+        if not isinstance(self.raw_data_dict, (tuple, list)):
+            rdds = (rdds,)
 
-        # self.plot_xvals =
-        self.plot_xlabel = self.options_dict.get('xlabel', 'Gate voltage (V)')
-        self.plot_xwidth = self.options_dict.get('xwidth', None)
-        for tt in range(len(self.plot_xvals)):
-            print(self.plot_xvals[tt][0])
+        pdd['freqs'] = []  # list of lists of floats
+        pdd['amps'] = []  # list of lists of floats
+        pdd['phases'] = []  # list of lists of floats
+        pdd['values_2d'] = []  # list of floats
 
-        if self.plot_xwidth == 'auto':
-            x_diff = np.diff(np.ravel(self.plot_xvals))
-            dx1 = np.concatenate(([x_diff[0]], x_diff))
-            dx2 = np.concatenate((x_diff, [x_diff[-1]]))
-            self.plot_xwidth = np.minimum(dx1, dx2)
-            self.plot_frequency = np.array(
-                [[tt] for tt in self.raw_data_dict['freq']])
-            self.plot_phase = np.array(
-                [[tt] for tt in self.raw_data_dict['phase']])
-            self.plot_amp = np.array(
-                [np.array([tt]).transpose() for tt in self.raw_data_dict['amp']])
+        for rdd in rdds:
+            f, a, p, v = self._process_spec_rdd(rdd)
+            pdd['freqs'] += f
+            pdd['amps'] += a
+            pdd['phases'] += p
+            pdd['values_2d'] += v
+        next_idx = 0
+        for i in range(len(pdd['values_2d'])):
+            if pdd['values_2d'][i] is None:
+                pdd['values_2d'][i] = next_idx
+                next_idx += 1
+
+        spn = rdds[0]['sweep_parameter_names']
+        pdd['label_2d'] = '2D index' if isinstance(spn, str) else spn[1]
+        pdd['label_2d'] = self.get_param_value('name_2d', pdd['label_2d'])
+        spu = rdds[0]['sweep_parameter_units']
+        pdd['unit_2d'] = '' if isinstance(spu, str) else spu[1]
+        pdd['unit_2d'] = self.get_param_value('unit_2d', pdd['unit_2d'])
+        pdd['ts_string'] = self.timestamps[0]
+        if len(self.timestamps) > 1:
+            pdd['ts_string'] = pdd['ts_string'] + ' to ' + self.timestamps[-1]
+
+        if self.get_param_value('calc_pca', False):
+            if self.get_param_value('global_pca', False):
+                # find global transformation
+                amp = np.array([a for amps in pdd['amps'] for a in amps])
+                phase = np.array([p for ps in pdd['phases'] for p in ps])
+                _, pca_basis = self._transform_pca(amp, phase)
+
+                # apply found transform to data
+                pdd['pcas'] = []
+                for amp, phase in zip(pdd['amps'], pdd['phases']):
+                    pca, _ = self._transform_pca(amp, phase, basis=pca_basis)
+                    pdd['pcas'].append(pca)
+
+                # subtract offset and fix sign
+                pca = np.array([p for pcas in pdd['pcas'] for p in pcas])
+                median = np.median(pca)
+                sign = np.sign(pca[np.argmax(np.abs(pca - median))])
+                for i in range(len(pdd['pcas'])):
+                    pdd['pcas'][i] = sign * (pdd['pcas'][i] - median)
+            else:
+                pdd['pcas'] = []
+                for amp, phase in zip(pdd['amps'], pdd['phases']):
+                    pca, _ = self._transform_pca(amp, phase)
+                    pdd['pcas'].append(pca)
+
+    @staticmethod
+    def _transform_pca(amp, phase, basis=None):
+        i = amp * np.cos(np.pi * phase / 180)
+        q = amp * np.sin(np.pi * phase / 180)
+        pca = np.array([i, q]).T
+        if basis is None:
+            pca -= pca.mean(axis=0)
+            pca_basis = np.linalg.eigh(pca.T @ pca)[1]
+        else:
+            pca_basis = basis
+        pca = (pca_basis @ pca.T)[1]
+        if basis is None:
+            pca -= np.median(pca)
+            pca *= np.sign(pca[np.argmax(np.abs(pca))])
+        return pca, pca_basis
+
+    @staticmethod
+    def _process_spec_rdd(rdd):
+        if 'soft_sweep_points' in rdd:
+            # 2D sweep
+            v = list(rdd['soft_sweep_points'])
+            f = len(v) * [rdd['hard_sweep_points']]
+            a = list(rdd['measured_data']['Magn'].T)
+            p = list(rdd['measured_data']['Phase'].T)
+        else:
+            # 1D sweep
+            v = [rdd.get('param_2d', None)]
+            f = [rdd['hard_sweep_points']]
+            a = [rdd['measured_data']['Magn']]
+            p = [rdd['measured_data']['Phase']]
+        return f, a, p, v
+
+    def prepare_plots(self):
+        pdd = self.proc_data_dict
+        rdd = self.raw_data_dict
+        if isinstance(rdd, (tuple, list)):
+            rdd = rdd[0]
+
+        def calc_range(values):
+            return (min([np.min(x) for x in values]),
+                    max([np.max(x) for x in values]))
+
+        plot_lines = self.get_param_value('plot_lines', len(pdd['amps']) <= 3)
+        plot_color = self.get_param_value('plot_color', len(pdd['amps']) > 3)
+        plot_amp = self.get_param_value('plot_amp', True)
+        plot_phase = self.get_param_value('plot_phase', True)
+        plot_pca = self.get_param_value('plot_pca',
+                                        self.get_param_value('calc_pca', False))
+        label1 = self.get_param_value('label_1d', 'Frequency')
+        unit1 = self.get_param_value('unit_1d', 'Hz')
+        label2 = self.get_param_value('label_2d', pdd['label_2d'])
+        unit2 = self.get_param_value('unit_2d', pdd['unit_2d'])
+        label_amp = self.get_param_value('label_amp', 'Amplitude')
+        unit_amp = self.get_param_value('unit_amp', 'V')
+        range_amp = self.get_param_value('range_amp', calc_range(pdd['amps']))
+        label_phase = self.get_param_value('label_phase', 'Phase')
+        unit_phase = self.get_param_value('unit_phase', 'deg')
+        range_phase = self.get_param_value('range_phase',
+                                           calc_range(pdd['phases']))
+        label_pca = self.get_param_value('label_pca', 'Principal component')
+        unit_pca = self.get_param_value('unit_pca', 'V')
+        range_pca = calc_range(pdd['pcas']) if 'pcas' in pdd else (0, 1)
+        range_pca = self.get_param_value('range_pca', range_pca)
+
+        fig_title_suffix = ' ' + rdd['measurementstring'] + '\n' + \
+                           pdd['ts_string']
+
+        if plot_lines:
+            for enable, param, plot_name, ylabel, yunit, yrange in [
+                (plot_amp, 'amps', 'amp_1d', label_amp, unit_amp,
+                 range_amp),
+                (plot_phase, 'phases', 'phase_1d', label_phase, unit_phase,
+                 range_phase),
+                (plot_pca, 'pcas', 'pca_1d', label_pca, unit_pca,
+                 range_pca),
+            ]:
+                if enable:
+                    self.plot_dicts[plot_name] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': pdd['freqs'],
+                        'yvals': pdd[param],
+                        'xlabel': label1,
+                        'xunit': unit1,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'yrange': yrange,
+                        'title': plot_name + fig_title_suffix,
+                    }
+        if plot_color:
+            for enable, param, plot_name, zlabel, zunit, zrange in [
+                (plot_amp, 'amps', 'amp_2d', label_amp, unit_amp,
+                 range_amp),
+                (plot_phase, 'phases', 'phase_2d', label_phase, unit_phase,
+                 range_phase),
+                (plot_pca, 'pcas', 'pca_2d', label_pca, unit_pca,
+                 range_pca),
+            ]:
+                if enable:
+                    self.plot_dicts[plot_name] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_colorx,
+                        'xvals': pdd['values_2d'],
+                        'yvals': pdd['freqs'],
+                        'zvals': pdd[param],
+                        'zrange': zrange,
+                        'xlabel': label2,
+                        'xunit': unit2,
+                        'ylabel': label1,
+                        'yunit': unit1,
+                        'clabel': f'{zlabel} ({zunit})',
+                        'title': plot_name + fig_title_suffix,
+                    }
+
+
+class QubitTrackerSpectroscopy(Spectroscopy):
+    """A class for peak-tracking 2d spectroscopy.
+
+    Fits the spectroscopy data to a Gaussian model and can extrapolate a
+    polynomial model of the peak frequency as a function of the second sweep
+    parameter to guess a frequency range for the next sweep.
+
+    Args: Same as for `Spectroscopy`.
+
+    Parameters used from the options_dict: Same as for `Spectroscopy`.
+
+    Parameters used either from metadata or options_dict:
+        calc_pca: Hard-coded to True, as the amplitude-phase data needs to be
+            reduced for fitting.
+        global_pca: Whether to do principal component analysis globally or
+            per-second-sweep-dimension-point. Default False.
+        tracker_fit_order: Polynomial order for extrapolating the measurement
+            range. Default 1.
+        tracker_fit_points: Number of 2d sweep points to use for the polynomial
+            fit. The points are taken evenly from the entire range. Default 4.
+
+    Plotting related parameters either from metadata or options_dict:
+        Same as for `Spectroscopy`.
+    """
+    def __init__(self, t_start: str = None,
+                 t_stop: str = None,
+                 options_dict: dict = None,
+                 label: str = None,
+                 extract_only: bool = False,
+                 auto: bool = True,
+                 do_fitting: bool = True):
+        if options_dict is None:
+            options_dict = {}
+        options_dict['calc_pca'] = True
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         options_dict=options_dict, label=label,
+                         extract_only=extract_only, auto=auto,
+                         do_fitting=do_fitting)
+
+    def prepare_fitting(self):
+        super().prepare_fitting()
+        pdd = self.proc_data_dict
+        fit_order = self.get_param_value('tracker_fit_order', 1)
+        fit_pts = self.get_param_value('tracker_fit_points', 4)
+        if fit_pts < fit_order + 1:
+            raise ValueError(f"Can't fit {fit_pts} points to order {fit_order} "
+                             "polynomial")
+        idxs = np.round(
+            np.linspace(0, len(pdd['pcas']) - 1, fit_pts)).astype(np.int)
+        pdd['fit_idxs'] = idxs
+        model = fit_mods.GaussianModel
+        model.guess = fit_mods.Gaussian_guess.__get__(model, model.__class__)
+        for i in idxs:
+            self.fit_dicts[f'tracker_fit_{i}'] = {
+                'model': model,
+                'fit_xvals': {'freq': pdd['freqs'][i]},
+                'fit_yvals': {'data': pdd['pcas'][i]},
+            }
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        pdd = self.proc_data_dict
+        fit_order = self.get_param_value('tracker_fit_order', 1)
+        model = lmfit.models.PolynomialModel(degree=fit_order)
+        xpoints = [pdd['values_2d'][i] for i in pdd['fit_idxs']]
+        ypoints = [self.fit_res[f'tracker_fit_{i}'].best_values['mu']
+                   for i in pdd['fit_idxs']]
+        self.fit_dicts['tracker_fit'] = {
+            'model': model,
+            'fit_xvals': {'x': xpoints},
+            'fit_yvals': {'data': ypoints},
+        }
+
+        self.run_fitting()
+        self.save_fit_results()
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        pdd = self.proc_data_dict
+        plot_color = self.get_param_value('plot_color', len(pdd['amps']) > 3)
+        if self.do_fitting and plot_color:
+            xpoints = [pdd['values_2d'][i] for i in pdd['fit_idxs']]
+            ypoints = [self.fit_res[f'tracker_fit_{i}'].best_values['mu']
+                       for i in pdd['fit_idxs']]
+            self.plot_dicts['pca_2d_fit1'] = {
+                'fig_id': 'pca_2d',
+                'plotfn': self.plot_line,
+                'xvals': xpoints,
+                'yvals': ypoints,
+                'marker': 'o',
+                'linestyle': '',
+                'color': 'red',
+            }
+
+            xpoints = np.linspace(min(xpoints), max(xpoints), 101)
+            fr = self.fit_res[f'tracker_fit']
+            ypoints = fr.model.func(xpoints, **fr.best_values)
+            self.plot_dicts['pca_2d_fit2'] = {
+                'fig_id': 'pca_2d',
+                'plotfn': self.plot_line,
+                'xvals': xpoints,
+                'yvals': ypoints,
+                'marker': '',
+                'linestyle': '-',
+                'color': 'green',
+            }
+
+    def next_round_limits(self, freq_slack=0):
+        """Calculate 2d-parameter and frequency ranges for next tracker sweep.
+
+        The 2d parameter range is calculated that it spans the same range as
+        the current sweep, but starts one mean step-size after the current
+        sweep.
+
+        The frequency range is calculated such that the extrapolated polynomial
+        fits inside the range within the 2d parameter range, with some optional
+        extra margin that is passed as an argument.
+
+        Args:
+            freq_slack: float
+                Extra frequency margin for the output frequency range. The
+                output range is extended by this value on each side.
+                Default 0.
+
+        Returns:
+            v2d_next: (float, float)
+                Range for the 2d sweep parameter for the next sweep.
+            f_next: (float, float)
+                Range for the frequency sweep for the next sweep.
+        """
+        if 'tracker_fit' not in self.fit_res:
+            raise KeyError('Tracker fit not yet run.')
+        pdd = self.proc_data_dict
+        fr = self.fit_res['tracker_fit']
+        v2d = pdd['values_2d']
+        v2d_next = (v2d[-1] + (v2d[-1] - v2d[0])/(len(v2d)-1),
+                    2*v2d[-1] - v2d[0] + (v2d[-1] - v2d[0])/(len(v2d)-1))
+        x = np.linspace(v2d_next[0], v2d_next[1], 101)
+        y = fr.model.func(x, **fr.best_values)
+        f_next = (y.min() - freq_slack, y.max() + freq_slack)
+        return v2d_next, f_next
