@@ -53,7 +53,6 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                                                correlations=None,
                                                add_channels=None,
                                                det_get_values_kws=None,
-                                               nr_samples=4096,
                                                **kw):
     if nr_averages is None:
         nr_averages = max(qb.acq_averages() for qb in qubits)
@@ -162,7 +161,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                 data_type='digitized', **kw),
             'inp_avg_det': det.AveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
-                nr_samples=nr_samples,
+                acquisition_length=max_int_len[uhf],
                 **kw),
             'int_corr_det': det.UHFQC_correlation_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
@@ -422,6 +421,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                         'state_prob_mtx'][qb.name])
         return a
 
+
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
@@ -482,9 +482,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
-            npoints = qubits[0].inp_avg_det.nr_samples # same for all qubits
-            sweep_points = np.linspace(0, npoints / 1.8e9, npoints,
-                                                endpoint=False)
+            # create dict with acq instr as keys and nr samples corresponding to
+            # acq_length as values
+            samples = [(qb.instr_uhf.get_instr(),
+                        qb.instr_uhf.get_instr().convert_time_to_n_samples(
+                            acq_length)) for qb in qubits]
+            # sort by nr samples
+            samples.sort(key=lambda t: t[1])
+            sweep_points = samples[0][0].get_sweep_points_time_trace(acq_length)
             channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
                             for vn in qb.inp_avg_det.value_names]
                             for qb in qubits}
@@ -520,7 +525,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                                                upload=upload))
                 MC.set_sweep_points(sweep_points)
                 df = get_multiplexed_readout_detector_functions(
-                    qubits, nr_samples=npoints)["inp_avg_det"]
+                    qubits)["inp_avg_det"]
                 MC.set_detector_function(df)
                 MC.run(name=name, exp_metadata=exp_metadata)
 

@@ -787,13 +787,11 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             data_type='digitized')
 
-        nr_samples = int(self.acq_length() *
-                         self.instr_uhf.get_instr().clock_freq())
         self.inp_avg_det = det.AveragingPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
-            nr_samples=nr_samples)
+            acquisition_length=self.acq_length())
 
         self.dig_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_uhf.get_instr(),
@@ -816,7 +814,7 @@ class QuDev_transmon(Qubit):
                 AWG=self.instr_pulsar.get_instr(),
                 fft_mode='fft_power',
                 nr_averages=self.acq_averages(),
-                nr_samples=nr_samples,
+                acquisition_length=self.acq_length()
             )
 
     def prepare(self, drive='timedomain'):
@@ -1725,7 +1723,7 @@ class QuDev_transmon(Qubit):
             pla.process_pipeline(pla.extract_data_hdf(**kw), **kw)
 
     def measure_transients(self, states=('g', 'e'), upload=True,
-                           analyze=True, acq_length=4097/1.8e9,
+                           analyze=True, acq_length=4095/1.8e9,
                            prep_params=None, exp_metadata=None, **kw):
         """
         If the resulting transients will be used to caclulate the optimal
@@ -1747,9 +1745,8 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.acq_length, acq_length):
             self.prepare(drive='timedomain')
-            npoints = self.inp_avg_det.nr_samples
-            sweep_points = np.linspace(0, npoints / 1.8e9, npoints,
-                                                endpoint=False)
+            swpts = self.instr_uhf.get_instr().get_sweep_points_time_trace(
+                acq_length)
             for state in states:
                 if state not in ['g', 'e', 'f']:
                     raise ValueError("Unrecognized state: {}. Must be 'g', 'e' "
@@ -1764,9 +1761,9 @@ class QuDev_transmon(Qubit):
                 # set sweep function and run measurement
                 MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                                upload=upload))
-                MC.set_sweep_points(sweep_points)
+                MC.set_sweep_points(swpts)
                 MC.set_detector_function(self.inp_avg_det)
-                exp_metadata.update(dict(sweep_points_dict=sweep_points))
+                exp_metadata.update(dict(sweep_points_dict=swpts))
                 MC.run(name=name + self.msmt_suffix, exp_metadata=exp_metadata)
 
     def measure_readout_pulse_scope(self, delays, freqs, RO_separation=None,
