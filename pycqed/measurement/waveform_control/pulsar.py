@@ -1467,9 +1467,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            set_cmd=(lambda v, self=self: self.prepend_zeros(v)),
                            get_cmd=(lambda self=self: self.prepend_zeros()))
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
-                           parameter_class=ManualParameter, vals=vals.Bool())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_channels', initial_value=[],
-                           parameter_class=ManualParameter, vals=vals.Lists())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',

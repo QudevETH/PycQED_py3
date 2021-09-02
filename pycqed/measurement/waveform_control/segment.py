@@ -361,19 +361,28 @@ class Segment:
         self.resolved_pulses = ordered_unres_pulses
 
     def add_flux_crosstalk_cancellation_channels(self):
-        if self.pulsar.flux_crosstalk_cancellation():
-            for p in self.resolved_pulses:
-                if getattr(p.pulse_obj,
-                           'disable_flux_crosstalk_cancellation', False):
-                    continue
-                if any([ch in self.pulsar.flux_channels() for ch in
-                        p.pulse_obj.channels]):
-                    p.pulse_obj.crosstalk_cancellation_channels = \
-                        self.pulsar.flux_channels()
-                    p.pulse_obj.crosstalk_cancellation_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_mtx()
+        for p in self.resolved_pulses:
+            calibration_key = getattr(p.pulse_obj,
+                                      'crosstalk_cancellation_key', None)
+            if calibration_key is None:
+                calibration_key = self.pulsar.flux_crosstalk_cancellation()
+            if calibration_key in (True, None):
+                calibration_key = 'default'
+            if not calibration_key:
+                continue
+            if any([ch in self.pulsar.flux_channels()[calibration_key] for ch in
+                    p.pulse_obj.channels]):
+                p.pulse_obj.crosstalk_cancellation_channels = \
+                    self.pulsar.flux_channels()[calibration_key]
+                p.pulse_obj.crosstalk_cancellation_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_mtx()\
+                        [calibration_key]
+                p.pulse_obj.crosstalk_cancellation_shift_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                if p.pulse_obj.crosstalk_cancellation_shift_mtx is not None:
                     p.pulse_obj.crosstalk_cancellation_shift_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                        p.pulse_obj.crosstalk_cancellation_shift_mtx\
+                            .get(calibration_key, None)
 
     def add_charge_compensation(self):
         """
