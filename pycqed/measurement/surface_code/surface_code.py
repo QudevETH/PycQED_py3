@@ -21,6 +21,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                  ancilla_dd=True, data_dd=False, data_dd_simple=False,
                  skip_last_ancilla_readout=False,
                  two_qb_gates_off=False,
+                 extra_pulses=None, extra_pulses_kwargs=None,
                  **kw):
         # provide default values
         for k, v in [
@@ -67,7 +68,9 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             readout_round_pars['enabled_cycle_mask'] = enabled_cycle_mask
 
         self.sequences, self.mc_points = self.sweep_n_dim(
-            self.sweep_points, self.main_block(), repeat_ro=False,
+            self.sweep_points, self.main_block( extra_pulses=extra_pulses,
+                                                extra_pulses_kwargs=extra_pulses_kwargs),
+            repeat_ro=False,
             init_kwargs={'pulse_modifs': {'all': {
                 'element_name': 'init_element'}}},
             final_kwargs={'pulse_modifs': {'all': {
@@ -119,7 +122,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                 init += (len(self.qubits) - len(init)) * ['0']
             self.initializations[i] = init[:len(self.qubits)]
 
-    def main_block(self):
+    def main_block(self, extra_pulses=None, extra_pulses_kwargs=None):
         """Block structure of the experiment:
         * Full experiment block excluding init. and final (tomo) readout
             o `nr_cycles` copies of the cycle block
@@ -135,6 +138,11 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             c = self._cycle_block(cycle)
             pulses += c.build(ref_pulse='start',
                               block_delay=cycle*self.cycle_length)
+        if extra_pulses is not None:
+            extra_block = self.block_from_anything(extra_pulses, 'extra')
+            if extra_pulses_kwargs is None:
+                extra_pulses_kwargs = {}
+            pulses += extra_block.build(**extra_pulses_kwargs)
         return block_mod.Block(
             'main', pulses, block_end={'pulse_delay': self.final_readout_delay})
 
