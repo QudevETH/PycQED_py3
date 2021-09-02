@@ -142,9 +142,10 @@ class QuDev_transmon(Qubit):
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO',
-                                 'ro_flux_disable_crosstalk_cancellation',
-                                 'disable_flux_crosstalk_cancellation',
-                                 initial_value=True, vals=vals.Bool())
+                                 'ro_flux_crosstalk_cancellation_key',
+                                 'crosstalk_cancellation_key',
+                                 vals=vals.Anything(),
+                                 initial_value=False)
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
