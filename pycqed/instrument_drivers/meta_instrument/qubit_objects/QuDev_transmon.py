@@ -877,84 +877,13 @@ class QuDev_transmon(Qubit):
             weights_type = self.acq_weights_type()
         if f_mod is None:
             f_mod = self.ro_mod_freq()
-        if weights_type == 'manual':
-            pass
-        elif weights_type == 'optimal':
-            if (self.acq_weights_I() is None or self.acq_weights_Q() is None):
-                log.warning('Optimal weights are None, not setting '
-                                'integration weights')
-                return
-            # When optimal weights are used, only the RO I weight
-            # channel is used
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_real'.format(
-                self.acq_I_channel()), self.acq_weights_I().copy())
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_imag'.format(
-                self.acq_I_channel()), self.acq_weights_Q().copy())
-            self.instr_uhf.get_instr().set('qas_0_rotations_{}'.format(
-                self.acq_I_channel()), 1.0-1.0j)
-        elif weights_type == 'optimal_qutrit':
-            for w_f in [self.acq_weights_I, self.acq_weights_Q,
-                        self.acq_weights_I2, self.acq_weights_Q2]:
-                if w_f() is None:
-                    log.warning('The optimal weights {} are None. '
-                                    '\nNot setting integration weights.'
-                                    .format(w_f.name))
-                    return
-            # if all weights are not None, set first integration weights (real 
-            # and imag) on channel I amd second integration weights on channel 
-            # Q.
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_real'.format(
-                self.acq_I_channel()),
-                self.acq_weights_I().copy())
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_imag'.format(
-                self.acq_I_channel()),
-                self.acq_weights_Q().copy())
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_real'.format(
-                self.acq_Q_channel()),
-                self.acq_weights_I2().copy())
-            self.instr_uhf.get_instr().set('qas_0_integration_weights_{}_imag'.format(
-                self.acq_Q_channel()),
-                self.acq_weights_Q2().copy())
-
-            self.instr_uhf.get_instr().set('qas_0_rotations_{}'.format(
-                self.acq_I_channel()), 1.0-1.0j)
-            self.instr_uhf.get_instr().set('qas_0_rotations_{}'.format(
-                self.acq_Q_channel()), 1.0-1.0j)
-
-        else:
-            tbase = np.arange(0, 4097 / 1.8e9, 1 / 1.8e9)
-            theta = self.acq_IQ_angle()
-            cosI = np.array(np.cos(2 * np.pi * f_mod * tbase + theta))
-            sinI = np.array(np.sin(2 * np.pi * f_mod * tbase + theta))
-            c1 = self.acq_I_channel()
-            c2 = self.acq_Q_channel()
-            uhf = self.instr_uhf.get_instr()
-            if weights_type == 'SSB':
-                uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0+1.0j)
-                uhf.set('qas_0_integration_weights_{}_real'.format(c2), sinI)
-                uhf.set('qas_0_rotations_{}'.format(c2), 1.0-1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
-            elif weights_type == 'DSB':
-                # same as SSB but using only the first physical input channel
-                # doesn't allow to distinguish positive and negative sideband
-                uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0 + 0j)
-                uhf.set('qas_0_integration_weights_{}_real'.format(c2), sinI)
-                uhf.set('qas_0_rotations_{}'.format(c2), 1.0 + 0j)
-            elif weights_type == 'DSB2':
-                # same as DSB but using the second physical input channel
-                uhf.set('qas_0_rotations_{}'.format(c1), 0.0 + 1.0j)
-                uhf.set('qas_0_rotations_{}'.format(c2), 0.0 - 1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
-            elif weights_type == 'square_rot':
-                uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0+1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
-            else:
-                raise KeyError('Invalid weights type: {}'.format(weights_type))
+        self.instr_uhf.get_instr().acquisition_set_weights(
+            channels=[self.acq_I_channel(), self.acq_Q_channel()],
+            weights_type=weights_type, mod_freq=f_mod,
+            acq_IQ_angle=self.acq_IQ_angle(),
+            weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
+            weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+        )
 
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
