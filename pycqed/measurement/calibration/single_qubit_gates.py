@@ -248,45 +248,26 @@ class ParallelLOSweepExperiment(CalibBuilder):
         it specifies that the LO should only be set to frequencies in the
         list, and the desired drive frequency is obtained by an IF sweep
         using internal modulation of the HDAWG. This requires an HDAWG as
-        drive AWG.
+        drive AWG. Consider using the kwarg optimize_mod_freqs together with
+        allowed_lo_freqs (see docstring of resolve_freq_sweep_points).
     :param adapt_drive_amp: (bool) (*) if True, the drive amplitude is adapted
         for each drive frequency based on the parameter
         fit_ge_amp180_over_ge_freq of the qubit using the output amplitude
-        scaling of the HDAWG. This requires an HDAWG as drive AWG.
+        scaling of the HDAWG. This requires an HDAWG as drive AWG. Note the
+        kwarg adapt_cal_point_drive_amp, which can be used together
+        with adapt_drive_amp (see docstring of resolve_freq_sweep_points).
     :param adapt_ro_freq: (bool, default: False) (*) if True, the RO LO
         frequency is adapted for each drive frequency based on the parameter
         fit_ro_freq_over_ge_freq of the qubit
 
     :param kw: keyword arguments.
-        The following kwargs are interpreted by resolve_freq_sweep_points:
-        optimize_mod_freqs: (bool, default: False) If False, the ge_mod_freq
-            setting of the first qb on an LO (according to the  ordering of
-            the task list) determines the LO frequency for all qubits on
-            that LO. If True, the ge_mod_freq settings will be optimized for
-            the following situations:
-            - With allowed_lo_freqs set to None: the LO will be placed in
-                the center of the band of drive frequencies of all qubits on
-                that LO (minimizing the maximum absolute value of
-                ge_mod_freq over all qubits). Do not use in case of a single
-                qubit per LO in this case, as it would result in a
-                ge_mod_freq of 0.
-            - With a list allowed_lo_freqs provided: the ge_mod_freq setting of
-                the qubit would act as an unnecessary constant offset in the
-                IF sweep, and optimize_mod_freqs can be used to minimize
-                this offset. In this case optimize_mod_freqs can (and
-                should) even be used in case of a single qubit per LO (where
-                it reduces this offset to 0).
-        adapt_cal_point_drive_amp: (bool, default: False) If adapt_drive_amp
-            is used, this decides whether the drive amplitude should also be
-            adapted for calibration points. To implement the case where this
-            is False, it is assumed that the calibration point of interest
-            is the one at the drive frequency configured in ge_freq of the
-            qubit and that the ge_amp180 in the qubit is calibrated for that
-            frequency.
+        The following kwargs are interpreted by resolve_freq_sweep_points
+        (see docstring of that method):
+        - optimize_mod_freqs
+        - adapt_cal_point_drive_amp
 
         Moreover, keyword arguments are passed to preprocess_task_list,
         parallel_sweep, and to the parent class.
-
     """
 
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
@@ -335,7 +316,31 @@ class ParallelLOSweepExperiment(CalibBuilder):
         :param freq_sp_suffix: (str, default 'freq') To identify the
             frequency sweep parameter, this string specifies a suffix that is
             contained at the end of the name of the frequency sweep parameter.
-        :param kw: keyword arguments, see class docstring
+        :param kw:
+            optimize_mod_freqs: (bool, default: False) If False, the
+                ge_mod_freq setting of the first qb on an LO (according to
+                the ordering of the task list) determines the LO frequency
+                for all qubits on that LO. If True, the ge_mod_freq settings
+                will be optimized for the following situations:
+                - With allowed_lo_freqs set to None: the LO will be placed in
+                  the center of the band of drive frequencies of all qubits on
+                  that LO (minimizing the maximum absolute value of
+                  ge_mod_freq over all qubits). Do not use in case of a single
+                  qubit per LO in this case, as it would result in a
+                  ge_mod_freq of 0.
+                - With a list allowed_lo_freqs provided: the ge_mod_freq
+                  setting of the qubit would act as an unnecessary constant
+                  offset in the IF sweep, and optimize_mod_freqs can be used
+                  to minimize this offset. In this case optimize_mod_freqs
+                  can (and should) even be used in case of a single qubit
+                  per LO (where it reduces this offset to 0).
+            adapt_cal_point_drive_amp: (bool, default: False) If
+                adapt_drive_amp is used, this decides whether the drive
+                amplitude should also be adapted for calibration points. To
+                implement the case where this is False, it is assumed that
+                the calibration point of interest is the one at the drive
+                frequency configured in ge_freq of the qubit and that the
+                ge_amp180 in the qubit is calibrated for that frequency.
         """
         all_freqs = np.array(
             self.sweep_points.get_sweep_params_property('values', 1, 'all'))
