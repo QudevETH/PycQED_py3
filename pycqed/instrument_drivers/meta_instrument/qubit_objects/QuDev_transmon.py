@@ -808,7 +808,8 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
 
-        if hasattr(self.instr_uhf.get_instr().daq, 'scopeModule'):
+        if hasattr(self.instr_uhf.get_instr(), 'daq') and hasattr(
+                self.instr_uhf.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
                 UHFQC=self.instr_uhf.get_instr(),
                 AWG=self.instr_pulsar.get_instr(),
