@@ -650,7 +650,7 @@ class CircuitBuilder:
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
-            seg = Segment(segment_prefix + ''.join(seg_states),
+            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
                           cal_state_block.build())
             segments.append(seg)
 
