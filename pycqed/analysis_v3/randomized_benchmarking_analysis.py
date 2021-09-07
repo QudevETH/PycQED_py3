@@ -803,10 +803,10 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
         # get T1, T2, gate length from HDF file
         get_meas_obj_coh_times(data_dict, **params)
         F_T1, p_T1 = calc_rb_coherence_limited_fidelity(
-            hlp_mod.get_param(f'{mobjn}.T1', data_dict),
-            hlp_mod.get_param(f'{mobjn}.T2', data_dict),
-            hlp_mod.get_param(f'{mobjn}.ge_sigma', data_dict) *
-            hlp_mod.get_param(f'{mobjn}.ge_nr_sigma', data_dict),
+            hlp_mod.get_param(f'{mobjn}.T1', data_dict, **params),
+            hlp_mod.get_param(f'{mobjn}.T2', data_dict, **params),
+            hlp_mod.get_param(f'{mobjn}.ge_sigma', data_dict, **params) *
+            hlp_mod.get_param(f'{mobjn}.ge_nr_sigma', data_dict, **params),
             hlp_mod.get_param('gate_decomp', data_dict,
                               default_value='HZ', **params))
         hlp_mod.add_param(f'{keys_out_container}.EPC coh_lim', 1-F_T1,
