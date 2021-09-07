@@ -1151,6 +1151,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
                 elif self.rotation_type[qbn] == 'fixed_cal_points':
+                    storing_keys[qbn] += '_fixed_cp'
                     rotated_data_dict, zero_coord, one_coord = \
                         self.rotate_data_TwoD_same_fixed_cal_idxs(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
@@ -4707,7 +4708,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
-                    label = f'T1_fit_{qb}{suffix}'
+                    label = f'T1_fit_{qb}{suffix}_{self.data_to_fit[qb]}'
                     self.plot_dicts[label] = {
                         'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                         'plotfn': self.plot_line,
@@ -4724,7 +4725,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 # Plot rotated integrated average in dependece of flux pulse
                 # amplitude and length
-                label = f'T1_color_plot_{qb}{suffix}'
+                label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                     'plotfn': self.plot_colorxy,
@@ -4736,12 +4737,12 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xunit': 'V' if p == 0 else 'Hz',
                     'ylabel': r'Flux pulse length',
                     'yunit': 's',
-                    'zlabel': r'Excited state population'
+                    'clabel': self.get_yaxis_label(qb)
                 }
 
                 # Plot population loss for the first flux pulse length as a
                 # function of flux pulse amplitude
-                label = f'Pop_loss_{qb}{suffix}'
+                label = f'Pop_loss_{qb}{suffix}_{self.data_to_fit[qb]}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                     'plotfn': self.plot_line,
@@ -4765,7 +4766,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     fitid = param_values[qb][i]
                     self.plot_dicts[label] = {
                         'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
-                        'fig_id': f'T1_fits_{qb}',
+                        'fig_id': f'T1_fits_{qb}_{self.data_to_fit[qb]}',
                         'xlabel': r'Flux pulse length',
                         'xunit': 's',
                         'ylabel': r'Excited state population',
@@ -4782,7 +4783,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
                     label = f'freq_scatter_{qb}_{i}'
                     self.plot_dicts[label] = {
-                        'fig_id': f'T1_fits_{qb}',
+                        'fig_id': f'T1_fits_{qb}_{self.data_to_fit[qb]}',
                         'plotfn': self.plot_line,
                         'xvals': self.lengths[qb],
                         'linestyle': '',
@@ -5888,7 +5889,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     # OneD
                     title_suffix = ''
                 fit_res = fit_dict['fit_res']
-                base_plot_name = 'Rabi_' + k
+                base_plot_name = f'Rabi_{k}_{self.data_to_fit[qbn]}'
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
@@ -6106,7 +6107,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
             super().prepare_plots()
         if self.do_fitting:
             for qbn in self.qb_names:
-                base_plot_name = f'Rabi_amplitudes_{qbn}'
+                base_plot_name = f'Rabi_amplitudes_{qbn}_{self.data_to_fit[qbn]}'
                 title = f'{self.raw_data_dict["timestamp"]} ' \
                         f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
                 plotsize = self.get_default_plot_params(set=False)['figure.figsize']
@@ -6258,7 +6259,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
         if self.do_fitting:
             for qbn in self.qb_names:
                 # rename base plot
-                base_plot_name = 'T1_' + qbn
+                base_plot_name = f'T1_{qbn}_{self.data_to_fit[qbn]}'
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
                     data=self.proc_data_dict['data_to_fit'][qbn],
@@ -6446,7 +6447,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 else:
                     # OneD
                     title_suffix = ''
-                base_plot_name = 'Ramsey_' + outer_key
+                base_plot_name = f'Ramsey_{outer_key}_{self.data_to_fit[qbn]}'
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
@@ -6543,13 +6544,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                     'plotfn': self.plot_text,
                     'text_string': textstr}
 
-                self.plot_dicts['half_hline_' + outer_key] = {
-                    'fig_id': base_plot_name,
-                    'plotfn': self.plot_hlines,
-                    'y': 0.5,
-                    'xmin': sweep_points[0],
-                    'xmax': sweep_points[-1],
-                    'colors': 'gray'}
+                if 'pca' not in self.rotation_type[qbn].lower():
+                    self.plot_dicts['half_hline_' + outer_key] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_hlines,
+                        'y': 0.5,
+                        'xmin': sweep_points[0],
+                        'xmax': sweep_points[-1],
+                        'colors': 'gray'}
 
 
 class ReparkingRamseyAnalysis(RamseyAnalysis):
@@ -6631,7 +6633,7 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
         if self.do_fitting:
             current_voltages = self.get_param_value('current_voltages', {})
             for qbn in self.qb_names:
-                base_plot_name = f'reparking_{qbn}'
+                base_plot_name = f'reparking_{qbn}_{self.data_to_fit[qbn]}'
                 title = f'{self.raw_data_dict["timestamp"]} ' \
                         f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
                 plotsize = self.get_default_plot_params(set=False)['figure.figsize']
@@ -6861,7 +6863,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                       '_xy': r'$X_{\pi/2}Y_{\pi}$',
                       '_xmy': r'$X_{\pi/2}Y_{-\pi}$'}
         for qbn in self.qb_names:
-            base_plot_name = 'Qscale_' + qbn
+            base_plot_name = f'Qscale_{qbn}_{self.data_to_fit[qbn]}'
             for msmt_label in ['_xx', '_xy', '_xmy']:
                 sweep_points = self.proc_data_dict['qscale_data'][qbn][
                     'sweep_points' + msmt_label]
@@ -9678,7 +9680,7 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
 
         if self.do_fitting:
             for qbn in self.qb_names:
-                base_plot_name = 'FluxPulseScope_' + qbn
+                base_plot_name = f'FluxPulseScope_{qbn}_{self.data_to_fit[qbn]}'
                 xlabel, xunit = self.get_xaxis_label_unit(qbn)
                 # find name of 1st sweep point in sweep dimension 1
                 param_name = [p for p in self.mospm[qbn]
