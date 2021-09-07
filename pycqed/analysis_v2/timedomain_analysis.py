@@ -6991,6 +6991,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         if auto:
             try:
                 self.echo_analysis.extract_data()
+                self.qb_names = self.echo_analysis.qb_names
                 self.echo_analysis.process_data()
                 self.echo_analysis.prepare_fitting()
                 self.echo_analysis.run_fitting()
@@ -7028,7 +7029,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         self.echo_analysis.prepare_plots()
         for qbn in self.qb_names:
             # rename base plot
-            figure_name = 'Echo_' + qbn
+            figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
             echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts if
                                 'T1_'+qbn in key]
             echo_plot_key_ram = [key for key in self.echo_analysis.plot_dicts if
