@@ -1262,7 +1262,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
-            do_legend_cal_states=True):
+            do_legend_cal_states=True, TwoD=None):
 
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -1293,8 +1293,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'fig_id': fig_name,
                     'plotfn': self.plot_line,
                     'plotsize': plotsize,
-                    'xvals': self.proc_data_dict['sweep_points_dict'][qb_name][
-                        'cal_points_sweep_points'][cal_pts_idxs],
+                    'xvals': sweep_points[cal_pts_idxs],
                     'yvals': data[cal_pts_idxs],
                     'setlabel': list(self.cal_states_dict)[i],
                     'do_legend': do_legend_cal_states,
@@ -1309,10 +1308,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'plotsize': plotsize,
                     'plotfn': self.plot_hlines,
                     'y': np.mean(data[cal_pts_idxs]),
-                    'xmin': self.proc_data_dict['sweep_points_dict'][qb_name][
-                        'sweep_points'][0],
-                    'xmax': self.proc_data_dict['sweep_points_dict'][qb_name][
-                        'sweep_points'][-1],
+                    'xmin': sweep_points[0],
+                    'xmax': sweep_points[-1],
                     'colors': 'gray'}
 
         else:
@@ -1326,7 +1323,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
         xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
-        if self.get_param_value('TwoD', default_value=False):
+        if TwoD is None:
+            TwoD = self.get_param_value('TwoD', default_value=False)
+        if TwoD:
             if self.sp is None:
                 soft_sweep_params = self.get_param_value(
                     'soft_sweep_params')
@@ -1385,6 +1384,35 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 for plot_name in plot_names_cal:
                     plot_dict_cal = self.plot_dicts.pop(plot_name)
                     self.plot_dicts[plot_name] = plot_dict_cal
+
+    def get_first_sweep_param(self, qbn=None, dimension=0):
+        """
+        Get properties of the first sweep param in the given dimension
+        (potentially for the given qubit).
+        :param qbn: (str) qubit name. If None, all sweep params are considered.
+        :param dimension: (float, default: 0) sweep dimension to be considered.
+        :return: a 3-tuple of label, unit, and array of values
+        """
+        if not hasattr(self, 'mospm'):
+            return None
+
+        if qbn is None:
+            param_name = [p for v in self.mospm.values() for p in v
+                          if self.sp.find_parameter(p) == 1]
+        else:
+            param_name = [p for p in self.mospm[qbn]
+                          if self.sp.find_parameter(p)]
+        if not len(param_name):
+            return None
+
+        param_name = param_name[0]
+        label = self.sp.get_sweep_params_property(
+            'label', dimension=dimension, param_names=param_name)
+        unit = self.sp.get_sweep_params_property(
+            'unit', dimension=dimension, param_names=param_name)
+        vals = self.sp.get_sweep_params_property(
+            'values', dimension=dimension, param_names=param_name)
+        return label, unit, vals
 
 
 class Idling_Error_Rate_Analyisis(ba.BaseDataAnalysis):
@@ -4859,29 +4887,33 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         'color': 'C1',
                     }
 
+
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self, qb_names, *args, **kwargs):
-        params_dict = {}
+        params_dict = kwargs.get('params_dict', {})
+        pd = {}
         for qbn in qb_names:
             s = 'Instrument settings.'+qbn
             for trans_name in ['ge', 'ef']:
-                params_dict[f'{trans_name}_amp180_'+qbn] = \
+                pd[f'{trans_name}_amp180_'+qbn] = \
                     s+f'.{trans_name}_amp180'
-                params_dict[f'{trans_name}_amp90scale_'+qbn] = \
+                pd[f'{trans_name}_amp90scale_'+qbn] = \
                     s+f'.{trans_name}_amp90_scale'
+        params_dict.update(pd)
         kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
+        kwargs['numeric_params'] = list(pd)
         super().__init__(qb_names, *args, **kwargs)
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
-            sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
-                'msmt_sweep_points']
+        def add_fit_dict(qbn, data, key, scalex=1):
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
+            reduction_arr = np.invert(np.isnan(data))
+            data = data[reduction_arr]
+            sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                'msmt_sweep_points'][reduction_arr] * scalex
             cos_mod = lmfit.Model(fit_mods.CosFunc)
             guess_pars = fit_mods.Cos_guess(
                 model=cos_mod, t=sweep_points, data=data)
@@ -4892,20 +4924,33 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             guess_pars['phase'].vary = True
             self.set_user_guess_pars(guess_pars)
 
-            key = 'cos_fit_' + qbn
             self.fit_dicts[key] = {
                 'fit_fn': fit_mods.CosFunc,
                 'fit_xvals': {'t': sweep_points},
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                daa = self.metadata.get('drive_amp_adaptation', {}).get(
+                    qbn, None)
+                for i, data in enumerate(all_data):
+                    key = f'cos_fit_{qbn}_{i}'
+                    add_fit_dict(qbn, data, key,
+                                 scalex=1 if daa is None else daa[i])
+            else:
+                add_fit_dict(qbn, all_data, 'cos_fit_' + qbn)
+
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            fit_res = self.fit_dicts['cos_fit_' + qbn]['fit_res']
+        for k, fit_dict in self.fit_dicts.items():
+            k = k.replace('cos_fit_', '')
+            qbn, i = (k + '_').split('_')[:2]
+            fit_res = fit_dict['fit_res']
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
-            self.proc_data_dict['analysis_params_dict'][qbn] = \
+            self.proc_data_dict['analysis_params_dict'][k] = \
                 self.get_amplitudes(fit_res=fit_res, sweep_points=sweep_points)
         self.save_processed_data(key='analysis_params_dict')
 
@@ -4933,7 +4978,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
         if freq_fit > 2 * stepsize:
             log.info('The data could not be fitted correctly. The '
                          'frequency "%s" is too high.' % freq_fit)
-        n = np.arange(-2, 10)
+        n = np.arange(-10, 10)
 
         piPulse_vals = (n*np.pi - phase_fit)/(2*np.pi*freq_fit)
         piHalfPulse_vals = (n*np.pi + np.pi/2 - phase_fit)/(2*np.pi*freq_fit)
@@ -4941,8 +4986,8 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
         # find piHalfPulse
         try:
             piHalfPulse = \
-                np.min(piHalfPulse_vals[piHalfPulse_vals >= sweep_points[1]])
-            n_piHalf_pulse = n[piHalfPulse_vals==piHalfPulse]
+                np.min(piHalfPulse_vals[piHalfPulse_vals >= sweep_points[0]])
+            n_piHalf_pulse = n[piHalfPulse_vals==piHalfPulse][0]
         except ValueError:
             piHalfPulse = np.asarray([])
 
@@ -4961,7 +5006,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     np.min(piPulse_vals[piPulse_vals >= piHalfPulse])
             else:
                 piPulse = np.min(piPulse_vals[piPulse_vals >= 0.001])
-            n_pi_pulse = n[piHalfPulse_vals == piHalfPulse]
+            n_pi_pulse = n[piHalfPulse_vals == piHalfPulse][0]
 
         except ValueError:
             piPulse = np.asarray([])
@@ -4990,17 +5035,18 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 phi=phase_fit,
                 f_err=freq_std,
                 phi_err=phase_std,
-                period_num=n_pi_pulse,
+                period_const=n_pi_pulse*np.pi,
                 cov=cov_freq_phase)
             piHalfPulse_std = self.calculate_pulse_stderr(
                 f=freq_fit,
                 phi=phase_fit,
                 f_err=freq_std,
                 phi_err=phase_std,
-                period_num=n_piHalf_pulse,
+                period_const=n_piHalf_pulse*np.pi + np.pi/2,
                 cov=cov_freq_phase)
         except Exception as e:
-            log.error(e)
+            log.error(f'{e}\nSome stderrs from fit are None, setting stderr '
+                      f'of pi and pi/2 pulses to 0!')
             piPulse_std = 0
             piHalfPulse_std = 0
 
@@ -5011,27 +5057,56 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
         return rabi_amplitudes
 
-    def calculate_pulse_stderr(self, f, phi, f_err, phi_err,
-                               period_num, cov=0):
-        x = period_num + phi
-        return np.sqrt((f_err*x/(2*np.pi*(f**2)))**2 +
-                       (phi_err/(2*np.pi*f))**2 -
-                       2*(cov**2)*x/((2*np.pi*(f**3))**2))[0]
+    @staticmethod
+    def calculate_pulse_stderr(f, phi, f_err, phi_err,
+                               period_const, cov=0):
+        jacobian = np.array([-1 / (2 * np.pi * f),
+                             - (period_const - phi) / (2 * np.pi * f**2)])
+        cov_matrix = np.array([[phi_err**2, cov], [cov, f_err**2]])
+        return np.sqrt(jacobian @ cov_matrix @ jacobian.T)
 
     def prepare_plots(self):
         super().prepare_plots()
 
         if self.do_fitting:
-            for qbn in self.qb_names:
-                base_plot_name = 'Rabi_' + qbn
+            for k, fit_dict in self.fit_dicts.items():
+                if k.startswith('amplitude_fit'):
+                    # This is only for RabiFrequencySweepAnalysis.
+                    # It is handled by prepare_amplitude_fit_plots of that class
+                    continue
+
+                k = k.replace('cos_fit_', '')
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                        'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x : f'{x:0.4f}')))
+                    daa = self.metadata.get('drive_amp_adaptation', {}).get(
+                        qbn, None)
+                    if daa is not None:
+                        sweep_points = sweep_points * daa[int(i)]
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = 'Rabi_' + k
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
+                    data=dtf[int(i)] if i != '' else dtf,
+                    sweep_points=sweep_points,
                     plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix
+                )
 
-                fit_res = self.fit_dicts['cos_fit_' + qbn]['fit_res']
-                self.plot_dicts['fit_' + qbn] = {
+                self.plot_dicts['fit_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
                     'fit_res': fit_res,
@@ -5043,12 +5118,12 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper right'}
 
                 rabi_amplitudes = self.proc_data_dict['analysis_params_dict']
-                self.plot_dicts['piamp_marker_' + qbn] = {
+                self.plot_dicts['piamp_marker_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': np.array([rabi_amplitudes[qbn]['piPulse']]),
+                    'xvals': np.array([rabi_amplitudes[k]['piPulse']]),
                     'yvals': np.array([fit_res.model.func(
-                        rabi_amplitudes[qbn]['piPulse'],
+                        rabi_amplitudes[k]['piPulse'],
                         **fit_res.best_values)]),
                     'setlabel': '$\pi$-Pulse amp',
                     'color': 'r',
@@ -5060,24 +5135,22 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                self.plot_dicts['piamp_hline_' + qbn] = {
+                self.plot_dicts['piamp_hline_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
                     'y': [fit_res.model.func(
-                        rabi_amplitudes[qbn]['piPulse'],
+                        rabi_amplitudes[k]['piPulse'],
                         **fit_res.best_values)],
-                    'xmin': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][0],
-                    'xmax': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][-1],
+                    'xmin': sweep_points[0],
+                    'xmax': sweep_points[-1],
                     'colors': 'gray'}
 
-                self.plot_dicts['pihalfamp_marker_' + qbn] = {
+                self.plot_dicts['pihalfamp_marker_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': np.array([rabi_amplitudes[qbn]['piHalfPulse']]),
+                    'xvals': np.array([rabi_amplitudes[k]['piHalfPulse']]),
                     'yvals': np.array([fit_res.model.func(
-                        rabi_amplitudes[qbn]['piHalfPulse'],
+                        rabi_amplitudes[k]['piHalfPulse'],
                         **fit_res.best_values)]),
                     'setlabel': '$\pi /2$-Pulse amp',
                     'color': 'm',
@@ -5089,16 +5162,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                self.plot_dicts['pihalfamp_hline_' + qbn] = {
+                self.plot_dicts['pihalfamp_hline_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
                     'y': [fit_res.model.func(
-                        rabi_amplitudes[qbn]['piHalfPulse'],
+                        rabi_amplitudes[k]['piHalfPulse'],
                         **fit_res.best_values)],
-                    'xmin': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][0],
-                    'xmax': self.proc_data_dict['sweep_points_dict'][qbn][
-                        'sweep_points'][-1],
+                    'xmin': sweep_points[0],
+                    'xmax': sweep_points[-1],
                     'colors': 'gray'}
 
                 trans_name = 'ef' if 'f' in self.data_to_fit[qbn] else 'ge'
@@ -5113,18 +5184,18 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 old_pihalfpulse_val *= old_pipulse_val
 
                 textstr = ('  $\pi-Amp$ = {:.3f} V'.format(
-                    rabi_amplitudes[qbn]['piPulse']) +
+                    rabi_amplitudes[k]['piPulse']) +
                            ' $\pm$ {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piPulse_stderr']) +
+                    rabi_amplitudes[k]['piPulse_stderr']) +
                            '\n$\pi/2-Amp$ = {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piHalfPulse']) +
+                    rabi_amplitudes[k]['piHalfPulse']) +
                            ' $\pm$ {:.3f} V '.format(
-                    rabi_amplitudes[qbn]['piHalfPulse_stderr']) +
+                    rabi_amplitudes[k]['piHalfPulse_stderr']) +
                            '\n  $\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pipulse_val) +
                            '\n$\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pihalfpulse_val))
-                self.plot_dicts['text_msg_' + qbn] = {
+                self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': 0,
@@ -5132,6 +5203,205 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'verticalalignment': 'top',
                     'plotfn': self.plot_text,
                     'text_string': textstr}
+
+
+class RabiFrequencySweepAnalysis(RabiAnalysis):
+
+    def __init__(self, qb_names, *args, **kwargs):
+        params_dict = kwargs.get('params_dict', {})
+        for qbn in qb_names:
+            params_dict[f'drive_ch_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_freq'
+        kwargs['params_dict'] = params_dict
+        super().__init__(qb_names, *args, **kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        # Set some default values specific to RabiFrequencySweepAnalysis if the
+        # respective options have not been set by the user or in the metadata.
+        # (We do not do this in the init since we have to wait until
+        # metadata has been extracted.)
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        amplitudes = {qbn: np.array([[
+            self.proc_data_dict[
+                'analysis_params_dict'][f'{qbn}_{i}']['piPulse'],
+            self.proc_data_dict[
+                'analysis_params_dict'][f'{qbn}_{i}']['piPulse_stderr']]
+            for i in range(self.sp.length(1))]) for qbn in self.qb_names}
+        self.proc_data_dict['analysis_params_dict']['amplitudes'] = amplitudes
+
+        fit_dict_keys = self.prepare_fitting_pulse_amps()
+        self.run_fitting(keys_to_fit=fit_dict_keys)
+
+        lo_freqsX = self.get_param_value('allowed_lo_freqs')
+        mid_freq = np.mean(lo_freqsX)
+        self.proc_data_dict['analysis_params_dict']['rabi_model_lo'] = {}
+        func_repr = lambda a, b, c: \
+            f'{a} * (x / 1e9) ** 2 + {b} * x/ 1e9 + {c}'
+        for qbn in self.qb_names:
+            drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
+            pd = self.get_data_from_timestamp_list({
+                f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
+            fit_res_L = self.fit_dicts[f'amplitude_fit_left_{qbn}']['fit_res']
+            fit_res_R = self.fit_dicts[f'amplitude_fit_right_{qbn}']['fit_res']
+            rabi_model_lo = \
+                f'lambda x : np.minimum({pd["ch_amp"]}, ' \
+                f'({func_repr(**fit_res_R.best_values)}) * (x >= {mid_freq})' \
+                f'+ ({func_repr(**fit_res_L.best_values)}) * (x < {mid_freq}))'
+            self.proc_data_dict['analysis_params_dict']['rabi_model_lo'][
+                qbn] = rabi_model_lo
+
+    def prepare_fitting_pulse_amps(self):
+        exclude_freq_indices = self.get_param_value('exclude_freq_indices', {})
+        # TODO: generalize the code for len(allowed_lo_freqs) > 2
+        lo_freqsX = self.get_param_value('allowed_lo_freqs')
+        if lo_freqsX is None:
+            raise ValueError('allowed_lo_freqs not found.')
+        fit_dict_keys = []
+        self.proc_data_dict['analysis_params_dict']['optimal_vals'] = {}
+        for i, qbn in enumerate(self.qb_names):
+            excl_idxs = exclude_freq_indices.get(qbn, [])
+            param = [p for p in self.mospm[qbn] if 'freq' in p][0]
+            freqs = self.sp.get_sweep_params_property('values', 1, param)
+            ampls = deepcopy(self.proc_data_dict['analysis_params_dict'][
+                'amplitudes'][qbn])
+            if len(excl_idxs):
+                mask = np.array([i in excl_idxs for i in np.arange(len(freqs))])
+                ampls = ampls[np.logical_not(mask)]
+                freqs = freqs[np.logical_not(mask)]
+
+            optimal_idx = np.argmin(np.abs(
+                freqs - self.raw_data_dict[f'ge_freq_{qbn}']))
+            self.proc_data_dict['analysis_params_dict']['optimal_vals'][qbn] = \
+                (freqs[optimal_idx], ampls[optimal_idx, 0], ampls[optimal_idx, 1])
+
+            mid_freq = np.mean(lo_freqsX)
+            fit_func = lambda x, a, b, c: a * x ** 2 + b * x + c
+
+            # fit left range
+            model = lmfit.Model(fit_func)
+            guess_pars = model.make_params(a=1, b=1, c=0)
+            self.fit_dicts[f'amplitude_fit_left_{qbn}'] = {
+                'fit_fn': fit_func,
+                'fit_xvals': {'x': freqs[freqs < mid_freq]/1e9},
+                'fit_yvals': {'data': ampls[freqs < mid_freq, 0]},
+                'fit_yvals_stderr': ampls[freqs < mid_freq, 1],
+                'guess_pars': guess_pars}
+
+            # fit right range
+            model = lmfit.Model(fit_func)
+            guess_pars = model.make_params(a=1, b=1, c=0)
+            self.fit_dicts[f'amplitude_fit_right_{qbn}'] = {
+                'fit_fn': fit_func,
+                'fit_xvals': {'x': freqs[freqs >= mid_freq]/1e9},
+                'fit_yvals': {'data': ampls[freqs >= mid_freq, 0]},
+                'fit_yvals_stderr': ampls[freqs >= mid_freq, 1],
+                'guess_pars': guess_pars}
+
+            fit_dict_keys += [f'amplitude_fit_left_{qbn}',
+                              f'amplitude_fit_right_{qbn}']
+        return fit_dict_keys
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        if self.do_fitting:
+            for qbn in self.qb_names:
+                base_plot_name = f'Rabi_amplitudes_{qbn}'
+                title = f'{self.raw_data_dict["timestamp"]} ' \
+                        f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
+                plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+                plotsize = (plotsize[0], plotsize[0]/1.25)
+                param = [p for p in self.mospm[qbn] if 'freq' in p][0]
+                xlabel = self.sp.get_sweep_params_property('label', 1, param)
+                xunit = self.sp.get_sweep_params_property('unit', 1, param)
+                lo_freqsX = self.get_param_value('allowed_lo_freqs')
+
+                # plot upper sideband
+                fit_dict = self.fit_dicts[f'amplitude_fit_left_{qbn}']
+                fit_res = fit_dict['fit_res']
+                xmin = min(fit_dict['fit_xvals']['x'])
+                self.plot_dicts[f'{base_plot_name}_left_data'] = {
+                    'plotfn': self.plot_line,
+                    'fig_id': base_plot_name,
+                    'plotsize': plotsize,
+                    'xvals': fit_dict['fit_xvals']['x'],
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': fit_dict['fit_yvals']['data'],
+                    'ylabel': '$\\pi$-pulse amplitude, $A$',
+                    'yunit': 'V',
+                    'setlabel': f'USB, LO at {np.min(lo_freqsX)/1e9:.3f} GHz',
+                    'title': title,
+                    'linestyle': 'none',
+                    'do_legend': False,
+                    'legend_bbox_to_anchor': (1, 0.5),
+                    'legend_pos': 'center left',
+                    'yerr':  fit_dict['fit_yvals_stderr'],
+                    'color': 'C0'
+                }
+
+                self.plot_dicts[f'{base_plot_name}_left_fit'] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'USB quadratic fit',
+                    'color': 'C0',
+                    'do_legend': True,
+                    # 'legend_ncol': 2,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                # plot lower sideband
+                fit_dict = self.fit_dicts[f'amplitude_fit_right_{qbn}']
+                fit_res = fit_dict['fit_res']
+                xmax = max(fit_dict['fit_xvals']['x'])
+                self.plot_dicts[f'{base_plot_name}_right_data'] = {
+                    'plotfn': self.plot_line,
+                    'fig_id': base_plot_name,
+                    'xvals': fit_dict['fit_xvals']['x'],
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': fit_dict['fit_yvals']['data'],
+                    'ylabel': '$\\pi$-pulse amplitude, $A$',
+                    'yunit': 'V',
+                    'setlabel': f'LSB, LO at {np.max(lo_freqsX)/1e9:.3f} GHz',
+                    'title': title,
+                    'linestyle': 'none',
+                    'do_legend': False,
+                    'legend_bbox_to_anchor': (1, 0.5),
+                    'legend_pos': 'center left',
+                    'yerr':  fit_dict['fit_yvals_stderr'],
+                    'color': 'C1'
+                }
+
+                self.plot_dicts[f'{base_plot_name}_right_fit'] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'LSB quadratic fit',
+                    'color': 'C1',
+                    'do_legend': True,
+                    'legend_ncol': 2,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                # max ch amp line
+                drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
+                pd = self.get_data_from_timestamp_list({
+                    f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
+                self.plot_dicts[f'ch_amp_line_{qbn}'] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_hlines,
+                    'y': pd['ch_amp'],
+                    'xmin': xmax,
+                    'xmax': xmin,
+                    'colors': 'k'}
 
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):

@@ -537,9 +537,16 @@ class QuantumExperiment(CircuitBuilder):
                 'unit', 0, param_names=sweep_param_name)
         except TypeError:
             sweep_param_name, unit = "None", ""
-        sweep_func_1st_dim = self.sweep_functions[0](
-            sequence=self.sequences[0], upload=self.upload,
-            parameter_name=sweep_param_name,  unit=unit)
+        if self.sweep_functions[0] == awg_swf.SegmentHardSweep:
+            sweep_func_1st_dim = self.sweep_functions[0](
+                sequence=self.sequences[0], upload=self.upload,
+                parameter_name=sweep_param_name, unit=unit)
+        else:
+            # In case of an unknown sweep function type, it is assumed
+            # that self.sweep_functions[0] has already been initialized
+            # with all required parameters and can be directly passed to
+            # MC.
+            sweep_func_1st_dim = self.sweep_functions[0]
 
         self.MC.set_sweep_function(sweep_func_1st_dim)
         self.MC.set_sweep_points(self.mc_points[0])
