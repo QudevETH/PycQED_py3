@@ -205,18 +205,18 @@ def get_clf_params_from_hdf_file(timestamp, meas_obj_names, for_ge=True,
     """
 
     try:
-        print('Clf params from analysis group.')
         params_dict = {}
         params_dict.update({f'{qbn}':
-                                f'Analysis.Processed data.analysis_params.classifier_params.{qbn}'
+                                f'Analysis.Processed data.analysis_params.'
+                                f'classifier_params.{qbn}'
                             for qbn in meas_obj_names})
         classifier_params = get_params_from_hdf_file(
             {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
     except KeyError:
-        print('Clf params from qubit.')
         params_dict = {}
         params_dict.update({f'{qbn}':
-                                f'Instrument settings.{qbn}.acq_classifier_params'
+                                f'Instrument settings.{qbn}.'
+                                f'acq_classifier_params'
                             for qbn in meas_obj_names})
         classifier_params = get_params_from_hdf_file(
             {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
