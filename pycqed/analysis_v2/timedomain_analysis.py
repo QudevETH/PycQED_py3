@@ -2158,6 +2158,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         :param dimension: (float, default: 0) sweep dimension to be considered.
         :return: a 3-tuple of label, unit, and array of values
         """
+        if not hasattr(self, 'mospm'):
+            return None
+
         if qbn is None:
             param_name = [p for v in self.mospm.values() for p in v
                           if self.sp.find_parameter(p) == 1]
@@ -7731,6 +7734,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             f'population_loss_{qbn}'] = \
                             {'val': population_loss,
                              'stderr': population_loss_stderrs}
+
                 else:
                     self.proc_data_dict['analysis_params_dict'][
                         f'amps_{qbn}'] = {

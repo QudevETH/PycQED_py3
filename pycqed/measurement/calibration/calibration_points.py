@@ -48,6 +48,9 @@ class CalibrationPoints:
                     if k == 0:
                         pulse['ref_pulse'] = 'segment_start'
                     if len(pulse_modifs) > 0:
+                        # The pulse(s) to which the pulse_modifs refer might
+                        # not be present in all calibration segments. We
+                        # thus disable the pulse_not_found_warning.
                         pulse = sweep_pulse_params(
                             [pulse], pulse_modifs,
                             pulse_not_found_warning=False)[0][0]
