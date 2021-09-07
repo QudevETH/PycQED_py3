@@ -1678,7 +1678,7 @@ class QuDev_transmon(Qubit):
             pla.process_pipeline(pla.extract_data_hdf(**kw), **kw)
 
     def measure_transients(self, states=('g', 'e'), upload=True,
-                           analyze=True, acq_length=4095/1.8e9,
+                           analyze=True, acq_length=4096/1.8e9,
                            prep_params=None, exp_metadata=None, **kw):
         """
         If the resulting transients will be used to caclulate the optimal
