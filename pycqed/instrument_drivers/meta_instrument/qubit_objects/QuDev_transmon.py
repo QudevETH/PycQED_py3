@@ -288,6 +288,11 @@ class QuDev_transmon(Qubit):
                                  'calculate a pi pulse amplitude for a given '
                                  'ge transition frequency.',
                            initial_value=None, parameter_class=ManualParameter)
+        self.add_parameter('fit_ro_freq_over_ge_freq',
+                           label='String representation of function to '
+                                 'calculate a RO frequency for a given '
+                                 'ge transition frequency.',
+                           initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_amplitude_bias_ratio',
                            label='Ratio between a flux pulse amplitude '
                                  'and a DC offset change that lead to '
@@ -479,6 +484,23 @@ class QuDev_transmon(Qubit):
                         f'fit_ge_amp180_over_ge_freq is None.')
             return None
         return eval(amp_func)(ge_freq)
+
+    def get_ro_freq_from_ge_freq(self, ge_freq):
+        """
+        Calculates the RO frequency required for a given ge transition
+        frequency using the function stored in the parameter
+        fit_ro_freq_over_ge_freq. If this parameter is None, the method
+        returns None.
+
+        :param ge_freq: ge transition frequency or an array of frequencies
+        :return: RO frequency or an array of frequencies (or None)
+        """
+        freq_func = self.fit_ro_freq_over_ge_freq()
+        if freq_func is None:
+            log.warning(f'Cannot calculate RO freq for {self.name} since '
+                        f'fit_ro_freq_over_ge_freq is None.')
+            return None
+        return eval(freq_func)(ge_freq)
 
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
                             model='transmon_res', flux=None, update=False):

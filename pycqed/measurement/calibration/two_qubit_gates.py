@@ -16,6 +16,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
+import qcodes
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -147,7 +148,12 @@ class MultiTaskingExperiment(QuantumExperiment):
             'data_to_fit': self.data_to_fit,
         })
         if self.task_list is not None:
-            self.exp_metadata.update({'task_list': self.task_list})
+            tl = [copy(t) for t in self.task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
 
@@ -302,7 +308,8 @@ class MultiTaskingExperiment(QuantumExperiment):
             keyword arguments for block_func, plus a key 'prefix' with a unique
             prefix string, plus optionally a key 'params_to_prefix' created
             by preprocess_task indicating which sweep parameters have to be
-            prefixed with the task prefix.
+            prefixed with the task prefix, plus optionally a key
+            pulse_modifs with pulse modifiers for the created blocks.
         :param block_func: a handle to a function that creates a block. As
             an alternative, a task-specific block_func can be given as a
             parameter of the task. If the block creation function instead
@@ -326,6 +333,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             # the block creation function
             prefix = task.pop('prefix')
             params_to_prefix = task.pop('params_to_prefix', None)
+            pulse_modifs = task.pop('pulse_modifs', None)
             # the block_func passed as argument is used for all tasks that
             # do not define their own block_func
             if not 'block_func' in task:
@@ -338,6 +346,8 @@ class MultiTaskingExperiment(QuantumExperiment):
             if not isinstance(new_block, list):
                 new_block = [new_block]
             for b in new_block:
+                if pulse_modifs is not None:
+                    b.pulses = b.pulses_sweepcopy([pulse_modifs], [None])
                 # prefix the block names to avoid naming conflicts later on
                 b.name = prefix + b.name
                 # For the sweep points that need to be prefixed (see
