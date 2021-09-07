@@ -5849,10 +5849,10 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def calculate_pulse_stderr(f, phi, f_err, phi_err,
                                period_const, cov=0):
-        x = period_const + phi
-        return np.sqrt((2*np.pi*f_err*x/(2*np.pi*(f**2)))**2 +
-                       (phi_err/(2*np.pi*f))**2 -
-                       2*(cov**2)*x/(4*(np.pi**2)*(f**3)))
+        jacobian = np.array([-1 / (2 * np.pi * f),
+                             - (period_const - phi) / (2 * np.pi * f**2)])
+        cov_matrix = np.array([[phi_err**2, cov], [cov, f_err**2]])
+        return np.sqrt(jacobian @ cov_matrix @ jacobian.T)
 
     def prepare_plots(self):
         super().prepare_plots()
