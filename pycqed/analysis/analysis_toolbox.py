@@ -329,7 +329,7 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             ro_type = 'w'
 
         for qbn in qb_names:
-            uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
+            uhf = eval(instr_settings[qbn].attrs['instr_acq'])
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])

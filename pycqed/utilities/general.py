@@ -783,12 +783,12 @@ def configure_qubit_feedback_params(qubits, for_ef=False):
         acq_ch = qb.acq_I_channel()
         AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
         AWG.set(f'awgs_{vawg}_dio_mask_value', 1)
-        UHF = qb.instr_uhf.get_instr()
+        acq_dev = qb.instr_acq.get_instr()
         threshs = qb.acq_classifier_params()
         if threshs is not None:
             threshs = threshs.get('thresholds', None)
         if threshs is not None:
-            UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
+            acq_dev.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
 
 def find_symmetry_index(data):

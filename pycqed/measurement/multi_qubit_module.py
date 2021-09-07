@@ -66,9 +66,9 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
     acq_classifier_params = {}
     acq_state_prob_mtxs = {}
     for qb in qubits:
-        uhf = qb.instr_uhf()
+        uhf = qb.instr_acq()
         uhfs.add(uhf)
-        uhf_instances[uhf] = qb.instr_uhf.get_instr()
+        uhf_instances[uhf] = qb.instr_acq.get_instr()
 
         if uhf not in max_int_len:
             max_int_len[uhf] = 0
@@ -276,7 +276,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
         [qb.name for qb in qubits])))
 
     if analyse and thresholds is not None:
-        channel_map = {qb.name: qb.int_log_det.value_names[0]+' '+qb.instr_uhf()
+        channel_map = {qb.name: qb.int_log_det.value_names[0]+' '+qb.instr_acq()
                        for qb in qubits}
         return ra.Multiplexed_Readout_Analysis(options_dict=dict(
             n_readouts=(2 if preselection else 1) * 2 ** len(qubits),
@@ -363,7 +363,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         qb.prepare(drive='timedomain')
     label = f"SSRO_calibration_{states}{get_multi_qubit_msmt_suffix(qubits)}" if \
         label is None else label
-    channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
+    channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                              for vn in qb.int_log_det.value_names]
                    for qb in qubits}
     if exp_metadata is None:
@@ -463,7 +463,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     qb_names = dev.get_qubits(qubits, "str")
 
     if measure:
-        uhf_names = np.array([qubit.instr_uhf.get_instr().name for qubit in qubits])
+        uhf_names = np.array([qubit.instr_acq.get_instr().name for qubit in qubits])
         unique, counts = np.unique(uhf_names, return_counts=True)
         for u, c in zip(unique, counts):
             if c != 1:
@@ -484,13 +484,13 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
             [qb.prepare(drive='timedomain') for qb in qubits]
             # create dict with acq instr as keys and nr samples corresponding to
             # acq_length as values
-            samples = [(qb.instr_uhf.get_instr(),
-                        qb.instr_uhf.get_instr().convert_time_to_n_samples(
+            samples = [(qb.instr_acq.get_instr(),
+                        qb.instr_acq.get_instr().convert_time_to_n_samples(
                             acq_length)) for qb in qubits]
             # sort by nr samples
             samples.sort(key=lambda t: t[1])
             sweep_points = samples[0][0].get_sweep_points_time_trace(acq_length)
-            channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
+            channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                             for vn in qb.inp_avg_det.value_names]
                             for qb in qubits}
             exp_metadata.update(

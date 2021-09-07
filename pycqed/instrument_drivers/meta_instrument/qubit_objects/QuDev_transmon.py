@@ -62,7 +62,7 @@ class QuDev_transmon(Qubit):
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_pulsar',
             parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_uhf',
+        self.add_parameter('instr_acq',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ro_lo',
             parameter_class=InstrumentRefParameter)
@@ -757,14 +757,14 @@ class QuDev_transmon(Qubit):
             channels = [self.acq_I_channel(), self.acq_Q_channel()]
 
         self.int_log_det = det.IntegratingSingleShotPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.int_avg_classif_det = det.ClassifyingPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_averages(),
             integration_length=self.acq_length(),
@@ -774,44 +774,44 @@ class QuDev_transmon(Qubit):
             })
 
         self.int_avg_det = det.IntegratingAveragingPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.dig_avg_det = det.IntegratingAveragingPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.inp_avg_det = det.AveragingPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
             acquisition_length=self.acq_length())
 
         self.dig_log_det = det.IntegratingSingleShotPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
             channels=channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
-            acq_dev=self.instr_uhf.get_instr(),
-            AWG=self.instr_uhf.get_instr(),
+            acq_dev=self.instr_acq.get_instr(),
+            AWG=self.instr_acq.get_instr(),
             channels=[self.acq_I_channel(), self.acq_Q_channel()],
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
 
-        if hasattr(self.instr_uhf.get_instr(), 'daq') and hasattr(
-                self.instr_uhf.get_instr().daq, 'scopeModule'):
+        if hasattr(self.instr_acq.get_instr(), 'daq') and hasattr(
+                self.instr_acq.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
-                UHFQC=self.instr_uhf.get_instr(),
+                UHFQC=self.instr_acq.get_instr(),
                 AWG=self.instr_pulsar.get_instr(),
                 fft_mode='fft_power',
                 nr_averages=self.acq_averages(),
@@ -877,7 +877,7 @@ class QuDev_transmon(Qubit):
             weights_type = self.acq_weights_type()
         if f_mod is None:
             f_mod = self.ro_mod_freq()
-        self.instr_uhf.get_instr().acquisition_set_weights(
+        self.instr_acq.get_instr().acquisition_set_weights(
             channels=[self.acq_I_channel(), self.acq_Q_channel()],
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
@@ -996,7 +996,7 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
             MC.run(name=label, mode=mode)
             self.instr_pulsar.get_instr().stop()
 
@@ -1046,7 +1046,7 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
             MC.run(name=label, mode=mode)
             self.instr_pulsar.get_instr().stop()
 
@@ -1675,7 +1675,7 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.acq_length, acq_length):
             self.prepare(drive='timedomain')
-            swpts = self.instr_uhf.get_instr().get_sweep_points_time_trace(
+            swpts = self.instr_acq.get_instr().get_sweep_points_time_trace(
                 acq_length)
             for state in states:
                 if state not in ['g', 'e', 'f']:
@@ -1763,7 +1763,7 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points_2D(freqs)
 
         d = det.UHFQC_integrated_average_detector(
-            self.instr_uhf.get_instr(), self.instr_pulsar.get_instr(),
+            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
@@ -1834,7 +1834,7 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points_2D(delays_to_relax)
 
         d = det.UHFQC_integrated_average_detector(
-            self.instr_uhf.get_instr(), self.instr_pulsar.get_instr(),
+            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(),
             nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
@@ -1890,7 +1890,7 @@ class QuDev_transmon(Qubit):
             upload=upload))
         MC.set_sweep_points(phases)
         d = det.UHFQC_integrated_average_detector(
-            self.instr_uhf.get_instr(), self.instr_pulsar.get_instr(), nr_averages=self.acq_averages(),
+            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(), nr_averages=self.acq_averages(),
             channels=self.int_avg_det.channels,
             integration_length=self.acq_length(),
             values_per_point=2, values_per_point_suffix=['_single_elem',
@@ -2013,7 +2013,7 @@ class QuDev_transmon(Qubit):
         ):
             self.prepare(drive='timedomain')
             MC.set_detector_function(detector_generator())
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -3383,7 +3383,7 @@ class QuDev_transmon(Qubit):
             MC.set_sweep_points(freqs)
             MC.set_detector_function(self.int_avg_det_spec)
 
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
             MC.run(name=f"{state}-spec" + self.msmt_suffix)
             self.instr_pulsar.get_instr().stop()
 
