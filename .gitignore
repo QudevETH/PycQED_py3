@@ -53,7 +53,8 @@ coverage.xml
 *.log
 
 # Sphinx documentation
-docs/_build/
+docs/build/
+docs/source/_autosummary
 
 # PyBuilder
 target/
@@ -112,6 +113,7 @@ $RECYCLE.BIN/
 
 # Pycqed specific files
 # ======================
+# TODO: These exclusion rules should more specific.
 
 # code generated qasm files
 *.qasm
@@ -124,6 +126,7 @@ $RECYCLE.BIN/
 *.dot
 *.qumis
 *.txt
+!.requirements.txt
 *.png
 pycqed/measurement/openql_experiments/output/*
 

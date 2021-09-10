@@ -24,18 +24,67 @@ Please see [Contributing.md](.github/CONTRIBUTING.md)
 
 ## Installation
 
-To use PycQED, clone this repository and add the directory to your path (no pip-install yet) and make sure you have a working python3 environment with the required dependencies.
-Go to the directory where you cloned the repository (in the shell) and run
-* `python setup.py develop`.
-For more details see the [installation instructions](docs/install.md).
+Clone the repository:
+```bash
+# cd a/convenient/directory
+git clone https://gitlab.ethz.ch/qudev/control_software/pycqed_py3.git
+```
 
-Test your installation using
-* `py.test pycqed/tests -v`
-(be sure that you are in the PycQED_py3 root folder)
+Install [Anaconda](https://www.anaconda.com/products/individual) if you don't 
+have it, and create a virtual environment:
+```bash
+conda create -n pycqed36 python=3.6
+conda activate pycqed36
 
-Or run a specific test using e.g.
-* `py.test pycqed/tests/test_cliffords.py -v`
-(be sure that you are in the PycQED_py3 root folder)
+# Update pip within the virtual environment
+python -m pip install --upgrade pip
+
+# Installed the required packages for the repository
+pip install -r requirements.txt
+
+# Only on measurement PCs where the NI DAQmx package is installed
+# pip install nidaqmx  
+```
+
+Everytime you open a new terminal, you need to activate the virtual environment:
+```bash
+conda activate pycqed36 
+```
+
+Enable the [Jupyter notebook extensions](https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/install.html)
+which adds a tab "Nbextensions" in the main Jupyter window where you can 
+enable/disable any of the available extensions.
+```bash
+jupyter contrib nbextension install --user
+```
+
+PycQED depends on the following repositories, which should be installed as 
+symbolic links in your virtual environment (`pip install -e`). This way, the 
+changes inside these local repositories (branch switching or file modification)
+are reflected when using the modules within PycQED.
+
+```bash
+# Make sure to have activated your virtual environment
+# Go to the parent folder in which you cloned PycQED
+pip install -e ./PycQED_py3
+git clone https://gitlab.ethz.ch/qudev/control_software/qcodes.git
+pip install -e ./Qcodes
+git clone https://github.com/pyGSTio/pyGSTi.git
+pip install -e ./pyGSTi
+```
+
+## Building the documentation
+
+Assuming you have followed the installation steps, you can locally build the
+documentation as follows:
+```bash
+# From the root of the repo
+cd docs
+make html
+```
+
+You can then access the documentation by opening `docs/build/html/index.html` in
+your browser.
 
 ## Usage
 
