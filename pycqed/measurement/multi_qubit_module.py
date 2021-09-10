@@ -41,10 +41,10 @@ def get_correlation_channels(qubits, self_correlated, **kw):
     """
     if self_correlated:
         return list(itertools.combinations_with_replacement(
-            [qb.acq_I_channel() for qb in qubits], r=2))
+            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
     else:
         return list(itertools.combinations(
-            [qb.acq_I_channel() for qb in qubits], r=2))
+            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
 
 
 def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
@@ -76,10 +76,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
 
         if uhf not in channels:
             channels[uhf] = []
-        channels[uhf] += [qb.acq_I_channel()]
-        if qb.acq_weights_type() in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
-            if qb.acq_Q_channel() is not None:
-                channels[uhf] += [qb.acq_Q_channel()]
+        channels[uhf] += qb.get_acq_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []

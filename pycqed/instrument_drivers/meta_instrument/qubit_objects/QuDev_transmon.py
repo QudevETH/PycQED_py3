@@ -749,12 +749,16 @@ class QuDev_transmon(Qubit):
         vfc['dac_sweet_spot'] = -flux * vfc['V_per_phi0']
         return vfc
 
+    def get_acq_channels(self, n_channels=None):
+        if n_channels is None:
+            n_channels = 2 if (self.acq_weights_type() in [
+                'SSB', 'DSB', 'DSB2', 'optimal_qutrit']
+                               and self.acq_Q_channel() is not None) else 1
+        return [(self.acq_unit(), self.acq_I_channel()),
+                (self.acq_unit(), self.acq_Q_channel())][:n_channels]
+
     def update_detector_functions(self):
-        if self.acq_Q_channel() is None or \
-           self.acq_weights_type() not in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
-            channels = [self.acq_I_channel()]
-        else:
-            channels = [self.acq_I_channel(), self.acq_Q_channel()]
+        channels = self.get_acq_channels()
 
         self.int_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_acq.get_instr(),
@@ -803,7 +807,7 @@ class QuDev_transmon(Qubit):
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_acq.get_instr(),
-            channels=[self.acq_I_channel(), self.acq_Q_channel()],
+            channels=self.get_acq_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
@@ -878,7 +882,7 @@ class QuDev_transmon(Qubit):
         if f_mod is None:
             f_mod = self.ro_mod_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
-            channels=[self.acq_I_channel(), self.acq_Q_channel()],
+            channels=self.get_acq_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
             weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
