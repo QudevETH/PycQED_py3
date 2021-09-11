@@ -479,9 +479,7 @@ class ProcessingPipeline(list):
             list(meas_obj_value_names_map.values()))
         keys_in = []
         for keyi in keys_in_temp:
-            if keyi in mobj_value_names or keyi in prev_keys_out:
-                keys_in += [keyi]
-            elif keyi == 'raw':
+            if keyi == 'raw':
                 keys_in += [f'{mobjn}.{movn}' for mobjn in mobj_name.split(',')
                             for movn in meas_obj_value_names_map[mobjn]]
             elif 'previous' in keyi:
@@ -517,6 +515,8 @@ class ProcessingPipeline(list):
                     raise ValueError('The first node in the pipeline cannot '
                                      'have "keys_in" = "previous".')
             else:
+                # Some custom key in that does not need to be resovled:
+                # just append it
                 keys_in += [keyi]
 
         # if keys_in != keys_in_temp:

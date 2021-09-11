@@ -804,8 +804,35 @@ class BaseDataAnalysis(object):
                 savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
                 self.figs[key].savefig(savename, bbox_inches='tight',
                                        format=fmt, dpi=dpi)
-            if close_figs:
-                plt.close(self.figs[key])
+        if close_figs:
+            self.close_figs(key_list)
+
+    def close_figs(self, key_list='auto'):
+        """Closes specified figures.
+
+        Furthermore, removes all closed figures and axes from `self.figs` and
+        `self.axs` dictionaries.
+
+        Args:
+            key_list: list of figure keys to close or 'auto', in which case
+                all figures are closed.
+        """
+        if key_list == 'auto' or key_list is None:
+            key_list = self.figs.keys()
+        axes_to_pop = []
+        for key in list(key_list):
+            axes_to_pop.extend(self.figs[key].axes)
+        axes_keys_to_pop = []
+        for ax_key, ax in self.axs.items():
+            for ax_to_pop in axes_to_pop:
+                if ax is ax_to_pop:
+                    axes_keys_to_pop.append(ax_key)
+                    break
+        for ax_key in axes_keys_to_pop:
+            self.axs.pop(ax_key)
+        for key in list(key_list):
+            plt.close(self.figs[key])
+            self.figs.pop(key)
 
     def save_data(self, savedir: str = None, savebase: str = None,
                   tag_tstamp: bool = True,
@@ -1095,7 +1122,7 @@ class BaseDataAnalysis(object):
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list is 'auto':
+        if key_list == 'auto':
             key_list = self.auto_keys
         if key_list is None:
             key_list = self.plot_dicts.keys()

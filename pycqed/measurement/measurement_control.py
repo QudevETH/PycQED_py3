@@ -372,7 +372,6 @@ class MeasurementControl(Instrument):
                     # filter needs to be passed to measure_hard.
                     filtered_sweep = getattr(self.sweep_functions[1],
                                              'filtered_sweep', None)
-
                     if filtered_sweep is not None:
                         sp = sp[filtered_sweep]
                     self.detector_function.prepare(sweep_points=sp)
@@ -449,9 +448,10 @@ class MeasurementControl(Instrument):
     @Timer()
     def measure_hard(self, filtered_sweep=None):
         """
-        :param filtered_sweep: (list of bools) indicates which of the
+        :param filtered_sweep: (None or list of bools) indicates which of the
             acquisition elements will be played by the AWGs (True) and which
-            ones will be skipped (False)
+            ones will be skipped (False). Default: None, in which case all
+            acquisition elements will be played.
         """
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
@@ -466,7 +466,8 @@ class MeasurementControl(Instrument):
         self.detector_function.progress_callback = None
 
         if filtered_sweep is not None:
-            # Fill the data points that were not measured with NaN.
+            # Extend the data array by adding NaN for data points that have
+            # not been measured.
             shape = list(new_data.shape)
             shape[0] = len(filtered_sweep)
             new_data_full = np.zeros(shape) * np.nan
