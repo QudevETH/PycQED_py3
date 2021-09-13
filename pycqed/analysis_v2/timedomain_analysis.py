@@ -1130,7 +1130,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Gets single shots from the proc_data_dict and arranges
         them as arrays per qubit
         Args:
-            raw (bool): whether or not to return  raw shots (before
+            raw (bool): whether or not to return raw shots (before
             data filtering)
 
         Returns: shots_per_qb: dict where keys are qb_names and
@@ -1174,7 +1174,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 preselection_state_int=0):
         """
         Prepares preselection masks for each qubit considered in the keys of
-        "preselection_qbs" using the preslection readouts of presel_shots_per_qb
+        "preselection_qbs" using the preslection readouts of presel_shots_per_qb.
+        Note: this function replaces the use of the "data_filter" lambda function
+        in the case of single_shot readout.
+        TODO: in the future, it might make sense to merge this function
+         with the data_filter.
         Args:
             presel_shots_per_qb (dict): {qb_name: preselection_shot_readouts}
             preselection_qbs (dict): keys are the qubits for which the masks have to be
@@ -1298,6 +1302,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # determine number of shots
         n_shots = self.get_param_value("n_shots")
         if n_shots is None:
+            # FIXME: this extraction of number of shots won't work with soft repetitions.
             n_shots_from_hdf = [
                 int(self.get_hdf_param_value(f"Instrument settings/{qbn}",
                                              "acq_shots")) for qbn in self.qb_names]
@@ -1311,7 +1316,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
-        # does not count preselection readout
+        # n_reaouds  refers to the number of readouts per sequence after filtering out e.g.
+        # preselection readouts
         n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots * n_seqs)
 
         # get classification parameters
@@ -1319,7 +1325,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             classifier_params = {}
             from numpy import array  # for eval
             for qbn in self.qb_names:
-                classifier_params[qbn] =  eval(self.get_hdf_param_value(
+                classifier_params[qbn] = eval(self.get_hdf_param_value(
                 f'Instrument settings/{qbn}', "acq_classifier_params"))
 
         # prepare preselection mask
