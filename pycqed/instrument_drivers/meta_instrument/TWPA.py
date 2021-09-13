@@ -47,14 +47,25 @@ class TWPAObject(qc.Instrument):
                                     self.instr_pump.get_instr().status(val)))
 
         # Add signal control parameters
-        def set_heterodyne_freq(val, self=self):
-            self.instr_signal.get_instr().frequency(val)
-            self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
+        def set_freq(val, self=self):
+            if self.pulsed():
+                self.instr_signal.get_instr().frequency(val - self.acq_mod_freq())
+                if self.instr_lo() != self.instr_signal():
+                    self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
+            else:
+                self.instr_signal.get_instr().frequency(val)
+                self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
+
+        # Add signal control parameters
+        def get_freq(self=self):
+            if self.pulsed():
+                return self.instr_signal.get_instr().frequency() + \
+                       self.acq_mod_freq()
+            else:
+                return self.instr_signal.get_instr().frequency()
 
         self.add_parameter('signal_freq', label='Signal frequency', unit='Hz',
-                           get_cmd=(lambda self=self:
-                                    self.instr_signal.get_instr().frequency()),
-                           set_cmd=set_heterodyne_freq)
+                           get_cmd=get_freq, set_cmd=set_freq)
         self.add_parameter('signal_power', label='Signal power', unit='dBm',
                            get_cmd=(lambda self=self:
                                     self.instr_signal.get_instr().power()),
@@ -78,6 +89,16 @@ class TWPAObject(qc.Instrument):
                            vals=vals.Ints(0), initial_value=2**10)
         self.add_parameter('acq_weights_type', parameter_class=ManualParameter,
                            vals=vals.Enum('DSB', 'SSB'), initial_value='SSB')
+
+        # add pulse parameters
+        self.add_parameter('pulsed', parameter_class=ManualParameter,
+                           vals=vals.Bool(), initial_value=True)
+        self.add_parameter('pulse_length', parameter_class=ManualParameter,
+                           vals=vals.Numbers(0, 2.5e-6), unit='s',
+                           initial_value=2.5e-6)
+        self.add_parameter('pulse_amplitude', parameter_class=ManualParameter,
+                           vals=vals.Numbers(0, 1.0), unit='V',
+                           initial_value=0.01)
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
@@ -107,14 +128,23 @@ class TWPAObject(qc.Instrument):
         else:
             UHF.prepare_DSB_weight_and_rotation(IF=self.acq_mod_freq())
 
-        
         # Program the AWG
-        dummy_pulse = {'pulse_type': 'SquarePulse',
-                       'channels': pulsar.find_awg_channels(UHF.name),
-                       'amplitude': 0,
-                       'length': 100e-9,
-                       'operation_type': 'RO'}
-        sq.pulse_list_list_seq([[dummy_pulse]])
+        if self.pulsed():
+            pulse = {'pulse_type': 'GaussFilteredCosIQPulse',
+                     'I_channel': pulsar._id_channel('ch1', UHF.name),
+                     'Q_channel': pulsar._id_channel('ch2', UHF.name),
+                     'amplitude': self.pulse_amplitude(),
+                     'pulse_length': self.pulse_length(),
+                     'gaussian_filter_sigma': 1e-08,
+                     'mod_frequency': self.acq_mod_freq(),
+                     'operation_type': 'RO'}
+        else:  # dummy_pulse
+            pulse = {'pulse_type': 'SquarePulse',
+                     'channels': pulsar.find_awg_channels(UHF.name),
+                     'amplitude': 0,
+                     'length': 100e-9,
+                     'operation_type': 'RO'}
+        sq.pulse_list_list_seq([[pulse]])
         pulsar.start(exclude=[UHF.name])
 
         # Create the detector
@@ -132,13 +162,14 @@ class TWPAObject(qc.Instrument):
 
         MC = self.instr_mc.get_instr()
 
-        detector = self.prepare_readout()
-
         initial_value = parameter()
+
+        detector = self.prepare_readout()
 
         MC.set_sweep_function(parameter)
         MC.set_sweep_points(values)
         MC.set_detector_function(detector)
+
         MC.run(name=label + self.msmt_suffix)
         if analyze:
             ma.MeasurementAnalysis(auto=True)
@@ -170,11 +201,12 @@ class TWPAObject(qc.Instrument):
     def measure_vs_pump_freq(self, pump_freqs, analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
-        self._measure_1D(self.pump_freq, pump_freqs, 'pump_freq_scan_on',
-                         analyze)
+        label = f'pump_freq_scan_pp{self.pump_power():.2f}dB_' + \
+                f'sf{self.signal_freq()/1e9:.3f}G'
+        self._measure_1D(self.pump_freq, pump_freqs, label, analyze)
         self.off()
-        self._measure_1D(self.pump_freq, pump_freqs[:1], 'pump_freq_scan_off',
-                         analyze)
+        label = f'pump_freq_scan_off_sf{self.signal_freq() / 1e9:.3f}G'
+        self._measure_1D(self.pump_freq, pump_freqs[:1], label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='pump_freq_scan')
@@ -183,11 +215,12 @@ class TWPAObject(qc.Instrument):
     def measure_vs_signal_freq(self, signal_freqs, analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
-        self._measure_1D(self.signal_freq, signal_freqs, 'signal_freq_scan_on',
-                         analyze)
+        label = f'signal_freq_scan_pp{self.pump_power():.2f}dB_' + \
+                f'pf{self.pump_freq() / 1e9:.3f}G'
+        self._measure_1D(self.signal_freq, signal_freqs, label, analyze)
         self.off()
-        self._measure_1D(self.signal_freq, signal_freqs, 'signal_freq_scan_off',
-                         analyze)
+        label = 'signal_freq_scan_off'
+        self._measure_1D(self.signal_freq, signal_freqs, label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='signal_freq_scan')
@@ -196,26 +229,27 @@ class TWPAObject(qc.Instrument):
     def measure_vs_pump_power(self, pump_powers, analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
-        self._measure_1D(self.pump_power, pump_powers, 'pump_power_scan_on',
-                         analyze)
+        label = f'pump_power_scan_pf{self.pump_freq() / 1e9:.3f}G_' + \
+                f'sf{self.signal_freq() / 1e9:.3f}G'
+        self._measure_1D(self.pump_power, pump_powers, label, analyze)
         self.off()
-        self._measure_1D(self.pump_power, pump_powers[:1],
-                         'pump_power_scan_off', analyze)
+        label = f'pump_power_scan_off_sf{self.signal_freq() / 1e9:.3f}G'
+        self._measure_1D(self.pump_power, pump_powers[:1], label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='pump_power_scan')
             ca.Amplifier_Characterization_Analysis(timestamps)
 
-
     def measure_vs_signal_freq_pump_freq(self, signal_freqs, pump_freqs,
                                          analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
+        label = f'signal_freq_pump_freq_scan_pp{self.pump_power():.2f}dB'
         self._measure_2D(self.signal_freq, self.pump_freq, signal_freqs,
-                         pump_freqs, 'signal_freq_pump_freq_scan_on', analyze)
+                         pump_freqs, label, analyze)
         self.off()
-        self._measure_1D(self.signal_freq, signal_freqs,
-                         'signal_freq_pump_freq_scan_off', analyze)
+        label = f'signal_freq_pump_freq_scan_off'
+        self._measure_1D(self.signal_freq, signal_freqs, label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='signal_freq_pump_freq_scan')
@@ -225,11 +259,12 @@ class TWPAObject(qc.Instrument):
                                          analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
+        label = f'signal_freq_pump_power_scan_pf{self.pump_freq() / 1e9:.3f}G'
         self._measure_2D(self.signal_freq, self.pump_power, signal_freqs,
-                         pump_powers, 'signal_freq_pump_power_scan_on', analyze)
+                         pump_powers, label, analyze)
         self.off()
-        self._measure_1D(self.signal_freq, signal_freqs,
-                         'signal_freq_pump_power_scan_off', analyze)
+        label = f'signal_freq_pump_power_scan_off'
+        self._measure_1D(self.signal_freq, signal_freqs, label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='signal_freq_pump_power_scan')
@@ -239,11 +274,13 @@ class TWPAObject(qc.Instrument):
                                         analyze=True):
         timestamp_start = a_tools.current_timestamp()
         self.on()
+        label = f'pump_freq_pump_power_scan_sf{self.signal_freq() / 1e9:.3f}G'
         self._measure_2D(self.pump_freq, self.pump_power, pump_freqs,
-                         pump_powers, 'pump_freq_pump_power_scan_on', analyze)
+                         pump_powers, label, analyze)
         self.off()
-        self._measure_1D(self.pump_freq, pump_freqs[:1],
-                         'pump_freq_pump_power_scan_off', analyze)
+        label = f'pump_freq_pump_power_scan_off_' + \
+                f'sf{self.signal_freq() / 1e9:.3f}G'
+        self._measure_1D(self.pump_freq, pump_freqs[:1], label, analyze)
         if analyze:
             timestamps = a_tools.get_timestamps_in_range(
                 timestamp_start, label='pump_freq_pump_power_scan')

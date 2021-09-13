@@ -2,6 +2,7 @@ import logging
 log = logging.getLogger(__name__)
 
 import os
+import shutil
 import time
 import h5py
 import datetime
@@ -22,6 +23,8 @@ from matplotlib import cm
 latest_data_match_whole_words = False
 datadir = get_default_datadir()
 print('Data directory set to:', datadir)
+fetch_data_dir = None
+ignore_delegate_plotting = False
 
 
 ######################################################################
@@ -231,13 +234,15 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
             return paths
 
 
-def data_from_time(timestamp, folder=None):
+def data_from_time(timestamp, folder=None, auto_fetch=None):
     '''
     returns the full path of the data specified by its timestamp in the
     form YYYYmmddHHMMSS.
     '''
     if folder is None:
         folder = datadir
+    if auto_fetch is None:
+        auto_fetch = (fetch_data_dir is not None)
     daydirs = os.listdir(folder)
     if len(daydirs) == 0:
         raise Exception('No data in the data directory specified')
@@ -246,13 +251,22 @@ def data_from_time(timestamp, folder=None):
     daystamp, tstamp = verify_timestamp(timestamp)
 
     if not os.path.isdir(os.path.join(folder, daystamp)):
-        raise KeyError("Requested day '%s' not found" % daystamp)
+        msg = "Requested day '%s' not found" % daystamp
+        if auto_fetch:
+            log.warning(msg + f'\n Trying to fetch from {fetch_data_dir}')
+            copy_data(timestamp, target_dir=folder)
+            return data_from_time(timestamp, folder=folder, auto_fetch=False)
+        raise KeyError(msg)
 
     measdirs = [d for d in os.listdir(os.path.join(folder, daystamp))
                 if d[:6] == tstamp]
     if len(measdirs) == 0:
-        raise KeyError("Requested data '%s_%s' not found"
-                       % (daystamp, tstamp))
+        msg = "Requested data '%s_%s' not found" % (daystamp, tstamp)
+        if auto_fetch:
+            log.warning(msg + f'\n Trying to fetch from {fetch_data_dir}')
+            copy_data(timestamp, target_dir=folder)
+            return data_from_time(timestamp, folder=folder, auto_fetch=False)
+        raise KeyError(msg)
     elif len(measdirs) == 1:
         return os.path.join(folder, daystamp, measdirs[0])
     else:
@@ -319,7 +333,7 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
-            if ro_acq_weight_type in ['SSB', 'DSB', 'optimal_qutrit']:
+            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
             channel_map[qbn] = [vn for vn in value_names for nr in qbchs
                                 if uhf+'_'+ro_type+nr in vn]
@@ -471,9 +485,12 @@ def compare_instrument_settings(analysis_object_a, analysis_object_b):
 
 
 def get_timestamps_in_range(timestamp_start, timestamp_end=None,
-                            label=None, exact_label_match=False, folder=None):
+                            label=None, exact_label_match=False, folder=None,
+                            auto_fetch=None, **kw):
     if folder is None:
         folder = datadir
+    if auto_fetch is None:
+        auto_fetch = (fetch_data_dir is not None)
     if not isinstance(label, list):
         label = [label]
 
@@ -543,6 +560,22 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
         all_timestamps += timestamps
     # Ensures the order of the timestamps is ascending
     all_timestamps.sort()
+
+    if auto_fetch:
+        kwargs = dict(timestamp_start=timestamp_start,
+                      timestamp_end=timestamp_end,
+                      label=label, exact_label_match=exact_label_match,
+                      )
+        kwargs.update(kw)
+        remote_timestamps = get_timestamps_in_range(
+            folder=fetch_data_dir, auto_fetch=False, **kwargs)
+        if len(all_timestamps) != len(remote_timestamps):
+            log.warning(f'Fetching from {fetch_data_dir}')
+            [copy_data(timestamp=t, target_dir=folder, **kw) for t in
+             remote_timestamps if t not in all_timestamps]
+            kwargs['folder'] = folder
+            return get_timestamps_in_range(auto_fetch=False, **kwargs)
+
     return all_timestamps
 
 
@@ -1403,7 +1436,11 @@ def predict_gm_proba_from_clf(X, clf_params):
     gm = GM(covariance_type=clf_params.pop('covariance_type'))
     for param_name, param_value in clf_params.items():
         setattr(gm, param_name, param_value)
-    probas = gm.predict_proba(X)
+
+    X_to_use = deepcopy(X)
+    if X.ndim == 1:
+        X_to_use = X.reshape(1, -1) if len(X) == 1 else X.reshape(-1, 1)
+    probas = gm.predict_proba(X_to_use)
     return probas
 
 
@@ -1715,3 +1752,77 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
                                             b=maxval),
         cmap(np.linspace(minval, maxval, n)))
     return new_cmap
+
+
+def copy_data(timestamp, source_dir=None, target_dir=None,
+              delete_if_exists=False):
+    """
+    Copies data from a source folder to the data folder.
+    :param timestamp: (list or str) A single timestamp or a list of
+        timestamps indicating which folder(s) should be copied.
+    :param source_dir: (str) path to the source datadir
+    :param target_dir: (str) path to the target datadir (default: None, in which
+        case the stored datadir is used)
+    :param delete_if_exists: (bool, default False) If True, existing folders
+        are deleted before copying them from the source_dir. Otherwise, an
+        exception is raised if a folder exists already.
+
+    :return: None
+    """
+    if source_dir is None:
+        source_dir = fetch_data_dir
+    assert source_dir is not None, "source_dir needs to be passed if the " \
+                                   "variable module fetch_data_dir is not set."
+    if isinstance(timestamp, list):
+        for t in timestamp:
+            copy_data(t, source_dir, target_dir=target_dir,
+                      delete_if_exists=delete_if_exists)
+        return
+    if target_dir is None:
+        target_dir = datadir
+    f_src = data_from_time(timestamp, folder=source_dir, auto_fetch=False)
+    daystamp, tstamp = verify_timestamp(timestamp)
+    daydir = os.path.join(target_dir, daystamp)
+    if not os.path.isdir(daydir):
+        os.makedirs(daydir)
+    exists = True
+    try:
+        f = data_from_time(timestamp, folder=target_dir, auto_fetch=False)
+    except KeyError:
+        f = os.path.join(daydir, os.path.basename(f_src))
+        exists = False
+
+    if delete_if_exists and exists:
+        shutil.rmtree(f)
+    if delete_if_exists or not exists:
+        shutil.copytree(f_src, f)
+    else:
+        raise OSError(f'Folder for timestamp {timestamp} already exists, '
+                      f'and delete_if_exists was set to False.')
+
+
+def copy_data_in_range(timestamp_start, timestamp_end=None, source_dir=None,
+                       target_dir=None, delete_if_exists=False, **kw):
+    """
+    Copies data corresponding to a range of timestamps from a source folder
+    to the data folder.
+    :param timestamp_start: (str) start of the range that could be copied.
+    :param timestamp_end: (str) end of the range that could be copied.
+    :param source_dir: (str) path to the source datadir
+    :param target_dir: (str) path to the target datadir (default: None, in which
+        case the stored datadir is used)
+    :param delete_if_exists: (bool, default False) If True, existing folders
+        are deleted before copying them from the source_dir. Otherwise,
+        an exception is raised if a folder exists already.
+    :param kw: keyword arguments are passed to get_timestamps_in_range.
+
+    :return: None
+    """
+    if source_dir is None:
+        source_dir = fetch_data_dir
+    assert source_dir is not None, "source_dir needs to be passed if the " \
+                                   "variable module fetch_data_dir is not set."
+    ts = get_timestamps_in_range(timestamp_start, timestamp_end,
+                                 folder=source_dir, **kw)
+    copy_data(ts, source_dir, target_dir=target_dir,
+              delete_if_exists=delete_if_exists)

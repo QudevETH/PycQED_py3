@@ -6,7 +6,6 @@ import datetime
 import os
 import lmfit
 from copy import deepcopy
-import pygsti
 import logging
 log = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ from pycqed.utilities.general import temporary_value
 from pycqed.analysis_v2 import tomography_qudev as tomo
 import pycqed.analysis.analysis_toolbox as a_tools
 
-
 try:
     import \
         pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQuantumController as uhfqc
@@ -39,7 +37,6 @@ except ModuleNotFoundError:
     log.warning('"UHFQuantumController" not imported.')
 
 from pycqed.measurement.optimization import generate_new_training_set
-from pygsti import construction as constr
 
 
 def multiplexed_pulse(readouts, f_LO, upload=True):
@@ -201,7 +198,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
         if uhf not in channels:
             channels[uhf] = []
         channels[uhf] += [qb.acq_I_channel()]
-        if qb.acq_weights_type() in ['SSB', 'DSB', 'optimal_qutrit']:
+        if qb.acq_weights_type() in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
             if qb.acq_Q_channel() is not None:
                 channels[uhf] += [qb.acq_Q_channel()]
 
@@ -537,7 +534,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "preparation_params": prep_params,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
-                         "channel_map": channel_map
+                         "channel_map": channel_map,
+                         "data_to_fit": {}
                          })
     df = get_multiplexed_readout_detector_functions(
             qubits, nr_shots=n_shots)['int_log_det']
@@ -574,12 +572,21 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                 'analysis_params']['classifier_params'][qb.name]
             if update:
                 qb.acq_classifier_params().update(classifier_params)
+                if 'state_prob_mtx_masked' in a.proc_data_dict[
+                        'analysis_params']:
+                    qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
+                        'state_prob_mtx_masked'][qb.name])
+                else:
+                    log.warning('Measurement was not run with preselection. '
+                                'state_prob_matx updated with non-masked one.')
+                    qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
+                        'state_prob_mtx'][qb.name])
         return a
 
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
-                         acq_weights_basis=None, orthonormalize=False,
+                         acq_weights_basis=None, orthonormalize=True,
                          update=True, measure=True):
     """
     Measures time traces for specified states and
@@ -621,10 +628,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         unique, counts = np.unique(uhf_names, return_counts=True)
         for u, c in zip(unique, counts):
             if c != 1:
-                raise ValueError(f"{np.array(qubits)[uhf_names == u]}"
-                                 f" share the same UHF ({u}) and therefore"
-                                 f" their timetraces cannot be computed "
-                                 f"simultaneously.")
+                log.warning(f"{np.array(qubits)[uhf_names == u]} "
+                            f"share the same UHF ({u}) and therefore their "
+                            f"timetraces should not be measured simultaneously, "
+                            f"except if you know what you are doing.")
 
         # combine operations and preparation dictionaries
         operation_dict = dev.get_operation_dict(qubits=qubits)
@@ -1290,10 +1297,15 @@ def measure_two_qubit_randomized_benchmarking(
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences, 'Nr. Seeds', ''))
     MC.set_sweep_points_2D(soft_sweep_points)
-    det_get_values_kws = {'classified': classified,
-                          'correlated': correlated,
-                          'thresholded': thresholded,
-                          'averaged': averaged}
+    det_get_values_kws_to_set = {'classified': classified,
+                                 'correlated': True,
+                                 'thresholded': True,
+                                 'averaged': True,
+                                 'ro_corrected_stored_mtx': False,
+                                 'ro_corrected_seq_cal_mtx': False}
+    if det_get_values_kws is None:
+        det_get_values_kws = {}
+    det_get_values_kws_to_set.update(det_get_values_kws)
     if classified:
         det_type = 'int_avg_classif_det'
         nr_shots = max(qb.acq_averages() for qb in qubits)
@@ -1302,7 +1314,8 @@ def measure_two_qubit_randomized_benchmarking(
         nr_shots = max(qb.acq_shots() for qb in qubits)
     det_func = get_multiplexed_readout_detector_functions(
         qubits, nr_averages=max(qb.acq_averages() for qb in qubits),
-        nr_shots=nr_shots, det_get_values_kws=det_get_values_kws)[det_type]
+        nr_shots=nr_shots,
+        det_get_values_kws=det_get_values_kws_to_set)[det_type]
     MC.set_detector_function(det_func)
 
     # create sweep points
@@ -1922,6 +1935,7 @@ def measure_drive_cancellation(
         if prep_params is None:
             prep_params = dev.get_prep_params(ramsey_qubits)
 
+        sweep_points = deepcopy(sweep_points)
         sweep_points.add_sweep_dimension()
         sweep_points.add_sweep_parameter('phase', phases, 'deg', 'Ramsey phase')
 
@@ -2560,7 +2574,7 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
                     classified=False, n_cal_points_per_state=1,
                     num_cz_gates=1, cal_states=('g', 'e', 'f'),
                     prep_params=None, exp_metadata=None, analyze=True,
-                    return_seq=False, channels_to_upload=None, **kw):
+                    return_seq=False, **kw):
 
     if isinstance(qbc, str):
         qbc = dev.get_qb(qbc)
@@ -2623,15 +2637,10 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
     MC.set_sweep_function(hard_sweep_func)
     MC.set_sweep_points(hard_sweep_points)
 
-    # sweep over flux pulse amplitude of qbc
-    if channels_to_upload is None:
-        channels_to_upload = [qbc.flux_pulse_channel(),
-                              qbt.flux_pulse_channel()]
-
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences,
-        list(soft_sweep_params)[0], list(soft_sweep_params.values())[0]['unit'],
-        channels_to_upload=channels_to_upload))
+        list(soft_sweep_params)[0],
+        list(soft_sweep_params.values())[0]['unit']))
     MC.set_sweep_points_2D(soft_sweep_points)
     det_func = qbr.int_avg_classif_det if classified else qbr.int_avg_det
     MC.set_detector_function(det_func)
@@ -2656,7 +2665,8 @@ def measure_chevron(dev, qbc, qbt, hard_sweep_params, soft_sweep_params,
 
 def measure_cphase(dev, qbc, qbt, soft_sweep_params, cz_pulse_name,
                    hard_sweep_params=None, max_flux_length=None,
-                   num_cz_gates=1, n_cal_points_per_state=1, cal_states='auto',
+                   num_cz_gates=1, n_cal_points_per_state=1,
+                   cal_states='auto', det_get_values_kws=None,
                    prep_params=None, exp_metadata=None, label=None,
                    prepend_pulse_dicts=None,
                    analyze=True, upload=True, for_ef=True, **kw):
@@ -2758,26 +2768,25 @@ def measure_cphase(dev, qbc, qbt, soft_sweep_params, cz_pulse_name,
     MC.set_sweep_function(hard_sweep_func)
     MC.set_sweep_points(hard_sweep_points)
 
-    channels_to_upload = [operation_dict[cz_pulse_name +
-                                         f' {qbc.name} {qbt.name}']['channel']]
-    if 'channel2' in operation_dict[cz_pulse_name + f' {qbc.name} {qbt.name}']:
-        channels_to_upload += [operation_dict[cz_pulse_name +
-                                         f' {qbc.name} {qbt.name}']['channel2']]
-
     MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
         hard_sweep_func, sequences,
-        list(soft_sweep_params)[0], list(soft_sweep_params.values())[0]['unit'],
-        channels_to_upload=channels_to_upload))
+        list(soft_sweep_params)[0],
+        list(soft_sweep_params.values())[0]['unit']))
     MC.set_sweep_points_2D(soft_sweep_points)
 
-    det_get_values_kws = {'classified': classified,
-                          'correlated': False,
-                          'thresholded': True,
-                          'averaged': True}
+    det_get_values_kws_to_set = {'classified': classified,
+                                 'correlated': False,
+                                 'thresholded': True,
+                                 'averaged': True,
+                                 'ro_corrected_stored_mtx': False,
+                                 'ro_corrected_seq_cal_mtx': False}
+    if det_get_values_kws is None:
+        det_get_values_kws = {}
+    det_get_values_kws_to_set.update(det_get_values_kws)
     det_name = 'int_avg{}_det'.format('_classif' if classified else '')
     det_func = get_multiplexed_readout_detector_functions(
         [qbc, qbt], nr_averages=max(qb.acq_averages() for qb in [qbc, qbt]),
-        det_get_values_kws=det_get_values_kws)[det_name]
+        det_get_values_kws=det_get_values_kws_to_set)[det_name]
     MC.set_detector_function(det_func)
 
     exp_metadata.update({'leakage_qbnames': [qbc.name],
@@ -3493,6 +3502,9 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
                    thresholded=True, analyze_shots=True, analyze_pygsti=True,
                    preselection=True, ro_spacing=1e-6, label=None,
                    MC=None, UHFQC=None, pulsar=None, run=True, **kw):
+
+    import pygsti
+
     if UHFQC is None:
         UHFQC = qubits[0].UHFQC
         log.warning("Unspecified UHFQC instrument. Using {}.UHFQC.".format(
@@ -3523,7 +3535,7 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
             listOfExperiments = pygsti.construction.list_lgst_gatestrings(
                 prep_fiducials, meas_fiducials, gs_target)
         else:
-            listOfExperiments = constr.make_lsgst_experiment_list(
+            listOfExperiments = pygsti.construction.make_lsgst_experiment_list(
                 gs_target, prep_fiducials, meas_fiducials, germs, maxLengths)
     else:
         prep_fiducials = kw.pop('prep_fiducials', None)
@@ -3536,7 +3548,7 @@ def measure_pygsti(qubits, f_LO, pygsti_gateset=None,
         #     raise ValueError('Please provide either pyGSTi gate set or the '
         #                      'kwargs "prep_fiducials", "meas_fiducials", '
         #                      '"germs", "gs_target".')
-        # listOfExperiments = constr.make_lsgst_experiment_list(
+        # listOfExperiments = pygsti.construction.make_lsgst_experiment_list(
         #     gs_target, prep_fiducials, meas_fiducials, germs, maxLengths)
 
     nr_exp = len(listOfExperiments)
@@ -4051,8 +4063,8 @@ def measure_n_qubit_ramsey(dev, qubits, sweep_points=None, delays=None,
     :param last_ge_pulse: whether to use a ge pulse at the end of each segment
            for a ramsey between ef transition
     :param upload: whether to upload to AWGs
-    :param update: whether to update the qubits ge_amp180 (or ef_amp180)
-        parameters
+    :param update: whether to update the qubit parameters ge_freq + T2_star
+        (ef_freq + anharmonicity + T2_star_ef if for_ef)
     :param analyze: whether to analyze data
     :param label: measurement label
     :param exp_metadata: experiment metadata
@@ -4146,6 +4158,7 @@ def measure_n_qubit_ramsey(dev, qubits, sweep_points=None, delays=None,
                 if update:
                     if for_ef:
                         qb.ef_freq(new_qubit_freq)
+                        qb.anharmonicity(qb.ef_freq() - qb.ge_freq())
                         qb.T2_star_ef(T2_star)
                     else:
                         qb.ge_freq(new_qubit_freq)

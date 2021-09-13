@@ -5,6 +5,7 @@ analysis toolbox
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib import cm
+from matplotlib import transforms
 import numpy as np
 
 SI_PREFIXES = 'yzafpnμm kMGTPEZY'
@@ -370,3 +371,41 @@ def autolabel_barplot(ax, rects, rotation=90):
         ax.text(rect.get_x() + rect.get_width()/2., 0.5*height,
                 '%.2f' % (height),
                 ha='center', va='bottom', rotation=rotation)
+
+
+def rainbow_text(x, y, strings, colors, ax, orientation='horizontal', **kwargs):
+    """
+    Take a list of *strings* and *colors* and place them next to each
+    other (orientation='horizontal') or one over the other
+    (orientation='vertical'), with text strings[i] being shown in colors[i].
+
+    Adapted from:
+    https://matplotlib.org/stable/gallery/text_labels_and_annotations/rainbow_text.html
+
+    Parameters
+    ----------
+    x, y : float
+        Text position in data coordinates.
+    strings : list of str
+        The strings to draw.
+    colors : list of color
+        The colors to use.
+    ax : Axes
+        The Axes to draw into.
+    orientation : {'horizontal', 'vertical'}
+    **kwargs
+        All other keyword arguments are passed to plt.text(), so you can
+        set the font size, family, etc.
+    """
+    assert orientation in ['horizontal', 'vertical']
+    t = ax.transAxes
+    for s, c in zip(strings, colors):
+        text = ax.text(x, y, s + ' ', color=c, transform=t, **kwargs)
+        text.draw(ax.figure.canvas.get_renderer())
+        ex = text.get_window_extent()
+        if orientation == 'horizontal':
+            t = transforms.offset_copy(text._transform, x=ex.width,
+                                       units='dots')
+        else:
+            t = transforms.offset_copy(text._transform, y=-ex.height,
+                                       units='dots')
