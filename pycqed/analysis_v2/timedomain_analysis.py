@@ -425,8 +425,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             elif "preselection" in self.prep_params.get('preparation_type',
                                                         'wait'):
                 self.data_filter = lambda x: x[1::2]  # filter preselection RO
-        if self.data_filter is None:
-            self.data_filter = lambda x: x
+            else:
+                self.data_filter = lambda x: x
 
         self.create_sweep_points_dict()
         self.create_meas_results_per_qb()
@@ -1156,7 +1156,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if np.ndim(shots_per_qb[qbn]) == 3:
                     assert self.get_param_value("TwoD", False) == True, \
                         "'TwoD' is False but single shot data seems to be 2D"
-                    n_vn = shots_per_qb[qbn].shape[-1]
                     n_vn = shots_per_qb[qbn].shape[-1]
                     # put softsweep as inner most loop for easier processing
                     shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
