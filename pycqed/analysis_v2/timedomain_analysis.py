@@ -6407,6 +6407,17 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                                    default_value=[])
         self.gates_list = self.get_param_value('gates_list', default_value=[])
 
+        # prepare list of qubits on which must be considered simultaneously
+        # for preselection. Default: preselect on all qubits in the gate = ground
+        default_preselection_qbs = defaultdict(list)
+        for qbn in self.qb_names:
+            for gate_qbs in self.gates_list:
+                if qbn in gate_qbs:
+                    default_preselection_qbs[qbn].extend(gate_qbs)
+        preselection_qbs = self.get_param_value("preselection_qbs",
+                                                default_preselection_qbs)
+        self.options_dict.update({"preselection_qbs": preselection_qbs})
+
     def process_data(self):
         super().process_data()
 
@@ -6970,16 +6981,6 @@ class CPhaseLeakageAnalysis(MultiCZgate_Calib_Analysis):
             if len(self.leakage_qbnames) == 0:
                 self.leakage_qbnames = None
 
-        # prepare list of qubits on which must be considered simultaneously
-        # for preselection. Default: preselect on all qubits in the gate = ground
-        default_preselection_qbs = defaultdict(list)
-        for qbn in self.qb_names:
-            for gate_qbs in self.gates_list:
-                if qbn in gate_qbs:
-                    default_preselection_qbs[qbn].extend(gate_qbs)
-        preselection_qbs = self.get_param_value("preselection_qbs",
-                                                default_preselection_qbs)
-        self.options_dict.update({"preselection_qbs": preselection_qbs})
 
     def process_data(self):
         super().process_data()
