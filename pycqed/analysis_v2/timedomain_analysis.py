@@ -1331,11 +1331,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # prepare preselection mask
         if preselection:
             # get preselection readouts
-            preselection_ro_mask = np.tile([True]*n_seqs + [False]*n_seqs,
-                                           n_shots*n_readouts )
+            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True)
+            n_ro_before_filtering = \
+                list(shots_per_qb_before_filtering.values())[0].shape[0] // \
+                (n_shots * n_seqs)
+            preselection_ro_mask = \
+                np.tile([True] * n_seqs +
+                        [False] * (n_ro_before_filtering - n_readouts) * n_seqs,
+                        n_shots * n_readouts)
             presel_shots_per_qb = \
                 {qbn: presel_shots[preselection_ro_mask] for qbn, presel_shots in
-                 self._get_single_shots_per_qb(raw=True).items()}
+                 shots_per_qb_before_filtering.items()}
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
