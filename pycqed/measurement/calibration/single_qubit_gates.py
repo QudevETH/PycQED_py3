@@ -218,6 +218,61 @@ class T1FrequencySweep(CalibBuilder):
 
 
 class ParallelLOSweepExperiment(CalibBuilder):
+    """
+    Base class for (parallel) calibration measurements where the LO is swept
+    in sweep dimension 1. The class is based on the concept of a
+    multitasking experiment, see docstrings of MultiTaskingExperiment and
+    of CalibBuilder for general information.
+
+    The following keys in a task are interpreted by this class:
+    - qb: identifies the qubit measured in the task (child classes should be
+        implemented in a way that they adopt this convention)
+    - fluxline: qcodes parameter to adjust the DC flux offset of the qubit.
+        If this is provided, the DC flux offset will be swept together with
+        the frequency sweep such that the qubit is tuned to the current
+        drive frequency (based on the fit_ge_freq_from_dc_offset parameter
+        in the qubit object).
+    - fp_assisted_ro_calib_flux (to be used in combination with fluxline):
+        Specifies the flux (in units of Phi0 with 0 indicating the upper
+        sweep spot) for which the flux-pulse-assisted RO of the qubit has
+        been calibrated. If this is provided and fluxline is provided,
+        the amplitude of the flux pulse assisted RO will be adjusted
+        together with the DC offset during the frequency sweep in order to
+        keep the qubit frequency during RO the same as in the calibration.
+        This requires an HDAWG as flux AWG.
+
+    Note: parameters with a (*) have not been exhaustively tested for
+    parallel measurements.
+
+    :param task_list:  see MultiTaskingExperiment
+    :param sweep_points: (SweepPoints object or list of dicts or None)
+        sweep points valid for all tasks.
+    :param allowed_lo_freqs: (list of float or None) (*) if not None,
+        it specifies that the LO should only be set to frequencies in the
+        list, and the desired drive frequency is obtained by an IF sweep
+        using internal modulation of the HDAWG. This requires an HDAWG as
+        drive AWG. Consider using the kwarg optimize_mod_freqs together with
+        allowed_lo_freqs (see docstring of resolve_freq_sweep_points).
+    :param adapt_drive_amp: (bool) (*) if True, the drive amplitude is adapted
+        for each drive frequency based on the parameter
+        fit_ge_amp180_over_ge_freq of the qubit using the output amplitude
+        scaling of the HDAWG. This requires an HDAWG as drive AWG. Note the
+        kwarg adapt_cal_point_drive_amp, which can be used together
+        with adapt_drive_amp (see docstring of resolve_freq_sweep_points).
+    :param adapt_ro_freq: (bool, default: False) (*) if True, the RO LO
+        frequency is adapted for each drive frequency based on the parameter
+        fit_ro_freq_over_ge_freq of the qubit
+
+    :param kw: keyword arguments.
+        The following kwargs are interpreted by resolve_freq_sweep_points
+        (see docstring of that method):
+        - optimize_mod_freqs
+        - adapt_cal_point_drive_amp
+
+        Moreover, keyword arguments are passed to preprocess_task_list,
+        parallel_sweep, and to the parent class.
+    """
+
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
                  adapt_drive_amp=False, adapt_ro_freq=False, **kw):
         for task in task_list:
@@ -245,11 +300,51 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.analysis = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
-        self.resolve_lo_sweep_points(**kw)
+        self.resolve_freq_sweep_points(**kw)
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
 
-    def resolve_lo_sweep_points(self, freq_sp_suffix='freq', **kw):
+    def resolve_freq_sweep_points(self, freq_sp_suffix='freq', **kw):
+        """
+        This function is called from the init of the class to resolve the
+        frequency sweep points and the settings that need to be swept
+        together with the frequency. The results are stored in properties of
+        the object, which are then used in run_measurement. Aspects to be
+        resolved include (if applicable):
+        - (shared) LO freqs and (fixed or swept) IFs
+        - drive amplitude adaptation
+        - RO freq adaptation
+        - flux amplitude adaptation of flux-pulse-assisted RO
+
+        :param freq_sp_suffix: (str, default 'freq') To identify the
+            frequency sweep parameter, this string specifies a suffix that is
+            contained at the end of the name of the frequency sweep parameter.
+        :param kw:
+            optimize_mod_freqs: (bool, default: False) If False, the
+                ge_mod_freq setting of the first qb on an LO (according to
+                the ordering of the task list) determines the LO frequency
+                for all qubits on that LO. If True, the ge_mod_freq settings
+                will be optimized for the following situations:
+                - With allowed_lo_freqs set to None: the LO will be placed in
+                  the center of the band of drive frequencies of all qubits on
+                  that LO (minimizing the maximum absolute value of
+                  ge_mod_freq over all qubits). Do not use in case of a single
+                  qubit per LO in this case, as it would result in a
+                  ge_mod_freq of 0.
+                - With a list allowed_lo_freqs provided: the ge_mod_freq
+                  setting of the qubit would act as an unnecessary constant
+                  offset in the IF sweep, and optimize_mod_freqs can be used
+                  to minimize this offset. In this case optimize_mod_freqs
+                  can (and should) even be used in case of a single qubit
+                  per LO (where it reduces this offset to 0).
+            adapt_cal_point_drive_amp: (bool, default: False) If
+                adapt_drive_amp is used, this decides whether the drive
+                amplitude should also be adapted for calibration points. To
+                implement the case where this is False, it is assumed that
+                the calibration point of interest is the one at the drive
+                frequency configured in ge_freq of the qubit and that the
+                ge_amp180 in the qubit is calibrated for that frequency.
+        """
         all_freqs = np.array(
             self.sweep_points.get_sweep_params_property('values', 1, 'all'))
         if np.ndim(all_freqs) == 1:
@@ -264,6 +359,9 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.exp_metadata['lo_sweep_points'] = self.lo_sweep_points
 
         temp_vals = []
+        # Determine which qubits share an LO, and update ge_mod_freq settings
+        # - for compatibility in parallel LO sweeps with shared LOs
+        # - taking into account the optimize_mod_freqs kwarg
         if self.qubits is None:
             log.warning('No qubit objects provided. Creating the sequence '
                         'without checking for ge_mod_freq corrections.')
@@ -297,10 +395,14 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 k.name: v for k, v in self.lo_offsets.items()}
 
         if self.allowed_lo_freqs is not None:
+            # HDAWG internal modulation is needed, switch off modulation in
+            # the waveform generation
             for task in self.preprocessed_task_list:
                 task['pulse_modifs'] = {'attr=mod_frequency': None}
             self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
 
+        # If applicable, configure drive amplitude adaptation based on the
+        # models stored in the qubit objects.
         if self.adapt_drive_amp and self.qubits is None:
             log.warning('No qubit objects provided. Creating the sequence '
                         'without adapting drive amp.')
@@ -331,6 +433,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 qb.name: fnc(self.lo_sweep_points)
                 for qb, fnc in self.drive_amp_adaptation.items()}
 
+        # If applicable, configure RO frequency adaptation based on the
+        # models stored in the qubit objects.
         if self.adapt_ro_freq and self.qubits is None:
             log.warning('No qubit objects provided. Creating the sequence '
                         'without adapting RO freq.')
@@ -353,6 +457,10 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 mwg.name: fnc(self.lo_sweep_points)
                 for mwg, fnc in self.ro_freq_adaptation.items()}
 
+        # If applicable, configure flux amplitude adaptation for
+        # flux-pulse-assisted RO (based on the models stored in the qubit
+        # objects) for cases where the DC offset is swept together with the
+        # frequency sweep.
         for task in self.task_list:
             if 'fp_assisted_ro_calib_flux' in task and 'fluxline' in task:
                 if self.qubits is None:
@@ -386,6 +494,11 @@ class ParallelLOSweepExperiment(CalibBuilder):
             self.update_operation_dict()
 
     def run_measurement(self, **kw):
+        """
+        Configures additional sweep functions and temporary values for the
+        functionality configured in resolve_freq_sweep_points, before calling
+        the method of the base class.
+        """
         temp_vals = []
         name = 'Drive frequency shift'
         sweep_functions = [swf.Offset_Sweep(
@@ -1888,7 +2001,7 @@ class DriveAmpCalib(SingleQubitGateCalib):
         'n_pulses': dict(param_name='n_pulses', unit='',
                          label='Nr. $\\pi$-pulses, $N$', dimension=0,
                          values_func=lambda nr_p:
-                         np.arange(nr_p + 1)),
+                         np.arange(1, nr_p + 1, 2)),
         'amp_scalings': dict(param_name='amp_scalings', unit='',
                          label='Amplitude Scaling, $r$', dimension=1),
     }
@@ -1899,7 +2012,12 @@ class DriveAmpCalib(SingleQubitGateCalib):
                  n_pulses=None, amp_scalings=None, **kw):
         try:
             # Define experiment_name and call the parent class __init__
-            self.experiment_name = f'Drive_amp_calib_{n_pulses}'
+            self.experiment_name = f'Drive_amp_calib'
+            if n_pulses is not None:
+                self.experiment_name += f'_{n_pulses}pipulses'
+            n_pulses_pi = kw.get('n_pulses_pi', None)
+            if n_pulses_pi is not None:
+                self.experiment_name += f'_{n_pulses_pi}xpi_over_{n_pulses_pi}'
             self.two_pulse_scaling = kw.get('two_pulse_scaling', False)
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -2010,6 +2128,30 @@ class DriveAmpCalib(SingleQubitGateCalib):
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
+    """
+    Performs a series of ge Rabi experiments for multiple drive frequencies.
+    This is a ParallelLOSweepExperiment, see docstrings of
+    ParallelLOSweepExperiment, MultiTaskingExperiment and CalibBuilder
+    for general information.
+
+           |X180|          ---         |RO|
+      sweep amp & freq
+
+    Important notes (see docstring of ParallelLOSweepExperiment for details):
+    - Each task corresponds to a qubit (specified by the key qb in the
+      task), i.e., multiple qubits can be characterized in parallel.
+    - Some options of ParallelLOSweepExperiment have not yet been
+      exhaustively tested for parallel measurements.
+    - The key fluxline in a task can be set to a qcodes parameter to adjust
+      the DC flux offset of the qubit during the sweep.
+
+    :param kw:
+        Keyword arguments are passed on to the super class and to autorun.
+
+        The following kwargs are automatically converted to sweep points:
+        - amps: drive pulse amplitude (sweep dimension 0)
+        - freqs: drive frequency (sweep dimension 1)
+    """
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
                       label=r'drive frequency, $f_d$',
@@ -2030,6 +2172,12 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
             traceback.print_exc()
 
     def sweep_block(self, qb, **kw):
+        """
+        This function creates the block for a single RabiFrequencySweep
+        measurement task, see the pulse sequence in the class docstring.
+        :param qb: (str) the qubit name
+        :param kw: currently ignored
+        """
         b = self.block_from_ops(f'ge {qb}', [f'X180 {qb}'])
         b.pulses[0]['amplitude'] = ParametricValue('amplitude')
         self.data_to_fit.update({qb: 'pe'})
