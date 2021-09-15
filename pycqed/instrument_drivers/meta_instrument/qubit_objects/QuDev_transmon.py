@@ -794,6 +794,7 @@ class QuDev_transmon(Qubit):
         self.inp_avg_det = det.AveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
+            channels=channels,
             nr_averages=self.acq_averages(),
             acquisition_length=self.acq_length())
 

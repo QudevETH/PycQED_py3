@@ -158,7 +158,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                 data_type='digitized', **kw),
             'inp_avg_det': det.AveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
-                acquisition_length=max_int_len[uhf],
+                acquisition_length=max_int_len[uhf], channels=channels[uhf],
                 **kw),
             'int_corr_det': det.UHFQC_correlation_detector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
