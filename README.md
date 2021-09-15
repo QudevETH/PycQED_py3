@@ -147,7 +147,7 @@ MC.run()
 ```
 
 A sweep_function determines what parameter is varied, a qcodes parameter that contains a .set method can also be inserted here.
-A deterector_function determines what parameter is measrued, a qcodes parameter that has a .get method can also be inserted here.
+A detector_function determines what parameter is measured, a qcodes parameter that has a .get method can also be inserted here.
 
 #### The qubit object
 The qubit object is a (meta) instrument but it defies the general categorization of the other instruments.
@@ -176,14 +176,14 @@ In a hard measurement the measurement is prepared by the software and then trigg
 #### Analysis
 The measurement analysis currently (april 2015) contains three modules.
 
-#####Measurement analysis
+##### Measurement analysis
 The measurement analysis module contains the main analysis objects. By instantiating one of these objects a dataset can be analyzed. It contains default methods for the most common experiments and makes extensive use of object oriented hereditary relations. This means that for example the Rabi_Analysis is a child of the TD_Analysis which is a child of the MeasurementAnalysis and has all the functions of it's parent classes.
 
 When instantiating such an object you can pass it a timestamp and/or a label to determine what datafile to load. By giving it the argument auto=True the default analysis script is run.
-#####Analysis Toolbox
+##### Analysis Toolbox
 This toolbox contains tools for analysis such as file-handling tools, plotting tools and some data analysis tools such as a peak finder.
 
-#####Fitting models
+##### Fitting models
 This module contains the lmfit model definitions and fitting functions used for curve fitting.
 
 ### The scripts folder
