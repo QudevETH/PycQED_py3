@@ -752,24 +752,21 @@ def configure_qubit_mux_drive(qubits, lo_freqs_dict):
 
 
 def configure_qubit_mux_readout(qubits, lo_freqs_dict):
-    mwgs_set = set()
-    idx = {}
-    for lo in lo_freqs_dict:
-        idx[lo] = 0
-
-    for i, qb in enumerate(qubits):
+    idx = {lo: 0 for lo in lo_freqs_dict}
+    for qb in qubits:
+        # try whether the external LO name is found in the lo_freqs_dict
         qb_ro_mwg = qb.instr_ro_lo()
         if qb_ro_mwg not in lo_freqs_dict:
-            raise ValueError(
-                f'{qb_ro_mwg} for {qb.name} not found in lo_freqs_dict.')
-        else:
-            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
-            qb.acq_I_channel(2 * idx[qb_ro_mwg])
-            qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
-            idx[qb_ro_mwg] += 1
-            if qb_ro_mwg not in mwgs_set:
-                qb.instr_ro_lo.get_instr().frequency(lo_freqs_dict[qb_ro_mwg])
-                mwgs_set.add(qb_ro_mwg)
+            # try whether the acquisition device & unit is in the lo_freqs_dict
+            qb_ro_mwg2 = (qb.instr_acq(), qb.acq_unit())
+            if qb_ro_mwg2 not in lo_freqs_dict:
+                raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
+                                 f'{qb_ro_mwg2} found in lo_freqs_dict.')
+            qb_ro_mwg = qb_ro_mwg2
+        qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
+        qb.acq_I_channel(2 * idx[qb_ro_mwg])
+        qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
+        idx[qb_ro_mwg] += 1
 
 
 def configure_qubit_feedback_params(qubits, for_ef=False):
