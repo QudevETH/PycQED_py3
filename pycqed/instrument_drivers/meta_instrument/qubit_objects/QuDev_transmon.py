@@ -834,22 +834,26 @@ class QuDev_transmon(Qubit):
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
-        if ro_lo() is not None:
+        # in case of multichromatic readout, take first ro freq, else just
+        # wrap the frequency in a list and take the first
+        if np.ndim(self.ro_freq()) == 0:
+            ro_freq = [self.ro_freq()]
+        else:
+            ro_freq = self.ro_freq()
+        if np.ndim(self.ro_mod_freq()) == 0:
+            ro_mod_freq = [self.ro_mod_freq()]
+        else:
+            ro_mod_freq = self.ro_mod_freq()
+        ro_lo_freq = ro_freq[0] - ro_mod_freq[0]
+
+        if ro_lo() is not None:  # configure external LO
             ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
-            # in case of multichromatic readout, take first ro freq, else just
-            # wrap the frequency in a list and take the first
-            if np.ndim(self.ro_freq()) == 0:
-                ro_freq = [self.ro_freq()]
-            else:
-                ro_freq = self.ro_freq()
-            if np.ndim(self.ro_mod_freq()) == 0:
-                ro_mod_freq = [self.ro_mod_freq()]
-            else:
-                ro_mod_freq = self.ro_mod_freq()
-            ro_lo.get_instr().frequency(ro_freq[0] - ro_mod_freq[0])
-
+            ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
+        # Provide the ro_lo_freq to the acquisition device to allow
+        # configuring an internal LO if needed.
+        self.instr_acq.get_instr().set_lo_freq(self.acq_unit(), ro_lo_freq)
 
         # configure qubit drive local oscillator
         if ge_lo() is not None:
