@@ -2076,9 +2076,8 @@ def multi_parity_multi_round_seq(ancilla_qubit_names,
 
         for n, dqb in enumerate(parity_map[i]['data']):
             if dqb in data_qubit_names:
-                op = ('m' if basis_op is not 'I' else '') + basis_op + ('' if n==0
-                                                                        else
-                's') + ' ' + dqb
+                op = ('m' if basis_op != 'I' else '') + basis_op + \
+                     ('' if n == 0 else 's') + ' ' + dqb
                 # op =  basis_op + ('' if n==0 else 's') + ' ' + dqb
                 parity_ops.append(op)
         parity_ops.append('I ' + parity_map[i]['data'][-1])

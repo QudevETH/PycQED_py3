@@ -190,7 +190,12 @@ class Segment:
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
                 p.pulse_obj.element_name = f'default_ese_{self.name}'
-                self.resolved_pulses.append(p)
+                if p.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p)
+                else:
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(p.pulse_obj.channels)}')
             elif any(ch_mask):
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask = [not x for x in ch_mask]
@@ -356,19 +361,28 @@ class Segment:
         self.resolved_pulses = ordered_unres_pulses
 
     def add_flux_crosstalk_cancellation_channels(self):
-        if self.pulsar.flux_crosstalk_cancellation():
-            for p in self.resolved_pulses:
-                if getattr(p.pulse_obj,
-                           'disable_flux_crosstalk_cancellation', False):
-                    continue
-                if any([ch in self.pulsar.flux_channels() for ch in
-                        p.pulse_obj.channels]):
-                    p.pulse_obj.crosstalk_cancellation_channels = \
-                        self.pulsar.flux_channels()
-                    p.pulse_obj.crosstalk_cancellation_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_mtx()
+        for p in self.resolved_pulses:
+            calibration_key = getattr(p.pulse_obj,
+                                      'crosstalk_cancellation_key', None)
+            if calibration_key is None:
+                calibration_key = self.pulsar.flux_crosstalk_cancellation()
+            if calibration_key in (True, None):
+                calibration_key = 'default'
+            if not calibration_key:
+                continue
+            if any([ch in self.pulsar.flux_channels()[calibration_key] for ch in
+                    p.pulse_obj.channels]):
+                p.pulse_obj.crosstalk_cancellation_channels = \
+                    self.pulsar.flux_channels()[calibration_key]
+                p.pulse_obj.crosstalk_cancellation_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_mtx()\
+                        [calibration_key]
+                p.pulse_obj.crosstalk_cancellation_shift_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                if p.pulse_obj.crosstalk_cancellation_shift_mtx is not None:
                     p.pulse_obj.crosstalk_cancellation_shift_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                        p.pulse_obj.crosstalk_cancellation_shift_mtx\
+                            .get(calibration_key, None)
 
     def add_charge_compensation(self):
         """
@@ -764,7 +778,7 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self, allow_overlap=False):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12):
         """
         Tests for all AWGs if any of their elements overlap.
 
@@ -800,9 +814,12 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if el_prev_end > el_new_start:
-                    msg = '{} and {} overlap on {}'.format(
-                        prev_el, el_list[i + 1][2], awg)
+                if (el_prev_end - el_new_start) > tol :
+                    print(el_prev_end, el_new_start)
+                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
+                    f'{el_list[i + 1][2]} (' \
+                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                          f'on {awg}'
                     if allow_overlap:
                         log.warning(msg)
                     else:
@@ -876,12 +893,20 @@ class Segment:
             mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
             if mirror_correction is None:
                 mirror_correction = {}
-            for k in p.pulse_obj.__dict__:
-                if 'amplitude' in k:
-                    amp = -getattr(p.pulse_obj, k)
-                    if k in mirror_correction:
-                        amp += mirror_correction[k]
-                    setattr(p.pulse_obj, k, amp)
+            if "fp" in p.pulse_obj.__dict__:
+                for kk in p.pulse_obj.fp.__dict__:
+                    if 'amplitude' in kk:
+                        amp = - p.pulse_obj.flux_amplitude
+                        if kk in mirror_correction:
+                            amp += mirror_correction[kk]
+                        setattr(p.pulse_obj.fp, kk, amp)
+            else:
+                for k in p.pulse_obj.__dict__:
+                    if 'amplitude' in k:
+                        amp = -getattr(p.pulse_obj, k)
+                        if k in mirror_correction:
+                            amp += mirror_correction[k]
+                        setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """
@@ -1031,7 +1056,7 @@ class Segment:
                 # all codewords
                 if 'no_codeword' in wfs:
                     for codeword in wfs:
-                        if codeword is not 'no_codeword':
+                        if codeword != 'no_codeword':
                             for channel in wfs['no_codeword']:
                                 if channel in wfs[codeword]:
                                     wfs[codeword][channel] += wfs[
@@ -1256,7 +1281,8 @@ class Segment:
     def plot(self, instruments=None, channels=None, legend=True,
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
-             show_and_close=True, col_ind=0, normalized_amplitudes=True):
+             show_and_close=True, col_ind=0, normalized_amplitudes=True,
+             save_kwargs=None):
         """
         Plots a segment. Can only be done if the segment can be resolved.
         :param instruments (list): instruments for which pulses have to be
@@ -1285,6 +1311,8 @@ class Segment:
         :param normalized_amplitudes: (bool) whether amplitudes
             should be normalized to the voltage range of the channel
             (default: True)
+        :param save_kwargs (dict): save kwargs passed on to fig.savefig if
+        "savefig" is True.
         :return: The figure and axes objects if show_and_close is False,
             otherwise no return value.
         """
@@ -1385,7 +1413,10 @@ class Segment:
             fig.suptitle(f'{self.name}', y=1.01)
             plt.tight_layout()
             if savefig:
-                plt.savefig(f'{self.name}.png')
+                if save_kwargs is None:
+                    save_kwargs = dict(fname=f'{self.name}.png',
+                                      bbox_inches="tight")
+                fig.savefig(**save_kwargs)
             if show_and_close:
                 plt.show()
                 plt.close(fig)

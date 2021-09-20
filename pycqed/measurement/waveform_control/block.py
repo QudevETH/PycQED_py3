@@ -48,7 +48,7 @@ class Block:
             point of an N-dimensional sweep, this param is a list of N
             sweep_dicts following the usual pycqed conventions (TODO: where
             to find those?)
-            or a SweepPoints object with N dimenstions. Only used if also a
+            or a SweepPoints object with N dimensions. Only used if also a
             sweep_index_list is provided. To have an effect, the block has
             to contain pulses with ParametricValues that refer to the
             parameters in the sweep_dicts.

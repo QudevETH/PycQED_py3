@@ -1,6 +1,8 @@
 import numpy as np
 from copy import copy, deepcopy
 import traceback
+
+from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
 from pycqed.measurement.waveform_control.block import ParametricValue
@@ -8,6 +10,7 @@ from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.general import temporary_value
+from pycqed.measurement import multi_qubit_module as mqm
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -2179,3 +2182,272 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
         b.pulses[0]['amplitude'] = ParametricValue('amplitude')
         self.data_to_fit.update({qb: 'pe'})
         return b
+
+
+class ActiveReset(CalibBuilder):
+    def __init__(self, task_list=None, recalibrate_ro=False,
+                 prep_states=('g', 'e'), n_shots=10000,
+                 reset_reps=10, set_thresholds=True,
+                 **kw):
+        """
+        Characterize active reset with the following sequence:
+
+        |prep-pulses|--|prep_state_i|--(|RO|--|reset_pulse|) x reset_reps --|RO|
+
+        -Prep-pulses are preselection/active_reset pulses, with parameters defined
+        in qb.preparation_params().
+        - Prep_state_i is "g", "e", "f" as provided by prep_states.
+        - the following readout and reset pulses use the "ro_separation" and
+        "post_ro_wait" of the qb.preparation_params() but the number of pulses is set
+        by reset_reps, such that we can both apply active reset and characterize the
+        reset with different number of pulses.
+        Args:
+            task_list (list): list of task for the reset. Needs the keys
+            recalibrate_ro (bool): whether or not to recalibrate the readout
+                before characterizing the active reset.
+            prep_states (iterable): list of states on which the reset will be
+                characterized
+            reset_reps (int): number of readouts used to characterize the reset.
+                Note that this parameter does NOT correspond to 'reset_reps' in
+                qb.preparation_params() (the latter is used for reset pe
+            set_thresholds (bool): whether or not to set the thresholds from
+                qb.acq_classifier_params() to the corresponding UHF channel
+            n_shots (int): number of single shot measurements
+            **kw:
+        """
+
+        self.experiment_name = kw.get('experiment_name',
+                                      f"active_reset_{prep_states}")
+
+        # build default task in which all qubits are measured
+        if task_list is None:
+            assert kw.get('qubits', None) is not None, \
+                    "qubits must be passed to create default task_list " \
+                    "if task_list=None."
+            task_list = [{"qubit": [qb.name]} for qb in kw.get('qubits')]
+
+        # configure detector function parameters
+        if kw.get("classified", False):
+            kw['df_kwargs'] = kw.get('df_kwargs', {})
+            if 'det_get_values_kws' not in kw['df_kwargs']:
+                kw['df_kwargs'] = {'det_get_values_kws':
+                                    {'classified': True,
+                                     'correlated': False,
+                                     'thresholded': False,
+                                     'averaged': False}}
+            else:
+                # ensure still single shot
+                kw['df_kwargs']['det_get_values_kws'].update({'averaged':False})
+        else:
+            kw['df_name'] = kw.get('df_name', "int_log_det")
+
+
+
+        self.set_thresholds = set_thresholds
+        self.recalibrate_ro = recalibrate_ro
+        # force resetting of thresholds if recalibrating readout
+        if self.recalibrate_ro and not self.set_thresholds:
+            log.warning(f"recalibrate_ro=True but set_threshold=False,"
+                        f" the latest thresholds from the recalibration"
+                        f" won't be uploaded to the UHF.")
+        self.prep_states = prep_states
+        self.reset_reps = reset_reps
+        self.n_shots = n_shots
+
+        # init parent
+        super().__init__(task_list=task_list, **kw)
+
+        if self.dev is None and self.recalibrate_ro:
+            raise NotImplementedError(
+                "Device must be past when 'recalibrate_ro' is True"
+                " because the mqm.measure_ssro() requires the device "
+                "as argument. TODO: transcribe measure_ssro to QExperiment"
+                " framework to avoid this constraint.")
+
+        # all tasks must have same init sweep point because this will
+        # fix the number of readouts
+        # for now sweep points are global. But we could make the second
+        # dimension task-dependent when introducing the sweep over
+        # thresholds
+        default_sp = SweepPoints("initialize", self.prep_states)
+        default_sp.add_sweep_dimension()
+        # second dimension to have once only readout and once with feedback
+        default_sp.add_sweep_parameter("pulse_off", [1, 0])
+        self.sweep_points = kw.get('sweep_points',
+                                   default_sp)
+
+        # get preparation parameters for all qubits. Note: in the future we could
+        # possibly modify prep_params to be different for each uhf, as long as
+        # the number of readout is the same for all UHFs in the experiment
+        self.prep_params = deepcopy(self.get_prep_params())
+        # set explicitly some preparation params so that they can be retrieved
+        # in the analysis
+        for param in ('ro_separation', 'post_ro_wait'):
+            if not param in self.prep_params:
+                self.prep_params[param] = self.STD_PREP_PARAMS[param]
+        # set temporary values
+        qb_in_exp = self.find_qubits_in_tasks(self.qubits, self.task_list)
+        self.temporary_values.extend([(qb.acq_shots, self.n_shots)
+                                      for qb in qb_in_exp])
+
+        # by default empty cal points
+        # FIXME: Ideally these 2 lines should be handled properly by lower level class,
+        #  that does not assume calibration points, instead of overwriting
+        self.cal_points = kw.get('cal_points',
+                                 CalibrationPoints([qb.name for qb in qb_in_exp],
+                                                   ()))
+        self.cal_states = kw.get('cal_states', ())
+
+    def prepare_measurement(self, **kw):
+
+        if self.recalibrate_ro:
+            self.analysis = mqm.measure_ssro(self.dev, self.qubits, self.prep_states,
+                                             update=True,
+                                             n_shots=self.n_shots,
+                                             analysis_kwargs=dict(
+                                                 options_dict=dict(
+                                                 hist_scale="log")))
+            # reanalyze to get thresholds
+            options_dict = dict(classif_method="threshold", hist_scale="log")
+            a = tda.MultiQutrit_Singleshot_Readout_Analysis(qb_names=self.qb_names,
+                                                            options_dict=options_dict)
+            for qb in self.qubits:
+                classifier_params = a.proc_data_dict[
+                    'analysis_params']['classifier_params'][qb.name]
+                qb.acq_classifier_params().update(classifier_params)
+                qb.preparation_params()['threshold_mapping'] = \
+                    classifier_params['mapping']
+        if self.set_thresholds:
+            self._set_thresholds(self.qubits)
+        self.exp_metadata.update({"thresholds":
+                                      self._get_thresholds(self.qubits)})
+        self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        self.sequences, self.mc_points = \
+            self.parallel_sweep(self.preprocessed_task_list,
+                                self.reset_block, block_align="start", **kw)
+
+        # should transform raw voltage to probas in analysis if no cal points
+        # and not classified readout already
+        predict_proba = len(self.cal_states) == 0 and not self.classified
+        self.exp_metadata.update({"n_shots": self.n_shots,
+                                  "predict_proba": predict_proba,
+                                  "reset_reps": self.reset_reps})
+
+    def reset_block(self, qubit, **kw):
+        _ , qubit = self.get_qubits(qubit) # ensure qubit in list format
+
+        prep_params = deepcopy(self.prep_params)
+
+        self.prep_params['ro_separation'] = ro_sep = prep_params.get("ro_separation",
+                                 self.STD_PREP_PARAMS['ro_separation'])
+        # remove the reset repetition for preparation and use the number
+        # of reset reps for characterization (provided in the experiment)
+        prep_params.pop('reset_reps', None)
+        prep_params.pop('preparation_type', None)
+
+        reset_type = f"active_reset_{'e' if len(self.prep_states) < 3 else 'ef'}"
+        reset_block = self.prepare(block_name="reset_ro_and_feedback_pulses",
+                                   qb_names=qubit,
+                                   preparation_type=reset_type,
+                                   reset_reps=self.reset_reps, **prep_params)
+        # delay the reset block by appropriate time as self.prepare otherwise adds reset
+        # pulses before segment start
+        # reset_block.block_start.update({"pulse_delay": ro_sep * self.reset_reps})
+        pulse_modifs={"attr=pulse_off, op_code=X180": ParametricValue("pulse_off"),
+                      "attr=pulse_off, op_code=X180_ef": ParametricValue("pulse_off")}
+        reset_block = Block("Reset_block",
+                            reset_block.build(block_delay=ro_sep * self.reset_reps),
+                            pulse_modifs=pulse_modifs)
+
+        ro = self.mux_readout(qubit)
+        return [reset_block, ro]
+
+    def run_analysis(self, analysis_class=None, **kwargs):
+
+        self.analysis = tda.MultiQutritActiveResetAnalysis(**kwargs)
+
+    def run_update(self, **kw):
+        print('Update')
+
+    @staticmethod
+    def _set_thresholds(qubits, clf_params=None):
+        """
+        Sets the thresholds in clf_params to the corresponding UHF channel(s)
+        for each qubit in qubits.
+        Args:
+            qubits (list, QuDevTransmon): (list of) qubit(s)
+            clf_params (dict): dictionary containing the thresholds that must
+                be set on the corresponding UHF channel(s).
+                If several qubits are passed, then it assumes clf_params if of the form:
+                {qbi: clf_params_qbi, ...}, where clf_params_qbi contains at least
+                the "threshold" key.
+                If a single qubit qbi is passed (not in a list), then expects only
+                clf_params_qbi.
+                If None, then defaults to qb.acq_classifier_params().
+
+        Returns:
+
+        """
+
+        # check if single qubit provided
+        if np.ndim(qubits) == 0:
+            clf_params = {qubits.name: deepcopy(clf_params)}
+            qubits = [qubits]
+
+        if clf_params is None:
+            clf_params = {qb.name: qb.acq_classifier_params() for qb in qubits}
+
+        for qb in qubits:
+            # perpare correspondance between integration unit (key)
+            # and uhf channel
+            channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            # set thresholds
+            for unit, thresh in clf_params[qb.name]['thresholds'].items():
+                qb.instr_uhf.get_instr().set(
+                    f'qas_0_thresholds_{channels[unit]}_level', thresh)
+
+    @staticmethod
+    def _get_thresholds(qubits, from_clf_params=False, all_qb_channels=False):
+        """
+        Gets the UHF channel thresholds for each qubit in qubits.
+        Args:
+            qubits (list, QuDevTransmon): (list of) qubit(s)
+            from_clf_params (bool): whether thresholds should be retrieved
+                from the classifier parameters (when True) or from the UHF
+                channel directly (when False).
+            all_qb_channels (bool): whether all thresholds should be retrieved
+                or only the ones in use for the current weight type of the qubit.
+        Returns:
+
+        """
+
+        # check if single qubit provided
+        if np.ndim(qubits) == 0:
+            qubits = [qubits]
+
+        thresholds = {}
+        for qb in qubits:
+            # perpare correspondance between integration unit (key)
+            # and uhf channel; check if only one channel is asked for
+            # (not asked for all qb channels and weight type uses only 1)
+            if not all_qb_channels and qb.acq_weights_type() \
+                    in ('square_root', 'optimal'):
+                chs = {0: qb.acq_I_channel()}
+            else:
+                # other weight types have 2 channels
+                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+
+            #get clf thresholds
+            if from_clf_params:
+                thresh_qb = deepcopy(
+                    qb.acq_classifier_params().get("thresholds", {}))
+                thresholds[qb.name] = {u: thr for u, thr in thresh_qb.items()
+                                       if u in chs}
+            # get UHF thresholds
+            else:
+                thresholds[qb.name] = \
+                    {u: qb.instr_uhf.get_instr()
+                          .get(f'qas_0_thresholds_{ch}_level')
+                     for u, ch in chs.items()}
+
+        return thresholds

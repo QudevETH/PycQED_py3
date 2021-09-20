@@ -305,14 +305,16 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
     return combined_detectors
 
 
-def get_multi_qubit_prep_params(prep_params_list):
+def get_multi_qubit_prep_params(qubits):
+    prep_params_list = [qb.preparation_params() for qb in qubits]
     if len(prep_params_list) == 0:
         raise ValueError('prep_params_list is empty.')
 
     thresh_map = {}
-    for prep_params in prep_params_list:
+    for i, prep_params in enumerate(prep_params_list):
         if 'threshold_mapping' in prep_params:
-            thresh_map.update(prep_params['threshold_mapping'])
+            thresh_map.update({qubits[i].name:
+                                   prep_params['threshold_mapping']})
 
     prep_params = deepcopy(prep_params_list[0])
     prep_params['threshold_mapping'] = thresh_map
@@ -569,7 +571,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
             classifier_params = a.proc_data_dict[
                 'analysis_params']['classifier_params'][qb.name]
             if update:
-                qb.acq_classifier_params(classifier_params)
+                qb.acq_classifier_params().update(classifier_params)
                 if 'state_prob_mtx_masked' in a.proc_data_dict[
                         'analysis_params']:
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
@@ -734,8 +736,7 @@ def measure_active_reset(qubits, shots=5000,
     # combine operations and preparation dictionaries
     operation_dict = get_operation_dict(qubits)
     qb_names = [qb.name for qb in qubits]
-    prep_params = \
-        get_multi_qubit_prep_params([qb.preparation_params() for qb in qubits])
+    prep_params =  get_multi_qubit_prep_params(qubits)
 
     # sequence
     seq, swp = mqs.n_qubit_reset(qb_names, operation_dict, prep_params,
@@ -806,8 +807,7 @@ def measure_arbitrary_sequence(qubits, sequence=None, sequence_function=None,
 
     # combine preparation dictionaries
     qb_names = [qb.name for qb in qubits]
-    prep_params = \
-        get_multi_qubit_prep_params([qb.preparation_params() for qb in qubits])
+    prep_params = get_multi_qubit_prep_params(qubits)
 
     # sequence
     if sequence is not None:
@@ -986,8 +986,7 @@ def measure_parity_single_round(dev, ancilla_qubit, data_qubits, CZ_map,
         label = 'Parity-1-round_'+'-'.join([qb.name for qb in qubits])
     
     if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(
-            [qb.preparation_params() for qb in qubits])
+        prep_params = get_multi_qubit_prep_params(qubits)
 
     if cal_points is None:
         cal_points = CalibrationPoints.multi_qubit(qb_names, 'ge')
@@ -1073,8 +1072,7 @@ def measure_parity_single_round_phases(ancilla_qubit, data_qubits, CZ_map,
         label = 'Parity-1-round_phases_' + '-'.join([qb.name for qb in qubits])
 
     if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(
-            [qb.preparation_params() for qb in qubits])
+        prep_params = get_multi_qubit_prep_params(qubits)
 
     if cal_points is None:
         cal_points = CalibrationPoints.multi_qubit(qb_names, 'ge')
@@ -1822,8 +1820,7 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
     classified = kw.get('classified', False)
     predictive_label = kw.pop('predictive_label', False)
     if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(
-            [qb.preparation_params() for qb in qb_dephased])
+        prep_params = get_multi_qubit_prep_params(qb_dephased)
 
     if label is None:
         label = 'measurement_induced_dephasing_x{}_{}_{}'.format(
@@ -3770,8 +3767,7 @@ def measure_multi_parity_multi_round(dev, ancilla_qubits, data_qubits,
                 '_' + '-'.join([qb.name for qb in qubits])
 
     if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(
-            [qb.preparation_params() for qb in qubits])
+        prep_params = get_multi_qubit_prep_params(qubits)
 
     # if cal_points is None:
     #     cal_points = CalibrationPoints.multi_qubit(qb_names, 'ge')

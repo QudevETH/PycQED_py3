@@ -60,7 +60,7 @@ class MeasurementControl(Instrument):
                  plotting_interval: float=3,
                  datadir: str=get_default_datadir(),
                  live_plot_enabled: bool=True, verbose: bool=True):
-        super().__init__(name=name, server_name=None)
+        super().__init__(name=name)
 
         self.add_parameter('datadir',
                            initial_value=datadir,
@@ -291,7 +291,7 @@ class MeasurementControl(Instrument):
                 if not disable_snapshot_metadata:
                     self.save_instrument_settings(self.data_object)
                 self.create_experimentaldata_dataset()
-                if mode is not 'adaptive':
+                if mode != 'adaptive':
                     try:
                         # required for 2D plotting and data storing.
                         # try except because some swf get the sweep points in the

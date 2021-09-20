@@ -928,7 +928,7 @@ def prepend_pulses(pulse_list, pulses_to_prepend):
 def add_preparation_pulses(pulse_list, operation_dict, qb_names,
                            preparation_type='wait', post_ro_wait=1e-6,
                            ro_separation=1.5e-6,
-                           reset_reps=3, final_reset_pulse=True,
+                           reset_reps=1, final_reset_pulse=True,
                            threshold_mapping=None):
     """
     Prepends to pulse_list the preparation pulses corresponding to preparation

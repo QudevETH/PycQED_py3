@@ -1082,6 +1082,17 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                 for each class
             plot_fitting: Not implemented (not useful?)
             **kwargs: plotting keywords
+                fig: figure on which the plots must be drawn
+                axes (list): list of axes for the scatter, right marginal
+                histogram, top marginal histogram respectively
+                create_axes (bool): whether or not axes should be created
+                    when a figure is passed. Defaults to True. If False,
+                    first checks whether axes were passed. If not, assumes
+                    the current axes on the figure passed are in order:
+                    ax_scatter, ax_top_hist, ax_right_hist
+                legend (bool): whether or not to plot the legend
+                legend_label (dict): dictionary for legend labels keyed
+                    by y_true value
 
         Returns:
 
@@ -1089,22 +1100,33 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         if kwargs.get("fig", None) is None:
             fig, axes = plt.subplots(figsize=(10, 8))
             kwargs['fig'] = fig
+            ax, axr, axt = Singleshot_Readout_Analysis_Qutrit.\
+                _create_axes_for_scatter_and_hist(
+                kwargs["fig"], kwargs.get('frameon', True))
+        else:
+            if kwargs.get('create_axes', True):
+                ax, axr, axt = Singleshot_Readout_Analysis_Qutrit. \
+                    _create_axes_for_scatter_and_hist(
+                    kwargs["fig"], kwargs.get('frameon', True))
+            elif kwargs.get("axes", None) is not None:
+                ax, axr, axt = kwargs["axes"]
+            else:
+                ax, axr, axt = kwargs["fig"].get_axes()
+
         colors = kwargs.get('colors', [None] * len(np.unique(y_true)))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[3, 1], height_ratios=[1, 4],
-                               figure=kwargs['fig'])
+
 
         # Create scatter plot
-        ax = plt.subplot(gs[1, 0])
         for yval, c in zip(np.unique(y_true), colors):
+
             ax.scatter(data[:, 0][y_true == yval], data[:, 1][y_true == yval],
                        alpha=kwargs.get('alpha', 0.6), marker='.', c=c,
                        label=kwargs.get("legend_labels",
-                                        [yval] * len(np.unique(y_true)))[int(yval)])
-        # h, labels = sc.legend_elements()
-        # legend = ax.legend(h, kwargs.get("legend_labels", labels))
-        # ax.add_artist(legend)
+                                        {int(yval): int(yval)})[int(yval)])
+        if kwargs.get("legend", False):
+            ax.legend()
+
         # Create Y-marginal (right)
-        axr = plt.subplot(gs[1, 1], sharey=ax, frameon=kwargs.get('frameon', True))
         binr_range = (data[:, 1].min(), data[:, 1].max())
         for yval, c in zip(np.unique(y_true), colors):
             axr.hist(data[:, 1][y_true == yval], bins=50, color=c,
@@ -1121,7 +1143,6 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         plt.setp(axr.get_yticklabels(), visible=False)
 
         # Create X-marginal (top)
-        axt = plt.subplot(gs[0, 0], sharex=ax, frameon=kwargs.get('frameon', True))
         axt.spines["top"].set_visible(False)
         axt.spines["right"].set_visible(False)
         axt.yaxis.set_tick_params(right=False, top=False)
@@ -1135,7 +1156,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                      range=bint_range,
                      orientation='vertical', density=False,
                      alpha=kwargs.get('alpha', 0.6))
-        axt.set_yscale(kwargs.get("scale", "log"))
+        axt.set_yscale(kwargs.get("scale", "linear"))
 
         axt.set_title(kwargs.get('title', None))
         ax.set_xlabel(kwargs.get('xlabel', None))
@@ -1150,7 +1171,24 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             x = np.linspace(xmin, xmax, 100)
             y = np.linspace(ymin, ymax, 100)
             raise NotImplementedError()
-        return kwargs['fig']
+        return kwargs['fig'], [ax, axr, axt]
+
+    @staticmethod
+    def _create_axes_for_scatter_and_hist(fig, frameon,
+                                          width_ratios=(3, 1),
+                                          height_ratios=(1, 3)):
+        gs = gridspec.GridSpec(2, 2, width_ratios=width_ratios,
+                               height_ratios=height_ratios,
+                               figure=fig)
+        # scatter axis
+        ax = plt.subplot(gs[1, 0])
+        # right marginal histogram axis
+        axr = plt.subplot(gs[1, 1], sharey=ax,
+                          frameon=frameon)
+        # top marginal histogram axis
+        axt = plt.subplot(gs[0, 0], sharex=ax,
+                          frameon=frameon)
+        return [ax, axr, axt]
 
     @staticmethod
     def plot_clf_boundaries(X, clf, ax=None, cmap=None):
@@ -1303,18 +1341,28 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             cts, _, _ = ax.hist(data[y_true == yval], bins=50, color=c,
                                 range=binr_range,
                                 orientation='vertical', density=False,
+                                label=kwargs.get('legend_labels',
+                                    {int(j): int(j) for j
+                                     in np.unique(y_true)})[int(yval)],
                                 alpha=kwargs.get('alpha', 0.6))
             if plot_fitting and kwargs.get('means', None) is not None and \
                     kwargs.get('std', None) is not None:
-                means = list(kwargs['means'].values())
+                means = kwargs['means']
                 fit_plot_values = np.linspace(*binr_range, 200)
                 y = stats.norm.pdf(fit_plot_values, means[i],
                                    kwargs['std'][i]).flatten()
                 ax.plot(fit_plot_values, y * np.max(cts) / np.max(y),
                         color=c, linewidth=3)
+
         ax.set_xlabel(kwargs.get("xlabel", 'integration unit 1, $u_1$'))
         ax.set_ylabel('Counts, $n$')
         ax.set_yscale(kwargs.get('scale', "log"))
+        ylim = kwargs.get('ylim',
+                          ax.get_ylim() if kwargs.get('scale', "log") == "linear"
+                          else [0.1] +[ax.get_ylim()[1]])
+        ax.set_ylim(ylim)
+        if kwargs.get('legend', False):
+            ax.legend()
         return fig, ax
 
     def plot(self, **kw):
@@ -1345,7 +1393,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                                  **kwargs)
             else:
                 # plot data and histograms
-                fig = self.plot_scatter_and_marginal_hist(data['X'],
+                fig, axes = self.plot_scatter_and_marginal_hist(data['X'],
                                                           data["prep_states"],
                                                           **kwargs)
                 # plot means

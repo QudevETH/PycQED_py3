@@ -396,6 +396,22 @@ class SweepPoints(list):
                 return dim
         return None
 
+    def get_values(self, param_name):
+        """
+        Wraps get_sweep_params_property to get values of a specific
+        parameter name
+        Uses find_parameter to find the dimension of the specified parameter
+        Args:
+
+            param_name (string): parameter name from which values should
+                be retrieved
+
+        Returns:
+
+        """
+        dim = self.find_parameter(param_name)
+        return self.get_sweep_params_property('values', dim, param_names=param_name)
+
     def subset(self, i, dimension=0):
         """
         Returns a new SweepPoints object with one of the dimensions reduced

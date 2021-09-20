@@ -11,6 +11,7 @@ from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
+import pycqed.utilities.general as general
 from copy import deepcopy
 import logging
 log = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class QuantumExperiment(CircuitBuilder):
                  analyze=True, temporary_values=(), drive="timedomain",
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  filter_segments_mask=None, df_kwargs=None, df_name=None,
-                 timer_kwargs=None,
+                 timer_kwargs=None, plot_sequence=False,
                  mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
@@ -167,6 +168,7 @@ class QuantumExperiment(CircuitBuilder):
         self.drive = drive
         self.callback = callback
         self.callback_condition = callback_condition
+        self.plot_sequence = plot_sequence
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -203,7 +205,8 @@ class QuantumExperiment(CircuitBuilder):
 
         # determine data type
         if "log" in self.df_name or not \
-                self.df_kwargs.get('averaged', True):
+                self.df_kwargs.get("det_get_values_kws",
+                                   {}).get('averaged', True):
             data_type = "singleshot"
         else:
             data_type = "averaged"
@@ -361,6 +364,7 @@ class QuantumExperiment(CircuitBuilder):
     def autorun(self, **kw):
         if self.measure:
             try:
+                self.prepare_measurement(**kw)
                 # Do not save timers here since they will be saved below.
                 self.run_measurement(save_timers=False, **kw)
             except (Exception, KeyboardInterrupt) as e:
@@ -462,6 +466,9 @@ class QuantumExperiment(CircuitBuilder):
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
+
+        if self.plot_sequence:
+            self.plot()
 
     @Timer()
     def _configure_mc(self, MC=None):
@@ -737,5 +744,73 @@ class QuantumExperiment(CircuitBuilder):
             raise e
 
 
+    def plot(self, sequences=None, segments=None, qubits=None,
+             save=False, **plot_kwargs):
+        """
+        Plots (a subset of) sequences / segments of the QuantumExperiment
+        :param sequences (int, list): sequences to plot. Can be None (plot all
+        sequences), an integer (index of sequence to plot),  or a list of
+        integers/str. If strings are in the list, then plots only sequences
+        with the corresponding name.
+        :param segments (int, list): index of segments to plot. Plots all
+        segments by default.
+        :param qubits (list): list of qubits to plot
+        :param save (bool): save the figures.
+        :param plot_kwargs: kwargs passed on to segment.plot()
+        :return:
+        """
+        plot_kwargs = deepcopy(plot_kwargs)
+        if sequences is None:
+            # plot all sequences
+            sequences = self.sequences
+        elif isinstance(sequences, int):
+            sequences = [self.sequences[sequences]]
+        elif isinstance(sequences, list):
+            if len(sequences) and isinstance(sequences[0], int):
+                # sequences is a list of indices of sequences to plot
+                sequences = [self.sequences[s] for s in sequences]
+            elif len(sequences) and isinstance(sequences[0], str):
+                # sequences is a list of names of sequences to plot
+                sequences = [[s for s in self.sequences if s.name == seqname]
+                             for seqname in  sequences]
+                sequences = np.ravel(sequences).tolist()
+        if qubits is None:
+            qubits = self.meas_objs
+        plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
+                           general.get_channel_map(qubits))))
+        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend',False)))
+
+        if segments is None:
+            # plot all segments
+            segments = [np.arange(len(seq.segments)) for seq in sequences]
+        elif isinstance(segments, int):
+            # single segment from index
+            segments = [[segments] for _ in sequences]
+
+        for seq, segs in zip(sequences, segments):
+            for s in segs:
+                if isinstance(s, int):
+                    s = list(seq.segments.keys())[s]
+                if save:
+                    try:
+                        folder = ba.a_tools.get_folder(timestamp=self.timestamp)
+                    except KeyboardInterrupt as e:
+                        log.warning(f'Could not determine folder of current '
+                                    'experiment. Sequence plot will be saved in '
+                                    f'current directory.: {e}')
+                        folder = "."
+                    save_kwargs = dict(fname= folder + "/" + f"{self.timestamp}_" +
+                                              "_".join((seq.name, s)) + ".png",
+                                       bbox_inches="tight")
+                    plot_kwargs.update(dict(save_kwargs=save_kwargs,
+                                            savefig=True))
+                seq.segments[s].plot(**plot_kwargs)
+
+
+
+
     def __repr__(self):
         return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
+
+    def prepare_measurement(self, **kwargs):
+        pass

@@ -150,9 +150,10 @@ class QuDev_transmon(Qubit):
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO',
-                                 'ro_flux_disable_crosstalk_cancellation',
-                                 'disable_flux_crosstalk_cancellation',
-                                 initial_value=True, vals=vals.Bool())
+                                 'ro_flux_crosstalk_cancellation_key',
+                                 'crosstalk_cancellation_key',
+                                 vals=vals.Anything(),
+                                 initial_value=False)
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -196,6 +197,13 @@ class QuDev_transmon(Qubit):
                                  initial_value=150e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
                                  initial_value=0.5e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_mirror_pattern',
+                                 'mirror_pattern',
+                                 initial_value=None, vals=vals.Enum(None,
+                                                                    "none",
+                                                                    "all",
+                                                                    "odd", "even"))
+
 
         # acquisition parameters
         self.add_parameter('acq_I_channel', initial_value=0,
@@ -982,28 +990,33 @@ class QuDev_transmon(Qubit):
             uhf = self.instr_uhf.get_instr()
             if weights_type == 'SSB':
                 uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0+1.0j)
+                uhf.set('qas_0_rotations_{}'.format(c1), 1.0-1.0j)
                 uhf.set('qas_0_integration_weights_{}_real'.format(c2), sinI)
                 uhf.set('qas_0_rotations_{}'.format(c2), 1.0-1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), -sinI)
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
             elif weights_type == 'DSB':
                 # same as SSB but using only the first physical input channel
                 # doesn't allow to distinguish positive and negative sideband
                 uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0 + 0j)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), 0*cosI)
+                uhf.set('qas_0_rotations_{}'.format(c1), 1.0 - 1.0j)
                 uhf.set('qas_0_integration_weights_{}_real'.format(c2), sinI)
-                uhf.set('qas_0_rotations_{}'.format(c2), 1.0 + 0j)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c2), 0*sinI)
+                uhf.set('qas_0_rotations_{}'.format(c2), 1.0 - 1.0j)
             elif weights_type == 'DSB2':
                 # same as DSB but using the second physical input channel
-                uhf.set('qas_0_rotations_{}'.format(c1), 0.0 + 1.0j)
-                uhf.set('qas_0_rotations_{}'.format(c2), 0.0 - 1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
+                uhf.set('qas_0_rotations_{}'.format(c1), 1.0 - 1.0j)
+                uhf.set('qas_0_rotations_{}'.format(c2), 1.0 - 1.0j)
+                uhf.set('qas_0_integration_weights_{}_real'.format(c1), 0*sinI)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), -sinI)
+                uhf.set('qas_0_integration_weights_{}_real'.format(c2), 0*cosI)
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c2), cosI)
+
             elif weights_type == 'square_rot':
                 uhf.set('qas_0_integration_weights_{}_real'.format(c1), cosI)
-                uhf.set('qas_0_rotations_{}'.format(c1), 1.0+1.0j)
-                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
+                uhf.set('qas_0_rotations_{}'.format(c1), 1.0-1.0j)
+                uhf.set('qas_0_integration_weights_{}_imag'.format(c1), -sinI)
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
 
@@ -2652,7 +2665,7 @@ class QuDev_transmon(Qubit):
                 classifier_params = ssqtro.proc_data_dict[
                     'analysis_params'].get('classifier_params', None)
                 if update:
-                    self.acq_classifier_params(classifier_params)
+                    self.acq_classifier_params().update(classifier_params)
                     self.acq_state_prob_mtx(state_prob_mtx)
                 return state_prob_mtx, classifier_params
             else:

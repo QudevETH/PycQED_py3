@@ -30,6 +30,8 @@ class CircuitBuilder:
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
                 'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
+    STD_PREP_PARAMS = {'preparation_type': 'wait', 'reset_reps': 3,
+                       'ro_separation': 1.5e-6, 'post_ro_wait': 1e-6}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -127,10 +129,9 @@ class CircuitBuilder:
         elif self.dev is not None:
             return self.dev.get_prep_params(qubits)
         elif qubits is not None:
-            return mqm.get_multi_qubit_prep_params(
-                [qb.preparation_params() for qb in qubits])
+            return mqm.get_multi_qubit_prep_params(qubits)
         else:
-            return {'preparation_type': 'wait'}
+            return self.STD_PREP_PARAMS
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
         """
@@ -388,9 +389,11 @@ class CircuitBuilder:
                                pulse_modifs=pulse_modifs)
 
     def prepare(self, qb_names='all', ref_pulse='start',
-                preparation_type='wait', post_ro_wait=1e-6,
-                ro_separation=1.5e-6, reset_reps=3, final_reset_pulse=False,
-                threshold_mapping=None, block_name=None):
+                preparation_type=STD_PREP_PARAMS['preparation_type'],
+                post_ro_wait=STD_PREP_PARAMS['post_ro_wait'],
+                ro_separation=STD_PREP_PARAMS['ro_separation'],
+                reset_reps=STD_PREP_PARAMS['reset_reps'], final_reset_pulse=False,
+                pad_end=False, threshold_mapping=None, block_name=None):
         """
         Prepares specified qb for an experiment by creating preparation pulse
         for preselection or active reset.
@@ -410,6 +413,13 @@ class CircuitBuilder:
             reset_reps: number of reset repetitions
             final_reset_pulse: Note: NOT used in this function.
             threshold_mapping (dict): thresholds mapping for each qb
+            pad_end (bool): Only used in active reset. Whether or not padding
+                should be added after the last reset readout pulse. If False,
+                no padding is added and therefore any subsequent pulse will start
+                right after the last reset pulse. If True, then the end of the
+                prepare block is set such that the subsequent pulse start
+                "ro_separation" after the start of the last readout pulse.
+
 
         Returns:
 
@@ -500,14 +510,12 @@ class CircuitBuilder:
                 prep_pulse_list += ro_list
                 prep_pulse_list += rp_list
 
-            # manually add block_end with delay referenced to last readout
-            # as if it was an additional readout pulse
-            # otherwise next pulse will overlap with codeword padding.
-            block_end = dict(
-                name='end', pulse_type="VirtualPulse",
-                ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
-                pulse_delay=ro_separation)
-            prep_pulse_list += [block_end]
+            if pad_end:
+                block_end = dict(
+                    name='end', pulse_type="VirtualPulse",
+                    ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
+                    pulse_delay=ro_separation, ref_point="start")
+                prep_pulse_list += [block_end]
             return Block(block_name, prep_pulse_list)
 
         # preselection
@@ -664,6 +672,59 @@ class CircuitBuilder:
             segments.append(seg)
 
         return segments
+
+    def block_from_anything(self, pulses, block_name):
+        """
+        Convert various input formats into a `Block`.
+        Args:
+            pulses: A specification of a pulse sequence. Can have the following
+                formats:
+                    1) Block: A block class is returned unmodified.
+                    2) str: A single op code.
+                    3) dict: A single pulse dictionary. If the dictionary
+                           includes the key `op_code`, then the unspecified
+                           pulse parameters are taken from the corresponding
+                           operation.
+                    4) list of str: A list of op codes.
+                    5) list of dict: A list of pulse dictionaries, optionally
+                           including the op-codes, see also format 3).
+            block_name: Name of the resulting block
+        Returns: The input converted to a Block.
+        """
+
+        if hasattr(pulses, 'build'):  # Block
+            return pulses
+        elif isinstance(pulses, str):  # opcode
+            return self.block_from_ops(block_name, [pulses])
+        elif isinstance(pulses, dict):  # pulse dict
+            return self.block_from_pulse_dicts([pulses], block_name=block_name)
+        elif isinstance(pulses[0], str):  # list of opcodes
+            return self.block_from_ops(block_name, pulses)
+        elif isinstance(pulses[0], dict):  # list of pulse dicts
+            return self.block_from_pulse_dicts(pulses, block_name=block_name)
+
+    def block_from_pulse_dicts(self, pulse_dicts, block_name='prepend'):
+        """
+        Generates a list of prepended pulses to run a calibration under the
+        influence of previous operations (e.g.,  charge in the fluxlines).
+
+        :param pulse_dicts: list of pulse dictionaries,
+            each containing the op_code of the desired pulse, plus optional
+            pulse parameters to overwrite the default values of the chosen
+            pulse.
+        :return: block containing the prepended pulses
+        """
+        prepend_pulses = []
+        if pulse_dicts is not None:
+            for i, pp in enumerate(pulse_dicts):
+                # op_code determines which pulse to use
+                prepend_pulse = self.get_pulse(pp['op_code']) \
+                    if 'op_code' in pp else {}
+                # all other entries in the pulse dict are interpreted as
+                # pulse parameters that overwrite the default values
+                prepend_pulse.update(pp)
+                prepend_pulses += [prepend_pulse]
+        return Block(block_name, prepend_pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):

@@ -4391,7 +4391,10 @@
         "Description": "Select DIO mode",
         "Node": "DIOS/0/MODE",
         "Options": {
-            "0": "Manual setting of the DIO output value."
+            "0": "Manual setting of the DIO output value.",
+            "1": "AWG Sequencer",
+            "2": "DIO Codeword",
+            "3": "QCCS"
         },
         "Properties": "Read, Write, Setting",
         "Type": "Integer (enumerated)",

@@ -400,7 +400,10 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    def get_param_value(self, param_name, default_value=None, metadata_index=0):
+    def _get_param_value(self, param_name, default_value=None, metadata_index=0):
+        log.warning('Deprecation warning: please use new function '
+                    'self.get_param_value(). This function is intended to be '
+                    'used only in case of crashes with new function.')
         # no stored metadata
         if not hasattr(self, "metadata") or self.metadata is None:
             return self.options_dict.get(param_name, default_value)
@@ -414,6 +417,37 @@ class BaseDataAnalysis(object):
         else:
             return self.options_dict.get(param_name, self.metadata.get(
                 param_name, default_value))
+
+    def get_param_value(self, param_name, default_value=None, index=0,
+                        search_attrs=('options_dict', 'metadata', 'raw_data_dict')):
+        """
+        Gets a value from a set of searchable hashable attributes.
+        :param param_name: name of the parameter to be searched
+        :param default_value: value in case parameter is not found
+        :param index: in case the searchable attribute of interest is a list of
+        hashable (e.g. list of raw_data_dicts), index of the list in which one
+        should search the parameter
+        :param search_attrs (list, tuple): attributes to be searched by the
+        function. Priority is given to first entry, i.e. if a parameter
+        "timestamp" is both in the options_dict and in the metadata,
+        search_attrs =('options_dict', 'raw_data_dict') will return the
+        timestamp of the options dict while ('raw_data_dict', 'options_dict')
+        will return the timestamp of the raw data dict.
+        :return:
+        """
+        def recursive_search(param, p):
+            if hasattr(self, p):
+                d = getattr(self, p)
+                if isinstance(d, (list, tuple)):
+                    d = d[index]
+                if param in d:
+                    return d[param]
+            if p == search_attrs[-1]:
+                return default_value
+            else:
+                return recursive_search(param, search_attrs[search_attrs.index(p) +
+                                                         1])
+        return recursive_search(param_name, search_attrs[0])
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
         raw_data_dict = []
@@ -1432,10 +1466,11 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
-
+        plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
 
+        plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
         plot_linestyle = pdict.get('linestyle', '-')
         plot_marker = pdict.get('marker', 'o')
@@ -1494,7 +1529,7 @@ class BaseDataAnalysis(object):
             axs.set_xlim(xmin, xmax)
 
         if plot_title is not None:
-            axs.figure.text(0.5, 1, plot_title,
+            axs.figure.text(0.5, 1 + plot_title_pad, plot_title,
                             horizontalalignment='center',
                             verticalalignment='bottom',
                             transform=axs.transAxes)
@@ -1938,6 +1973,7 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
+        fontsize=pdict.get("fontsize", None)
         color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
@@ -1952,14 +1988,16 @@ class BaseDataAnalysis(object):
                          strings=plot_text_string, colors=color,
                          ax=axs, orientation=orientation,
                          verticalalignment=verticalalignment,
-                         horizontalalignment=horizontalalignment)
+                         horizontalalignment=horizontalalignment,
+                         fontsize=fontsize)
         else:
             # pfunc is expected to be ax.text
             pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
                   transform=axs.transAxes,
                   verticalalignment=verticalalignment,
                   horizontalalignment=horizontalalignment,
-                  bbox=box_props)
+                  bbox=box_props,
+                  fontsize=fontsize)
 
     def plot_vlines(self, pdict, axs):
         """
