@@ -1439,12 +1439,16 @@ class SingleQubitGateCalib(CalibBuilder):
     def update_sweep_points(self):
         pass
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, transition_name,
+                    prepend_pulse_dicts=None, **kw):
 
-        prepended_pulses = self.transition_order[
-                           :self.transition_order.index(transition_name)]
-        return self.block_from_ops(
-            'prepend', [f'X180{trn} {qb}' for trn in prepended_pulses])
+        # create user-specified prepended pulses (pb)
+        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+
+        tr_prepended_pulses = self.transition_order[
+                              :self.transition_order.index(transition_name)]
+        return [pb, self.block_from_ops(
+            'tr_prepend', [f'X180{trn} {qb}' for trn in tr_prepended_pulses])]
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         # if analysis_kwargs is None:
@@ -1485,8 +1489,8 @@ class Rabi(SingleQubitGateCalib):
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
 
-        prepend_block = super().sweep_block(qb, sweep_points, transition_name,
-                                            **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
         n = kw.get('n', 1)
         rabi_block = self.block_from_ops(f'rabi_pulses_{qb}',
                                          n*[f'X180{transition_name} {qb}'])
@@ -1497,7 +1501,8 @@ class Rabi(SingleQubitGateCalib):
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
 
-        return self.sequential_blocks(f'rabi_{qb}', [prepend_block, rabi_block])
+        return self.sequential_blocks(f'rabi_{qb}',
+                                      prepend_blocks + [rabi_block])
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
@@ -1554,8 +1559,8 @@ class Ramsey(SingleQubitGateCalib):
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
 
-        prepend_block = super().sweep_block(qb, sweep_points, transition_name,
-                                            **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
         pulse_modifs = {1: {'ref_point': 'start'}}
         ramsey_block = self.block_from_ops(f'ramsey_pulses_{qb}',
                                            [f'X90{transition_name} {qb}',
@@ -1580,7 +1585,7 @@ class Ramsey(SingleQubitGateCalib):
                                                     block_align='center')
 
         return self.sequential_blocks(f'ramsey_{qb}',
-                                      [prepend_block, ramsey_block])
+                                      prepend_blocks + [ramsey_block])
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
@@ -1755,15 +1760,15 @@ class T1(SingleQubitGateCalib):
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
 
-        prepend_block = super().sweep_block(qb, sweep_points, transition_name,
-                                            **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
         t1_block = self.block_from_ops(f'pi_pulse_{qb}',
                                        [f'X180{transition_name} {qb}'])
         # create ParametricValue
         t1_block.block_end.update({'ref_point': 'middle',
                                    'pulse_delay': ParametricValue('pulse_delay')
                                    })
-        return self.sequential_blocks(f't1_{qb}', [prepend_block, t1_block])
+        return self.sequential_blocks(f't1_{qb}', prepend_blocks + [t1_block])
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
@@ -1814,8 +1819,7 @@ class QScale(SingleQubitGateCalib):
             sweep_points = task['sweep_points']
             qb = task['qb']
 
-            prepend_block = super().sweep_block(qb, sweep_points,
-                                                transition_name)
+            prepend_blocks = super().sweep_block(**task)
             qscale_pulses_block = self.block_from_ops(
                 f'qscale_pulses_{qb}', [f'{p}{transition_name} {qb}' for p in
                                         self.qscale_base_ops[sp1d_idx % 3]])
@@ -1823,7 +1827,7 @@ class QScale(SingleQubitGateCalib):
                 p['motzoi'] = sweep_points.get_sweep_params_property(
                     'values', 0, 'motzoi')[sp1d_idx]
             parallel_block_list += [self.sequential_blocks(
-                f'qscale_{qb}', [prepend_block, qscale_pulses_block])]
+                f'qscale_{qb}', prepend_blocks + [qscale_pulses_block])]
 
         return self.simultaneous_blocks(f'qscale_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
@@ -1879,8 +1883,7 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
             sweep_points = task['sweep_points']
             qb = task['qb']
 
-            prepend_block = super().sweep_block(qb, sweep_points,
-                                                transition_name)
+            prepend_blocks = super().sweep_block(**task)
 
             n_pulses = sweep_points.get_sweep_params_property(
                 'values', 0, 'n_pulses')[sp1d_idx]
@@ -1892,7 +1895,7 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
                 f'pulses_{qb}', pulse_list)
 
             parallel_block_list += [self.sequential_blocks(
-                f'inphase_calib_{qb}', [prepend_block, inphase_calib_block])]
+                f'inphase_calib_{qb}', prepend_blocks + [inphase_calib_block])]
 
         return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
