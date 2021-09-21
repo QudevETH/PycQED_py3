@@ -757,7 +757,7 @@ class QuDev_transmon(Qubit):
     def get_acq_channels(self, n_channels=None):
         if n_channels is None:
             n_channels = 2 if (self.acq_weights_type() in [
-                'SSB', 'DSB', 'DSB2', 'optimal_qutrit']
+                'SSB', 'DSB', 'DSB2', 'optimal_qutrit', 'manual']
                                and self.acq_Q_channel() is not None) else 1
         return [(self.acq_unit(), self.acq_I_channel()),
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
