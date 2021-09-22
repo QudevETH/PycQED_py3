@@ -2026,7 +2026,6 @@ class ReparkingRamsey(Ramsey):
                     'values',
                     dimension=swpts.find_parameter('dc_voltages'),
                     param_names='dc_voltages')
-
             elif swpts.find_parameter('dc_voltage_offsets') is not None:
                 # relative dc_voltages were given
                 values_to_set = np.array(swpts.get_sweep_params_property(
@@ -2276,6 +2275,41 @@ class QScale(SingleQubitGateCalib):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_sweep_points(self):
+        """
+        Checks if the qscale sweep points are repeated 3 times (there are 3
+        pairs of pulses in qscale_base_ops). Updates the self.sweep_points and
+        the sweep points in each task of preprocessed_task_list with the
+        repeated qscale sweep points.
+        """
+
+        # update self.sweep_points
+        swpts = deepcopy(self.sweep_points)
+        swp_dim0 = swpts.get_sweep_dimension(0)
+
+        par_names = []
+        vals = []
+        for par in swp_dim0:
+            if 'motzoi' not in par:
+                continue
+
+            values = swpts.get_sweep_params_property('values', param_names=par)
+            if np.unique(values[:3]).size > 1:
+                # the qscale sweep points are not repeated 3 times (for each
+                # pair of qscale_base_ops)
+                par_names += [par]
+                vals += [np.repeat(values, 3)]
+
+        self.sweep_points.update_property(par_names, values=vals)
+
+        # update sweep points in preprocessed_task_list
+        for task in self.preprocessed_task_list:
+            swpts = task['sweep_points']
+            values = swpts.get_sweep_params_property(
+                'values', param_names='motzoi')
+            if np.unique(values[:3]).size > 1:
+                swpts.update_property(['motzoi'], values=[np.repeat(values, 3)])
 
     def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
         """
