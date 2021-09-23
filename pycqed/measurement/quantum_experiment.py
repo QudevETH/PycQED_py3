@@ -629,6 +629,8 @@ class QuantumExperiment(CircuitBuilder):
             {'meas_obj_value_names_map': meas_obj_value_names_map})
         if 'meas_obj_sweep_points_map' not in self.exp_metadata:
             self.exp_metadata['meas_obj_sweep_points_map'] = {}
+        if self.MC.soft_repetitions() != 1:
+            self.exp_metadata['soft_repetitions'] = self.MC.soft_repetitions()
 
         if len(self.mc_points[1]) > 0:
             mmnt_mode = "2D"

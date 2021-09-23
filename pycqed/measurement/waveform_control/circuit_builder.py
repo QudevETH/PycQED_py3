@@ -304,7 +304,8 @@ class CircuitBuilder:
         self.qb_names[i], self.qb_names[j] = self.qb_names[j], self.qb_names[i]
 
     def initialize(self, init_state='0', qb_names='all', prep_params=None,
-                   simultaneous=True, block_name=None, pulse_modifs=None):
+                   simultaneous=True, block_name=None, pulse_modifs=None,
+                   prepend_block=None):
         """
         Initializes the specified qubits with the corresponding init_state
         :param init_state (String or list): Can be one of the following
@@ -324,6 +325,8 @@ class CircuitBuilder:
             automatically generated block name of the initialization block
         :param pulse_modifs: (dict) Modification of pulses parameters.
             See method block_from_ops.
+        :param prepend_block: (Block, optional) An extra block that will be
+            executed between the preparation and the initialization.
         :return: init block
         """
         if block_name is None:
@@ -356,11 +359,17 @@ class CircuitBuilder:
                 pulses += tmp_block.pulses
         block = Block(block_name, pulses)
         block.set_end_after_all_pulses()
+        blocks = []
         if len(prep_params) != 0:
-            block = self.sequential_blocks(
-                block_name, [self.prepare(qb_names, ref_pulse="start",
-                                          **prep_params), block])
+            blocks.append(self.prepare(qb_names, ref_pulse="start",
+                                       **prep_params))
+        if prepend_block is not None:
+            blocks.append(prepend_block)
+        if len(blocks) > 0:
+            blocks.append(block)
+            block = self.sequential_blocks(block_name, blocks)
         return block
+
 
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):

@@ -36,6 +36,8 @@ class Detector_Function(object):
         self.progress_callback = kw.get('progress_callback', None)
         self.progress_callback_interval = kw.get(
             'progress_callback_interval', 5)  # in seconds
+        # tells MC whether to show live plotting for the measurement
+        self.live_plot_enabled = kw.get('live_plot_enabled', True)
 
     def set_kw(self, **kw):
         '''
@@ -204,18 +206,61 @@ class IndexDetector(Detector_Function):
         self.detector = detector
         self.index = index
         self.name = detector.name + '[{}]'.format(index)
-        self.value_names = [detector.value_names[index]]
-        self.value_units = [detector.value_units[index]]
+        if isinstance(self.index, tuple):
+            self.value_names = [detector.value_names[index[0]]]
+            self.value_units = [detector.value_units[index[0]]]
+            self.detector_control = 'soft'
+        else:
+            self.value_names = [detector.value_names[index]]
+            self.value_units = [detector.value_units[index]]
+            self.detector_control = detector.detector_control
+
+
+    def prepare(self, **kw):
+        self.detector.prepare(**kw)
+
+    def get_values(self):
+        if isinstance(self.index, tuple):
+            v = self.detector.get_values()
+            for i in self.index:
+                v = v[i]
+            return v
+        else:
+            return self.detector.get_values()[self.index]
+
+    def acquire_data_point(self):
+        if isinstance(self.index, tuple):
+            v = self.detector.get_values()
+            for i in self.index:
+                v = v[i]
+            return v
+        else:
+            return self.detector.acquire_data_point()[self.index]
+
+    def finish(self):
+        self.detector.finish()
+
+
+class SumDetector(Detector_Function):
+    def __init__(self, detector, idxs=None):
+        super().__init__()
+        self.detector = detector
+        if idxs is None:
+            idxs = np.arange(len(detector.value_names))
+        self.idxs = idxs
+        self.name = detector.name + ' sum'
+        self.value_names = [detector.value_names[idxs[0]]]
+        self.value_units = [detector.value_units[idxs[0]]]
         self.detector_control = detector.detector_control
 
     def prepare(self, **kw):
         self.detector.prepare(**kw)
 
     def get_values(self):
-        return self.detector.get_values()[self.index]
+        return [np.array(self.detector.get_values())[self.idxs].sum(axis=0)]
 
     def acquire_data_point(self):
-        return self.detector.acquire_data_point()[self.index]
+        return [np.array(self.detector.acquire_data_point())[self.idxs].sum(axis=0)]
 
     def finish(self):
         self.detector.finish()
@@ -247,7 +292,7 @@ class None_Detector(Detector_Function):
 class Hard_Detector(Detector_Function):
 
     def __init__(self, **kw):
-        super().__init__()
+        super().__init__(**kw)
         self.detector_control = 'hard'
 
     def prepare(self, sweep_points=None):
@@ -499,8 +544,8 @@ class UHFQC_Base(Hard_Detector):
     """
     Base Class for all UHF detectors
     """
-    def __init__(self, UHFQC=None, detectors=None):
-        super().__init__()
+    def __init__(self, UHFQC=None, detectors=None, **kw):
+        super().__init__(**kw)
         if detectors is None:
             # if no detector is provided then itself is the only detector
             self.detectors = [self]
@@ -673,14 +718,16 @@ class UHFQC_multi_detector(UHFQC_Base):
     Combines several UHF detectors into a single detector
     """
     def __init__(self, detectors, **kw):
-        super().__init__(detectors=detectors)
+        super().__init__(detectors=detectors, **kw)
         self.AWG = None
         self.value_names = []
         self.value_units = []
+        self.live_plot_enabled = []  # to be used by MC
 
         for d in self.detectors:
             self.value_names += [vn + ' ' + d.UHFQC.name for vn in d.value_names]
             self.value_units += d.value_units
+            self.live_plot_enabled += [d.live_plot_enabled]
             if d.AWG is not None:
                 if self.AWG is None:
                     self.AWG = d.AWG
@@ -688,6 +735,10 @@ class UHFQC_multi_detector(UHFQC_Base):
                     raise Exception('Not all AWG instances in UHFQC_multi_detector'
                                     ' are the same')
                 d.AWG = None
+
+        # if any of the detectors is doing an SSRO acquisition, then disable
+        # live plotting
+        self.live_plot_enabled = all(self.live_plot_enabled)
         # to be used in MC.get_percdone()
         self.acq_data_len_scaling = \
             self.detectors[0].acq_data_len_scaling
@@ -809,7 +860,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
 
     def __init__(self, UHFQC, AWG=None, channels=(0, 1),
                  nr_averages=1024, nr_samples=4096, **kw):
-        super(UHFQC_input_average_detector, self).__init__(UHFQC)
+        super(UHFQC_input_average_detector, self).__init__(UHFQC, **kw)
         self.channels = channels
         self.value_names = ['']*len(self.channels)
         self.value_units = ['']*len(self.channels)
@@ -845,6 +896,127 @@ class UHFQC_input_average_detector(UHFQC_Base):
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
                                           mode=self.ro_mode)
+
+
+class UHFQC_scope_detector(Hard_Detector):
+    """
+    Detector used for acquiring averaged timetraces and their Fourier'
+    transforms using the scope module of the UHF.
+
+    Requires the DIG option on the UHF to work. Required for the segmented
+    acquisition, that is needed to square the signal before averaging.
+
+    Args:
+        UHFQC: An UHFQC instance to use.
+        AWG: A pulsar or an AWG to start at the beginning of the measurement.
+            Typically used to generate pulses to look at and or provide
+            triggers.
+        channels: Tuple of UHFQA hardware channel indices.
+            Indices can be either 0 or 1, as the UHF has 2 input channels.
+        nr_averages: Number of times to average.
+        nr_samples: Number of samples in a scope trace.
+            Actual value will be rounded to the highest power of two that is at
+            most the provided value.
+        fft_mode: Data processing mode.
+            Can be one of the following:
+                'timedomain': Records timedomain traces.
+                'fft': Returns the absolute value of the Fourier' transform
+                       of the data.
+                'fft_power': Squares the data before averaging and taking the
+                             Fourier' transform.
+    Keyword arguments:
+        trigger: Boolean, whether to wait for a trigger to start acquisition.
+            Defaults to True if AWG instance is given, False otherwise.
+        trigger_channel: Integer, specifing the triggering channel.
+            Typical values here are
+                0: Signal Input 1,
+                1: Signal Input 2,
+                2: Trigger Input 1,
+                3: Trigger Input 2.
+            See the UHFQA manual for a full list. Defaults to Trigger Input 1.
+        trigger_level: Trigger activation level. Defaults to 0.1 V.
+
+    """
+    def __init__(self, UHFQC, AWG=None, channels=(0, 1),
+                 nr_averages=20, nr_samples=4096, fft_mode='timedomain',
+                 **kw):
+        super().__init__(**kw)
+
+        self.UHFQC = UHFQC
+        self.scope = UHFQC.daq.scopeModule()
+        self.AWG = AWG
+        self.channels = channels
+        self.nr_samples = max(int(2**np.floor(np.log2(nr_samples))), 4096)
+        self.nr_averages = nr_averages
+        self.fft_mode = fft_mode
+        self.value_names = [f'{UHFQC.name}_ch{ch}' for ch in channels]
+        if fft_mode == 'fft_power':
+            self.value_units = ['V^2' for _ in channels]
+        else:
+            self.value_units = ['V' for _ in channels]
+        self.trigger_channel = kw.get('trigger_channel', 2)
+        self.trigger_level = kw.get('trigger_level', 0.1)
+        self.trigger = kw.get('trigger', self.AWG is not None)
+
+    def finish(self):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.scope.unsubscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.finish()
+
+    def get_values(self):
+        self.UHFQC.scopes_0_single(1)
+        self.UHFQC.scopes_0_enable(1)
+        self.scope.subscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.execute()
+        if self.AWG is not None:
+            self.AWG.start()
+        result = self.scope.read()
+        while int(self.scope.progress()) != 1:
+            time.sleep(0.1)
+            result = self.scope.read()
+        return [x.reshape(self.nr_averages, -1).mean(0) for
+                x in result[self.UHFQC.devname]['scopes']['0']['wave'][0][0]['wave']]
+
+    def prepare(self, sweep_points=None):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.UHFQC.scopes_0_enable(0)
+        self.UHFQC.scopes_0_length(self.nr_samples)
+        self.UHFQC.scopes_0_channel((1 << len(self.channels)) - 1)
+        self.UHFQC.scopes_0_segments_count(self.nr_averages)
+        self.UHFQC.scopes_0_segments_enable(1)
+
+        for i, ch in enumerate(self.channels):
+            self.UHFQC.set(f'scopes_0_channels_{i}_inputselect', ch)
+
+        self.UHFQC.scopes_0_single(1)
+        if self.fft_mode == 'fft_power':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 1)
+        elif self.fft_mode == 'fft':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 0)
+        elif self.fft_mode == 'timedomain':
+            self.scope.set('scopeModule/mode', 1)
+            self.scope.set('scopeModule/fft/power', 0)
+        else:
+            raise ValueError("Invalid fft_mode. Allowed options are "
+                             "'timedomain', 'fft' and 'fft_power'")
+        self.scope.set('scopeModule/averager/weight', 1)
+
+        self.UHFQC.scopes_0_trigenable(self.trigger)
+        self.UHFQC.scopes_0_trigchannel(self.trigger_channel)
+        self.UHFQC.scopes_0_triglevel(self.trigger_level)
+        self.UHFQC.scopes_0_trigslope(0)
+
+    def get_sweep_vals(self):
+        if self.fft_mode == 'timedomain':
+            return np.linspace(0, self.nr_samples/1.8e9, self.nr_samples, endpoint=False)
+        elif self.fft_mode in ('fft', 'fft_power'):
+            return np.linspace(0, 0.9e9, self.nr_samples//2, endpoint=False)
 
 
 class UHFQC_integrated_average_detector(UHFQC_Base):
@@ -903,7 +1075,7 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
                  prepare_function=None, prepare_function_kwargs: dict=None,
                  **kw):
 
-        super().__init__(UHFQC)
+        super().__init__(UHFQC, **kw)
 
         self.name = '{}_UHFQC_integrated_average'.format(result_logging_mode)
         self.channels = deepcopy(channels)
@@ -1320,7 +1492,7 @@ class UHFQC_integration_logging_det(UHFQC_Base):
                  prepare_function_kwargs: dict=None,
                  **kw):
 
-        super().__init__(UHFQC)
+        super().__init__(UHFQC, **kw)
 
         self.name = '{}_UHFQC_integration_logging_det'.format(
             result_logging_mode)
@@ -1354,6 +1526,8 @@ class UHFQC_integration_logging_det(UHFQC_Base):
         self.always_prepare = always_prepare
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
+        # Disable MC live plotting by default for SSRO acquisition
+        self.live_plot_enabled = kw.get('live_plot_enabled', False)
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
@@ -1488,6 +1662,10 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             # the acquisition device since UHFQC_classifier_detector.prepare
             # passes averages=1 to qudev_acquisition_initialize.
             self.nr_averages = self.nr_shots
+            self.live_plot_enabled = kw.get('live_plot_enabled', True)
+        else:
+            # Disable MC live plotting by default for SSRO acquisition
+            self.live_plot_enabled = kw.get('live_plot_enabled', False)
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
