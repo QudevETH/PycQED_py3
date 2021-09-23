@@ -280,14 +280,21 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
 
-        # Check and update transition name
+        # Check and update transition name; used by SingleQubitGateCalib and
+        # its children
         transition_name = task.pop('transition_name', None)
         if transition_name is not None:
+            # transition_name_input is one of the following: "ge", "ef", "fh".
+            # These strings are needed when updating
+            # qubit parameters, ex: qb.ge_amp180, qb.ef_freq
             task['transition_name_input'] = transition_name
             if '_' not in transition_name:
                 transition_name = f'_{transition_name}'
             if transition_name == '_ge':
                 transition_name = ''
+            # transition_name will be one of the following: "", "_ef", "_fh".
+            # These strings are needed for specifying op codes,
+            # ex: X180 qb4, X90_ef qb3
             task['transition_name'] = transition_name
 
         # Add all task sweep points to the current_sweep_points object.
