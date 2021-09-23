@@ -41,3 +41,6 @@ class UHFQA(UHFQA_core):
 
         self.set('awgs_0_userregs_{}'.format(uhf.UHFQA_core.USER_REG_LOOP_CNT), loop_cnt)
         self.set('awgs_0_userregs_{}'.format(uhf.UHFQA_core.USER_REG_RO_MODE), ro_mode)
+
+    def start(self, **kwargs):
+        super().start()  # UHFQA_core.start() does not expect kwargs
