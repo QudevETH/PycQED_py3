@@ -1698,7 +1698,6 @@ class MeasurementControl(Instrument):
         known in the snapshot)
         '''
 
-
         import numpy
         import sys
         opt = numpy.get_printoptions()
@@ -1707,8 +1706,8 @@ class MeasurementControl(Instrument):
         if data_object is None:
             data_object = self.data_object
         if not hasattr(self, 'station'):
-            log.warning('No station object specified, could not save',
-                            ' instrument settings')
+            log.warning('No station object specified, could not save '
+                        'instrument settings')
         else:
             # # This saves the snapshot of the entire setup
             # snap_grp = data_object.create_group('Snapshot')
@@ -1716,20 +1715,56 @@ class MeasurementControl(Instrument):
             # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
 
             # Below is old style saving of snapshot, exists for the sake of
-            # preserving deprecated functionality
+            # preserving deprecated functionality. Here only the values
+            # of the parameters are saved.
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
                 instrument_grp = set_grp.create_group(iname)
-                par_snap = ins.snapshot()['parameters']
-                parameter_list = dict_to_ordered_tuples(par_snap)
-                for (p_name, p) in parameter_list:
-                    try:
-                        val = repr(p['value'])
-                    except KeyError:
-                        val = ''
-                    instrument_grp.attrs[p_name] = val
+                inst_snapshot = ins.snapshot()
+                self.store_snapshot_parameters(inst_snapshot,
+                                               entry_point=instrument_grp,
+                                               inst_name=iname)
         numpy.set_printoptions(**opt)
+
+    def store_snapshot_parameters(self, inst_snapshot, entry_point, inst_name):
+        """
+        Save the values of keys in the "parameters" entry of inst_snapshot.
+        If inst_snapshot contains "submodules," a new subgroup of inst_name
+        will be created for each key in "submodules" and the values of the
+        "parameters" entry will be stored.
+        :param inst_snapshot: (dict) snapshot of a QCoDeS instrument
+        :param entry_point: (hdf5 group.file) location in the nested hdf5
+            structure where to write to.
+        :param inst_name: (str) name of the instrument whose snapshot is saved
+        """
+
+        if 'submodules' in inst_snapshot:
+            # store the parameters from the items in submodules, which
+            # are snapshots of QCoDeS instruments
+            for key, submod_snapshot in inst_snapshot['submodules'].items():
+                submod_grp = entry_point.create_group(key)
+                self.store_snapshot_parameters(
+                    submod_snapshot, entry_point=submod_grp, inst_name=key)
+
+        if 'parameters' in inst_snapshot:
+            par_snap = inst_snapshot['parameters']
+            parameter_list = dict_to_ordered_tuples(par_snap)
+            for (p_name, p) in parameter_list:
+                parameter_checks_ins = self.parameter_checks.get(inst_name, {})
+                val = repr(p.get('value', ''))
+                if p_name in parameter_checks_ins:
+                    try:
+                        res = parameter_checks_ins[p_name](p['value'])
+                        if res is not True:
+                            log.warning(
+                                f'Parameter {inst_name}.{p_name} has an '
+                                f'uncommon value: {val}.' +
+                                (f" ({res})" if res is not False else ''))
+                    except Exception as e:
+                        log.warning(f'Could not run parameter check for '
+                                    f'{inst_name}.{p_name}: {e}')
+                entry_point.attrs[p_name] = val
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
