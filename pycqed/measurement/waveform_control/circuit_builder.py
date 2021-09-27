@@ -636,6 +636,59 @@ class CircuitBuilder:
 
         return Block(block_name, pulses, pulse_modifs)
 
+    def block_from_anything(self, pulses, block_name):
+        """
+        Convert various input formats into a `Block`.
+        Args:
+            pulses: A specification of a pulse sequence. Can have the following
+                formats:
+                    1) Block: A block class is returned unmodified.
+                    2) str: A single op code.
+                    3) dict: A single pulse dictionary. If the dictionary
+                           includes the key `op_code`, then the unspecified
+                           pulse parameters are taken from the corresponding
+                           operation.
+                    4) list of str: A list of op codes.
+                    5) list of dict: A list of pulse dictionaries, optionally
+                           including the op-codes, see also format 3).
+            block_name: Name of the resulting block
+        Returns: The input converted to a Block.
+        """
+
+        if hasattr(pulses, 'build'):  # Block
+            return pulses
+        elif isinstance(pulses, str):  # opcode
+            return self.block_from_ops(block_name, [pulses])
+        elif isinstance(pulses, dict):  # pulse dict
+            return self.block_from_pulse_dicts([pulses], block_name=block_name)
+        elif isinstance(pulses[0], str):  # list of opcodes
+            return self.block_from_ops(block_name, pulses)
+        elif isinstance(pulses[0], dict):  # list of pulse dicts
+            return self.block_from_pulse_dicts(pulses, block_name=block_name)
+
+    def block_from_pulse_dicts(self, pulse_dicts, block_name='prepend'):
+        """
+        Generates a list of prepended pulses to run a calibration under the
+        influence of previous operations (e.g.,  charge in the fluxlines).
+
+        :param pulse_dicts: list of pulse dictionaries,
+            each containing the op_code of the desired pulse, plus optional
+            pulse parameters to overwrite the default values of the chosen
+            pulse.
+        :return: block containing the prepended pulses
+        """
+        prepend_pulses = []
+        if pulse_dicts is not None:
+            for i, pp in enumerate(pulse_dicts):
+                # op_code determines which pulse to use
+                prepend_pulse = self.get_pulse(pp['op_code']) \
+                    if 'op_code' in pp else {}
+                # all other entries in the pulse dict are interpreted as
+                # pulse parameters that overwrite the default values
+                prepend_pulse.update(pp)
+                prepend_pulses += [prepend_pulse]
+        return Block(block_name, prepend_pulses)
+
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
         """

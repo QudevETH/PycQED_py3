@@ -637,17 +637,11 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse.
         :return: block containing the prepended pulses
         """
-        prepend_pulses = []
-        if prepend_pulse_dicts is not None:
-            for i, pp in enumerate(prepend_pulse_dicts):
-                # op_code determines which pulse to use
-                prepend_pulse = self.get_pulse(pp['op_code']) \
-                    if 'op_code' in pp else {}
-                # all other entries in the pulse dict are interpreted as
-                # pulse parameters that overwrite the default values
-                prepend_pulse.update(pp)
-                prepend_pulses += [prepend_pulse]
-        return Block(block_name, prepend_pulses)
+        log.warning('Deprecate function name: use CircuitBuilder.'
+                    'block_from_pulse_dicts instead.')
+
+        return self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                           block_name=block_name)
 
     @staticmethod
     def add_default_ramsey_sweep_points(sweep_points, tile=2,
