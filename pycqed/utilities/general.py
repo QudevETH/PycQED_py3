@@ -779,7 +779,7 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
         pulsar = qb.instr_pulsar.get_instr()
         AWG = qb.find_instrument(pulsar.get(f'{ge_ch}_awg'))
         if len(pulsar.get(f'{AWG.name}_trigger_channels')) > 0:
-            AWG.dios_0_mode(1)
+            AWG.dios_0_mode(2)
             vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
             AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1) #
