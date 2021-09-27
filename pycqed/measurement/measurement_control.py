@@ -172,6 +172,8 @@ class MeasurementControl(Instrument):
         self._last_percdone_change_time = 0  # last time progress changed
         self._last_percdone_log_time = 0  # last time progress was logged
 
+        self.parameter_checks = {}
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -1822,6 +1824,38 @@ class MeasurementControl(Instrument):
             except Exception:
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
+
+    def add_parameter_check(self, parameter, check_function):
+        """
+        Configure a parameter check that shall be performed at the start of
+        every measurement.
+        :param parameter: (qcodes parameter) the parameter for which a
+            check should be added
+        :param check_function: (function) a function that returns True in
+            case of a successful check (e.g., if the value of the parameter
+            is within an expected range), and otherwise False or a string that
+            explains the unsuccessful check.
+        """
+        iname = parameter.instrument.name
+        if iname not in self.parameter_checks:
+            self.parameter_checks[iname] = {}
+        self.parameter_checks[iname].update(
+            {parameter.name: check_function})
+
+    def remove_parameter_check(self, parameter):
+        """
+        Remove (a) parameter check(s).
+        :param parameter: (qcodes parameter or list thereof) the parameter(s)
+            for which the check(s) should be removed
+        """
+        if isinstance(parameter, list):
+            [self.remove_parameter_check(p) for p in parameter]
+        iname = parameter.instrument.name
+        if parameter.name in self.parameter_checks.get(iname, {}):
+            self.parameter_checks[iname].pop(parameter)
+        else:
+            log.warning(f'No check for parameter {iname}.{parameter.name} was '
+                        f'configured.')
 
     def get_percdone(self, current_acq=0):
         """
