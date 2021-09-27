@@ -1836,7 +1836,7 @@ class MeasurementControl(Instrument):
             is within an expected range), and otherwise False or a string that
             explains the unsuccessful check.
         """
-        iname = parameter.instrument.name
+        iname = _get_instrument_name_for_parameter_checks(parameter)
         if iname not in self.parameter_checks:
             self.parameter_checks[iname] = {}
         self.parameter_checks[iname].update(
@@ -1850,7 +1850,7 @@ class MeasurementControl(Instrument):
         """
         if isinstance(parameter, list):
             [self.remove_parameter_check(p) for p in parameter]
-        iname = parameter.instrument.name
+        iname = _get_instrument_name_for_parameter_checks(parameter)
         if parameter.name in self.parameter_checks.get(iname, {}):
             self.parameter_checks[iname].pop(parameter)
         else:
@@ -2249,3 +2249,19 @@ class KeyboardFinish(KeyboardInterrupt):
     """
     pass
 
+
+def _get_instrument_name_for_parameter_checks(object):
+    """
+    Extracts a string representation of the instrument/submodule name as
+    expected for parameter checks in
+    MeasurementControl.store_snapshot_parameters.
+    :param object: a qcodes parameter, submodule, or instrument
+    :return: (str)
+    """
+    if hasattr(object, 'instrument'):
+        return _get_instrument_name_for_parameter_checks(object.instrument)
+    elif object.parent is not None:
+        return _get_instrument_name_for_parameter_checks(
+            object.parent) + '.' + object.name
+    else:
+        return object.name
