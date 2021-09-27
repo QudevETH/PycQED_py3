@@ -192,6 +192,21 @@ class Multi_Detector(Detector_Function):
 
 
 class IndexDetector(Detector_Function):
+    """Detector function that indexes the result of another detector function.
+
+    Args:
+        detector:
+            detector function that returns multiple values per sweep point
+        index:
+            Index if the element returned from the original detector function
+            output. Can be an integer or a tuple. If an integer, then value is
+            interpreted as a channel index of the original detector function.
+            In case of a tuple, the first value corresponds to a channel index
+            and the second value corresponds to an index in the original
+            hardware sweep. Using a tuple converts a hardware sweep to a
+            software sweep.
+    """
+
     def __init__(self, detector, index):
         super().__init__()
         self.detector = detector
@@ -205,53 +220,56 @@ class IndexDetector(Detector_Function):
             self.value_names = [detector.value_names[index]]
             self.value_units = [detector.value_units[index]]
             self.detector_control = detector.detector_control
-
+            self.index = [index]
 
     def prepare(self, **kw):
         self.detector.prepare(**kw)
 
     def get_values(self):
-        if isinstance(self.index, tuple):
-            v = self.detector.get_values()
-            for i in self.index:
-                v = v[i]
-            return v
-        else:
-            return self.detector.get_values()[self.index]
+        v = self.detector.get_values()
+        for i in self.index:
+            v = v[i]
+        return v
 
     def acquire_data_point(self):
-        if isinstance(self.index, tuple):
-            v = self.detector.get_values()
-            for i in self.index:
-                v = v[i]
-            return v
-        else:
-            return self.detector.acquire_data_point()[self.index]
+        v = self.detector.get_values()
+        for i in self.index:
+            v = v[i]
+        return v
 
     def finish(self):
         self.detector.finish()
 
 
 class SumDetector(Detector_Function):
-    def __init__(self, detector, idxs=None):
+    """A detector function that adds up the channel values of another detector
+
+    Args:
+        detector: Underlying detector with several channels to be added
+        indices: Channel indices of the underlying detector that will be added
+    """
+
+    def __init__(self, detector, indices=None):
         super().__init__()
         self.detector = detector
-        if idxs is None:
-            idxs = np.arange(len(detector.value_names))
-        self.idxs = idxs
-        self.name = detector.name + ' sum'
-        self.value_names = [detector.value_names[idxs[0]]]
-        self.value_units = [detector.value_units[idxs[0]]]
+        if indices is None:
+            indices = np.arange(len(detector.value_names))
+        self.indices = indices
+        self.name = detector.name + '_sum'
+        self.value_names = [detector.value_names[indices[0]]]
+        self.value_units = [detector.value_units[indices[0]]]
         self.detector_control = detector.detector_control
 
     def prepare(self, **kw):
         self.detector.prepare(**kw)
 
     def get_values(self):
-        return [np.array(self.detector.get_values())[self.idxs].sum(axis=0)]
+        return [np.array(self.detector.get_values())[self.indices]
+                .sum(axis=0)]
 
     def acquire_data_point(self):
-        return [np.array(self.detector.acquire_data_point())[self.idxs].sum(axis=0)]
+        return [np.array(self.detector.acquire_data_point())[self.indices]
+                .sum(axis=0)]
 
     def finish(self):
         self.detector.finish()
