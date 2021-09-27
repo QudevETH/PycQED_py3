@@ -1831,9 +1831,10 @@ class MeasurementControl(Instrument):
         every measurement.
         :param parameter: (qcodes parameter) the parameter for which a
             check should be added
-        :param check_function: (function) a function that returns True in
-            case of a successful check (e.g., if the value of the parameter
-            is within an expected range), and otherwise False or a string that
+        :param check_function: (function) a function that takes the
+            parameter value as input and returns True in case of a
+            successful check (e.g., if the value of the parameter is within
+            an expected range), and otherwise False or a string that
             explains the unsuccessful check.
         """
         iname = _get_instrument_name_for_parameter_checks(parameter)
