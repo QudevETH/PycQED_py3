@@ -173,6 +173,9 @@ class ZI_PQSC(zibase.ZI_base_instrument):
             severity = m['severity']
             message  = m['message']
 
+            if severity == 0:
+                log.info(f'{self.devname}: Code {code}: "{message}" ({severity})')
+                continue
             if not raise_exceptions:
                 self._errors[code] = {
                     'count'   : count,
