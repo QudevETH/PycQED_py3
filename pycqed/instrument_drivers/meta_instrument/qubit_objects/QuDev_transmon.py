@@ -964,11 +964,16 @@ class QuDev_transmon(Qubit):
         return operation_dict
 
     def swf_ro_freq_lo(self):
-        return swf.Offset_Sweep(
-            self.instr_ro_lo.get_instr().frequency,
-            -self.ro_mod_freq(),
-            name='Readout frequency',
-            parameter_name='Readout frequency')
+        if self.instr_ro_lo() is not None:
+            return swf.Offset_Sweep(
+                self.instr_ro_lo.get_instr().frequency,
+                -self.ro_mod_freq(),
+                name='Readout frequency',
+                parameter_name='Readout frequency')
+        else:
+            self.instr_acq.get_instr().get_lo_sweep_function(
+                self.acq_unit, self.ro_mod_freq())
+
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
             self.ro_mod_freq,
@@ -994,7 +999,10 @@ class QuDev_transmon(Qubit):
 
         self.prepare(drive=None)
         if upload:
-            sq.pulse_list_list_seq([[self.get_ro_pars()]])
+            seq = sq.pulse_list_list_seq([[self.get_ro_pars()]], upload=False)
+            for seg in seq.segments.values():
+                seg.acquisition_mode = 'sweeper'
+            self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
         MC.set_sweep_function(self.swf_ro_freq_lo())
