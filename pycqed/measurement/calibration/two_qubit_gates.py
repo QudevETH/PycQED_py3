@@ -57,9 +57,31 @@ class MultiTaskingExperiment(QuantumExperiment):
     # arguments that should be automatically copied into each task (list of
     # str, each being a key to be searched in kw).
     kw_for_task_keys = ()
+    # The following list can be overwritten by child classes to specify keys
+    # inside tasks that refer to measurement objects. The respective values
+    # will then automatically replaced by measurement object names in case
+    # the actual objects were provided.
+    task_mobj_keys = ()
+    # The following string can be overwritten by child classes to provide a
+    # default value for the kwarg experiment_name.
+    default_experiment_name = 'MultitaskingExperiment'
 
     def __init__(self, task_list, dev=None, qubits=None,
                  operation_dict=None, **kw):
+
+        if getattr(self, 'experiment_name', None) is not None:
+            # if not yet set by child class
+            self.experiment_name = kw.get('experiment_name',
+                                          self.default_experiment_name)
+        for task in task_list:
+            # convert qubit objects to qubit names
+            for k in self.task_mobj_keys:
+                if not isinstance(task[k], str):
+                    task[k] = task[k].name
+            # generate an informative task prefix
+            if 'prefix' not in task:
+                task['prefix'] = '_'.join([v for k, v in task.items() if k
+                                           in self.task_mobj_keys]) + '_'
 
         self.task_list = task_list
         # Process kw_for_sweep_points for the global keyword arguments kw
@@ -727,19 +749,11 @@ class CPhase(CalibBuilder):
     ...
     """
     kw_for_task_keys = ['ref_pi_half', 'num_cz_gates']
+    task_mobj_keys = ['qbl', 'qbr']
+    default_experiment_name = 'CPhase_measurement'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = 'CPhase_measurement'
-            for task in task_list:
-                # convert qubit objects to qubit names
-                for k in ['qbl', 'qbr']:
-                    if not isinstance(task[k], str):
-                        task[k] = task[k].name
-                # generate an informative task prefix
-                if not 'prefix' in task:
-                    task['prefix'] = f"{task['qbl']}{task['qbr']}_"
-
             # By default, include f-level cal points (for measuring leakage).
             kw['cal_states'] = kw.get('cal_states', 'gef')
 
@@ -1029,10 +1043,10 @@ class DynamicPhase(CalibBuilder):
     """
 
     kw_for_task_keys = ['num_cz_gates', 'init_for_swap']
+    default_experiment_name = 'Dynamic_phase_measurement'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = 'Dynamic_phase_measurement'
             self.simultaneous = kw.get('simultaneous', False)
             self.simultaneous_groups = kw.get('simultaneous_groups', None)
             if self.simultaneous_groups is not None:
@@ -1435,21 +1449,12 @@ class Chevron(CalibBuilder):
         - num_cz_gates
         - init_state
     """
-
     kw_for_task_keys = ['num_cz_gates', 'init_state']
+    task_mobj_keys = ['qbc', 'qbt']
+    default_experiment_name = 'Chevron'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = kw.get('experiment_name', 'Chevron')
-            for task in task_list:
-                # convert qubit objects to qubit names
-                for k in ['qbc', 'qbt']:
-                    if not isinstance(task[k], str):
-                        task[k] = task[k].name
-                # generate an informative task prefix
-                if not 'prefix' in task:
-                    task['prefix'] = f"{task['qbc']}{task['qbt']}_"
-
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 
             # Preprocess sweep points and tasks before creating the sequences
