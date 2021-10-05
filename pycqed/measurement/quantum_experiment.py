@@ -705,7 +705,7 @@ class QuantumExperiment(CircuitBuilder):
 
         if segments is None:
             # plot all segments
-            segments = [np.arange(len(seq.segments)) for seq in sequences]
+            segments = [range(len(seq.segments)) for seq in sequences]
         elif isinstance(segments, int):
             # single segment from index
             segments = [[segments] for _ in sequences]
