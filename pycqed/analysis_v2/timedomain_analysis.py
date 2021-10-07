@@ -8120,8 +8120,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 self.get_param_value('cal_points', None, 0))
             self.qb_names = deepcopy(cp.qb_names)
 
-        self.channel_map = self.get_param_value('channel_map', None,
-                                                metadata_index=0)
+        self.channel_map = self.get_param_value('channel_map', None)
         if self.channel_map is None:
             # assume same channel map for all timetraces (pick 0th)
             value_names = self.raw_data_dict[0]['value_names']
