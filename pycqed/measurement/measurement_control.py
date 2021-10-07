@@ -1750,10 +1750,26 @@ class MeasurementControl(Instrument):
                     submod_snapshot, entry_point=submod_grp, inst_name=
                     f'{inst_name}.{key}')
 
+        i_name = inst_name.split('.')[-1]  # name of instr/submodule
+        ins = self.station.components.get(i_name, None)  # get instr instance
+        if ins is not None:
+            # get whitelist and blacklist for parameters to store
+            sp_wl = list(getattr(ins, '_snapshot_whitelist', ''))
+            sp_bl = list(getattr(ins, '_snapshot_blacklist', ''))
+        else:
+            sp_wl = []
+            sp_bl = []
+
         if 'parameters' in inst_snapshot:
             par_snap = inst_snapshot['parameters']
             parameter_list = dict_to_ordered_tuples(par_snap)
             for (p_name, p) in parameter_list:
+                if p_name in sp_bl:
+                    # exclude parameters that are in the snapshot_blacklist
+                    continue
+                if len(sp_wl) and p_name not in sp_wl:
+                    # only include parameters that are in the snapshot_whitelist
+                    continue
                 parameter_checks_ins = self.parameter_checks.get(inst_name, {})
                 val = repr(p.get('value', ''))
                 if p_name in parameter_checks_ins:
