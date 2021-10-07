@@ -1747,7 +1747,8 @@ class MeasurementControl(Instrument):
             for key, submod_snapshot in inst_snapshot['submodules'].items():
                 submod_grp = entry_point.create_group(key)
                 self.store_snapshot_parameters(
-                    submod_snapshot, entry_point=submod_grp, inst_name=key)
+                    submod_snapshot, entry_point=submod_grp, inst_name=
+                    f'{inst_name}.{key}')
 
         if 'parameters' in inst_snapshot:
             par_snap = inst_snapshot['parameters']
