@@ -1073,6 +1073,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         return rotated_data_dict, zero_coord, one_coord
 
     def get_transition_name(self, qb_name):
+        """
+        Extracts the transition_name:
+            - first by taking transition_name_input from the task in task_list
+                for qb_name
+            - then from options_dict/metadata
+        If not found in any of the above, it is inferred from data_to_fit.
+        :param qb_name: qubit name
+        :return: string indicating the transition name ("ge", "ef", etc.)
+        """
         task_list = self.get_param_value('task_list')
         trans_name = self.get_param_value('transition_name')
         if task_list is not None:
