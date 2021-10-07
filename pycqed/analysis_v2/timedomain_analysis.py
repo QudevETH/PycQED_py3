@@ -1086,7 +1086,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         trans_name = self.get_param_value('transition_name')
         if task_list is not None:
             task = [t for t in task_list if t['qb'] == qb_name][0]
-            trans_name = task.get('transition_name_input', None)
+            trans_name = task.get('transition_name_input', trans_name)
+
         if trans_name is None:
             if 'h' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'fh'
