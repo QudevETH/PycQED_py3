@@ -1318,7 +1318,7 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
-class SingleQubitGateCalib(CalibBuilder):
+class SingleQubitGateCalibExperiment (CalibBuilder):
     """
     Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
     T1, QScale, InPhaseAmpCalib). This is a multitasking experiment, see
@@ -1566,11 +1566,11 @@ class SingleQubitGateCalib(CalibBuilder):
         pass
 
 
-class Rabi(SingleQubitGateCalib):
+class Rabi(SingleQubitGateCalibExperiment):
     """
     Rabi measurement for finding the amplitude of a pi-pulse that excites
-    the desired transmon transition. This is a SingleQubitGateCalib experiment,
-    see docstring there for general information.
+    the desired transmon transition. This is a SingleQubitGateCalibExperiment
+    experiment, see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -1700,11 +1700,11 @@ class Rabi(SingleQubitGateCalib):
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
 
 
-class Ramsey(SingleQubitGateCalib):
+class Ramsey(SingleQubitGateCalibExperiment):
     """
     Class for running a Ramsey or an Echo measurement.
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    for general information.
 
     Ramsey measurement for finding the frequency and associated averaged
     dephasing time (T2*) of a transmon transition.
@@ -1928,8 +1928,8 @@ class ReparkingRamsey(Ramsey):
         - artificial_detuning (see docstring of parent class)
 
         These kw parameters can be used together with "qubits" (see
-        SingleQubitGateCalib parent class) for convenience to avoid having
-        to specify a task_list.
+        SingleQubitGateCalibExperiment parent class) for convenience to avoid
+        having to specify a task_list.
         If a task_list is not specified, all qubits will use the same values for
         the parameters above.
 
@@ -2096,11 +2096,11 @@ class ReparkingRamsey(Ramsey):
             fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
 
 
-class T1(SingleQubitGateCalib):
+class T1(SingleQubitGateCalibExperiment):
     """
     T1 measurement for finding the lifetime (T1) associated with a transmon
-    transition. This is a SingleQubitGateCalib experiment, see docstring there
-    for general information.
+    transition. This is a SingleQubitGateCalibExperiment experiment,
+    see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -2208,7 +2208,7 @@ class T1(SingleQubitGateCalib):
             qubit.set(f'T1{task["transition_name"]}', T1)
 
 
-class QScale(SingleQubitGateCalib):
+class QScale(SingleQubitGateCalibExperiment):
     """
     QScale measurement for finding the motzoi parameter for driving a transmon
     transition without phase errors.
@@ -2216,8 +2216,8 @@ class QScale(SingleQubitGateCalib):
         https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.103.110501
         https://journals.aps.org/pra/abstract/10.1103/PhysRevA.83.012308
 
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -2378,12 +2378,12 @@ class QScale(SingleQubitGateCalib):
             qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
 
 
-class InPhaseAmpCalib(SingleQubitGateCalib):
+class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
     """
     In-phase calibration measurement for finding small miscalibrations in the
     pi-pulse amplitude associated with a transmon transition.
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
