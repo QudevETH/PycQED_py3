@@ -1,7 +1,8 @@
 """
-The Device class is intended to be used for two main tasks:
+The Device class is intended to be used for:
+    * store general information about the device (including connectivity graph)
+      and references to qubit objects
     * store two-qubit gate parameters
-    * run multi-qubit standard experiments
 
 The structure is chosen to resemble the one of the QuDev_transmon class. As such, the two-qubit gate parameters
 are stored as instrument parameters of the device, as is the case for single-qubit gates for the QuDev_transmon
@@ -16,17 +17,12 @@ qubit.
 * get_operation_dict *
 As for the QuDev_transmon class the Device class has the ability to return a dictionary of all device operations
 (single- and two-qubit) in the form of a dictionary, using the get_operation_dict method.
-
-* multi-qubit experiments *
-For regularly used methods we place wrapper functions calling methods from the multi_qubit_module. This list is readily
-extended by further methods from the multi_qubit_module or other modules.
 """
 
 # General imports
 import logging
 from copy import deepcopy
 
-import pycqed.measurement.multi_qubit_module as mqm
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
 from qcodes.instrument.base import Instrument
@@ -478,49 +474,3 @@ class Device(Instrument):
                         raise ValueError(f'No flux pulse channel defined for {qb}!')
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
-
-    # Wrapper functions for Device algorithms #
-
-    def measure_J_coupling(self, qbm, qbs, freqs, cz_pulse_name, **kwargs):
-
-        """
-        Wrapper function for the multi_qubit_module method measure_J_coupling.
-        """
-
-        mqm.measure_J_coupling(qbm, qbs, freqs, cz_pulse_name, **kwargs)
-
-    def measure_tomography(self, qubits, prep_sequence, state_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_two_qubit_randomized_benchmarking.
-        """
-
-        mqm.measure_tomography(self, qubits, prep_sequence, state_name, **kwargs)
-
-    def measure_two_qubit_randomized_benchmarking(self, qb1, qb2, cliffords, nr_seeds, cz_pulse_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_two_qubit_randomized_benchmarking.
-        """
-
-        mqm.measure_two_qubit_randomized_benchmarking(self, qb1, qb2, cliffords, nr_seeds, cz_pulse_name, **kwargs)
-
-    def measure_chevron(self, qbc, qbt, hard_sweep_params, soft_sweep_params, cz_pulse_name, **kwargs):
-        '''
-        Wrapper function for the multi_qubit_module method measure_chevron.
-        '''
-
-        mqm.measure_chevron(self, qbc, qbt, hard_sweep_params, soft_sweep_params, cz_pulse_name, **kwargs)
-
-    def measure_cphase(self, qbc, qbt, soft_sweep_params, cz_pulse_name, **kwargs):
-        '''
-        Wrapper function for the multi_qubit_module method measure_cphase.
-        '''
-
-        return mqm.measure_cphase(self, qbc, qbt, soft_sweep_params,
-                                  cz_pulse_name, **kwargs)
-
-    def measure_dynamic_phases(self, qbc, qbt, cz_pulse_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_dynamic_phase.
-        """
-
-        mqm.measure_dynamic_phases(self, qbc, qbt, cz_pulse_name, **kwargs)
