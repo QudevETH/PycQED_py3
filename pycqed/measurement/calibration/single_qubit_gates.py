@@ -1381,6 +1381,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
             if self.experiment_name is None:
                 self.experiment_name = 'SingleQubiGateCalib'
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.update_experiment_name()
 
             self.state_order = ['g', 'e', 'f', 'h']
             # transition_name_input is added in preprocess_task;
@@ -1549,6 +1550,11 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
 
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
 
+    def update_experiment_name(self):
+        # Base method for updating the experiment_name.
+        # To be overloaded by children.
+        pass
+
     def update_sweep_points(self):
         # Base method for updating the sweep_points.
         # To be overloaded by children.
@@ -1658,16 +1664,22 @@ class Rabi(SingleQubitGateCalibExperiment):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amps=amps, **kw)
-            if any([task.get('n', 1) > 1 for task in
-                    self.preprocessed_task_list]):
-                # check if n was given in the task_list
-                self.experiment_name = 'n' + self.experiment_name
-            elif kw['n'] > 1:
-                self.experiment_name += f'-n{kw["n"]}'
-
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name with the number of Rabi pulses n.
+        """
+        n_list = [task['n'] for task in self.preprocessed_task_list]
+        if any([n > 1 for n in n_list]):
+            # Rabi measurement with more than one pulse
+            self.experiment_name += f'-n'
+            if len(np.unique(n_list)) == 1:
+                # all tasks have the same n; add the value of n to the
+                # experiment name
+                self.experiment_name += f'{n_list[0]}'
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
         """
