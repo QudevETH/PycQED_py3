@@ -136,11 +136,8 @@ class Pulse:
         return wfs_dict
 
     def masked_channels(self):
-        channel_mask = getattr(self, 'channel_mask', None)
-        if channel_mask is None:
-            channels = self.channels
-        else:
-            channels = [ch for m, ch in zip(channel_mask, self.channels) if m]
+        channel_mask = getattr(self, 'channel_mask', {})
+        channels = [ch for ch in self.channels if channel_mask.get(ch, True)]
         if any([ch in self.crosstalk_cancellation_channels for ch in
                 channels]):
             return set(channels) | set(self.crosstalk_cancellation_channels)

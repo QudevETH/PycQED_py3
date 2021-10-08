@@ -218,12 +218,13 @@ class Segment:
     def enforce_single_element(self):
         self.resolved_pulses = []
         for p in self.unresolved_pulses:
-            ch_mask = []
-            for ch in p.pulse_obj.channels:
+            channels = p.pulse_obj.masked_channels()
+            ch_mask = {}
+            for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                ch_mask.append(
-                    self.pulsar.get(f'{ch_awg}_enforce_single_element'))
-            if all(ch_mask) and len(ch_mask) != 0:
+                ch_mask[ch] = self.pulsar.get(
+                    f'{ch_awg}_enforce_single_element')
+            if all(ch_mask.values()) and len(ch_mask) != 0:
                 p = deepcopy(p)
                 p.pulse_obj.element_name = f'default_ese_{self.name}'
                 if p.pulse_obj.codeword == "no_codeword":
@@ -234,7 +235,8 @@ class Segment:
                                 f'{", ".join(p.pulse_obj.channels)}')
             elif any(ch_mask):
                 p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask = [not x for x in ch_mask]
+                p0.pulse_obj.channel_mask = {
+                    ch: not ch_mask[ch] for ch in ch_mask}
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
@@ -250,7 +252,7 @@ class Segment:
                 if p1.pulse_obj.codeword == "no_codeword":
                    self.resolved_pulses.append(p1)
                 else:
-                    ese_chs = [ch for m, ch in zip(ch_mask, p.pulse_obj.channels) if m]
+                    ese_chs = [ch for ch in channels if ch_mask[ch]]
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(ese_chs)}')
