@@ -5495,6 +5495,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
             fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
@@ -5639,6 +5640,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
 
             trans_name = self.get_transition_name(qbn)
