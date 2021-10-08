@@ -440,14 +440,7 @@ class Device(Instrument):
         self.set('two_qb_gates', self.get('two_qb_gates') + [gate_name])
 
         # find pulse module
-        pulse_func = None
-        for module in bpl.pulse_libraries:
-            try:
-                pulse_func = getattr(module, pulse_type)
-            except AttributeError:
-                pass
-        if pulse_func is None:
-            raise KeyError('pulse_type {} not recognized'.format(pulse_type))
+        pulse_func = bpl.get_pulse_class(pulse_type)
 
         # for all connected qubits add the operation with name gate_name
         for [qb1, qb2] in self.connectivity_graph():
