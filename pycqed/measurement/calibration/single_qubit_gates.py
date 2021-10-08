@@ -1416,9 +1416,8 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
                 # Recreate cal points
                 self.create_cal_points(
                     n_cal_points_per_state=kw.get('n_cal_points_per_state', 1),
-                    transition_name=''.join(cal_states))
+                    cal_states=''.join(cal_states))
 
-            self.update_preproc_tasks()
             self.update_sweep_points()
             self.update_data_to_fit()
             self.define_cal_states_rotations()
@@ -1460,6 +1459,40 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        """
+        Updates the task with
+
+        - transition_name: one of the following: "", "_ef", "_fh".
+            These strings are needed for specifying op codes,
+            ex: X180 qb4, X90_ef qb3
+        - transition_name_input: one of the following: "ge", "ef", "fh".
+            These strings are needed when updating qubit parameters,
+            ex: qb.ge_amp180, qb.ef_freq
+        The input parameters are documented in the docstring of this method in
+        the parent class
+        """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+
+        # Check and update transition name.
+        transition_name = task.pop('transition_name', None)
+        if transition_name is not None:
+            # transition_name_input is one of the following: "ge", "ef", "fh".
+            # These strings are needed when updating
+            # qubit parameters, ex: qb.ge_amp180, qb.ef_freq
+            task['transition_name_input'] = transition_name
+            if '_' not in transition_name:
+                transition_name = f'_{transition_name}'
+            if transition_name == '_ge':
+                transition_name = ''
+            # transition_name will be one of the following: "", "_ef", "_fh".
+            # These strings are needed for specifying op codes,
+            # ex: X180 qb4, X90_ef qb3
+            task['transition_name'] = transition_name
+        return task
 
     def update_data_to_fit(self):
         """
@@ -1515,11 +1548,6 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
                         {s: self.state_order.index(s) for s in self.cal_states}
 
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
-
-    def update_preproc_tasks(self):
-        # Base method for updating the preprocessed_task_list.
-        # To be overloaded by children.
-        pass
 
     def update_sweep_points(self):
         # Base method for updating the sweep_points.
@@ -1787,17 +1815,21 @@ class Ramsey(SingleQubitGateCalibExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def update_preproc_tasks(self):
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
         """
-        Updates each task in the preprocessed_task_list with the value of the
-        first pulse delay sweep point. Will be stored under the key
-        "first_delay_point" and will be used in sweep_block.
+        Updates the task with the value of the first pulse delay sweep point.
+        which will be stored under the key "first_delay_point" and will be used
+        in sweep_block.
+        See also the docstring of this method in the parent classes.
         """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+        sweep_points = task['sweep_points']
+        task['first_delay_point'] = sweep_points.get_sweep_params_property(
+            'values', 0, 'pulse_delay')[0]
 
-        for task in self.preprocessed_task_list:
-            sweep_points = task['sweep_points']
-            task['first_delay_point'] = sweep_points.get_sweep_params_property(
-                'values', 0, 'pulse_delay')[0]
+        return task
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
         """
