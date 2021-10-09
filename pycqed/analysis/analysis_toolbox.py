@@ -108,7 +108,7 @@ def get_last_n_timestamps(n, contains=''):
 def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 return_timestamp=False, return_path=True, raise_exc=True,
                 folder=None, n_matches=None, return_all=False,
-                match_whole_words=None):
+                match_whole_words=None, verbose=False):
     """
         Finds the latest taken data with <contains> in its name.
         Returns the full path of the data directory and/or the timestamp.
@@ -139,6 +139,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 underscores treated as word separators).
                 (default: use the value latest_data_match_whole_words
                 specified in the module)
+            verbose: If True, print results as soon as they are found (bool,
+                default: True)
         Returns: (list of) path and/or timestamps. Return format depends on the
             choice of return_timestamp, return_path, list_timestamps, return_all.
     """
@@ -208,6 +210,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                     measdirs.append(d)
                     paths.append(os.path.join(search_dir, daydir, d))
                     timestamps.append(timestamp)
+                    if verbose:
+                        print(paths[-1])
             if newer_than is not None and timestamp is not None:
                 if not is_older(newer_than, timestamp,
                                 or_equal=or_equal):
