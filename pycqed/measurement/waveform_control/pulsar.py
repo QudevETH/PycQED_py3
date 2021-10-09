@@ -1510,7 +1510,18 @@ class AWG5014Pulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set(f"{self.get(ch + '_id')}_state", on)
+        chid = self.get(ch + '_id')
+        if f"{chid}_state" in awg.parameters:
+            awg.set(f"{chid}_state", on)
+        else:  # it is a marker channel
+            # We cannot switch on the marker channel explicitly. It is on if
+            # the corresponding analog channel is on. Raise a warning if
+            # the state (of the analog channel) is different from the
+            # requested state (of the marker channel).
+            if bool(awg.get(f"{chid[:3]}_state")) != bool(on):
+                log.warning(f'Pulsar: Cannot set the state of a marker '
+                            f'channel. Call sigout_on for the corresponding '
+                            f'analog channel {chid[:3]} instead.')
         return
 
 
