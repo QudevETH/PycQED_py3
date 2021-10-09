@@ -971,8 +971,8 @@ class QuDev_transmon(Qubit):
                 name='Readout frequency',
                 parameter_name='Readout frequency')
         else:
-            self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit, self.ro_mod_freq())
+            return self.instr_acq.get_instr().get_lo_sweep_function(
+                self.acq_unit(), self.ro_mod_freq())
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
