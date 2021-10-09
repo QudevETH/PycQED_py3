@@ -69,7 +69,7 @@ class MultiTaskingExperiment(QuantumExperiment):
     def __init__(self, task_list, dev=None, qubits=None,
                  operation_dict=None, **kw):
 
-        if getattr(self, 'experiment_name', None) is not None:
+        if getattr(self, 'experiment_name', None) is None:
             # if not yet set by child class
             self.experiment_name = kw.get('experiment_name',
                                           self.default_experiment_name)
