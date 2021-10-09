@@ -24,7 +24,7 @@ extended by further methods from the multi_qubit_module or other modules.
 
 # General imports
 import logging
-from copy import deepcopy
+from copy import copy, deepcopy
 import numpy as np
 import functools
 import matplotlib as mpl
@@ -701,7 +701,7 @@ class Device(Instrument):
             2 + (plot_mod.FIGURE_WIDTH_2COL - 2) / 17 * len(qubits),
             1 + 6 / 17 * len(qubits))
 
-        cmap = mpl.cm.RdBu
+        cmap = copy(mpl.cm.RdBu)
         cmap.set_over('k')
         i = ax.imshow(data_array / phi_factor, vmax=vmax, vmin=-vmax,
                       cmap=cmap)
