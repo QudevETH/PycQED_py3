@@ -635,7 +635,10 @@ class Device(Instrument):
             def_vmax =  1
         vmax = vmax / phi_factor if vmax is not None else def_vmax
 
-        data_array = self.flux_crosstalk_calibs()[calibration_key][round_ind][
+        calibs = self.flux_crosstalk_calibs()
+        if not isinstance(calibs, dict):
+            calibs = {'default': calibs}
+        data_array = calibs[calibration_key][round_ind][
                      qb_inds, :][:, qb_inds]
         for i in range(len(qubits)):
             data_array[i, :] *= np.sign(data_array[i, i])
