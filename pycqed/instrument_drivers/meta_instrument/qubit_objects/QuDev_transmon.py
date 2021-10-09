@@ -999,7 +999,10 @@ class QuDev_transmon(Qubit):
 
         self.prepare(drive=None)
         if upload:
-            seq = sq.pulse_list_list_seq([[self.get_ro_pars()]], upload=False)
+            ro_pars = self.get_ro_pars()
+            if self.instr_ro_lo() is None:
+                ro_pars['mod_frequency'] = 0
+            seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
             for seg in seq.segments.values():
                 seg.acquisition_mode = 'sweeper'
             self.instr_pulsar.get_instr().program_awgs(seq)
