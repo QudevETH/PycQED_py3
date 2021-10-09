@@ -4684,7 +4684,7 @@ class QuDev_transmon(Qubit):
             ch = self.get(channel_par)
             if ch + '_offset' in pulsar.parameters:
                 pulsar.set(ch + '_offset', self.get(offset_par))
-            pulsar.sigout_on(ch)
+                pulsar.sigout_on(ch)
 
     def set_distortion_in_pulsar(self, datadir=None):
         """
