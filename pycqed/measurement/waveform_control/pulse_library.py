@@ -92,10 +92,15 @@ class SSB_DRAG_pulse(pulse.Pulse):
                 tvals - tc < half)
         deriv_gauss_env = -self.motzoi * (tvals - tc) * gauss_env / self.sigma
 
-        I_mod, Q_mod = apply_modulation(
-            gauss_env, deriv_gauss_env, tvals, self.mod_frequency,
-            phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
-            tval_phaseref=0 if self.phaselock else tc)
+        if self.mod_frequency is not None:
+            I_mod, Q_mod = apply_modulation(
+                gauss_env, deriv_gauss_env, tvals, self.mod_frequency,
+                phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
+                tval_phaseref=0 if self.phaselock else tc)
+        else:
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            I_mod, Q_mod = gauss_env, gauss_env
 
         if channel == self.I_channel:
             return I_mod
@@ -111,9 +116,10 @@ class SSB_DRAG_pulse(pulse.Pulse):
         hashlist += [channel == self.I_channel, self.amplitude, self.sigma]
         hashlist += [self.nr_sigma, self.motzoi, self.mod_frequency]
         phase = self.phase
-        phase += 360 * self.phaselock * self.mod_frequency * (
-                self.algorithm_time() + self.nr_sigma * self.sigma / 2)
-        hashlist += [self.alpha, self.phi_skew, phase]
+        if self.mod_frequency is not None:
+            phase += 360 * self.phaselock * self.mod_frequency * (
+                    self.algorithm_time() + self.nr_sigma * self.sigma / 2)
+            hashlist += [self.alpha, self.phi_skew, phase]
         return hashlist
 
 

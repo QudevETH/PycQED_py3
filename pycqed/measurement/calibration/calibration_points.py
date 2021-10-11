@@ -19,11 +19,18 @@ class CalibrationPoints:
         self.states = states
         default_map = dict(g=['I '], e=["X180 "], f=['X180 ', "X180_ef "])
         self.pulse_label_map = kwargs.get("pulse_label_map", default_map)
+        self.pulse_modifs = kwargs.get('pulse_modifs', None)
 
-    def create_segments(self, operation_dict, pulse_modifs=dict(),
+    def create_segments(self, operation_dict, pulse_modifs=None,
                         segment_prefix='calibration_',
                         **prep_params):
         segments = []
+        if pulse_modifs is None:
+            pulse_modifs = dict()
+        if self.pulse_modifs is not None:
+            pm = deepcopy(self.pulse_modifs)
+            pm.update(pulse_modifs)
+            pulse_modifs = pm
 
         for i, seg_states in enumerate(self.states):
             pulse_list = []
@@ -40,7 +47,12 @@ class CalibrationPoints:
                     if k == 0:
                         pulse['ref_pulse'] = 'segment_start'
                     if len(pulse_modifs) > 0:
-                        pulse = sweep_pulse_params([pulse], pulse_modifs)[0][0]
+                        # The pulse(s) to which the pulse_modifs refer might
+                        # not be present in all calibration segments. We
+                        # thus disable the pulse_not_found_warning.
+                        pulse = sweep_pulse_params(
+                            [pulse], pulse_modifs,
+                            pulse_not_found_warning=False)[0][0]
                         # reset the name as sweep_pulse_params deletes it
                         pulse['name'] = f"{seg_states[j]}_{pulse_name + qbn}_" \
                                         f"{cal_pt_idx}"
