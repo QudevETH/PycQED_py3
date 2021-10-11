@@ -8198,8 +8198,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             data, y_true=y_true, plot_fitting=plot_fitting, **kwargs)
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None):
-        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap)
+    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
+        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap,
+                                              spacing=spacing)
 
     @staticmethod
     def plot_std(mean, cov, ax, n_std=1.0, facecolor='none', **kwargs):
