@@ -670,33 +670,38 @@ class QuantumExperiment(CircuitBuilder):
         sequences), an integer (index of sequence to plot),  or a list of
         integers/str. If strings are in the list, then plots only sequences
         with the corresponding name.
-        :param segments (int, list): index of segments to plot. Plots all
-        segments by default.
-        :param qubits (list): list of qubits to plot
-        :param save (bool): save the figures.
-        :param plot_kwargs: kwargs passed on to segment.plot()
+        :param segments (int, list): Segments to be plotted.
+            If a single index i is provided, then the ith segment will be plot-
+            ted for each sequence in `sequences`. Otherwise a list of list of
+            indices must be provided: the outer list corresponds to each
+            sequence and the inner list to the indices of the segments to plot.
+            E.g. segments=[[0,1],[3]] will plot the 0th and 1rst segment of
+                sequence 0 and the 3d segment of sequence 1.
+            Plots all segments by default.
+        :param qubits (list): list of qubits to plot. Defaults to self.meas_objs
+        :param save (bool): whether or not to save the figures in the
+            measurement folder.
+        :param plot_kwargs: kwargs passed on to segment.plot(). By default,
+            legend=False and channel_map is taken from
+            general.get_channel_map(qubits)
         :return:
         """
         plot_kwargs = deepcopy(plot_kwargs)
         if sequences is None:
             # plot all sequences
             sequences = self.sequences
-        elif isinstance(sequences, int):
-            sequences = [self.sequences[sequences]]
-        elif isinstance(sequences, list):
-            if len(sequences) and isinstance(sequences[0], int):
-                # sequences is a list of indices of sequences to plot
-                sequences = [self.sequences[s] for s in sequences]
-            elif len(sequences) and isinstance(sequences[0], str):
-                # sequences is a list of names of sequences to plot
-                sequences = [[s for s in self.sequences if s.name == seqname]
-                             for seqname in  sequences]
-                sequences = np.ravel(sequences).tolist()
+        # if the provided sequence is not it a list or tuple, make it a list
+        if np.ndim(sequences) == 0:
+            sequences = [sequences]
+        # get sequence objects from sequence name or index
+        sequences = np.ravel([[s for i, s in enumerate(self.sequences)
+                               if i == ind or s.name == ind]
+                              for ind in sequences])
         if qubits is None:
             qubits = self.meas_objs
         plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
                            general.get_channel_map(qubits))))
-        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend',False)))
+        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend', False)))
 
         if segments is None:
             # plot all segments
@@ -705,29 +710,31 @@ class QuantumExperiment(CircuitBuilder):
             # single segment from index
             segments = [[segments] for _ in sequences]
 
+        figs_and_axs = []
         for seq, segs in zip(sequences, segments):
             for s in segs:
                 if isinstance(s, int):
                     s = list(seq.segments.keys())[s]
                 if save:
                     try:
-                        # FIXME: should we load a_tools in qexp? it means each
-                        #  time we reload qexp, we would have to reset the
-                        #  datafolder... For now, current implementation below
-                        #  will work if a_tools is already loaded.
-                        folder = a_tools.get_folder(timestamp=self.timestamp)
+                        from pycqed.analysis import analysis_toolbox as a_tools
+                        folder = a_tools.data_from_time(self.timestamp,
+                                                        folder=self.MC.datadir(),
+                                                        auto_fetch=False)
                     except:
                         log.warning('Could not determine folder of current '
                                     'experiment. Sequence plot will be saved in '
                                     'current directory.')
                         folder = ""
-                    save_kwargs = dict(fname= folder + "/" +
-                                              "_".join((seq.name, s)) + ".png",
+                    import os
+                    save_path = os.path.join(folder,
+                                             "_".join((seq.name, s)) + ".png")
+                    save_kwargs = dict(fname=save_path,
                                        bbox_inches="tight")
                     plot_kwargs.update(dict(save_kwargs=save_kwargs,
                                             savefig=True))
-                seq.segments[s].plot(**plot_kwargs)
-
+                figs_and_axs.append(seq.segments[s].plot(**plot_kwargs))
+        return figs_and_axs
 
 
 
