@@ -1550,13 +1550,14 @@ class SingleQubitGateCalib(CalibBuilder):
                 ef --> '_ef'
                 fh --> '_fh'
         :param prepend_pulse_dicts: (dict) prepended pulses, see
-            prepend_pulses_block
+            block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
         """
 
         # create user-specified prepended pulses (pb)
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                         block_name='prepend')
         # get transition prepended pulses
         tr_prepended_pulses = self.transition_order[
                               :self.transition_order.index(transition_name)]
