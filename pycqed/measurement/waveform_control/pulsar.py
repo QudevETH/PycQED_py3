@@ -1804,6 +1804,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
+            if not self.use_sequence_cache():
+                raise
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
             self.reset_sequence_cache()
