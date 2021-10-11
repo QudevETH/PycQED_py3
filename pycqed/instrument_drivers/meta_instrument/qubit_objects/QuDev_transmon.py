@@ -4279,9 +4279,11 @@ class QuDev_transmon(Qubit):
         :param pulsar: the pulsar object. If None, self.find_instrument is
             used to find an obejct called 'Pulsar'.
         :param datadir: path to the pydata directory. If None,
-            self.find_instrument is used to find an obejct called 'MC' and
+            self.find_instrument is used to find an object called 'MC' and
             the datadir of MC is used.
         """
+        if not self.flux_pulse_channel():
+            return
         pulsar = self.instr_pulsar.get_instr()
         if datadir is None:
             datadir = self.find_instrument('MC').datadir()
