@@ -1464,6 +1464,9 @@ class ZI_base_instrument(Instrument):
             severity = m['severity']
             message  = m['message']
 
+            if severity == 0:
+                log.info(f'{self.devname}: Code {code}: "{message}" ({severity})')
+                continue
             if not raise_exceptions:
                 self._errors[code] = {
                     'count'   : count,
