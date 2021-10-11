@@ -977,7 +977,9 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
 
         self.I_channel = I_channel
         self.Q_channel = Q_channel
-        self.channels = [self.I_channel, self.Q_channel]
+        self.channels = [self.I_channel]
+        if self.Q_channel is not None:
+            self.channels += self.Q_channel
 
         self.phase_lock = kw.pop('phase_lock', False)
         self.length = self.pulse_length + self.buffer_length_start + \
