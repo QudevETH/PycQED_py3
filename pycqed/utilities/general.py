@@ -867,3 +867,22 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     file = open(destination_path + f"\\{filename}", 'a+')
     file.writelines(message)
     file.close()
+
+class TempLogLevel:
+    """
+    With Handler to temporarily change the log level.
+    """
+    LOG_LEVELS = dict(debug=logging.DEBUG, info=logging.INFO,
+                      warning=logging.WARNING, error=logging.ERROR,
+                      critical=logging.CRITICAL, fatal=logging.FATAL)
+
+    def __init__(self, logger, log_level="info"):
+        self.logger = logger
+        self.log_level = logger.level
+        self.temp_log_level = self.LOG_LEVELS.get(log_level, log_level)
+
+    def __enter__(self):
+        self.logger.setLevel(self.temp_log_level)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.logger.setLevel(self.log_level)
