@@ -2565,6 +2565,10 @@ class ReparkingRamsey(Ramsey):
         temp_vals= []
         sweep_param_name = 'Parking voltage'
         nr_volt_points = self.sweep_points.length(1)
+        if nr_volt_points <= 2:
+            raise Exception("Not enough flux voltage points to " +
+                            "fit the parabola.")
+
         self.exp_metadata['current_voltages'] = {}
         for task in self.preprocessed_task_list:
             qb = self.get_qubits(task['qb'])[0][0]
