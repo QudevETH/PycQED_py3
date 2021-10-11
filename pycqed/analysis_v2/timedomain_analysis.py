@@ -6218,6 +6218,15 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self, *args, **kwargs):
+        """
+        This class is different to the other single qubit calib analysis classes
+        (Rabi, Ramsey, QScale, T1).
+        The analysis for an Echo measurement is identical to the T1 analysis
+        if no artificial_detuing was used, and identical to the Ramsey analysis
+        if an artificial_detuning was used. Hence, this class contains the
+        attribute self.echo_analysis which is an instance of either T1 or Ramsey
+        analysis.
+        """
         auto = kwargs.pop('auto', True)
         super().__init__(*args, auto=False, **kwargs)
         if self.options_dict.get('artificial_detuning', None) is not None:
