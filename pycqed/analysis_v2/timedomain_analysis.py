@@ -4923,10 +4923,9 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self, params_dict=None):
+    def extract_data(self):
         super().extract_data()
-        if params_dict is None:
-            params_dict = {}
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
@@ -5249,18 +5248,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiFrequencySweepAnalysis(RabiAnalysis):
 
-    def extract_data(self, params_dict=None):
-        super().extract_data()
-        if params_dict is None:
-            params_dict = {}
-        for qbn in self.qb_names:
-            params_dict[f'drive_ch_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_I_channel'
-            params_dict[f'ge_freq_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_freq'
-        self.raw_data_dict.update(
-            self.get_data_from_timestamp_list(params_dict))
-
     def extract_data(self):
         super().extract_data()
         # Set some default values specific to RabiFrequencySweepAnalysis if the
@@ -5269,6 +5256,16 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         # metadata has been extracted.)
         if self.get_param_value('TwoD', default_value=None) is None:
             self.options_dict['TwoD'] = True
+
+        # Extract additional parameters from the HDF file.
+        params_dict = {}
+        for qbn in self.qb_names:
+            params_dict[f'drive_ch_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_freq'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
@@ -5451,10 +5448,9 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self, params_dict=None):
+    def extract_data(self):
         super().extract_data()
-        if params_dict is None:
-            params_dict = {}
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
@@ -5550,10 +5546,9 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self, params_dict=None):
+    def extract_data(self):
         super().extract_data()
-        if params_dict is None:
-            params_dict = {}
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
@@ -5961,10 +5956,9 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self, params_dict=None):
+    def extract_data(self):
         super().extract_data()
-        if params_dict is None:
-            params_dict = {}
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
@@ -6515,10 +6509,9 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self, params_dict=None):
+    def extract_data(self):
         super().extract_data()
-        if params_dict is None:
-            params_dict = {}
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
