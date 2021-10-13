@@ -2528,42 +2528,40 @@ class DriveAmpCalib(SingleQubitGateCalib):
     qubit specified by the key 'qb' (either name of QuDev_transmon instance)
     i.e., multiple qubit can be measured in parallel.
 
-    This experiment can be run in two ways:
+    This experiment can be run in two modes:
 
     1. The qubit is brought into superposition with a pi-half pulse, after which
     n_pulses pairs of pulses are applied with amplitudes of the first and second
-    pulse in each pair chosen such that the pair implements a rotation of pi.
+    pulse in each pair chosen such that, ideally, the pair implements a rotation
+    of pi. The correct amplitude for the pulse whose amplitude is not fixed by
+    fixed_scaling can be found by sweeping around the expected correct
+    amplitude (see info about sweep points below).
+
+    This mode is enabled by specifying the input parameter fixed_scaling as
+    a fraction of a pi rotation. This number will be used to scale the amplitude
+    of the second pulse in the pair, while that of the first pulse will be
+    scaled by amp_scalings given in sweep points (see below).
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
 
         qb:   |X90|  ---  [ |Rx(phi)| --- |Rx(pi - phi)| ] x n_pulses  ---  |RO|
 
-    Expected sweep points, either global or per task
-     - n_pulses in dimension 0: number of pairs of pulses after the initial
-        pi-half pulse.
-     - amp_scalings in dimension 1: dimensionless fractions of a pi rotation
-        around the x-axis of the Bloch sphere.
-
     2. The qubit is brought into superposition with a pi-half pulse, after which
-    n_pulses * amp_scaling pulses are applied with amplitudes scaled by
-    1/amp_scaling.
-
-    Here amp_scaling MUST be an integer.
+    n_pulses * nr_pulses_pi pulses are applied with amplitudes scaled by
+    amp_scaling.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
 
-        qb: |X90| --- [ |Rx(pi/amp_scaling)| ] x n_pulses x n_pulses_pi --- |RO|
+        qb: |X90| --- [ |Rx(pi/nr_pulses_pi)| ] x n_pulses x n_pulses_pi -- |RO|
 
-    Expected sweep points, either global or per task
+
+    For either mode, expected sweep points, either global or per task
      - n_pulses in dimension 0: number of pairs of pulses after the initial
         pi-half pulse.
-     - amp_scalings in dimension 1:
-        - if n_pulses_pi is specified in kw or task: dimensionless fractions of
-        a pi rotation around the x-axis of the Bloch sphere.
-        - if n_pulses_pi is NOT specified in kw or task: integers implementing
-        rotations of pi/amp_scaling around the x-axis of the Bloch sphere.
+     - amp_scalings in dimension 1: dimensionless fractions of a pi rotation
+        around the x-axis of the Bloch sphere.
 
 
     Idea behind this calibration measurement:
@@ -2590,8 +2588,9 @@ class DriveAmpCalib(SingleQubitGateCalib):
         - n_pulses_pi (see sweep_block docstring)
 
         Moreover, the following keyword arguments are understood:
-        two_pulse_scaling: (bool, default: False) toggles between the two ways
-            of running this experiment explained above.
+        fixed_scaling: (float, default: None) toggles between the two ways
+            of running this experiment explained above by setting the amplitude
+            scaling of one of the pulses in the pair.
     """
     kw_for_sweep_points = {
         'n_pulses': dict(param_name='n_pulses', unit='',
@@ -2605,19 +2604,19 @@ class DriveAmpCalib(SingleQubitGateCalib):
     kw_for_task_keys = ['n_pulses_pi']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 n_pulses=None, amp_scalings=None, **kw):
+                 n_pulses=None, amp_scalings=None, n_pulses_pi=1, **kw):
         try:
             # Define experiment_name and call the parent class __init__
             self.experiment_name = f'Drive_amp_calib'
             if n_pulses is not None:
                 self.experiment_name += f'_{n_pulses}pipulses'
-            n_pulses_pi = kw.get('n_pulses_pi', None)
-            if n_pulses_pi is not None:
+            self.fixed_scaling = kw.get('fixed_scaling', None)
+            if n_pulses_pi is not None and self.fixed_scaling is not None:
                 self.experiment_name += f'_{n_pulses_pi}xpi_over_{n_pulses_pi}'
-            self.two_pulse_scaling = kw.get('two_pulse_scaling', False)
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              n_pulses=n_pulses,
+                             n_pulses_pi=n_pulses_pi,
                              amp_scalings=amp_scalings, **kw)
         except Exception as x:
             self.exception = x
@@ -2637,15 +2636,18 @@ class DriveAmpCalib(SingleQubitGateCalib):
         contains the entries specified by the following keys:
          - 'qb': qubit name
          - 'sweep_points': SweepPoints instance
-         - 'transition_name' (see docstring of parent class. TODO: add it! 090821)
-         - 'n_pulses_pi': (optional) int specifying the number of pulses that
+         - 'transition_name' (see docstring of parent class)
+         - 'n_pulses_pi': int specifying the number of pulses that
          will implement a pi rotation.
-            - If specified, n_pulses * n_pulses_pi identical pulses will be
-             added after the initial pi-half pulse and their amplitudes will be
-             scaled by amp_scaling.
-            - If not specified, n_pulses * amp_scaling identical pulses will be
-             added after the initial pi-half pulse and their amplitudes will be
-             scaled by 1/amp_scaling. amp_scaling must be an integer.
+
+        If self.fixed_scaling is None, n_pulses * n_pulses_pi identical
+        pulses will be added after the initial pi-half pulse and their
+        amplitudes will be scaled by amp_scaling.
+
+        If self.fixed_scaling is specified, n_pulses pairs of X180 pulses will
+        be added after the initial pi-half pulse, where the amplitude of the
+        first pulse is scaled by amp_scaling, and the amplitude of the second
+        scaled by self.fixed_scaling.
 
         :return: instance of Block created with simultaneous_blocks from a list
             of blocks corresponding to the tasks in preprocessed_task_list.
@@ -2668,10 +2670,10 @@ class DriveAmpCalib(SingleQubitGateCalib):
             amp_scaling = sweep_points.get_sweep_params_property(
                 'values', 1)[sp2d_idx]
 
-            if self.two_pulse_scaling:
-                # Scale the amplitude pairs of X180 pulses based on amp_scaling
-                # specified by sp2d_idx.
-                # amp_scaling is not an int
+            if self.fixed_scaling is not None:
+                # Apply pairs of X180 pulses, where the amplitude of the first
+                # pulse is scaled by amp_scaling, and the amplitude of the
+                # second scaled by self.fixed_scaling. (specified by sp2d_idx).
 
                 # Create the pulse list for n_pulses specified by sp1d_idx
                 pulse_list = [f'X90{transition_name} {qb}'] + \
@@ -2683,41 +2685,29 @@ class DriveAmpCalib(SingleQubitGateCalib):
                 # Scale amp of all even pulses after the first by amp_scaling
                 for pulse_dict in drive_calib_block.pulses[1:][0::2]:
                     pulse_dict['amplitude'] *= amp_scaling
-                # Scale amp of all odd pulses after the first by 1-amp_scaling
+                # Scale amp of all odd pulses after the first by fixed_scaling
                 for pulse_dict in drive_calib_block.pulses[1:][1::2]:
-                    pulse_dict['amplitude'] *= (1-amp_scaling)
+                    pulse_dict['amplitude'] *= self.fixed_scaling
             else:
-                # amp_scaling is an int: add n_pulses * amp_scaling X180 pulses
-                # after the initial pi-half pulse, and divide the amplitude of
-                # these X180 pulses by amp_scaling
+                # Apply n_pulses * n_pulses_pi X180 pulses after the initial
+                # pi-half pulse, and scale the amplitude of these X180 pulses
+                # by amp_scaling (specified by sp2d_idx).
 
-                n_pulses_pi = task.get('n_pulses_pi', amp_scaling)
-                scaling = amp_scaling if 'n_pulses_pi' in task \
-                    else 1/amp_scaling
+                n_pulses_pi = task['n_pulses_pi']
                 # Create the pulse list for n_pulses specified by sp1d_idx
-                try:
-                    pulse_list = [f'X90{transition_name} {qb}'] + \
-                                 (n_pulses * n_pulses_pi *
-                                  [f'X180{transition_name} {qb}'])
-                except TypeError as e:
-                    # n_pulses_pi is not an integer
-                    print('amp_scalings (2nd sweep dimension) must '
-                          'be integers when continuous_scaling==True and '
-                          'n_pulses_pi not specified. Please either provide '
-                          'n_pulses_pi or set continuous_scaling==False, '
-                          'or specify amp_scalings as integers.')
-                    raise e
-
+                pulse_list = [f'X90{transition_name} {qb}'] + \
+                             (n_pulses * n_pulses_pi *
+                              [f'X180{transition_name} {qb}'])
                 # Create a block from this list of pulses
                 drive_calib_block = self.block_from_ops(f'pulses_{qb}',
                                                         pulse_list)
                 # Divide amp of all pulses after the first by amp_scaling
                 for pulse_dict in drive_calib_block.pulses[1:]:
-                    pulse_dict['amplitude'] *= scaling
+                    pulse_dict['amplitude'] *= amp_scaling
 
             # Append the final block for this task to parallel_block_list
             parallel_block_list += [self.sequential_blocks(
-                f'drive_calib_{qb}', [prepend_block, drive_calib_block])]
+                f'drive_calib_{qb}', prepend_block + [drive_calib_block])]
 
         return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
