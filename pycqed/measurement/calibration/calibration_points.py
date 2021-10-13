@@ -184,7 +184,7 @@ class CalibrationPoints:
                     f"match: {i} vs {j}"
 
         for i, qbn in enumerate(qb_names):
-            # get unique states in reversed alphabetical order: g, [e, f]
+            # get unique states in the order specified below
             order = {"g": 0, "e": 1, "f": 2, "h": 3}
             unique = list(np.unique(states[qbn]))
             unique.sort(key=lambda s: order[s])
@@ -286,6 +286,8 @@ class CalibrationPoints:
             will generate default states based on for_ef and transition_names.
         :param for_ef: bool specifying whether to add the 'f' state.
             This flag is here for legacy reasons (Steph, 07.10.2020).
+        :param kw: keyword_arguments (to allow pass-through kw even if it
+                    contains entries that are not needed)
         :return: tuple of calibration states or cal_states from the user
         """
         if cal_states == "auto":
