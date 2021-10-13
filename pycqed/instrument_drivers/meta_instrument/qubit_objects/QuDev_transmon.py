@@ -351,12 +351,15 @@ class QuDev_transmon(Qubit):
                                          initial_value=1,
                                          vals=vals.Numbers())
             # coherence times
-            self.add_parameter(f'T1{tn}', label='Qubit relaxation', unit='s',
-                               initial_value=0, parameter_class=ManualParameter)
-            self.add_parameter(f'T2{tn}', label='Qubit dephasing Echo', unit='s',
-                               initial_value=0, parameter_class=ManualParameter)
-            self.add_parameter(f'T2_star{tn}', label='Qubit dephasing', unit='s',
-                               initial_value=0, parameter_class=ManualParameter)
+            self.add_parameter(f'T1{tn}', label=f'{tr_name} relaxation',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2{tn}', label=f'{tr_name} dephasing Echo',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2_star{tn}', label=f'{tr_name} dephasing',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
 
 
         # add qubit spectroscopy parameters
