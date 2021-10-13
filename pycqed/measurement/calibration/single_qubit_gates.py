@@ -1603,8 +1603,8 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
 class Rabi(SingleQubitGateCalibExperiment):
     """
     Rabi measurement for finding the amplitude of a pi-pulse that excites
-    the desired transmon transition. This is a SingleQubitGateCalibExperiment
-    experiment, see docstring there for general information.
+    the desired transmon transition. This is a SingleQubitGateCalibExperiment,
+    see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -1743,7 +1743,7 @@ class Rabi(SingleQubitGateCalibExperiment):
 class Ramsey(SingleQubitGateCalibExperiment):
     """
     Class for running a Ramsey or an Echo measurement.
-    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    This is a SingleQubitGateCalibExperiment, see docstring there
     for general information.
 
     Ramsey measurement for finding the frequency and associated averaged
@@ -2143,7 +2143,7 @@ class ReparkingRamsey(Ramsey):
 class T1(SingleQubitGateCalibExperiment):
     """
     T1 measurement for finding the lifetime (T1) associated with a transmon
-    transition. This is a SingleQubitGateCalibExperiment experiment,
+    transition. This is a SingleQubitGateCalibExperiment,
     see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
@@ -2260,7 +2260,7 @@ class QScale(SingleQubitGateCalibExperiment):
         https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.103.110501
         https://journals.aps.org/pra/abstract/10.1103/PhysRevA.83.012308
 
-    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    This is a SingleQubitGateCalibExperiment, see docstring there
     for general information.
 
     Sequence for each task (for further info and possible parameters of
@@ -2426,7 +2426,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
     """
     In-phase calibration measurement for finding small miscalibrations in the
     pi-pulse amplitude associated with a transmon transition.
-    This is a SingleQubitGateCalibExperiment experiment, see docstring there
+    This is a SingleQubitGateCalibExperiment, see docstring there
     for general information.
 
     Sequence for each task (for further info and possible parameters of
