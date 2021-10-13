@@ -175,11 +175,9 @@ class MultiTaskingExperiment(QuantumExperiment):
             calibration state
         :param cal_states: str or tuple of str; the calibration states
             to measure
-        :param transition_names: str or list of str specifying the name(s) of
-            the transition(s) involved in the measurement.
         :param for_ef: (deprecated) bool indicating whether to measure the
             |f> calibration state for each qubit
-        :param kw: keyword arguments (to allow pass through kw even if it
+        :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
         """
         if for_ef:
