@@ -1726,10 +1726,12 @@ class MeasurementControl(Instrument):
                 inst_snapshot = ins.snapshot()
                 self.store_snapshot_parameters(inst_snapshot,
                                                entry_point=instrument_grp,
-                                               inst_name=iname)
+                                               inst_name=iname,
+                                               instrument=ins)
         numpy.set_printoptions(**opt)
 
-    def store_snapshot_parameters(self, inst_snapshot, entry_point, inst_name):
+    def store_snapshot_parameters(self, inst_snapshot, entry_point, inst_name,
+                                  instrument, missing_in_whitelist=False):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
         If inst_snapshot contains "submodules," a new subgroup of inst_name
@@ -1739,51 +1741,68 @@ class MeasurementControl(Instrument):
         :param entry_point: (hdf5 group.file) location in the nested hdf5
             structure where to write to.
         :param inst_name: (str) name of the instrument whose snapshot is saved
+        :param missing_in_whitelist: (bool) only used in recursive calls to
+            indicate that a submodule/channel is not on the whitelist of
+            its parent (if such a whitelist exists).
         """
 
-        if 'submodules' in inst_snapshot:
+        # get whitelist and blacklist for parameters to store
+        sp_wl = getattr(instrument, '_snapshot_whitelist', None)
+
+        for k in ['submodules', 'channels']:
+            if k not in inst_snapshot:
+                continue
             # store the parameters from the items in submodules, which
             # are snapshots of QCoDeS instruments
-            for key, submod_snapshot in inst_snapshot['submodules'].items():
-                submod_grp = entry_point.create_group(key)
+            for key, submod_snapshot in inst_snapshot[k].items():
+                submod_missing_in_whitelist = missing_in_whitelist
+                if k == 'channels':
+                    subins = [ch for ch in instrument if ch.name == key][0]
+                else:
+                    subins = instrument.submodules[key]
+                if getattr(subins, 'snapshot_exclude', False):
+                    # qcodes does not implement snapshot_exclude for
+                    # submodules and channels, so we implement it here
+                    continue
+                if sp_wl is not None and key not in sp_wl:
+                    # If a whitelist exists, only include submodules/channels
+                    # that are in the snapshot_whitelist
+                    submod_missing_in_whitelist = True
+                if submod_missing_in_whitelist:
+                    # call recursively for parameter checks, but do not write
+                    # to HDF
+                    submod_grp = None
+                else:
+                    submod_grp = entry_point.create_group(key)
                 self.store_snapshot_parameters(
                     submod_snapshot, entry_point=submod_grp, inst_name=
-                    f'{inst_name}.{key}')
-
-        i_name = inst_name.split('.')[-1]  # name of instr/submodule
-        ins = self.station.components.get(i_name, None)  # get instr instance
-        if ins is not None:
-            # get whitelist and blacklist for parameters to store
-            sp_wl = list(getattr(ins, '_snapshot_whitelist', ''))
-            sp_bl = list(getattr(ins, '_snapshot_blacklist', ''))
-        else:
-            sp_wl = []
-            sp_bl = []
+                    f'{inst_name}.{key}', instrument=subins,
+                    missing_in_whitelist=submod_missing_in_whitelist)
 
         if 'parameters' in inst_snapshot:
+            parameter_checks_ins = self.parameter_checks.get(inst_name, {})
             par_snap = inst_snapshot['parameters']
             parameter_list = dict_to_ordered_tuples(par_snap)
             for (p_name, p) in parameter_list:
-                if p_name in sp_bl:
-                    # exclude parameters that are in the snapshot_blacklist
-                    continue
-                if len(sp_wl) and p_name not in sp_wl:
-                    # only include parameters that are in the snapshot_whitelist
-                    continue
-                parameter_checks_ins = self.parameter_checks.get(inst_name, {})
+                param_missing_in_whitelist = missing_in_whitelist
+                if sp_wl is not None and p_name not in sp_wl:
+                    # If a whitelist exists, only include parameters that are
+                    # in the snapshot_whitelist.
+                    param_missing_in_whitelist = True
                 val = repr(p.get('value', ''))
                 if p_name in parameter_checks_ins:
                     try:
                         res = parameter_checks_ins[p_name](p['value'])
-                        if res is not True:
+                        if res != True:  # False or a string (error message)
                             log.warning(
                                 f'Parameter {inst_name}.{p_name} has an '
                                 f'uncommon value: {val}.' +
-                                (f" ({res})" if res is not False else ''))
+                                (f" ({res})" if res != False else ''))
                     except Exception as e:
                         log.warning(f'Could not run parameter check for '
                                     f'{inst_name}.{p_name}: {e}')
-                entry_point.attrs[p_name] = val
+                if not param_missing_in_whitelist:
+                    entry_point.attrs[p_name] = val
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
@@ -2268,18 +2287,50 @@ class KeyboardFinish(KeyboardInterrupt):
     pass
 
 
-def _get_instrument_name_for_parameter_checks(object):
+def _get_instrument_name_for_parameter_checks(object, short_name=None):
     """
     Extracts a string representation of the instrument/submodule name as
     expected for parameter checks in
     MeasurementControl.store_snapshot_parameters.
-    :param object: a qcodes parameter, submodule, or instrument
+    :param object: a qcodes parameter, channel, submodule, or instrument
+    :param short_name: provide the short_name of the object instead of taking
+        it from the object (used in recursive calls of this function)
     :return: (str)
     """
+    def get_short_name():
+        if short_name is not None:
+            return short_name
+        elif hasattr(object, 'short_name'):
+            return object.short_name
+        else:
+            raise AttributeError(
+                f'Could not determine the name of {object}.')
+
     if hasattr(object, 'instrument'):
+        # it is a parameter
         return _get_instrument_name_for_parameter_checks(object.instrument)
-    elif object.parent is not None:
+    elif getattr(object, 'parent', None) is not None:
+        if object.short_name in object.parent.submodules:
+            # it is a submodule, and will appear in the snapshot with
+            # its short_name
+            return _get_instrument_name_for_parameter_checks(
+                object.parent) + '.' + get_short_name()
+        # It might be a channel in a channel list that references the
+        # instrument as parent, but not the channel list.
+        l = [(s, k) for k, s in object.parent.submodules.items()
+             if hasattr(s, '__iter__') and object in s]
+        if len(l):
+            return _get_instrument_name_for_parameter_checks(
+                *l[0]) + '.' + object.name
+        else:
+            raise AttributeError(f'Could not determine the parent of '
+                                 f'{object.name}.')
+    elif hasattr(object, '__iter__') and getattr(
+            object[0], 'parent', None) is not None:
+        # If it is a list and we find the parent via the first element.
+        # A channel list is a submodule and thus appears in the snapshot with
+        # its short_name.
         return _get_instrument_name_for_parameter_checks(
-            object.parent) + '.' + object.name
-    else:
+            object[0].parent) + '.' + get_short_name()
+    else:  # it is an instrument
         return object.name
