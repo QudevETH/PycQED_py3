@@ -1746,7 +1746,11 @@ class MeasurementControl(Instrument):
             its parent (if such a whitelist exists).
         """
 
-        # get whitelist and blacklist for parameters to store
+        # If a whitelist exists, we store only children (submodules, channels,
+        # parameters) that are on the whitelist. Whitelisted submodules and
+        # channels are by default stored including all their children,
+        # except if the submodule/channel again has a whitelist specifying
+        # that only a subset of its children should be stored.
         sp_wl = getattr(instrument, '_snapshot_whitelist', None)
 
         for k in ['submodules', 'channels']:
