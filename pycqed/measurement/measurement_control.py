@@ -1726,21 +1726,21 @@ class MeasurementControl(Instrument):
                 inst_snapshot = ins.snapshot()
                 self.store_snapshot_parameters(inst_snapshot,
                                                entry_point=instrument_grp,
-                                               inst_name=iname,
                                                instrument=ins)
         numpy.set_printoptions(**opt)
 
-    def store_snapshot_parameters(self, inst_snapshot, entry_point, inst_name,
+    def store_snapshot_parameters(self, inst_snapshot, entry_point,
                                   instrument, missing_in_whitelist=False):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
-        If inst_snapshot contains "submodules," a new subgroup of inst_name
-        will be created for each key in "submodules" and the values of the
-        "parameters" entry will be stored.
+        If inst_snapshot contains "submodules," a new subgroup inside the
+        instrument group will be created for each key in "submodules" and the
+        values of the "parameters" entry will be stored.
         :param inst_snapshot: (dict) snapshot of a QCoDeS instrument
         :param entry_point: (hdf5 group.file) location in the nested hdf5
             structure where to write to.
-        :param inst_name: (str) name of the instrument whose snapshot is saved
+        :param instrument: (obj) instrument whose snapshot is saved (or
+            submodule/channel in recursive calls)
         :param missing_in_whitelist: (bool) only used in recursive calls to
             indicate that a submodule/channel is not on the whitelist of
             its parent (if such a whitelist exists).
@@ -1751,6 +1751,8 @@ class MeasurementControl(Instrument):
         # channels are by default stored including all their children,
         # except if the submodule/channel again has a whitelist specifying
         # that only a subset of its children should be stored.
+        # Note that we still have to do parameters checks even for parameters
+        # that are not whitelisted (or whose parent is not whitelisted).
         sp_wl = getattr(instrument, '_snapshot_whitelist', None)
 
         for k in ['submodules', 'channels']:
@@ -1762,12 +1764,16 @@ class MeasurementControl(Instrument):
                 submod_missing_in_whitelist = missing_in_whitelist
                 if k == 'channels':
                     subins = [ch for ch in instrument if ch.name == key][0]
-                else:
+                else:  # submodules
                     subins = instrument.submodules[key]
                 if getattr(subins, 'snapshot_exclude', False):
                     # qcodes does not implement snapshot_exclude for
-                    # submodules and channels, so we implement it here
-                    continue
+                    # submodules and channels, so we implement it here.
+                    # However, we treat it in the same way as submodules/
+                    # channels that are not whitelisted as this will allow us
+                    # to run parameter checks on parameters inside the
+                    # submodules/channel.
+                    submod_missing_in_whitelist = True
                 if sp_wl is not None and key not in sp_wl:
                     # If a whitelist exists, only include submodules/channels
                     # that are in the snapshot_whitelist
@@ -1779,11 +1785,11 @@ class MeasurementControl(Instrument):
                 else:
                     submod_grp = entry_point.create_group(key)
                 self.store_snapshot_parameters(
-                    submod_snapshot, entry_point=submod_grp, inst_name=
-                    f'{inst_name}.{key}', instrument=subins,
+                    submod_snapshot, entry_point=submod_grp, instrument=subins,
                     missing_in_whitelist=submod_missing_in_whitelist)
 
         if 'parameters' in inst_snapshot:
+            inst_name = _get_instrument_name_for_parameter_checks(instrument)
             parameter_checks_ins = self.parameter_checks.get(inst_name, {})
             par_snap = inst_snapshot['parameters']
             parameter_list = dict_to_ordered_tuples(par_snap)
@@ -1807,6 +1813,11 @@ class MeasurementControl(Instrument):
                                     f'{inst_name}.{p_name}: {e}')
                 if not param_missing_in_whitelist:
                     entry_point.attrs[p_name] = val
+            for p_name in parameter_checks_ins:
+                if p_name not in par_snap:
+                    log.warning(f'Could not run parameter check for '
+                                f'{inst_name}.{p_name}: the parameter was not '
+                                f'found in the snapshot.')
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
