@@ -546,11 +546,13 @@ class Device(Instrument):
             if calib is None:
                 calib = [np.identity(len(self.get_qubits()))]
             if rounds == -1:
-                rounds = len(calib)
+                rounds_calib = len(calib)
+            else:
+                rounds_calib = rounds
             xtalk_qbs = self.get_qubits('all' if qubits == 'auto' else qubits)
             if qubits == 'auto':
                 mask = [True] * len(xtalk_qbs)
-                for mtx in calib[:rounds]:
+                for mtx in calib[:rounds_calib]:
                     mask = np.logical_and(mask, np.diag(mtx) != 1)
                 xtalk_qbs = [qb for i, qb in enumerate(xtalk_qbs) if mask[i]]
             if len(xtalk_qbs) == 0:
@@ -558,9 +560,9 @@ class Device(Instrument):
                 # pulsar.flux_crosstalk_cancellation(False)
                 # return
 
-            for i in range(rounds):
+            for i in range(rounds_calib):
                 calib[i] = np.diag(1 / np.diag(calib[i])) @ calib[i]
-            mtx_all = functools.reduce(np.dot, calib[:rounds])
+            mtx_all = functools.reduce(np.dot, calib[:rounds_calib])
             qb_inds = {qb: ind for qb, ind in
                        zip(xtalk_qbs, self.get_qubits(xtalk_qbs, 'ind'))}
             mtx = np.zeros([len(xtalk_qbs)] * 2)
