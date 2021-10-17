@@ -227,12 +227,14 @@ class IndexDetector(Detector_Function):
 
     def get_values(self):
         v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
         for i in self.index:
             v = v[i]
         return v
 
     def acquire_data_point(self):
         v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
         for i in self.index:
             v = v[i]
         return v
