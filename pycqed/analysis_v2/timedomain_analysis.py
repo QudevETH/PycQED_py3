@@ -5173,38 +5173,46 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
             pdd['phase_contrast'][qb] = np.abs(pdd['phase_contrast'][qb])
             pdd['freq_offset'][qb] = pdd['phase_offset'][qb] / 360 / pdd[
                 'target_fluxpulse_length']
-            fr = lmfit.Model(lambda a, f_a=1, f0=0: a * f_a + f0).fit(
+            startval_slope = (pdd['freq_offset'][qb][-1] - pdd['freq_offset'][
+                qb][0]) / (pdd['target_amps'][-1] - pdd['target_amps'][0])
+            startval_offset = pdd['freq_offset'][qb][
+                len(pdd['freq_offset'][qb]) // 2]
+            fr = lmfit.Model(lambda a,
+                                    f_a=startval_slope,
+                                    f0=startval_offset: a * f_a + f0).fit(
                 data=pdd['freq_offset'][qb], a=pdd['target_amps'])
             pdd['freq_offset'][qb] -= fr.best_values['f0']
-
             if not self.skip_qb_freq_fits:
                 if self.vfc_method == 'approx':
                     mpars = self.raw_data_dict[
                         f'{qb}.fit_ge_freq_from_flux_pulse_amp']
-                    freq_idle = fit_mods.Qubit_dac_to_freq(
+                    freq_pulsed_no_crosstalk = fit_mods.Qubit_dac_to_freq(
                         pdd['crosstalk_qubits_amplitudes'].get(qb, 0), **mpars)
-                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_idle
+                    pdd['freq'][qb] = pdd['freq_offset'][
+                                          qb] + freq_pulsed_no_crosstalk
                     mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
                     pdd['flux'][qb] = fit_mods.Qubit_freq_to_dac(
                         pdd['freq'][qb], **mpars)
                 else:
-                    mpars = self.raw_data_dict[
-                        f'{qb}.fit_ge_freq_from_dc_offset']
-                    ratio = self.raw_data_dict[
-                        f'{qb}.flux_amplitude_bias_ratio']
-                    flux_parking = self.raw_data_dict[
-                        f'{qb}.flux_parking']
+                    mpars = self.get_param_value(
+                        f'{qb}.fit_ge_freq_from_dc_offset')
+                    ratio = self.get_param_value(
+                        f'{qb}.flux_amplitude_bias_ratio')
+                    flux_parking = self.get_param_value(
+                        f'{qb}.flux_parking')
                     bias = (mpars['dac_sweet_spot']
                             + mpars['V_per_phi0'] * flux_parking)
                     amp = pdd['crosstalk_qubits_amplitudes'].get(qb, 0)
-                    freq_idle = fit_mods.Qubit_dac_to_freq_res(
+                    freq_pulsed_no_crosstalk = fit_mods.Qubit_dac_to_freq_res(
                         (bias + amp / ratio), **mpars)
-                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_idle
-                    mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
-                    pdd['flux'][qb] = fit_mods.Qubit_freq_to_dac_res(
+                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_pulsed_no_crosstalk
+                    # mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
+                    volt = fit_mods.Qubit_freq_to_dac_res(
                         pdd['freq'][qb], **mpars,
-                        branch='negative' if amp < 0 else 'positive')
-
+                        branch=(bias + amp / ratio))
+                    pdd['flux'][qb] = (volt - mpars['dac_sweet_spot']) \
+                                      / mpars['V_per_phi0']  # convert volt to flux
+                    print(bias, amp, (bias + amp / ratio), pdd['flux'][qb])
         # fit fitted results to linear models
         lin_mod = lmfit.Model(lambda x, a=1, b=0: a*x + b)
         def guess(model, data, x, **kwargs):
