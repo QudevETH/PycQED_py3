@@ -811,6 +811,15 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             result_logging_mode='raw', real_imag=False, single_int_avg=True)
 
+        if hasattr(self.instr_uhf.get_instr().daq, 'scopeModule'):
+            self.scope_fft_det = det.UHFQC_scope_detector(
+                UHFQC=self.instr_uhf.get_instr(),
+                AWG=self.instr_pulsar.get_instr(),
+                fft_mode='fft_power',
+                nr_averages=self.acq_averages(),
+                nr_samples=nr_samples,
+            )
+
     def prepare(self, drive='timedomain'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
@@ -2007,10 +2016,44 @@ class QuDev_transmon(Qubit):
         a = ma.MeasurementAnalysis(plot_args=dict(log=True, marker=''))
         return a
 
-    def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
-                                      initial_stepsize=0.01, trigger_sep=5e-6,
-                                      no_improv_break=50, upload=True,
-                                      plot=True):
+    def measure_drive_mixer_spectrum_fft(self, ro_lo_freq, amplitude=0.5,
+                                         trigger_sep=5e-6):
+        MC = self.instr_mc.get_instr()
+        s = swf.None_Sweep(
+            name='UHF intermediate frequency',
+            parameter_name='UHF intermediate frequency',
+            unit='Hz')
+        drive_pulse = dict(
+            pulse_type='GaussFilteredCosIQPulse',
+            pulse_length=self.acq_length(),
+            ref_point='start',
+            amplitude=amplitude,
+            I_channel=self.ge_I_channel(),
+            Q_channel=self.ge_Q_channel(),
+            mod_frequency=self.ge_mod_freq(),
+            phase_lock=False,
+        )
+        sq.pulse_list_list_seq([[self.get_acq_pars(), drive_pulse]])
+
+        with temporary_value(
+                (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive='timedomain')
+            MC.set_sweep_function(s)
+            MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
+            MC.set_detector_function(self.scope_fft_det)
+            self.instr_pulsar.get_instr().start()
+            MC.run('ge_uc_spectrum' + self.msmt_suffix)
+
+        a = ma.MeasurementAnalysis(plot_args=dict(log=True, marker=''))
+        return a
+
+    def _calibrate_drive_mixer_carrier_common(
+            self, detector_generator, update=True, x0=(0., 0.),
+            initial_stepsize=0.01, trigger_sep=5e-6, no_improv_break=50,
+            upload=True, plot=True):
+
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': x0,
@@ -2035,16 +2078,14 @@ class QuDev_transmon(Qubit):
                             )]])
 
         with temporary_value(
-            (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
-            (self.acq_weights_type, 'SSB'),
-            (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
             self.prepare(drive='timedomain')
-            MC.set_detector_function(det.IndexDetector(
-                self.int_avg_det_spec, 0))
+            MC.set_detector_function(detector_generator())
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
-                mode='adaptive')
+                   mode='adaptive')
 
         a = ma.OptimizationAnalysis(label='drive_carrier_calibration')
         if plot:
@@ -2057,6 +2098,34 @@ class QuDev_transmon(Qubit):
             self.ge_I_offset(ch_1_min)
             self.ge_Q_offset(ch_2_min)
         return ch_1_min, ch_2_min
+
+    def calibrate_drive_mixer_carrier_fft(
+            self, update=True, x0=(0., 0.), initial_stepsize=0.01,
+            trigger_sep=5e-6, no_improv_break=50, upload=True, plot=True):
+
+        def detector_generator(s=self):
+            d = s.scope_fft_det
+            d.AWG = None
+            idx = np.argmin(np.abs(d.get_sweep_vals() -
+                                   np.abs(s.ro_mod_freq())))
+            return det.IndexDetector(det.SumDetector(d), (0, idx))
+
+        return self._calibrate_drive_mixer_carrier_common(
+            detector_generator, update=update, x0=x0,
+            initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
+            no_improv_break=no_improv_break, upload=upload, plot=plot)
+
+    def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
+                                      initial_stepsize=0.01, trigger_sep=5e-6,
+                                      no_improv_break=50, upload=True,
+                                      plot=True):
+        def detector_generator(s=self):
+            return det.IndexDetector(s.int_avg_det_spec, 0)
+
+        return self._calibrate_drive_mixer_carrier_common(
+            detector_generator, update=update, x0=x0,
+            initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
+            no_improv_break=no_improv_break, upload=upload, plot=plot)
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
