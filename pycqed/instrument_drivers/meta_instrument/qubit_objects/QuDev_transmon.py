@@ -468,6 +468,15 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter(op_name, ps_name + '_square_wave',
                                  'square_wave', initial_value=False,
                                  vals=vals.Bool())
+        self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
+                                 '_trans_amplitude', initial_value=0,
+                                 vals=vals.Numbers())
+        self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude2',
+                                 '_trans_amplitude2', initial_value=0,
+                                 vals=vals.Numbers())
+        self.add_pulse_parameter(op_name, ps_name + '_trans_length',
+                                 '_trans_length', initial_value=0,
+                                 vals=vals.Numbers(0))
 
         # dc flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
