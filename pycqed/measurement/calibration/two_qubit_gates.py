@@ -692,8 +692,8 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse.
         :return: block containing the prepended pulses
         """
-        log.warning('Deprecate function name: use CircuitBuilder.'
-                    'block_from_pulse_dicts instead.')
+        log.warning('Deprecate function name prepend_pulses_block: use '
+                    'CircuitBuilder.block_from_pulse_dicts instead.')
 
         return self.block_from_pulse_dicts(prepend_pulse_dicts,
                                            block_name=block_name)
@@ -1495,6 +1495,12 @@ class Chevron(CalibBuilder):
                 # generate an informative task prefix
                 if not 'prefix' in task:
                     task['prefix'] = f"{task['qbc']}{task['qbt']}_"
+                if 'qbr' in kw:
+                    log.warning(
+                        "Chevron: the argument qbr is deprecated and will be "
+                        "ignored. The argument ro_qubits can be used to restrict"
+                        "the readout to a subset of qubits.")
+                    kw.pop('qbr')
 
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 
