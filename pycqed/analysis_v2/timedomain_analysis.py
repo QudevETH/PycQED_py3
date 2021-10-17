@@ -6821,14 +6821,14 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.ramsey_add_pulse_analysis.proc_data_dict[
                     'analysis_params_dict'][qbn]
             self.cross_kerr = self.params_dict_ramsey[
-                                  'exp_decay_'+str(qbn)]['new_qb_freq'] \
+                                  'exp_decay']['new_qb_freq'] \
                             - self.params_dict_add_pulse[
-                                  'exp_decay_'+str(qbn)]['new_qb_freq']
+                                  'exp_decay']['new_qb_freq']
             self.cross_kerr_error = np.sqrt(
                 (self.params_dict_ramsey[
-                    'exp_decay_'+str(qbn)]['new_qb_freq_stderr'])**2 +
+                    'exp_decay']['new_qb_freq_stderr'])**2 +
                 (self.params_dict_add_pulse[
-                    'exp_decay_' + str(qbn)]['new_qb_freq_stderr'])**2)
+                    'exp_decay']['new_qb_freq_stderr'])**2)
 
     def prepare_plots(self):
         self.ramsey_analysis.prepare_plots()
@@ -8120,7 +8120,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 self.get_param_value('cal_points', None, 0))
             self.qb_names = deepcopy(cp.qb_names)
 
-        self.channel_map = self.get_param_value('channel_map', None)
+        self.channel_map = self.get_param_value('channel_map', None,
+                                               index=0)
         if self.channel_map is None:
             # assume same channel map for all timetraces (pick 0th)
             value_names = self.raw_data_dict[0]['value_names']
