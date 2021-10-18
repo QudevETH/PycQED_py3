@@ -785,8 +785,20 @@ def configure_qubit_feedback_params(qubits, for_ef=False):
         if threshs is not None:
             UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
-def get_channel_map(qbs, ge=True, ro=True, flux=True):
-    return {qb.name: ([qb.ge_I_channel(), qb.ge_Q_channel()] if ge else []) +
+def get_channel_map(qbs, drive=True, ro=True, flux=True):
+    """
+    Gets the channel map for qubits `qbs`
+    Args:
+        qbs (list): list of qubit objects
+        drive (bool): whether or not to include drive pulse channel
+        ro (bool): whether or not to include the readout pulse channel
+        flux (bool): whether or not to include the flux pulse channel
+
+    Returns:
+        channel map (dict): keys are qubit names, values are list of channels
+            names.
+    """
+    return {qb.name: ([qb.ge_I_channel(), qb.ge_Q_channel()] if drive else []) +
                      ([qb.ro_I_channel(), qb.ro_Q_channel()] if ro else []) +
                      ([qb.flux_pulse_channel()] if flux else [])
             for qb in qbs}
