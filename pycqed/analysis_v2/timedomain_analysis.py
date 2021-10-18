@@ -295,16 +295,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # creates self.sp
         self.get_sweep_points()
 
-        # add extra parameters from file that children might need
-        self.get_params_from_file()
-
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if numeric_params is None:
-            numeric_params = {}
-        if params_dict is not None:
-            self.raw_data_dict.update(
-                self.get_data_from_timestamp_list(params_dict, numeric_params))
-
     def get_sweep_points(self):
         self.sp = self.get_param_value('sweep_points')
         if self.sp is not None:
@@ -1165,11 +1155,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         return rotated_data_dict, zero_coord, one_coord
 
     def get_transition_name(self, qb_name):
+        """
+        Extracts the transition_name:
+            - first by taking transition_name_input from the task in task_list
+                for qb_name
+            - then from options_dict/metadata
+        If not found in any of the above, it is inferred from data_to_fit.
+        :param qb_name: qubit name
+        :return: string indicating the transition name ("ge", "ef", etc.)
+        """
         task_list = self.get_param_value('task_list')
         trans_name = self.get_param_value('transition_name')
         if task_list is not None:
             task = [t for t in task_list if t['qb'] == qb_name][0]
-            trans_name = task.get('transition_name_input', None)
+            trans_name = task.get('transition_name_input', trans_name)
+
         if trans_name is None:
             if 'h' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'fh'
@@ -5384,15 +5384,18 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            params_dict[f'{trans_name}_amp180_'+qbn] = s+f'.{trans_name}_amp180'
-            params_dict[f'{trans_name}_amp90scale_'+qbn] = s+f'.{trans_name}_amp90_scale'
-        super().get_params_from_file(params_dict, numeric_params)
+            params_dict[f'{trans_name}_amp180_'+qbn] = \
+                s+f'.{trans_name}_amp180'
+            params_dict[f'{trans_name}_amp90scale_'+qbn] = \
+                s+f'.{trans_name}_amp90_scale'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5706,16 +5709,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiFrequencySweepAnalysis(RabiAnalysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
-        for qbn in self.qb_names:
-            params_dict[f'drive_ch_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_I_channel'
-            params_dict[f'ge_freq_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_freq'
-        super().get_params_from_file(params_dict, numeric_params)
-
     def extract_data(self):
         super().extract_data()
         # Set some default values specific to RabiFrequencySweepAnalysis if the
@@ -5724,6 +5717,16 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         # metadata has been extracted.)
         if self.get_param_value('TwoD', default_value=None) is None:
             self.options_dict['TwoD'] = True
+
+        # Extract additional parameters from the HDF file.
+        params_dict = {}
+        for qbn in self.qb_names:
+            params_dict[f'drive_ch_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_freq'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
@@ -5906,17 +5909,16 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_T1_'+qbn] = \
                 s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5950,6 +5952,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
             fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
@@ -6004,16 +6007,15 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         if self.options_dict.get('fit_gaussian_decay', True):
@@ -6094,6 +6096,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
 
             trans_name = self.get_transition_name(qbn)
@@ -6414,17 +6417,16 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_qscale_'+qbn] = \
                 s+f'.{trans_name}_motzoi'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def process_data(self):
         super().process_data()
@@ -6670,6 +6672,15 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self, *args, **kwargs):
+        """
+        This class is different to the other single qubit calib analysis classes
+        (Rabi, Ramsey, QScale, T1).
+        The analysis for an Echo measurement is identical to the T1 analysis
+        if no artificial_detuing was used, and identical to the Ramsey analysis
+        if an artificial_detuning was used. Hence, this class contains the
+        attribute self.echo_analysis which is an instance of either T1 or Ramsey
+        analysis.
+        """
         auto = kwargs.pop('auto', True)
         super().__init__(*args, auto=False, **kwargs)
         if self.options_dict.get('artificial_detuning', None) is not None:
@@ -6958,14 +6969,16 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
+    def extract_data(self):
+        super().extract_data()
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = \
                 s+f'.{trans_name}_amp180'
-        super().get_params_from_file(params_dict, list(params_dict))
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()

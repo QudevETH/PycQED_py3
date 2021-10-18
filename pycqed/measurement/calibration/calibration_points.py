@@ -184,7 +184,7 @@ class CalibrationPoints:
                     f"match: {i} vs {j}"
 
         for i, qbn in enumerate(qb_names):
-            # get unique states in reversed alphabetical order: g, [e, f]
+            # get unique states in the order specified below
             order = {"g": 0, "e": 1, "f": 2, "h": 3}
             unique = list(np.unique(states[qbn]))
             unique.sort(key=lambda s: order[s])
@@ -321,33 +321,20 @@ class CalibrationPoints:
                                  pulse_modifs=first.pulse_modifs)
 
     @staticmethod
-    def guess_cal_states(cal_states, for_ef=False, transition_names='ge', **kw):
+    def guess_cal_states(cal_states, for_ef=False, **kw):
         """
         Generate calibration states to be passed to CalibrationPoints
         :param cal_states: str or list of str with state names. If 'auto', it
             will generate default states based on for_ef and transition_names.
         :param for_ef: bool specifying whether to add the 'f' state.
             This flag is here for legacy reasons (Steph, 07.10.2020).
-        :param transition_names: str or list of str specifying the name(s) of
-            the transition(s) involved in the measurement.
+        :param kw: keyword_arguments (to allow pass-through kw even if it
+                    contains entries that are not needed)
         :return: tuple of calibration states or cal_states from the user
         """
         if cal_states == "auto":
-            state_order = ['g', 'e', 'f', 'h']
-            if isinstance(transition_names, str):
-                transition_names = [transition_names]
-            cal_states_temp = [s for s in ''.join(transition_names)]
+            cal_states = ('g', 'e')
             if for_ef:
-                cal_states_temp += ['f']
-            cal_states = []
-            unique_cs = set()
-            for cs in cal_states_temp:
-                if cs not in unique_cs:
-                    cal_states += [cs]
-                unique_cs.add(cs)
-            cal_states = [s for so in state_order for s in list(cal_states)
-                          if s[0] == so]
-            cal_states = tuple(cal_states)
+                cal_states += ('f',)
         return cal_states
-
 

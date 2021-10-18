@@ -51,8 +51,10 @@ class QuDev_transmon(Qubit):
         compensation_pulse_gaussian_filter_sigma=0,
     )
 
-    def __init__(self, name, **kw):
+    def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
+
+        self.transition_names = transition_names
 
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
@@ -92,24 +94,6 @@ class QuDev_transmon(Qubit):
         self.add_parameter('optimal_acquisition_delay', label='Optimal '
                            'acquisition delay', unit='s', initial_value=0,
                            parameter_class=ManualParameter)
-        self.add_parameter('T1', label='Qubit relaxation', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T1_ef', label='Qubit relaxation', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T1_fh', label='Qubit relaxation', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2', label='Qubit dephasing Echo', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_ef', label='Qubit dephasing Echo', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_fh', label='Qubit dephasing Echo', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_star', label='Qubit dephasing', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_star_ef', label='Qubit dephasing', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_star_fh', label='Qubit dephasing', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('anharmonicity', label='Qubit anharmonicity',
                            unit='Hz', initial_value=0,
                            parameter_class=ManualParameter)
@@ -279,8 +263,6 @@ class QuDev_transmon(Qubit):
                            parameter_class=ManualParameter)
 
         # qubit drive pulse parameters
-        self.add_parameter('ge_freq', label='Qubit drive frequency', unit='Hz',
-                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('ge_lo_power', unit='dBm',
                            parameter_class=ManualParameter,
                            label='Qubit drive pulse mixer LO power')
@@ -315,93 +297,80 @@ class QuDev_transmon(Qubit):
                                  'the same change in flux.',
                            initial_value=None, vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+
         # add drive pulse parameters
-        self.add_operation('X180')
-        self.add_pulse_parameter('X180', 'ge_pulse_type', 'pulse_type',
-                                 initial_value='SSB_DRAG_pulse',
-                                 vals=vals.Enum(
-                                     'SSB_DRAG_pulse',
-                                     'SSB_DRAG_pulse_with_cancellation'
-                                 ))
-        self.add_pulse_parameter('X180', 'ge_I_channel', 'I_channel',
-                                 initial_value=None, vals=vals.Strings())
-        self.add_pulse_parameter('X180', 'ge_Q_channel', 'Q_channel',
-                                 initial_value=None, vals=vals.Strings())
-        self.add_pulse_parameter('X180', 'ge_amp180', 'amplitude',
-                                 initial_value=0.001, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_amp90_scale', 'amp90_scale',
-                                 initial_value=0.5, vals=vals.Numbers(0, 1))
-        self.add_pulse_parameter('X180', 'ge_delay', 'pulse_delay',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_sigma', 'sigma',
-                                 initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_motzoi', 'motzoi',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_mod_freq', 'mod_frequency',
-                                 initial_value=-100e6, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_phi_skew', 'phi_skew',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_alpha', 'alpha',
-                                 initial_value=1, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_X_phase', 'phase',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_cancellation_params',
-                                 'cancellation_params', initial_value={},
-                                 vals=vals.Dict())
+        for tr_name in self.transition_names:
+            self.add_parameter(f'{tr_name}_freq',
+                               label=f'Qubit {tr_name} drive frequency',
+                               unit='Hz', initial_value=0,
+                               parameter_class=ManualParameter)
+            tn = '' if tr_name == 'ge' else f'_{tr_name}'
+            self.add_operation(f'X180{tn}')
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_pulse_type',
+                                     'pulse_type',
+                                     initial_value='SSB_DRAG_pulse',
+                                     vals=vals.Enum(
+                                         'SSB_DRAG_pulse',
+                                         'SSB_DRAG_pulse_with_cancellation'
+                                     ))
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp180',
+                                     'amplitude',
+                                     initial_value=0.001, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp90_scale',
+                                     'amp90_scale',
+                                     initial_value=0.5, vals=vals.Numbers(0, 1))
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_delay',
+                                     'pulse_delay',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_sigma',
+                                     'sigma',
+                                     initial_value=10e-9, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_nr_sigma',
+                                     'nr_sigma',
+                                     initial_value=5, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_motzoi',
+                                     'motzoi',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_X_phase',
+                                     'phase',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}',
+                                     f'{tr_name}_cancellation_params',
+                                     'cancellation_params', initial_value={},
+                                     vals=vals.Dict())
+            if tr_name == 'ge':
+                # The parameters below will be the same for all transitions
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_I_channel',
+                                         'I_channel',
+                                         initial_value=None,
+                                         vals=vals.Strings())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_Q_channel',
+                                         'Q_channel',
+                                         initial_value=None,
+                                         vals=vals.Strings())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_mod_freq',
+                                         'mod_frequency',
+                                         initial_value=-100e6,
+                                         vals=vals.Numbers())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
+                                         'phi_skew',
+                                         initial_value=0,
+                                         vals=vals.Numbers())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
+                                         'alpha',
+                                         initial_value=1,
+                                         vals=vals.Numbers())
+            # coherence times
+            self.add_parameter(f'T1{tn}', label=f'{tr_name} relaxation',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2{tn}', label=f'{tr_name} dephasing Echo',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2_star{tn}', label=f'{tr_name} dephasing',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
 
-        # qubit 2nd excitation drive pulse parameters
-        self.add_parameter('ef_freq', label='Qubit ef drive frequency',
-                           unit='Hz', initial_value=0,
-                           parameter_class=ManualParameter)
-        self.add_operation('X180_ef')
-        self.add_pulse_parameter('X180_ef', 'ef_pulse_type', 'pulse_type',
-                                 initial_value='SSB_DRAG_pulse',
-                                 vals=vals.Enum(
-                                     'SSB_DRAG_pulse',
-                                     'SSB_DRAG_pulse_with_cancellation'
-                                 ))
-        self.add_pulse_parameter('X180_ef', 'ef_amp180', 'amplitude',
-                                 initial_value=0.001, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_amp90_scale', 'amp90_scale',
-                                 initial_value=0.5, vals=vals.Numbers(0, 1))
-        self.add_pulse_parameter('X180_ef', 'ef_delay', 'pulse_delay',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_sigma', 'sigma',
-                                 initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_motzoi', 'motzoi',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_X_phase', 'phase',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_cancellation_params',
-                                 'cancellation_params', initial_value={},
-                                 vals=vals.Dict())
-
-        # qubit 2nd excitation drive pulse parameters
-        self.add_parameter('fh_freq', label='Qubit fh drive frequency',
-                           unit='Hz', initial_value=0,
-                           parameter_class=ManualParameter)
-        self.add_operation('X180_fh')
-        self.add_pulse_parameter('X180_fh', 'fh_pulse_type', 'pulse_type',
-                                 initial_value='SSB_DRAG_pulse',
-                                 vals=vals.Enum('SSB_DRAG_pulse'))
-        self.add_pulse_parameter('X180_fh', 'fh_amp180', 'amplitude',
-                                 initial_value=0.001, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_fh', 'fh_amp90_scale', 'amp90_scale',
-                                 initial_value=0.5, vals=vals.Numbers(0, 1))
-        self.add_pulse_parameter('X180_fh', 'fh_delay', 'pulse_delay',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_fh', 'fh_sigma', 'sigma',
-                                 initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_fh', 'fh_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_fh', 'fh_motzoi', 'motzoi',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_fh', 'fh_X_phase', 'phase',
-                                 initial_value=0, vals=vals.Numbers())
 
         # add qubit spectroscopy parameters
         self.add_parameter('spec_power', unit='dBm', initial_value=-20,
@@ -1049,13 +1018,14 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()['Acq ' + self.name]
 
     def get_ge_pars(self):
-        return self.get_operation_dict()['X180 ' + self.name]
+        return self.get_drive_pars('ge')
 
     def get_ef_pars(self):
-        return self.get_operation_dict()['X180_ef ' + self.name]
+        return self.get_drive_pars('ef')
 
-    def get_fh_pars(self):
-        return self.get_operation_dict()['X180_fh ' + self.name]
+    def get_drive_pars(self, transition_name):
+        tn = '' if transition_name == 'ge' else f'_{transition_name}'
+        return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
         if operation_dict is None:
@@ -1063,54 +1033,36 @@ class QuDev_transmon(Qubit):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
         operation_dict['RO ' + self.name]['operation_type'] = 'RO'
-        operation_dict['X180 ' + self.name]['operation_type'] = 'MW'
-        operation_dict['X180_ef ' + self.name]['operation_type'] = 'MW'
-        operation_dict['X180_fh ' + self.name]['operation_type'] = 'MW'
-        operation_dict['X180 ' + self.name]['basis'] = self.name
-        operation_dict['X180_ef ' + self.name]['basis'] = self.name + '_ef'
-        operation_dict['X180_fh ' + self.name]['basis'] = self.name + '_fh'
-        operation_dict['X180_ef ' + self.name]['I_channel'] = \
-            operation_dict['X180 ' + self.name]['I_channel']
-        operation_dict['X180_fh ' + self.name]['I_channel'] = \
-            operation_dict['X180 ' + self.name]['I_channel']
-        operation_dict['X180_ef ' + self.name]['Q_channel'] = \
-            operation_dict['X180 ' + self.name]['Q_channel']
-        operation_dict['X180_fh ' + self.name]['Q_channel'] = \
-            operation_dict['X180 ' + self.name]['Q_channel']
-        operation_dict['X180_ef ' + self.name]['phi_skew'] = \
-            operation_dict['X180 ' + self.name]['phi_skew']
-        operation_dict['X180_fh ' + self.name]['phi_skew'] = \
-            operation_dict['X180 ' + self.name]['phi_skew']
-        operation_dict['X180_ef ' + self.name]['alpha'] = \
-            operation_dict['X180 ' + self.name]['alpha']
-        operation_dict['X180_fh ' + self.name]['alpha'] = \
-            operation_dict['X180 ' + self.name]['alpha']
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0
         operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
-        if self.ef_freq() == 0:
-            operation_dict['X180_ef ' + self.name]['mod_frequency'] = None
-        else:
-            operation_dict['X180_ef ' + self.name]['mod_frequency'] = \
-                self.ef_freq() - self.ge_freq() + self.ge_mod_freq()
+        for tr_name in self.transition_names:
+            tn = '' if tr_name == 'ge' else f'_{tr_name}'
+            operation_dict[f'X180{tn} ' + self.name]['basis'] = self.name + tn
+            operation_dict[f'X180{tn} ' + self.name]['operation_type'] = 'MW'
+            if tr_name != 'ge':
+                operation_dict[f'X180{tn} ' + self.name]['I_channel'] = \
+                    operation_dict['X180 ' + self.name]['I_channel']
+                operation_dict[f'X180{tn} ' + self.name]['Q_channel'] = \
+                    operation_dict['X180 ' + self.name]['Q_channel']
+                operation_dict[f'X180{tn} ' + self.name]['phi_skew'] = \
+                    operation_dict['X180 ' + self.name]['phi_skew']
+                operation_dict[f'X180{tn} ' + self.name]['alpha'] = \
+                    operation_dict['X180 ' + self.name]['alpha']
+                if self.get(f'{tr_name}_freq') == 0:
+                    operation_dict[f'X180{tn} ' + self.name][
+                        'mod_frequency'] = None
+                else:
+                    operation_dict['X180_ef ' + self.name][
+                        'mod_frequency'] = self.get(f'{tr_name}_freq') - \
+                                           self.ge_freq() + self.ge_mod_freq()
+            operation_dict.update(add_suffix_to_dict_keys(
+                sq.get_pulse_dict_from_pars(
+                    operation_dict[f'X180{tn} ' + self.name]),
+                f'{tn} ' + self.name))
 
-        if self.fh_freq() == 0:
-            operation_dict['X180_fh ' + self.name]['mod_frequency'] = None
-        else:
-            operation_dict['X180_fh ' + self.name]['mod_frequency'] = \
-                self.fh_freq() - self.ge_freq() + self.ge_mod_freq()
-
-        operation_dict.update(add_suffix_to_dict_keys(
-            sq.get_pulse_dict_from_pars(
-                operation_dict['X180 ' + self.name]), ' ' + self.name))
-        operation_dict.update(add_suffix_to_dict_keys(
-            sq.get_pulse_dict_from_pars(
-                operation_dict['X180_ef ' + self.name]), '_ef ' + self.name))
-        operation_dict.update(add_suffix_to_dict_keys(
-            sq.get_pulse_dict_from_pars(
-                operation_dict['X180_fh ' + self.name]), '_fh ' + self.name))
         if np.ndim(self.ro_freq()) != 0:
             delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
             mods = [self.ro_mod_freq() + d for d in delta_freqs]
