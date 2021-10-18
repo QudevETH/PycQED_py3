@@ -662,23 +662,27 @@ class QuantumExperiment(CircuitBuilder):
             raise e
 
 
-    def plot(self, sequences=None, segments=None, qubits=None,
+    def plot(self, sequences=0, segments=0, qubits=None,
              save=False, **plot_kwargs):
         """
         Plots (a subset of) sequences / segments of the QuantumExperiment
-        :param sequences (int, list): sequences to plot. Can be None (plot all
-        sequences), an integer (index of sequence to plot),  or a list of
+        :param sequences (int, list, "all"): sequences to plot. Can be "all"
+        (plot all sequences),
+        an integer (index of sequence to plot),  or a list of
         integers/str. If strings are in the list, then plots only sequences
         with the corresponding name.
-        :param segments (int, list): Segments to be plotted.
+        :param segments (int, list, "all"): Segments to be plotted.
             If a single index i is provided, then the ith segment will be plot-
             ted for each sequence in `sequences`. Otherwise a list of list of
             indices must be provided: the outer list corresponds to each
             sequence and the inner list to the indices of the segments to plot.
-            E.g. segments=[[0,1],[3]] will plot the 0th and 1rst segment of
-                sequence 0 and the 3d segment of sequence 1.
-            Plots all segments by default.
-        :param qubits (list): list of qubits to plot. Defaults to self.meas_objs
+            E.g. segments=[[0,1],[3]] will plot segment 0 and 1 of
+                sequence 0 and segment 3 of sequence 1.
+            If the string 'all' is provided, then all segments are plotted.
+            Plots segment 0 by default.
+        :param qubits (list): list of qubits to plot.
+            Defaults to self.meas_objs. Qubits can be specified as qubit names
+            or qubit objects.
         :param save (bool): whether or not to save the figures in the
             measurement folder.
         :param plot_kwargs: kwargs passed on to segment.plot(). By default,
@@ -687,7 +691,7 @@ class QuantumExperiment(CircuitBuilder):
         :return:
         """
         plot_kwargs = deepcopy(plot_kwargs)
-        if sequences is None:
+        if sequences == "all":
             # plot all sequences
             sequences = self.sequences
         # if the provided sequence is not it a list or tuple, make it a list
@@ -699,11 +703,12 @@ class QuantumExperiment(CircuitBuilder):
                               for ind in sequences])
         if qubits is None:
             qubits = self.meas_objs
+        qubits, _ = self.get_qubits(qubits) # get qubit objects
         plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
                            general.get_channel_map(qubits))))
         plot_kwargs.update(dict(legend=plot_kwargs.pop('legend', False)))
 
-        if segments is None:
+        if segments == "all":
             # plot all segments
             segments = [range(len(seq.segments)) for seq in sequences]
         elif isinstance(segments, int):
@@ -713,8 +718,7 @@ class QuantumExperiment(CircuitBuilder):
         figs_and_axs = []
         for seq, segs in zip(sequences, segments):
             for s in segs:
-                if isinstance(s, int):
-                    s = list(seq.segments.keys())[s]
+                s = list(seq.segments.keys())[s]
                 if save:
                     try:
                         from pycqed.analysis import analysis_toolbox as a_tools
@@ -734,7 +738,8 @@ class QuantumExperiment(CircuitBuilder):
                     plot_kwargs.update(dict(save_kwargs=save_kwargs,
                                             savefig=True))
                 figs_and_axs.append(seq.segments[s].plot(**plot_kwargs))
-        return figs_and_axs
+        # avoid returning a list of Nones (if show_and_close is True)
+        return [v for v in figs_and_axs if v is not None] or None
 
 
 
