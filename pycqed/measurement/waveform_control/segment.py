@@ -1269,7 +1269,7 @@ class Segment:
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
              show_and_close=True, col_ind=0, normalized_amplitudes=True,
-             save_kwargs=None):
+             save_kwargs=None, figtitle_kwargs=None, sharex=True):
         """
         Plots a segment. Can only be done if the segment can be resolved.
         :param instruments (list): instruments for which pulses have to be
@@ -1300,6 +1300,9 @@ class Segment:
             (default: True)
         :param save_kwargs (dict): save kwargs passed on to fig.savefig if
         "savefig" is True.
+        :param figtitle_kwargs (dict): figure.title kwargs passed on to fig.suptitle if
+        not None
+        :param sharex (bool): whether the xaxis is shared between the subfigures or not
         :return: The figure and axes objects if show_and_close is False,
             otherwise no return value.
         """
@@ -1328,7 +1331,7 @@ class Segment:
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
-                fig, ax = plt.subplots(nrows=n_instruments, sharex=True,
+                fig, ax = plt.subplots(nrows=n_instruments, sharex=sharex,
                                        squeeze=False,
                                        figsize=(16, n_instruments * 3))
             if prop_cycle is not None:
@@ -1399,6 +1402,10 @@ class Segment:
                 else:
                     a.set_ylabel('Voltage (V)')
             ax[-1, col_ind].set_xlabel('time ($\mu$s)')
+            if figtitle_kwargs:
+                fig.suptitle(f'{self.name}', **figtitle_kwargs)
+            else:
+                fig.suptitle(f'{self.name}', y=1.01)
             fig.suptitle(f'{self.name}', y=1.01)
             fig.align_ylabels()
             plt.tight_layout()
