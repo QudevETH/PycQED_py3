@@ -2562,7 +2562,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
                           qubit.name]['corrected_amp'])
 
 
-class DriveAmpCalib(SingleQubitGateCalib):
+class DriveAmpCalib(SingleQubitGateCalibExperiment):
     """
     Calibration measurement for the qubit drive amplitude that makes use of
     error amplification from application of N subsequent pulses.
