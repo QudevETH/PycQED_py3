@@ -25,7 +25,7 @@ builtins.__sphinx_build__ = True
 # -- Project information -----------------------------------------------------
 
 project = 'PycQED'
-copyright = '2021, Qudev'
+copyright = '2021, QuDev'
 
 # -- General configuration ---------------------------------------------------
 
