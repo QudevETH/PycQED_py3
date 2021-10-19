@@ -39,7 +39,7 @@ conda activate pycqed36
 # Update pip within the virtual environment
 python -m pip install --upgrade pip
 
-# Installed the required packages for the repository
+# Install the required packages for the repository
 pip install -r requirements.txt
 
 # Only on measurement PCs where the NI DAQmx package is installed

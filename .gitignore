@@ -113,7 +113,7 @@ $RECYCLE.BIN/
 
 # Pycqed specific files
 # ======================
-# TODO: These exclusion rules should more specific.
+# TODO: These exclusion rules should be more specific.
 
 # code generated qasm files
 *.qasm

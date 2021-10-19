@@ -25,9 +25,7 @@ builtins.__sphinx_build__ = True
 # -- Project information -----------------------------------------------------
 
 project = 'PycQED'
-copyright = '2021, Ants Remm, Christoph Hellings, Stefania Balasiu, Nathan Lacroix'
-author = 'Ants Remm, Christoph Hellings, Stefania Balasiu, Nathan Lacroix'
-
+copyright = '2021, Qudev'
 
 # -- General configuration ---------------------------------------------------
 
