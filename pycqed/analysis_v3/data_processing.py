@@ -1386,17 +1386,34 @@ def calculate_flat_multiqubit_shots(data_dict, keys_in, keys_out=None,
 
     # Calculate flat multiqubit shots
     # e.g. [gg, ge, gf, eg, ee, ef, fg, fe, ff] for two qubits
+    # Use the Einstein summation function numpy.einsum, which, when reshaped,
+    # implements a Kronecker product of a set of arrays.
+
+    # First create the subscripts for summation string
+    # e.g. 'na,nb->nab' for 2 arrays (2 qubits),
+    # or 'na,nb,nc->nabc' for 3 arrays (3 qubits)
+    # Define the letter of the alphabet
     alphabet = list(map(chr, range(97, 123)))
+    # Create the comma-separated string on the left hand side of "->"
     s = ','.join(['n'+alphabet[i] for i in range(len(meas_obj_names))])
+    # Append "->" + the string on the right hand side of it
     s += '->n'+''.join([alphabet[i] for i in range(len(meas_obj_names))])
+    # Create the list of arrays to be Einstein-summed
     if do_preselection:
+        # Exclude preselection shots: keep every other second shot
         data_arr_list = [ps[mobjn].T[1::2][list(presel_mask)]
                          for mobjn in meas_obj_names]
     else:
+        # Take all shots
         data_arr_list = [ps[mobjn].T[list(presel_mask)]
                          for mobjn in meas_obj_names]
+    # Perform Einstein summation. The output will have shape
+    # (len(data_arr_list), np.sqrt(nr_states**n), np.sqrt(nr_states**n))
+    # with n = len(meas_obj_names), so we need to reshape it to the final shape
+    # (len(data_arr_list), nr_states**n).
     ps_flat = np.einsum(s, *data_arr_list).reshape(data_arr_list[0].shape[0], -1)
 
+    # Add ps_flat to data_dict
     if keys_out is None:
         hlp_mod.add_param(
             f'{",".join(meas_obj_names)}.calculate_flat_multiqubit_shots',

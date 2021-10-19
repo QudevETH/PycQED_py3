@@ -802,6 +802,18 @@ def find_symmetry_index(data):
     return np.argmax(corr), corr
 
 
+def get_pycqed_appdata_dir():
+    """
+    Returns the path to the pycqed application data dir.
+    """
+    if os.name == 'nt':
+        path = os.path.expandvars(r'%LOCALAPPDATA%\pycqed')
+    else:
+        path = os.path.expanduser('~/.pycqed')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def raise_warning_image(destination_path, warning_image_path=None):
     """
     Copy the image specified by warning_image_path to the folder specified by

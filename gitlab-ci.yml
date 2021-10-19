@@ -1,0 +1,35 @@
+# Variables set in the GitLab UI are not passed down to service containers.
+variables:
+  QUDEV_DOC_PRIVATE_SSH_KEY: $QUDEV_DOC_PRIVATE_SSH_KEY
+
+image: python:3.6-buster
+
+before_script:
+  - python -m pip install --upgrade pip
+  - pip install -r requirements.txt
+  # This is necessary to be able to copy the doc via SSH
+  # Install ssh-agent
+  - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )'
+  - eval $(ssh-agent -s)
+
+  # Add the SSH key stored in QUDEV_DOC_PRIVATE_SSH_KEY variable
+  - echo "$QUDEV_DOC_PRIVATE_SSH_KEY" | ssh-add -
+
+  # Configure SSH
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - ssh-keyscan gitlab.ethz.ch/qudev >> ~/.ssh/known_hosts
+  - ssh-keyscan login.phys.ethz.ch >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+
+# Build the documentation, and copy it to the QuDev documentation webshare
+pages:
+  script:
+    - cd docs
+    - make html
+    # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
+    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
+    - ssh -v wwwqudevdoc@login.phys.ethz.ch "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh -v wwwqudevdoc@login.phys.ethz.ch "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r ./build/html/* "wwwqudevdoc@login.phys.ethz.ch:public/$DOC_UPLOAD_FOLDER"
+    - echo "Documentation accessible at https://documentation.qudev.phys.ethz.ch/$DOC_UPLOAD_FOLDER/index.html"

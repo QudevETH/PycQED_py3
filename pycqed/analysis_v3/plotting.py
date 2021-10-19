@@ -39,6 +39,22 @@ def default_figure_height(figure_width):
     return figure_width*2/(1 + np.sqrt(5))
 
 
+def legend_unique_labels(ax, **kwargs):
+    '''
+    Generates a legend without duplicate labels.
+    Args:
+        ax: matplotlib axis.
+        **kwargs: keyword arguments passed to ax.legend()
+
+    Returns:
+
+    '''
+    handles, labels = ax.get_legend_handles_labels()
+    unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels))
+              if l not in labels[:i]]
+    return ax.legend(*zip(*unique), **kwargs)
+
+
 def get_default_plot_params(set_params=True, figure_width='1col',
                             figure_height=None, params=None, **kw):
     """

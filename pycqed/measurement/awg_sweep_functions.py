@@ -11,6 +11,7 @@ from pycqed.measurement.waveform_control import pulsar as ps
 
 import time
 
+log = logging.getLogger(__name__)
 
 class File(swf.Hard_Sweep):
 
@@ -178,6 +179,10 @@ class SegmentSoftSweep(swf.Soft_Sweep):
         if channels_to_upload == 'all':
             self.awgs_to_upload = 'all'
         else:
+            log.warning('SegmentSoftSweep: reducing upload overhead manually '
+                        'with channels_to_upload is deprecated. Set '
+                        'pulsar.use_sequence_cache to True for automatic '
+                        'reduction of upload overhead.')
             pulsar = ps.Pulsar.get_instance()
             self.awgs_to_upload = set([pulsar.get(f'{ch}_awg')
                                             for ch in channels_to_upload])
@@ -443,76 +448,3 @@ class Ramsey_decoupling_swf(swf.Hard_Sweep):
                           cal_points=self.cal_points,
                           nr_echo_pulses=self.nr_echo_pulses,
                           cpmg_scheme=self.cpmg_scheme)
-
-
-class CZ_bleed_through_phase_hard_sweep(swf.Hard_Sweep):
-    def __init__(self, qb_name, CZ_pulse_name, CZ_separation, operation_dict,
-                 oneCZ_msmt=False, verbose=False, upload=True, nr_cz_gates=1,
-                 return_seq=False, cal_points=True):
-        super().__init__()
-        self.qb_name = qb_name
-        self.CZ_pulse_name = CZ_pulse_name
-        self.CZ_separation = CZ_separation
-        self.oneCZ_msmt = oneCZ_msmt
-        self.nr_cz_gates = nr_cz_gates
-        self.operation_dict = operation_dict
-        self.verbose = verbose
-        self.upload = upload
-        self.return_seq = return_seq
-        self.cal_points = cal_points
-
-        self.name = 'CZ_bleed_through_phase'
-        self.parameter_name = 'theta'
-        self.unit = 'rad'
-
-    def prepare(self, upload_all=True, **kw):
-        if self.upload:
-            fsqs.cz_bleed_through_phase_seq(
-                phases=self.sweep_points,
-                qb_name=self.qb_name,
-                CZ_pulse_name=self.CZ_pulse_name,
-                CZ_separation=self.CZ_separation,
-                oneCZ_msmt=self.oneCZ_msmt,
-                nr_cz_gates=self.nr_cz_gates,
-                operation_dict=self.operation_dict,
-                verbose=self.verbose,
-                upload=self.upload,
-                return_seq=self.return_seq,
-                upload_all=upload_all,
-                cal_points=self.cal_points)
-
-
-class CZ_bleed_through_separation_time_soft_sweep(swf.Soft_Sweep):
-    def __init__(self, hard_sweep, upload=True):
-        super().__init__()
-        self.hard_sweep = hard_sweep
-        self.upload = upload
-        self.is_first_sweeppoint = True
-        self.name = 'CZ_bleed_through_separation_time'
-        self.parameter_name = 't_sep'
-        self.unit = 's'
-
-    def set_parameter(self, val):
-        self.hard_sweep.CZ_separation = val
-        self.hard_sweep.upload = self.upload
-        # self.hard_sweep.prepare(upload_all=self.is_first_sweeppoint)
-        self.hard_sweep.prepare(upload_all=True)
-        self.is_first_sweeppoint = False
-
-
-class CZ_bleed_through_nr_cz_gates_soft_sweep(swf.Soft_Sweep):
-    def __init__(self, hard_sweep, upload=True):
-        super().__init__()
-        self.hard_sweep = hard_sweep
-        self.upload = upload
-        self.is_first_sweeppoint = True
-        self.name = 'CZ_bleed_through_nr_cz_gates'
-        self.parameter_name = 'Nr. CZ gates'
-        self.unit = '#'
-
-    def set_parameter(self, val):
-        self.hard_sweep.nr_cz_gates = val
-        self.hard_sweep.upload = self.upload
-        # self.hard_sweep.prepare(upload_all=self.is_first_sweeppoint)
-        self.hard_sweep.prepare(upload_all=True)
-        self.is_first_sweeppoint = False
