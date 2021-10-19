@@ -530,6 +530,28 @@ class Device(Instrument):
             awg.set(f'sigouts_{chid}_delay', v)
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
+        """
+        Configure flux crosstalk cancellation in pulsar based on the
+        calibrations stored in the qcodes parameter flux_crosstalk_calibs.
+        For each stored calibration, a crosstalk cancellation matrix is
+        generated and stored to pulsar's flux_crosstalk_cancellation_mtx dict.
+
+        Note: if a single unnamed calibration is stored in the qcodes
+        parameter flux_crosstalk_calibs (old format), the qcodes parameter
+        is updated to the new format by storing the single calibration as
+        the 'default' calibration.
+
+        :param qubits: (str, list) the qubits for which the cancellation
+            should be configure, see get_qubits for possible input formats.
+            In addition, the option 'auto' is understood, in which case the
+            function detects which qubits have been included in the
+            characterization measurements (by checking which diagonal
+            entries of the crosstalk matrix are not exactly equal to 1).
+            Default: 'auto'
+        :param rounds: (int) the number of calibration rounds to be used as
+            a basis for calculating the cancellation matrix, or -1 if all
+            available round should be used. Default: -1
+        """
         # convert values from old format
         if self.flux_crosstalk_calibs() is not None and \
                 not isinstance(self.flux_crosstalk_calibs(), dict):
@@ -584,6 +606,22 @@ class Device(Instrument):
     def load_crosstalk_measurements(self, timestamps, round_ind=0,
                                     extract_only=True, options_dict=None,
                                     calibration_key='default'):
+        """
+        Load results of flux crosstalk calibration measurements and store
+        them in the qcodes parameter flux_crosstalk_calibs.
+
+        :param timestamps: (list of str) timestamps of the measurements to
+            be loaded.
+        :param round_ind: (int) the index of the calibration round to which
+            the measurement belong. Default: 0
+        :param extract_only: (bool) do not create figures while analyzing the
+            the given timestamps (to reduce processing time, useful if
+            figures have already been created before). Default: True
+        :param options_dict: (dict or None) options_dict to be passed to
+            FluxlineCrosstalkAnalysis. Default: None
+        :param calibration_key: (str) a name to identify the loaded
+            calibration. Default: 'default'
+        """
         if options_dict is None:
             options_dict = {}
         if 'TwoD' not in options_dict:
@@ -619,6 +657,25 @@ class Device(Instrument):
     def plot_flux_crosstalk_matrix(self, qubits='all', round_ind=0, unit='m',
                                    vmax=None, show_and_close=False,
                                    calibration_key='default'):
+        """
+        Visualize stored flux crosstalk calibration measurements as a matrix.
+
+        :param qubits: (str, list) the qubits to be included, see get_qubits
+            for possible input formats. Default: 'all'
+        :param round_ind: (int) the index of the calibration round to be
+            shown. Default: 0
+        :param unit: (str) unit of the flux coupling, where  allowed values
+            are '' (Phi_0/V), 'c' (centi Phi_0/V), 'm' (milli Phi_0/V),
+            'u' (micro Phi_0/V). Default: 'm'
+        :param vmax: (float) maximal value of the colormap of the flux
+            coupling. Default: 1 if unit is '', 4 if unit is 'c' or 'm',
+            100 if unit is 'u'.
+        :param show_and_close: (bool) whether the figure should be shown and
+            closed (True) or whether the figure handle should be returned
+            (False). Default: False
+        :param calibration_key: (str) an identifier of the stored
+            calibration that should be plotted. Default: 'default'
+        """
         qubits = self.get_qubits(qubits)
         qb_inds = self.get_qubits(qubits, return_type='ind')
         if unit not in ['', 'c', 'm', 'u', None]:
