@@ -5212,7 +5212,6 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         branch=(bias + amp / ratio))
                     pdd['flux'][qb] = (volt - mpars['dac_sweet_spot']) \
                                       / mpars['V_per_phi0']  # convert volt to flux
-                    print(bias, amp, (bias + amp / ratio), pdd['flux'][qb])
         # fit fitted results to linear models
         lin_mod = lmfit.Model(lambda x, a=1, b=0: a*x + b)
         def guess(model, data, x, **kwargs):
