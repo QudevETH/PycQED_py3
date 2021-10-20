@@ -663,8 +663,8 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse.
         :return: block containing the prepended pulses
         """
-        log.warning('Deprecate function name: use CircuitBuilder.'
-                    'block_from_pulse_dicts instead.')
+        log.warning('Deprecate function name prepend_pulses_block: use '
+                    'CircuitBuilder.block_from_pulse_dicts instead.')
 
         return self.block_from_pulse_dicts(prepend_pulse_dicts,
                                            block_name=block_name)
