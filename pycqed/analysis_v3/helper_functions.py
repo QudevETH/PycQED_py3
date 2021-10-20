@@ -188,6 +188,46 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
     return d['instr_param_val']
 
 
+def get_clf_params_from_hdf_file(timestamp, meas_obj_names, for_ge=True,
+                                 **params):
+    """
+    Extracts the acquistion classifier parameters for the meas_obj_names from
+    an HDF file.
+    First tries to take them from the Analysis group (timestamp corresponds to
+    an ssro calibration measurement). If a key error is raised, it will take
+    them from the qubit parameter acq_classifier_params.
+    :param timestamp: timestamp string
+    :param meas_obj_names: list of measured object names
+    :param for_ge: flag indicating whether to ignore the f-level classification
+        (sets means to 1000 for the f-level)
+    :param params: keyword arguments passed to get_params_from_hdf_file
+    :return: dict with meas_obj_names as keys and classifier params as values
+    """
+
+    try:
+        params_dict = {}
+        params_dict.update({f'{qbn}':
+                                f'Analysis.Processed data.analysis_params.'
+                                f'classifier_params.{qbn}'
+                            for qbn in meas_obj_names})
+        classifier_params = get_params_from_hdf_file(
+            {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
+    except KeyError:
+        params_dict = {}
+        params_dict.update({f'{qbn}':
+                                f'Instrument settings.{qbn}.'
+                                f'acq_classifier_params'
+                            for qbn in meas_obj_names})
+        classifier_params = get_params_from_hdf_file(
+            {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
+
+    if for_ge:
+        for qbn in classifier_params:
+            classifier_params[qbn]['means_'][2, :] = [1000, 1000]
+
+    return classifier_params
+
+
 def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
                              add_param_method=None, folder=None, **params):
     """

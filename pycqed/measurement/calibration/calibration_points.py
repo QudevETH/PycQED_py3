@@ -17,7 +17,8 @@ class CalibrationPoints:
     def __init__(self, qb_names, states, **kwargs):
         self.qb_names = qb_names
         self.states = states
-        default_map = dict(g=['I '], e=["X180 "], f=['X180 ', "X180_ef "])
+        default_map = dict(g=['I '], e=["X180 "], f=['X180 ', "X180_ef "],
+                           h=['X180 ', "X180_ef ", "X180_fh "])
         self.pulse_label_map = kwargs.get("pulse_label_map", default_map)
         self.pulse_modifs = kwargs.get('pulse_modifs', None)
 
@@ -183,8 +184,8 @@ class CalibrationPoints:
                     f"match: {i} vs {j}"
 
         for i, qbn in enumerate(qb_names):
-            # get unique states in reversed alphabetical order: g, [e, f]
-            order = {"g": 0, "e": 1, "f": 2}
+            # get unique states in the order specified below
+            order = {"g": 0, "e": 1, "f": 2, "h": 3}
             unique = list(np.unique(states[qbn]))
             unique.sort(key=lambda s: order[s])
             if len(unique) == 3 and enforce_two_cal_states:
@@ -278,11 +279,20 @@ class CalibrationPoints:
             .format(self.qb_names, self.states, self.pulse_label_map)
 
     @staticmethod
-    def guess_cal_states(cal_states, for_ef=False):
+    def guess_cal_states(cal_states, for_ef=False, **kw):
+        """
+        Generate calibration states to be passed to CalibrationPoints
+        :param cal_states: str or list of str with state names. If 'auto', it
+            will generate default states based on for_ef and transition_names.
+        :param for_ef: bool specifying whether to add the 'f' state.
+            This flag is here for legacy reasons (Steph, 07.10.2020).
+        :param kw: keyword_arguments (to allow pass-through kw even if it
+                    contains entries that are not needed)
+        :return: tuple of calibration states or cal_states from the user
+        """
         if cal_states == "auto":
             cal_states = ('g', 'e')
             if for_ef:
                 cal_states += ('f',)
         return cal_states
-
 
