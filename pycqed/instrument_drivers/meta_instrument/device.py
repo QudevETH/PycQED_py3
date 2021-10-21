@@ -505,6 +505,14 @@ class Device(Instrument):
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
 
     def get_channel_delays(self):
+        """
+        Get AWG channel delays
+
+        Returns:
+            Dictionary of delay values for the AWG channels of the system to
+            correct for relative delays of the channels according to
+            `self.relative_delay_graph()`.
+        """
         object_delays = self.relative_delay_graph().get_absolute_delays()
         channel_delays = {}
         for (qbn, obj_type), v in object_delays.items():
@@ -517,6 +525,12 @@ class Device(Instrument):
         return channel_delays
 
     def configure_pulsar(self):
+        """
+        Configure pulse generation instrument settings.
+
+        For now, only sets AWG channel delays.
+        """
+
         pulsar = self.instr_pulsar.get_instr()
 
         # configure channel delays
@@ -545,9 +559,13 @@ class Device(Instrument):
             characterization measurements (by checking which diagonal
             entries of the crosstalk matrix are not exactly equal to 1).
             Default: 'auto'
-        :param rounds: (int) the number of calibration rounds to be used as
-            a basis for calculating the cancellation matrix, or -1 if all
-            available round should be used. Default: -1
+        :param rounds: (int, dict[str, int])
+            the number of calibration rounds to be used as a basis for
+            calculating the cancellation matrix, or -1 if all
+            available round should be used. If the number of rounds should
+            be different for the different calibration sets, a dictionary of
+            values can be passed, where the keys are calibration keys.
+            Default: -1
         """
         # convert values from old format
         if self.flux_crosstalk_calibs() is not None and \
@@ -555,11 +573,15 @@ class Device(Instrument):
             self.flux_crosstalk_calibs(
                 {'default': self.flux_crosstalk_calibs()}
             )
+        if self.flux_crosstalk_calibs() is not None and \
+                not isinstance(rounds, dict):
+            rounds = {k: rounds for k in self.flux_crosstalk_calibs()}
 
         pulsar = self.instr_pulsar.get_instr()
         calibs = self.flux_crosstalk_calibs()
         if calibs is None:
             calibs = {}
+            rounds = {}
 
         flux_channels = {}
         flux_crosstalk_cancellation_mtx = {}
@@ -567,10 +589,9 @@ class Device(Instrument):
             calib = deepcopy(calib)
             if calib is None:
                 calib = [np.identity(len(self.get_qubits()))]
-            if rounds == -1:
+            rounds_calib = rounds[calibration_key]
+            if rounds_calib == -1:
                 rounds_calib = len(calib)
-            else:
-                rounds_calib = rounds
             xtalk_qbs = self.get_qubits('all' if qubits == 'auto' else qubits)
             if qubits == 'auto':
                 mask = [True] * len(xtalk_qbs)
@@ -790,9 +811,10 @@ class Device(Instrument):
 
 class RelativeDelayGraph:
     """
-    Contains the informartion about the relative delays of channels of the device.
-    The relative delays are represented by a graph, where each channel is a node, and
-    edges represent the relative delays that we can measure.
+    Contains the information about relative delays of channels of the device.
+
+    The relative delays are represented by a graph, where each channel is a
+    node, and edges represent the relative delays that we can measure.
 
     Internally this is stored in a dictionary of the form:
         _d = {
@@ -802,7 +824,13 @@ class RelativeDelayGraph:
             }
         }
 
-    The relative delay is defined as the delay of the parent channel minus delay of child channel.
+    The relative delay is defined as the delay of the parent channel minus
+    delay of child channel.
+
+    Args:
+        reld: dict or RelativeDelayGraph, optional
+            Initial value for the delay graph either in the internal
+            representation or as another RelativeDelayGraph.
     """
 
     def __init__(self, reld=None):
@@ -815,27 +843,55 @@ class RelativeDelayGraph:
                 self._reld = deepcopy(reld)
 
     def increment_relative_delay(self, parent, child, delta_delay):
-        """Use this to update delays based on meas. results"""
+        """Increment a relative delay between two nodes.
+
+        Use this to update delays based on measurement results with previously
+        set delay values.
+
+        Args:
+            parent, child:
+                node names
+            delta_delay: float
+                Measured delay difference between the parent and the
+                child node that will be added to the graph.
+        """
         if child in self._reld[parent]:
             self._reld[parent][child] += delta_delay
         elif parent in self._reld[child]:
             self._reld[child][parent] -= delta_delay
         else:
-            raise KeyError(f'No connection between {parent} and {child} in '
-                            'relative delay graph')
+            raise KeyError(f'No direct connection between {parent} and {child}'
+                           ' in relative delay graph')
 
     def get_relative_delay(self, parent, child):
-        """Use with care, gets the raw value of the relative channel delay"""
+        """Get the raw relative delay between two directly connected nodes.
+
+        Args:
+            parent, child:
+                Node names
+        Returns:
+            relative delay between parent and child
+        """
         if child in self._reld[parent]:
             return self._reld[parent][child]
         elif parent in self._reld[child]:
             return -self._reld[child][parent]
         else:
-            raise KeyError(f'No connection between {parent} and {child} in '
-                            'relative delay graph')
+            raise KeyError(f'No direct connection between {parent} and {child}'
+                           f' in relative delay graph')
 
     def set_relative_delay(self, parent, child, delay):
-        """Use with care, sets the raw value of the relative channel delay"""
+        """Set the raw value of the relative channel delay.
+
+        Use with care, since it resets the previously configured delay between
+        the nodes.
+
+        Args:
+            parent, child:
+                Node names
+            delay: float
+                Raw delay delay difference between parent and child node.
+        """
         if child in self._reld[parent]:
             self._reld[parent][child] = delay
         elif parent in self._reld[child]:
@@ -845,6 +901,13 @@ class RelativeDelayGraph:
                             'relative delay graph')
 
     def get_absolute_delays(self):
+        """
+        Get an abs. delay for each node satisfying configured relative delays.
+
+        Returns: dict
+            Keys are node names, values are nonnegative delays for each node
+            such that the relative delays are satisfied.
+        """
         # determine root of the tree
         abs_delays = {}
         min_delay = np.inf
