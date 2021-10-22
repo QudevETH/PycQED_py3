@@ -707,28 +707,32 @@ class CircuitBuilder:
         elif isinstance(pulses[0], dict):  # list of pulse dicts
             return self.block_from_pulse_dicts(pulses, block_name=block_name)
 
-    def block_from_pulse_dicts(self, pulse_dicts, block_name='prepend'):
+    def block_from_pulse_dicts(self, pulse_dicts,
+                               block_name='from_pulse_dicts'):
         """
-        Generates a list of prepended pulses to run a calibration under the
-        influence of previous operations (e.g.,  charge in the fluxlines).
+        Generates a block from a list of pulse dictionaries.
 
-        :param pulse_dicts: list of pulse dictionaries,
-            each containing the op_code of the desired pulse, plus optional
-            pulse parameters to overwrite the default values of the chosen
-            pulse.
-        :return: block containing the prepended pulses
+        Args:
+            pulse_dicts: list
+                Pulse dictionaries, each containing either 1) an op_code of the
+                desired pulse plus optional pulse parameters to overwrite the
+                default values of the chosen operation, or 2) a full set of
+                pulse parameters.
+            block_name: str, optional
+                Name of the resulting block
+        Returns:
+             A block containing the pulses in pulse_dicts
         """
-        prepend_pulses = []
+        pulses = []
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                prepend_pulse = self.get_pulse(pp['op_code']) \
-                    if 'op_code' in pp else {}
+                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                prepend_pulse.update(pp)
-                prepend_pulses += [prepend_pulse]
-        return Block(block_name, prepend_pulses)
+                pulse.update(pp)
+                pulses += [pulse]
+        return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):

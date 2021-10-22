@@ -282,10 +282,22 @@ class CalibrationPoints:
     def combine_parallel(first, second):
         """Combines two CalibrationPoints objects into a new CalibrationPoints
         object that represents the two calibration point sets played in
-        parallel."""
+        parallel.
 
-        assert first.pulse_label_map == second.pulse_label_map
-        assert first.pulse_modifs == second.pulse_modifs
+        Args:
+            first, second:
+                The two CalibrationPoints objects to be combined
+        Returns:
+            The combined CalibrationPoints object.
+        """
+
+        if first.pulse_label_map != second.pulse_label_map:
+            raise ValueError("pulse_label_map's of combined CalibrationPoints "
+                             "must be identical")
+        if first.pulse_modifs != second.pulse_modifs:
+            raise ValueError("pulse_modifs's of combined CalibrationPoints "
+                             "must be identical")
+        # dicts preserve insertion order, sets do not, therefore we use dicts
         qb_names = list(dict.fromkeys(first.qb_names + second.qb_names))
         first_states = first.states.copy()
         second_states = second.states.copy()
@@ -296,14 +308,19 @@ class CalibrationPoints:
             second_states += [len(second.qb_names) * ['I ']]
         states = []
         for first_state, second_state in zip(first_states, second_states):
+            # loop over calibration segments
             states.append([])
             for qb in qb_names:
+                # determine state for each qubit in this calibration segment
                 idx_first = first.qb_names.index(qb) \
                     if qb in first.qb_names else None
                 idx_second = second.qb_names.index(qb) \
                     if qb in second.qb_names else None
                 if idx_first is not None and idx_second is not None:
-                    assert first_state[idx_first] == second_state[idx_second]
+                    if first_state[idx_first] != second_state[idx_second]:
+                        raise ValueError("Same qubit should be prepared in "
+                                         "different states in same segment in "
+                                         "CalibrationPoints.combine_parallel")
                     states[-1].append(first_state[idx_first])
                 elif idx_first is not None:
                     states[-1].append(first_state[idx_first])

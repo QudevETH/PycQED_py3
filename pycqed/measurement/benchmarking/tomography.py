@@ -127,16 +127,19 @@ class Tomography(CalibBuilder):
             traceback.print_exc()
 
     def preprocess_task_list(self, **kw):
-        self.preprocessed_task_list = super().preprocess_task_list(**kw)
-        return self.preprocess_task_list_tomography(
-            preprocessed_task_list=self.preprocessed_task_list)
+        """
+        Called once per task. See MultiTaskingExperiment.preprocess_task_list.
 
-    def preprocess_task_list_tomography(self, preprocessed_task_list):
+        In this case, combines the initialization and finalization pulses from
+        all tasks.
+        """
+
         prepend_block_list = []
         initializations_map = {}
         nr_inits = 0
         finalizations_map = {}
         nr_finals = 0
+        preprocessed_task_list = super().preprocess_task_list(**kw)
 
         def process_tomo(qubits, rots_basis, all_rots):
             seg_map = {}
@@ -195,10 +198,30 @@ class Tomography(CalibBuilder):
         return preprocessed_task_list
 
     def sweep_block(self, pulses, **kw):
+        """
+        Called by MultiTaskingExperiment.parallel_sweep per task.
+
+        No further processing needs to be done on the pulses passed in the task.
+        """
         return self.block_from_anything(pulses, 'Pulses')
 
     def create_cal_points(self, n_cal_points_per_state=1, cal_states='auto',
                           for_ef=False, cal_all_combinations=False, **kw):
+        """Adds calibration points to the experiment.
+
+        Supports using either the minimal calibration points set 00...0, 11...1
+        or the full set 00...0, 00...1, ..., 11...0, 11...1.
+
+        MultiTaskingExperiment.create_cal_points supports only the first case.
+
+        Args:
+            n_cal_points_per_state, cal_states, for_ef, **kw:
+                See MultiTaskingExperiment.create_cal_points
+            cal_all_combinations: bool, optional
+                Creates a full set of all computational states as calibration
+                points if true. Default False.
+        """
+
         if not cal_all_combinations:
             return super().create_cal_points(
                 n_cal_points_per_state=n_cal_points_per_state,
@@ -218,9 +241,13 @@ class Tomography(CalibBuilder):
             )
         self.exp_metadata.update({'cal_points': repr(self.cal_points)})
 
-
-
     def do_optimize_identity(self):
+        """Replace 'I' operations with 'Z0' or with 'X0' in init. and final.
+
+        The zero-duration 'Z0' operation is used if self.optimize_identity,
+        otherwise single-qubit-gate-duration 'X0' operation is used.
+        """
+
         def recursive_replace_op(in_this, this, with_that):
             if isinstance(in_this, str):
                 if in_this == this:
