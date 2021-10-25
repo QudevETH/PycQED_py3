@@ -7,6 +7,7 @@ log = logging.getLogger(__name__)
 import time
 from copy import deepcopy
 import traceback
+import requests
 
 import numpy as np
 import numbers
@@ -31,6 +32,7 @@ from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 from qcodes.plots.colors import color_cycle
 
+from pycqed.utilities.errors import NoProgressError
 
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -102,6 +104,34 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
+        self.add_parameter(
+            'max_attempts', docstring=
+            'Maximum number of attempts. Values larger than 1 will mean that '
+            'MC automatically retries in case of crashes during measurements. '
+            'Optional: A list of function handles can be assigned to the '
+            'retry_cleanup_functions property of the MeasurementControl '
+            'instrument, which will then be called as callback functions '
+            'between attempts (without passing any parameters to them). '
+            'This can, e.g., be used to clear errors in AWGs. It can be '
+            'useful to have setup-specific cleanup functions (e.g., defined '
+            'in a notebook or init script).',
+            vals=vals.Ints(),
+            parameter_class=ManualParameter,
+            initial_value=1)
+        self.add_parameter(
+            'no_progress_interval', docstring=
+            'Time (in seconds) after which a measurement that does not make '
+            'progress is reported.',
+            vals=vals.Numbers(),
+            parameter_class=ManualParameter,
+            initial_value=600)
+        self.add_parameter(
+            'no_progress_kill_interval', docstring=
+            'Time (in seconds) after which a measurement that does not make '
+            'progress is interrupted.',
+            vals=vals.Numbers(),
+            parameter_class=ManualParameter,
+            initial_value=np.inf)
 
         self.add_parameter(
             'cfg_clipping_mode', vals=vals.Bool(),
@@ -137,6 +167,13 @@ class MeasurementControl(Instrument):
         self._plotmon_axes_info = None
         self._persist_plotmon_axes_info = None
 
+        # the following properties are used by get_percdone
+        self._last_percdone_value = 0  # last progress
+        self._last_percdone_change_time = 0  # last time progress changed
+        self._last_percdone_log_time = 0  # last time progress was logged
+
+        self.parameter_checks = {}
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -162,7 +199,8 @@ class MeasurementControl(Instrument):
                                           self.acq_data_len_scaling))
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
-            mode: str='1D', disable_snapshot_metadata: bool=False, **kw):
+            mode: str='1D', disable_snapshot_metadata: bool=False,
+            previous_attempts=0, **kw):
         '''
         Core of the Measurement control.
 
@@ -185,10 +223,16 @@ class MeasurementControl(Instrument):
                     This is an argument instead of a parameter because this
                     should always be explicitly diabled in order to prevent
                     accidentally leaving it off.
-
+            previous_attempts (int): indicates how many times the measurement
+                    has already been tried. This is usually not passed by
+                    the calling function, but only used by run() when it
+                    calls itself recursively.
         '''
 
         self.timer = Timer("MeasurementControl")
+        # reset properties that are used by get_percdone
+        self._last_percdone_value = 0
+        self._last_percdone_change_time = 0
         # Setting to zero at the start of every run, used in soft avg
         self.soft_iteration = 0
         self.set_measurement_name(name)
@@ -205,11 +249,19 @@ class MeasurementControl(Instrument):
         self.acq_data_len_scaling = self.detector_function.acq_data_len_scaling
 
         # update sweep_points based on self.acq_data_len_scaling
-        self.update_sweep_points()
+        if previous_attempts == 0:
+            # The following call modifies the sweep points and should thus
+            # only be called in the first attempt (to avoid modifying them
+            # multiple times).
+            self.update_sweep_points()
 
         # needs to be defined here because of the with statement below
         return_dict = {}
         self.last_sweep_pts = None  # used to prevent resetting same value
+
+        self.begintime = None
+        self.preparetime = None
+        self.endtime = None
 
         if self.skip_measurement():
             return return_dict
@@ -224,6 +276,7 @@ class MeasurementControl(Instrument):
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
             self.save_exp_metadata(self.exp_metadata, self.data_object)
+            exception = None
             try:
                 self.check_keyboard_interrupt()
                 self.get_measurement_begintime()
@@ -257,6 +310,13 @@ class MeasurementControl(Instrument):
                                        self.data_object)
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
+            except Exception as e:
+                # We store the exception instead of raising it directly.
+                # After creating the results dict and storing end time +
+                # metadata, the exception will be either logged (if an
+                # automatic retry is triggered) or raised.
+                exception = e
+                formatted_exc = traceback.format_exc()
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -269,6 +329,32 @@ class MeasurementControl(Instrument):
             #  saved.
             self.save_timers(self.data_object)
             return_dict = self.create_experiment_result_dict()
+            if exception is not None:  # exception occurred in above try-block
+                if previous_attempts + 1 < self.max_attempts():
+                    # Maximum number of attempts not reached. Log to logger
+                    # and to slack, and retry.
+                    msg = f'MC: Error during measurement (attempt ' \
+                          f'{previous_attempts + 1} of {self.max_attempts()}' \
+                          f'). Retrying.'
+                    self.log_to_slack(msg)
+                    log.error(msg)
+                    log.error(formatted_exc)
+                    # Call the retry_cleanup_functions if there are any (see
+                    # docstring of parameter max_attempts).
+                    [fnc() for fnc in getattr(
+                        self, 'retry_cleanup_functions', [])]
+                    # sweep points should be extracted again from the sweep
+                    # function to avoid tiling them multiple times (in every
+                    # attempt) in tile_sweep_pts_for_2D
+                    del self.sweep_points
+                    # Call run recursively to start the next attempt
+                    return_dict = self.run(
+                        name=name, exp_metadata=exp_metadata, mode=mode,
+                        disable_snapshot_metadata=disable_snapshot_metadata,
+                        previous_attempts=previous_attempts + 1, **kw)
+                else:
+                    # maximum number of attempts reached
+                    raise exception
 
         self.finish(result)
         return return_dict
@@ -311,10 +397,19 @@ class MeasurementControl(Instrument):
                         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
-                    self.detector_function.prepare(
-                        sweep_points=sweep_points[
-                            start_idx:start_idx+self.xlen, 0])
-                    self.measure_hard()
+                    sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    # If the soft sweep function has the filtered_sweep
+                    # attribute, the AWGs are programmed in a way that only
+                    # the subset of acquisitions indicated by the filter is
+                    # performed. In this case, the sweep points passed to
+                    # the detector function need to be filtered, and the
+                    # filter needs to be passed to measure_hard.
+                    filtered_sweep = getattr(self.sweep_functions[1],
+                                             'filtered_sweep', None)
+                    if filtered_sweep is not None:
+                        sp = sp[filtered_sweep]
+                    self.detector_function.prepare(sweep_points=sp)
+                    self.measure_hard(filtered_sweep)
         else:
             raise Exception('Sweep and Detector functions not '
                             + 'of the same type. \nAborting measurement')
@@ -385,8 +480,30 @@ class MeasurementControl(Instrument):
         return
 
     @Timer()
-    def measure_hard(self):
+    def measure_hard(self, filtered_sweep=None):
+        """
+        :param filtered_sweep: (None or list of bools) indicates which of the
+            acquisition elements will be played by the AWGs (True) and which
+            ones will be skipped (False). Default: None, in which case all
+            acquisition elements will be played.
+        """
+        # Tell the detector_function to call print_progress for intermediate
+        # progress reports during get_detector_function.values.
+        self.detector_function.progress_callback = self.print_progress
         new_data = np.array(self.detector_function.get_values()).T
+        self.detector_function.progress_callback = None  # clean up
+
+        if filtered_sweep is not None:
+            # Extend the data array by adding NaN for data points that have
+            # not been measured.
+            shape = list(new_data.shape)
+            shape[0] = len(filtered_sweep)
+            new_data_full = np.zeros(shape) * np.nan
+            if len(shape) > 1:
+                new_data_full[filtered_sweep, :] = new_data
+            else:
+                new_data_full[filtered_sweep] = new_data
+            new_data = new_data_full
 
         ###########################
         # Shape determining block #
@@ -446,7 +563,7 @@ class MeasurementControl(Instrument):
         if self.mode == '2D':
             self.update_plotmon_2D_hard()
         self.iteration += 1
-        self.print_progress(stop_idx)
+        self.print_progress()
         return new_data
 
     def measurement_function(self, x):
@@ -527,7 +644,7 @@ class MeasurementControl(Instrument):
             self.update_plotmon_adaptive()
         self.iteration += 1
         if self.mode != 'adaptive':
-            self.print_progress(stop_idx)
+            self.print_progress()
         return vals
 
     def optimization_function(self, x):
@@ -1583,7 +1700,6 @@ class MeasurementControl(Instrument):
         known in the snapshot)
         '''
 
-
         import numpy
         import sys
         opt = numpy.get_printoptions()
@@ -1592,8 +1708,8 @@ class MeasurementControl(Instrument):
         if data_object is None:
             data_object = self.data_object
         if not hasattr(self, 'station'):
-            log.warning('No station object specified, could not save',
-                            ' instrument settings')
+            log.warning('No station object specified, could not save '
+                        'instrument settings')
         else:
             # # This saves the snapshot of the entire setup
             # snap_grp = data_object.create_group('Snapshot')
@@ -1601,20 +1717,107 @@ class MeasurementControl(Instrument):
             # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
 
             # Below is old style saving of snapshot, exists for the sake of
-            # preserving deprecated functionality
+            # preserving deprecated functionality. Here only the values
+            # of the parameters are saved.
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
                 instrument_grp = set_grp.create_group(iname)
-                par_snap = ins.snapshot()['parameters']
-                parameter_list = dict_to_ordered_tuples(par_snap)
-                for (p_name, p) in parameter_list:
-                    try:
-                        val = repr(p['value'])
-                    except KeyError:
-                        val = ''
-                    instrument_grp.attrs[p_name] = val
+                inst_snapshot = ins.snapshot()
+                self.store_snapshot_parameters(inst_snapshot,
+                                               entry_point=instrument_grp,
+                                               instrument=ins)
         numpy.set_printoptions(**opt)
+
+    def store_snapshot_parameters(self, inst_snapshot, entry_point,
+                                  instrument, missing_in_whitelist=False):
+        """
+        Save the values of keys in the "parameters" entry of inst_snapshot.
+        If inst_snapshot contains "submodules," a new subgroup inside the
+        instrument group will be created for each key in "submodules" and the
+        values of the "parameters" entry will be stored.
+        :param inst_snapshot: (dict) snapshot of a QCoDeS instrument
+        :param entry_point: (hdf5 group.file) location in the nested hdf5
+            structure where to write to.
+        :param instrument: (obj) instrument whose snapshot is saved (or
+            submodule/channel in recursive calls)
+        :param missing_in_whitelist: (bool) only used in recursive calls to
+            indicate that a submodule/channel is not on the whitelist of
+            its parent (if such a whitelist exists).
+        """
+
+        # If a whitelist exists, we store only children (submodules, channels,
+        # parameters) that are on the whitelist. Whitelisted submodules and
+        # channels are by default stored including all their children,
+        # except if the submodule/channel again has a whitelist specifying
+        # that only a subset of its children should be stored.
+        # Note that we still have to do parameters checks even for parameters
+        # that are not whitelisted (or whose parent is not whitelisted).
+        sp_wl = getattr(instrument, '_snapshot_whitelist', None)
+
+        for k in ['submodules', 'channels']:
+            if k not in inst_snapshot:
+                continue
+            # store the parameters from the items in submodules, which
+            # are snapshots of QCoDeS instruments
+            for key, submod_snapshot in inst_snapshot[k].items():
+                submod_missing_in_whitelist = missing_in_whitelist
+                if k == 'channels':
+                    subins = [ch for ch in instrument if ch.name == key][0]
+                else:  # submodules
+                    subins = instrument.submodules[key]
+                if getattr(subins, 'snapshot_exclude', False):
+                    # qcodes does not implement snapshot_exclude for
+                    # submodules and channels, so we implement it here.
+                    # However, we treat it in the same way as submodules/
+                    # channels that are not whitelisted as this will allow us
+                    # to run parameter checks on parameters inside the
+                    # submodules/channel.
+                    submod_missing_in_whitelist = True
+                if sp_wl is not None and key not in sp_wl:
+                    # If a whitelist exists, only include submodules/channels
+                    # that are in the snapshot_whitelist
+                    submod_missing_in_whitelist = True
+                if submod_missing_in_whitelist:
+                    # call recursively for parameter checks, but do not write
+                    # to HDF
+                    submod_grp = None
+                else:
+                    submod_grp = entry_point.create_group(key)
+                self.store_snapshot_parameters(
+                    submod_snapshot, entry_point=submod_grp, instrument=subins,
+                    missing_in_whitelist=submod_missing_in_whitelist)
+
+        if 'parameters' in inst_snapshot:
+            inst_name = _get_instrument_name_for_parameter_checks(instrument)
+            parameter_checks_ins = self.parameter_checks.get(inst_name, {})
+            par_snap = inst_snapshot['parameters']
+            parameter_list = dict_to_ordered_tuples(par_snap)
+            for (p_name, p) in parameter_list:
+                param_missing_in_whitelist = missing_in_whitelist
+                if sp_wl is not None and p_name not in sp_wl:
+                    # If a whitelist exists, only include parameters that are
+                    # in the snapshot_whitelist.
+                    param_missing_in_whitelist = True
+                val = repr(p.get('value', ''))
+                if p_name in parameter_checks_ins:
+                    try:
+                        res = parameter_checks_ins[p_name](p['value'])
+                        if res != True:  # False or a string (error message)
+                            log.warning(
+                                f'Parameter {inst_name}.{p_name} has an '
+                                f'uncommon value: {val}.' +
+                                (f" ({res})" if res != False else ''))
+                    except Exception as e:
+                        log.warning(f'Could not run parameter check for '
+                                    f'{inst_name}.{p_name}: {e}')
+                if not param_missing_in_whitelist:
+                    entry_point.attrs[p_name] = val
+            for p_name in parameter_checks_ins:
+                if p_name not in par_snap:
+                    log.warning(f'Could not run parameter check for '
+                                f'{inst_name}.{p_name}: the parameter was not '
+                                f'found in the snapshot.')
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
@@ -1673,26 +1876,120 @@ class MeasurementControl(Instrument):
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
 
-    def get_percdone(self):
-        percdone = self.total_nr_acquired_values / (
+    def add_parameter_check(self, parameter, check_function):
+        """
+        Configure a parameter check that shall be performed at the start of
+        every measurement.
+        :param parameter: (qcodes parameter) the parameter for which a
+            check should be added
+        :param check_function: (function) a function that takes the
+            parameter value as input and returns True in case of a
+            successful check (e.g., if the value of the parameter is within
+            an expected range), and otherwise False or a string that
+            explains the unsuccessful check.
+        """
+        iname = _get_instrument_name_for_parameter_checks(parameter)
+        if iname not in self.parameter_checks:
+            self.parameter_checks[iname] = {}
+        self.parameter_checks[iname].update(
+            {parameter.name: check_function})
+
+    def remove_parameter_check(self, parameter):
+        """
+        Remove (a) parameter check(s).
+        :param parameter: (qcodes parameter or list thereof) the parameter(s)
+            for which the check(s) should be removed
+        """
+        if isinstance(parameter, list):
+            [self.remove_parameter_check(p) for p in parameter]
+        iname = _get_instrument_name_for_parameter_checks(parameter)
+        if parameter.name in self.parameter_checks.get(iname, {}):
+            self.parameter_checks[iname].pop(parameter)
+        else:
+            log.warning(f'No check for parameter {iname}.{parameter.name} was '
+                        f'configured.')
+
+    def get_percdone(self, current_acq=0):
+        """
+        Determine the current progress (in percent) based on how much data
+        MC has already received and possibly based on the progress of the
+        current acquisition.
+
+        In addition, get_percdone monitors whether progress has been made
+        since the last call to get_percdone, and it can log a warning to
+        slack and/or raise an exception if no progress is made for a
+        specified number of seconds (specified by the qcodes parameters
+        no_progress_interval and no_progress_kill_interval, respectively).
+
+        :param current_acq: number of acquired samples in the current
+            acquisition. (Example: if 40 samples with averaging over 2**10
+            will be acquired in the current acquisition, and the current
+            averaging progress is 300, then current_acq should be set to
+            40*300/2**10.)
+        """
+        percdone = (self.total_nr_acquired_values + current_acq) / (
             np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
+        try:
+            now = time.time()
+            if percdone != self._last_percdone_value:  # progress was made
+                self._last_percdone_value = percdone
+                self._last_percdone_change_time = now
+                log.debug(f'MC: percdone = {self._last_percdone_value} at '
+                          f'{self._last_percdone_change_time}')
+            elif self._last_percdone_change_time == 0:
+                # first progress check: initialize _last_percdone_change_time
+                self._last_percdone_change_time = now
+                self._last_percdone_log_time = self._last_percdone_change_time
+            else:  # no progress was made
+                no_prog_inter = self.no_progress_interval()
+                no_prog_inter2 = self.no_progress_kill_interval()
+                no_prog_min = (now - self._last_percdone_change_time) / 60
+                log.debug(f'MC: no_prog_min = {no_prog_min}, '
+                          f'percdone = {percdone}')
+                msg = f'The current measurement has not made any progress ' \
+                      f'for {no_prog_min: .01f} minutes.'
+                if now - self._last_percdone_change_time > no_prog_inter \
+                        and now - self._last_percdone_log_time > no_prog_inter:
+                    self.log_to_slack(msg)
+                    self._last_percdone_log_time = now
+                if now - self._last_percdone_change_time > no_prog_inter2:
+                    log.debug(f'MC: raising NoProgressError')
+                    raise NoProgressError(msg)
+        except NoProgressError:
+            raise
+        except Exception as e:
+            log.debug(f'MC: error while checking progress: {repr(e)}')
         return percdone
 
-    def print_progress(self, stop_idx=None):
+    def print_progress(self, current_acq=0):
+        """
+        Prints the progress of the current measurement.
+
+        :param current_acq: see docstring of get_percdone
+        """
         if self.verbose():
             acquired_points = self.dset.shape[0]
             total_nr_pts = len(self.get_sweep_points())
-            percdone = self.get_percdone()
+            percdone = self.get_percdone(current_acq=current_acq)
             elapsed_time = time.time() - self.begintime
+            t_left = round((100. - percdone) / (percdone) *
+                           elapsed_time, 1) if percdone != 0 else '??'
+            t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
+                                  + t_left)) if percdone != 0 else '??'
             # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer.
-            progress_message = "\r {percdone}% completed \telapsed time: "\
-                "{t_elapsed}s \ttime left: {t_left}s     ".format(
+            # previous progress message was longer. (Due to \r, the string
+            # output will start at the beginning of the current line and
+            # each character of the new string will overwrite a character
+            # of the previous output in the current line.)
+            progress_message = (
+                "\r{timestamp}\t{percdone}% completed \telapsed time: "
+                "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
+                "").format(
+                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
                     percdone=int(percdone),
                     t_elapsed=round(elapsed_time, 1),
-                    t_left=round((100.-percdone)/(percdone) *
-                                 elapsed_time, 1) if
-                    percdone != 0 else '')
+                    t_left=t_left,
+                    t_end=t_end,)
 
             if percdone != 100:
                 end_char = ''
@@ -1968,6 +2265,34 @@ class MeasurementControl(Instrument):
     def analysis_display(self, ad):
         self._analysis_display = ad
 
+    def log_to_slack(self, message):
+        """
+        Send a message to Slack. If self.slack_webhook is not set,
+        the message is only logged in the logger with loglevel INFO.
+        If self.slack_channel is not set, the default channel of the webhook
+        is used.
+
+        :param message: The message that should be logged to slack.
+
+        Note: The webhook and the channel are properties and not parameters,
+        to avoid that they get stored in the instruments settings snapshot.
+        """
+        log.info(f'MC: {message}')
+        if not hasattr(self, 'slack_webhook'):
+            log.info(f'MC: Not logging to slack because slack_webhook is not '
+                     f'defined.')
+            return
+        try:
+            payload = {"text": message}
+            if hasattr(self, 'slack_channel'):
+                payload["channel"] = self.slack_channel
+            res = requests.post(self.slack_webhook, json=payload)
+            res_text = res.text
+        except Exception as e:
+            res_text = repr(e)
+        if res_text != 'ok':
+            log.warning(f'MC: Error while logging to slack: {res_text}')
+
 
 class KeyboardFinish(KeyboardInterrupt):
     """
@@ -1975,3 +2300,52 @@ class KeyboardFinish(KeyboardInterrupt):
     Used to finish the experiment without raising an exception.
     """
     pass
+
+
+def _get_instrument_name_for_parameter_checks(object, short_name=None):
+    """
+    Extracts a string representation of the instrument/submodule name as
+    expected for parameter checks in
+    MeasurementControl.store_snapshot_parameters.
+    :param object: a qcodes parameter, channel, submodule, or instrument
+    :param short_name: provide the short_name of the object instead of taking
+        it from the object (used in recursive calls of this function)
+    :return: (str)
+    """
+    def get_short_name():
+        if short_name is not None:
+            return short_name
+        elif hasattr(object, 'short_name'):
+            return object.short_name
+        else:
+            raise AttributeError(
+                f'Could not determine the name of {object}.')
+
+    if hasattr(object, 'instrument'):
+        # it is a parameter
+        return _get_instrument_name_for_parameter_checks(object.instrument)
+    elif getattr(object, 'parent', None) is not None:
+        if object.short_name in object.parent.submodules:
+            # it is a submodule, and will appear in the snapshot with
+            # its short_name
+            return _get_instrument_name_for_parameter_checks(
+                object.parent) + '.' + get_short_name()
+        # It might be a channel in a channel list that references the
+        # instrument as parent, but not the channel list.
+        l = [(s, k) for k, s in object.parent.submodules.items()
+             if hasattr(s, '__iter__') and object in s]
+        if len(l):
+            return _get_instrument_name_for_parameter_checks(
+                *l[0]) + '.' + object.name
+        else:
+            raise AttributeError(f'Could not determine the parent of '
+                                 f'{object.name}.')
+    elif hasattr(object, '__iter__') and getattr(
+            object[0], 'parent', None) is not None:
+        # If it is a list and we find the parent via the first element.
+        # A channel list is a submodule and thus appears in the snapshot with
+        # its short_name.
+        return _get_instrument_name_for_parameter_checks(
+            object[0].parent) + '.' + get_short_name()
+    else:  # it is an instrument
+        return object.name

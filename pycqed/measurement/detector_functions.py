@@ -11,6 +11,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.timer import Timer
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
+from pycqed.utilities.errors import NoProgressError
 import logging
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,12 @@ class Detector_Function(object):
         # to be used by MC.get_percdone()
         self.acq_data_len_scaling = 1
         self.timer = Timer(self.name)
+        # The following properties are not implemented in all detector
+        # functions (i.e., might be ignored in some detector functions),
+        # but are created here to have a common interface.
+        self.progress_callback = kw.get('progress_callback', None)
+        self.progress_callback_interval = kw.get(
+            'progress_callback_interval', 5)  # in seconds
 
     def set_kw(self, **kw):
         '''
@@ -192,23 +199,86 @@ class Multi_Detector(Detector_Function):
 
 
 class IndexDetector(Detector_Function):
+    """Detector function that indexes the result of another detector function.
+
+    Args:
+        detector:
+            detector function that returns multiple values per sweep point
+        index:
+            Index if the element returned from the original detector function
+            output. Can be an integer or a tuple. If an integer, then value is
+            interpreted as a channel index of the original detector function.
+            In case of a tuple, the first value corresponds to a channel index
+            and the second value corresponds to an index in the original
+            hardware sweep. Using a tuple converts a hardware sweep to a
+            software sweep.
+    """
+
     def __init__(self, detector, index):
         super().__init__()
         self.detector = detector
         self.index = index
         self.name = detector.name + '[{}]'.format(index)
-        self.value_names = [detector.value_names[index]]
-        self.value_units = [detector.value_units[index]]
+        if isinstance(self.index, tuple):
+            self.value_names = [detector.value_names[index[0]]]
+            self.value_units = [detector.value_units[index[0]]]
+            self.detector_control = 'soft'
+        else:
+            self.value_names = [detector.value_names[index]]
+            self.value_units = [detector.value_units[index]]
+            self.detector_control = detector.detector_control
+            self.index = [index]
+
+    def prepare(self, **kw):
+        self.detector.prepare(**kw)
+
+    def get_values(self):
+        v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
+        for i in self.index:
+            v = v[i]
+        return v
+
+    def acquire_data_point(self):
+        v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
+        for i in self.index:
+            v = v[i]
+        return v
+
+    def finish(self):
+        self.detector.finish()
+
+
+class SumDetector(Detector_Function):
+    """A detector function that adds up the channel values of another detector
+
+    Args:
+        detector: Underlying detector with several channels to be added
+        indices: Channel indices of the underlying detector that will be added
+    """
+
+    def __init__(self, detector, indices=None):
+        super().__init__()
+        self.detector = detector
+        if indices is None:
+            indices = np.arange(len(detector.value_names))
+        self.indices = indices
+        self.name = detector.name + '_sum'
+        self.value_names = [detector.value_names[indices[0]]]
+        self.value_units = [detector.value_units[indices[0]]]
         self.detector_control = detector.detector_control
 
     def prepare(self, **kw):
         self.detector.prepare(**kw)
 
     def get_values(self):
-        return self.detector.get_values()[self.index]
+        return [np.array(self.detector.get_values())[self.indices]
+                .sum(axis=0)]
 
     def acquire_data_point(self):
-        return self.detector.acquire_data_point()[self.index]
+        return [np.array(self.detector.acquire_data_point())[self.indices]
+                .sum(axis=0)]
 
     def finish(self):
         self.detector.finish()
@@ -508,6 +578,38 @@ class UHFQC_Base(Hard_Detector):
         self.UHFs = [d.UHFQC for d in self.detectors]
         self.UHF_map = {UHF.name: i
                    for UHF, i in zip(self.UHFs, range(len(self.detectors)))}
+        self.nr_averages = None
+        self.ro_mode = 'rl'
+
+    def _check_hardware_limitations(self):
+        """
+        This method should be used to check whether the measurement settings
+        are supported by the hardware.
+        Currently, it only checks whether the total number of acquisitions in
+        case of a single-shot readout is supported by the UHF
+        (1048576 is hardcoded).
+        """
+
+        for i, d in enumerate(self.detectors):
+            if hasattr(d, 'nr_shots'):
+                # Either integration_logging_det or classifier_detector
+
+                # For the integration logging detector,
+                # nr_sweep_points = nr_shots * nr_segments
+                total_nr_shots_acq = d.nr_sweep_points
+                if hasattr(d, 'classified'):
+                    # For the classifier detector
+                    # nr_sweep_points = nr_segments like for the integrated
+                    # averaged detector, but the UHF is programmed to return
+                    # single shots.
+                    total_nr_shots_acq *= d.nr_shots
+                if total_nr_shots_acq > 2**20:
+                    raise ValueError(f'For detector function number {i}, '
+                                     f'({d.name}) nr. segments * nr. shots = '
+                                     f'{total_nr_shots_acq} > 1048576 '
+                                     f'supported by the UHF. Please reduce the '
+                                     f'compression_seg_lim, the number of 1D '
+                                     f'sweep points, or the nr_shots.')
 
     @Timer()
     def poll_data(self):
@@ -519,7 +621,7 @@ class UHFQC_Base(Hard_Detector):
             UHF.set('qas_0_result_enable', 1)
 
         if self.AWG is not None:
-            self.AWG.start()
+            self.AWG.start(stop_first=False)
             self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.end")
 
         acq_paths = {UHF.name: UHF._acquisition_nodes for UHF in self.UHFs}
@@ -532,6 +634,12 @@ class UHFQC_Base(Hard_Detector):
                  self.UHFs}
         accumulated_time = 0
 
+        print_progress = (self.progress_callback is not None
+                          and self.nr_averages is not None)
+        if print_progress:
+            t_callback = time.time()
+            n_acq_last = [0] * len(self.UHFs)
+            n_acq_add = [0] * len(self.UHFs)
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
         while accumulated_time < self.UHFs[0].timeout() and \
                 not all(np.concatenate(list(gotem.values()))):
@@ -551,6 +659,50 @@ class UHFQC_Base(Hard_Detector):
                                 self.UHF_map[UHFname]].nr_sweep_points:
                                 gotem[UHFname][n] = True
             accumulated_time += 0.01 * len(self.UHFs)
+            if print_progress:
+                t_now = time.time()
+                if t_now - t_callback > self.progress_callback_interval:
+                    try:
+                        if self.ro_mode == 'rl':
+                            n_acq = [UHF.qas_0_result_acquired() for UHF in
+                                     self.UHFs]
+                        else:
+                            n_acq = [UHF.qas_0_monitor_acquired() for UHF in
+                                     self.UHFs]
+                        # Two special cases are treated in the following lines.
+                        # - The UHF reports 0 when it is done. In this case,
+                        #   we keep the last known progress values n_acq_last.
+                        #   This means that the progress indicator will stay
+                        #   at that last known progress value during data
+                        #   transfer, and MC will update the progress to the
+                        #   correct value once it takes over control after
+                        #   the end of the data transfer.
+                        # - A workaround is needed because the UHF truncates
+                        #   qas_0_result_acquired at 2**18 (and starts
+                        #   counting from 0 again). A decrease in n_acq
+                        #   compared to the last function call indicates
+                        #   that this has happened and that we need to add
+                        #   2**18 to the progess values.
+                        n_acq_add = [
+                            n_add + (2 ** 18 if n < n_last else 0) if n > 0
+                            else n_add + n_last
+                            for n, n_last, n_add in zip(n_acq, n_acq_last,
+                                                        n_acq_add)]
+                        n_acq_last = n_acq
+                        n_acq = np.array(n_acq) + np.array(n_acq_add)
+                        if any([n > 0 for n in n_acq]):
+                            # the following calculation works both if
+                            # self.nr_averages is a vector/list or a scalar
+                            progress = np.mean(np.multiply(
+                                n_acq, 1 / np.array(self.nr_averages)))
+                            self.progress_callback(progress)
+                    except NoProgressError:
+                        raise
+                    except Exception as e:
+                        # printing progress is optional
+                        log.debug(f'poll_data: Could not print progress: {e}')
+                    t_callback = t_now
+
         self.timer.checkpoint("UHFQC_Base.poll_data.loop.end")
 
         if not all(np.concatenate(list(gotem.values()))):
@@ -620,6 +772,10 @@ class UHFQC_multi_detector(UHFQC_Base):
     def prepare(self, sweep_points):
         for d in self.detectors:
             d.prepare(sweep_points)
+        self.nr_averages = [
+            getattr(d, 'nr_averages', None) for d in self.detectors]
+        if any([a is None for a in self.nr_averages]):
+            self.nr_averages = None
 
     def get_values(self):
         raw_data = self.poll_data()
@@ -702,6 +858,8 @@ class UHFQC_multi_detector(UHFQC_Base):
         return corr_data
 
     def finish(self):
+        if self.AWG is not None:
+            self.AWG.stop()
         for d in self.detectors:
             d.finish()
 
@@ -743,11 +901,134 @@ class UHFQC_input_average_detector(UHFQC_Base):
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = self.nr_samples
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
+        self.ro_mode = 'iavg'
+        self._check_hardware_limitations()
+        self.UHFQC.qudev_acquisition_initialize(channels=self.channels,
                                           samples=self.nr_samples,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
-                                          mode='iavg')
+                                          mode=self.ro_mode)
+
+
+class UHFQC_scope_detector(Hard_Detector):
+    """
+    Detector used for acquiring averaged timetraces and their Fourier'
+    transforms using the scope module of the UHF.
+
+    Requires the DIG option on the UHF to work. Required for the segmented
+    acquisition, that is needed to square the signal before averaging.
+
+    Args:
+        UHFQC: An UHFQC instance to use.
+        AWG: A pulsar or an AWG to start at the beginning of the measurement.
+            Typically used to generate pulses to look at and or provide
+            triggers.
+        channels: Tuple of UHFQA hardware channel indices.
+            Indices can be either 0 or 1, as the UHF has 2 input channels.
+        nr_averages: Number of times to average.
+        nr_samples: Number of samples in a scope trace.
+            Actual value will be rounded to the highest power of two that is at
+            most the provided value.
+        fft_mode: Data processing mode.
+            Can be one of the following:
+                'timedomain': Records timedomain traces.
+                'fft': Returns the absolute value of the Fourier' transform
+                       of the data.
+                'fft_power': Squares the data before averaging and taking the
+                             Fourier' transform.
+    Keyword arguments:
+        trigger: Boolean, whether to wait for a trigger to start acquisition.
+            Defaults to True if AWG instance is given, False otherwise.
+        trigger_channel: Integer, specifing the triggering channel.
+            Typical values here are
+                0: Signal Input 1,
+                1: Signal Input 2,
+                2: Trigger Input 1,
+                3: Trigger Input 2.
+            See the UHFQA manual for a full list. Defaults to Trigger Input 1.
+        trigger_level: Trigger activation level. Defaults to 0.1 V.
+
+    """
+    def __init__(self, UHFQC, AWG=None, channels=(0, 1),
+                 nr_averages=20, nr_samples=4096, fft_mode='timedomain',
+                 **kw):
+        super().__init__()
+
+        self.UHFQC = UHFQC
+        self.scope = UHFQC.daq.scopeModule()
+        self.AWG = AWG
+        self.channels = channels
+        self.nr_samples = max(int(2**np.floor(np.log2(nr_samples))), 4096)
+        self.nr_averages = nr_averages
+        self.fft_mode = fft_mode
+        self.value_names = [f'{UHFQC.name}_ch{ch}' for ch in channels]
+        if fft_mode == 'fft_power':
+            self.value_units = ['V^2' for _ in channels]
+        else:
+            self.value_units = ['V' for _ in channels]
+        self.trigger_channel = kw.get('trigger_channel', 2)
+        self.trigger_level = kw.get('trigger_level', 0.1)
+        self.trigger = kw.get('trigger', self.AWG is not None)
+
+    def finish(self):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.scope.unsubscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.finish()
+
+    def get_values(self):
+        self.UHFQC.scopes_0_single(1)
+        self.UHFQC.scopes_0_enable(1)
+        self.scope.subscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.execute()
+        if self.AWG is not None:
+            self.AWG.start()
+        result = self.scope.read()
+        while int(self.scope.progress()) != 1:
+            time.sleep(0.1)
+            result = self.scope.read()
+        return [x.reshape(self.nr_averages, -1).mean(0) for
+                x in result[self.UHFQC.devname]['scopes']['0']['wave'][0][0]['wave']]
+
+    def prepare(self, sweep_points=None):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.UHFQC.scopes_0_enable(0)
+        self.UHFQC.scopes_0_length(self.nr_samples)
+        self.UHFQC.scopes_0_channel((1 << len(self.channels)) - 1)
+        self.UHFQC.scopes_0_segments_count(self.nr_averages)
+        self.UHFQC.scopes_0_segments_enable(1)
+
+        for i, ch in enumerate(self.channels):
+            self.UHFQC.set(f'scopes_0_channels_{i}_inputselect', ch)
+
+        self.UHFQC.scopes_0_single(1)
+        if self.fft_mode == 'fft_power':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 1)
+        elif self.fft_mode == 'fft':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 0)
+        elif self.fft_mode == 'timedomain':
+            self.scope.set('scopeModule/mode', 1)
+            self.scope.set('scopeModule/fft/power', 0)
+        else:
+            raise ValueError("Invalid fft_mode. Allowed options are "
+                             "'timedomain', 'fft' and 'fft_power'")
+        self.scope.set('scopeModule/averager/weight', 1)
+
+        self.UHFQC.scopes_0_trigenable(self.trigger)
+        self.UHFQC.scopes_0_trigchannel(self.trigger_channel)
+        self.UHFQC.scopes_0_triglevel(self.trigger_level)
+        self.UHFQC.scopes_0_trigslope(0)
+
+    def get_sweep_vals(self):
+        if self.fft_mode == 'timedomain':
+            return np.linspace(0, self.nr_samples/1.8e9, self.nr_samples, endpoint=False)
+        elif self.fft_mode in ('fft', 'fft_power'):
+            return np.linspace(0, 0.9e9, self.nr_samples//2, endpoint=False)
 
 
 class UHFQC_integrated_average_detector(UHFQC_Base):
@@ -984,6 +1265,9 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
             if self.prepare_function is not None:
                 self.prepare_function()
 
+        self.ro_mode = 'rl'
+        self._check_hardware_limitations()
+
         # Do not enable the rerun button; the AWG program uses userregs/0 to
         # define the number of iterations in the loop
         self.UHFQC.awgs_0_single(1)
@@ -993,7 +1277,7 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
                                           samples=self.nr_sweep_points,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
-                                          mode='rl')
+                                          mode=self.ro_mode)
 
 
 class UHFQC_correlation_detector(UHFQC_integrated_average_detector):
@@ -1066,16 +1350,18 @@ class UHFQC_correlation_detector(UHFQC_integrated_average_detector):
             self.nr_sweep_points = self.seg_per_point
         else:
             self.nr_sweep_points = len(sweep_points) * self.seg_per_point
+        self._check_hardware_limitations()
 
         self.UHFQC.qas_0_integration_length(int(self.integration_length*(1.8e9)))
 
         self.set_up_correlation_weights()
 
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
+        self.ro_mode = 'rl'
+        self.UHFQC.qudev_acquisition_initialize(channels=self.channels,
                                           samples=self.nr_sweep_points,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages*self.nr_sweep_points),
-                                          mode='rl')
+                                          mode=self.ro_mode)
 
     def define_correlation_channels(self):
         self.correlation_channels = []
@@ -1238,6 +1524,7 @@ class UHFQC_integration_logging_det(UHFQC_Base):
         self.AWG = AWG
         self.integration_length = integration_length
         self.nr_shots = nr_shots
+        self.nr_averages = 1  # for single shot readout
         # to be used in MC
         self.acq_data_len_scaling = self.nr_shots
 
@@ -1263,19 +1550,20 @@ class UHFQC_integration_logging_det(UHFQC_Base):
             if self.prepare_function is not None:
                 self.prepare_function()
 
+        self.nr_sweep_points = len(sweep_points)
+        self._check_hardware_limitations()
+
         # The averaging-count is used to specify how many times the AWG program
         # should run
         self.UHFQC.awgs_0_single(1)
-
-        self.nr_sweep_points = len(sweep_points)
+        self.ro_mode = 'rl'
         self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
-
         self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
         self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
                                           samples=self.nr_sweep_points,
-                                          averages=1,  # for single shot readout
+                                          averages=self.nr_averages,
                                           loop_cnt=int(self.nr_shots),
-                                          mode='rl')
+                                          mode=self.ro_mode)
 
     def get_values(self):
         if self.always_prepare:
@@ -1379,6 +1667,11 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
 
         if self.get_values_function_kwargs.get('averaged', True):
             self.acq_data_len_scaling = 1  # to be used in MC
+            # The following value is only used for correct progress
+            # calculation in poll_data. It will not influence the behavior of
+            # the acquisition device since UHFQC_classifier_detector.prepare
+            # passes averages=1 to qudev_acquisition_initialize.
+            self.nr_averages = self.nr_shots
 
     def prepare(self, sweep_points):
         if self.AWG is not None:
@@ -1393,6 +1686,9 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
 
         assert len(sweep_points) % self.acq_data_len_scaling == 0
         self.nr_sweep_points = len(sweep_points) // self.acq_data_len_scaling
+        self.ro_mode = 'rl'
+        self._check_hardware_limitations()
+
         # The averaging-count is used to specify how many times the AWG program
         # should run
         self.UHFQC.awgs_0_single(1)
@@ -1403,7 +1699,7 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             channels=self.channels,
             samples=self.nr_shots * self.nr_sweep_points,
             averages=1,  # for single shot readout
-            loop_cnt=int(self.nr_shots), mode='rl')
+            loop_cnt=int(self.nr_shots), mode=self.ro_mode)
 
     def process_data(self, data_raw):
         processed_data = super().process_data(data_raw).T
@@ -1489,7 +1785,7 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
             thresh_data = np.isclose(np.repeat(
                 [np.arange(nr_states)],
                 data[:, nr_states*i: nr_states*(i+1)].shape[0], axis=0).T,
-                                     np.argmax(data, axis=1)).T
+                     np.argmax(data[:, nr_states*i: nr_states*(i+1)], axis=1)).T
             thresholded_data[:, nr_states * i: nr_states * i + nr_states] = \
                 thresh_data
 

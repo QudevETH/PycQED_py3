@@ -51,8 +51,10 @@ class QuDev_transmon(Qubit):
         compensation_pulse_gaussian_filter_sigma=0,
     )
 
-    def __init__(self, name, **kw):
+    def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
+
+        self.transition_names = transition_names
 
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
@@ -90,18 +92,6 @@ class QuDev_transmon(Qubit):
         self.add_parameter('optimal_acquisition_delay', label='Optimal '
                            'acquisition delay', unit='s', initial_value=0,
                            parameter_class=ManualParameter)
-        self.add_parameter('T1', label='Qubit relaxation', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T1_ef', label='Qubit relaxation', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2', label='Qubit dephasing Echo', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_ef', label='Qubit dephasing Echo', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_star', label='Qubit dephasing', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
-        self.add_parameter('T2_star_ef', label='Qubit dephasing', unit='s',
-                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('anharmonicity', label='Qubit anharmonicity',
                            unit='Hz', initial_value=0,
                            parameter_class=ManualParameter)
@@ -131,12 +121,21 @@ class QuDev_transmon(Qubit):
         self.add_operation('RO')
         self.add_pulse_parameter('RO', 'ro_pulse_type', 'pulse_type',
                                  vals=vals.Enum('GaussFilteredCosIQPulse',
-                                                'GaussFilteredCosIQPulseMultiChromatic'),
+                                                'GaussFilteredCosIQPulseMultiChromatic',
+                                                'GaussFilteredCosIQPulseWithFlux'),
                                  initial_value='GaussFilteredCosIQPulse')
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
                                  initial_value=None, vals=vals.Strings())
+        self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
+                                 initial_value=None, vals=vals.MultiType(
+                                     vals.Enum(None), vals.Strings()))
+        self.add_pulse_parameter('RO',
+                                 'ro_flux_crosstalk_cancellation_key',
+                                 'crosstalk_cancellation_key',
+                                 vals=vals.Anything(),
+                                 initial_value=False)
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -159,8 +158,10 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_sigma',
                                  'gaussian_filter_sigma',
                                  initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('RO', 'ro_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_buffer_length_start', 'buffer_length_start',
+                                 initial_value=10e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_buffer_length_end', 'buffer_length_end',
+                                 initial_value=10e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_phase_lock', 'phase_lock',
                                  initial_value=False, vals=vals.Bool())
         self.add_pulse_parameter('RO', 'ro_basis_rotation',
@@ -170,6 +171,14 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter('RO', 'ro_flux_amplitude', 'flux_amplitude',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_extend_start', 'flux_extend_start',
+                                 initial_value=20e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_extend_end', 'flux_extend_end',
+                                 initial_value=150e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
+                                 initial_value=0.5e-9, vals=vals.Numbers())
 
         # acquisition parameters
         self.add_parameter('acq_I_channel', initial_value=0,
@@ -245,8 +254,6 @@ class QuDev_transmon(Qubit):
                            parameter_class=ManualParameter)
 
         # qubit drive pulse parameters
-        self.add_parameter('ge_freq', label='Qubit drive frequency', unit='Hz',
-                           initial_value=0, parameter_class=ManualParameter)
         self.add_parameter('ge_lo_power', unit='dBm',
                            parameter_class=ManualParameter,
                            label='Qubit drive pulse mixer LO power')
@@ -261,70 +268,99 @@ class QuDev_transmon(Qubit):
                            label='Parameters for frequency vs flux pulse '
                                  'amplitude fit',
                            initial_value={}, parameter_class=ManualParameter)
-        # add drive pulse parameters
-        self.add_operation('X180')
-        self.add_pulse_parameter('X180', 'ge_pulse_type', 'pulse_type',
-                                 initial_value='SSB_DRAG_pulse',
-                                 vals=vals.Enum(
-                                     'SSB_DRAG_pulse',
-                                     'SSB_DRAG_pulse_with_cancellation'
-                                 ))
-        self.add_pulse_parameter('X180', 'ge_I_channel', 'I_channel',
-                                 initial_value=None, vals=vals.Strings())
-        self.add_pulse_parameter('X180', 'ge_Q_channel', 'Q_channel',
-                                 initial_value=None, vals=vals.Strings())
-        self.add_pulse_parameter('X180', 'ge_amp180', 'amplitude',
-                                 initial_value=0.001, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_amp90_scale', 'amp90_scale',
-                                 initial_value=0.5, vals=vals.Numbers(0, 1))
-        self.add_pulse_parameter('X180', 'ge_delay', 'pulse_delay',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_sigma', 'sigma',
-                                 initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_motzoi', 'motzoi',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_mod_freq', 'mod_frequency',
-                                 initial_value=-100e6, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_phi_skew', 'phi_skew',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_alpha', 'alpha',
-                                 initial_value=1, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_X_phase', 'phase',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180', 'ge_cancellation_params',
-                                 'cancellation_params', initial_value={},
-                                 vals=vals.Dict())
-
-        # qubit 2nd excitation drive pulse parameters
-        self.add_parameter('ef_freq', label='Qubit ef drive frequency',
-                           unit='Hz', initial_value=0,
+        self.add_parameter('fit_ge_freq_from_dc_offset',
+                           label='Parameters for frequency vs flux dc '
+                                 'offset fit',
+                           initial_value={}, parameter_class=ManualParameter)
+        self.add_parameter('fit_ge_amp180_over_ge_freq',
+                           label='String representation of function to '
+                                 'calculate a pi pulse amplitude for a given '
+                                 'ge transition frequency.',
+                           initial_value=None, parameter_class=ManualParameter)
+        self.add_parameter('fit_ro_freq_over_ge_freq',
+                           label='String representation of function to '
+                                 'calculate a RO frequency for a given '
+                                 'ge transition frequency.',
+                           initial_value=None, parameter_class=ManualParameter)
+        self.add_parameter('flux_amplitude_bias_ratio',
+                           label='Ratio between a flux pulse amplitude '
+                                 'and a DC offset change that lead to '
+                                 'the same change in flux.',
+                           initial_value=None, vals=vals.Numbers(),
                            parameter_class=ManualParameter)
-        self.add_operation('X180_ef')
-        self.add_pulse_parameter('X180_ef', 'ef_pulse_type', 'pulse_type',
-                                 initial_value='SSB_DRAG_pulse',
-                                 vals=vals.Enum(
-                                     'SSB_DRAG_pulse',
-                                     'SSB_DRAG_pulse_with_cancellation'
-                                 ))
-        self.add_pulse_parameter('X180_ef', 'ef_amp180', 'amplitude',
-                                 initial_value=0.001, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_amp90_scale', 'amp90_scale',
-                                 initial_value=0.5, vals=vals.Numbers(0, 1))
-        self.add_pulse_parameter('X180_ef', 'ef_delay', 'pulse_delay',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_sigma', 'sigma',
-                                 initial_value=10e-9, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_nr_sigma', 'nr_sigma',
-                                 initial_value=5, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_motzoi', 'motzoi',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_X_phase', 'phase',
-                                 initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('X180_ef', 'ef_cancellation_params',
-                                 'cancellation_params', initial_value={},
-                                 vals=vals.Dict())
+
+        # add drive pulse parameters
+        for tr_name in self.transition_names:
+            self.add_parameter(f'{tr_name}_freq',
+                               label=f'Qubit {tr_name} drive frequency',
+                               unit='Hz', initial_value=0,
+                               parameter_class=ManualParameter)
+            tn = '' if tr_name == 'ge' else f'_{tr_name}'
+            self.add_operation(f'X180{tn}')
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_pulse_type',
+                                     'pulse_type',
+                                     initial_value='SSB_DRAG_pulse',
+                                     vals=vals.Enum(
+                                         'SSB_DRAG_pulse',
+                                         'SSB_DRAG_pulse_with_cancellation'
+                                     ))
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp180',
+                                     'amplitude',
+                                     initial_value=0.001, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp90_scale',
+                                     'amp90_scale',
+                                     initial_value=0.5, vals=vals.Numbers(0, 1))
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_delay',
+                                     'pulse_delay',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_sigma',
+                                     'sigma',
+                                     initial_value=10e-9, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_nr_sigma',
+                                     'nr_sigma',
+                                     initial_value=5, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_motzoi',
+                                     'motzoi',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_X_phase',
+                                     'phase',
+                                     initial_value=0, vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}',
+                                     f'{tr_name}_cancellation_params',
+                                     'cancellation_params', initial_value={},
+                                     vals=vals.Dict())
+            if tr_name == 'ge':
+                # The parameters below will be the same for all transitions
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_I_channel',
+                                         'I_channel',
+                                         initial_value=None,
+                                         vals=vals.Strings())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_Q_channel',
+                                         'Q_channel',
+                                         initial_value=None,
+                                         vals=vals.Strings())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_mod_freq',
+                                         'mod_frequency',
+                                         initial_value=-100e6,
+                                         vals=vals.Numbers())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
+                                         'phi_skew',
+                                         initial_value=0,
+                                         vals=vals.Numbers())
+                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
+                                         'alpha',
+                                         initial_value=1,
+                                         vals=vals.Numbers())
+            # coherence times
+            self.add_parameter(f'T1{tn}', label=f'{tr_name} relaxation',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2{tn}', label=f'{tr_name} dephasing Echo',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
+            self.add_parameter(f'T2_star{tn}', label=f'{tr_name} dephasing',
+                               unit='s', initial_value=0,
+                               parameter_class=ManualParameter)
 
 
         # add qubit spectroscopy parameters
@@ -352,7 +388,8 @@ class QuDev_transmon(Qubit):
                                  initial_value='BufferedCZPulse',
                                  vals=vals.Enum('BufferedSquarePulse',
                                                 'BufferedCZPulse',
-                                                'NZBufferedCZPulse'))
+                                                'NZBufferedCZPulse',
+                                                'NZTransitionControlledPulse'))
         self.add_pulse_parameter(op_name, ps_name + '_channel', 'channel',
                                  initial_value='', vals=vals.Strings())
         self.add_pulse_parameter(op_name, ps_name + '_aux_channels_dict',
@@ -393,6 +430,11 @@ class QuDev_transmon(Qubit):
         self.add_parameter('dc_flux_parameter', initial_value=None,
                            label='QCoDeS parameter to sweep the dc flux',
                            parameter_class=ManualParameter)
+        self.add_parameter('flux_parking', initial_value=0,
+                           label='Flux (in units of phi0) at the parking '
+                                 'position.',
+                           vals=vals.Numbers(),
+                           parameter_class=ManualParameter)
 
         # ac flux parameters
         self.add_parameter('flux_distortion', parameter_class=ManualParameter,
@@ -424,6 +466,288 @@ class QuDev_transmon(Qubit):
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
+
+    def get_ge_amp180_from_ge_freq(self, ge_freq):
+        """
+        Calculates the pi pulse amplitude required for a given ge transition
+        frequency using the function stored in the parameter
+        fit_ge_amp180_over_ge_freq. If this parameter is None, the method
+        returns None.
+
+        :param ge_freq: ge transition frequency or an array of frequencies
+        :return: pi pulse amplitude or an array of amplitudes (or None)
+        """
+        amp_func = self.fit_ge_amp180_over_ge_freq()
+        if amp_func is None:
+            log.warning(f'Cannot calculate drive amp for {self.name} since '
+                        f'fit_ge_amp180_over_ge_freq is None.')
+            return None
+        return eval(amp_func)(ge_freq)
+
+    def get_ro_freq_from_ge_freq(self, ge_freq):
+        """
+        Calculates the RO frequency required for a given ge transition
+        frequency using the function stored in the parameter
+        fit_ro_freq_over_ge_freq. If this parameter is None, the method
+        returns None.
+
+        :param ge_freq: ge transition frequency or an array of frequencies
+        :return: RO frequency or an array of frequencies (or None)
+        """
+        freq_func = self.fit_ro_freq_over_ge_freq()
+        if freq_func is None:
+            log.warning(f'Cannot calculate RO freq for {self.name} since '
+                        f'fit_ro_freq_over_ge_freq is None.')
+            return None
+        return eval(freq_func)(ge_freq)
+
+    def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
+                            model='transmon_res', flux=None, update=False):
+        """
+        Calculates the transition frequency for a given DC bias and flux
+        pulse amplitude using fit parameters stored in the qubit object.
+        Note that the qubit parameter flux_amplitude_bias_ratio is used for
+        conversion between bias values and amplitudes.
+
+        :param bias: (float) DC bias. If model='approx' is used, the bias is
+            optional, and is understood relative to the parking position at
+            which the  model was measured. Otherwise, it mandatory and is
+            interpreted as voltage of the DC source.
+        :param amplitude: (float, default: 0) flux pulse amplitude
+        :param transition: (str, default: 'ge') the transition whose
+            frequency should be calculated. Currently, only 'ge' is
+            implemented.
+        :param model: (str, default: 'transmon_res') the model to use.
+            'approx': Qubit_dac_to_freq with parameters from
+                the qubit parameter fit_ge_freq_from_flux_pulse_amp.
+                bias is understood as relative to the parking position.
+            'transmon': Qubit_dac_to_freq_precise with parameters from
+                the qubit parameter fit_ge_freq_from_dc_offset.
+                bias is understood as the voltage of the DC source.
+            'transmon_res': Qubit_dac_to_freq_res with parameters from
+                the qubit parameter fit_ge_freq_from_dc_offset.
+                bias is understood as the voltage of the DC source.
+        :param flux: (float, default None) if this is not None, the frequency
+            is calculated for the given flux (in units of phi_0) instead of
+            for the given bias (for models 'transmon' and 'transmon_res') or
+            instead of the given amplitude (for model 'approx'). If both bias
+            and flux are None and the model is 'transmon' or 'transmon_res',
+            the flux value from self.flux_parking() is used.
+        :param update: (bool, default False) whether the result should be
+            stored as ge_freq parameter of the qubit object.
+        :return: calculated ge transition frequency
+        """
+
+        if transition not in ['ge']:
+            raise NotImplementedError(
+                'Currently, only ge transition is implemented.')
+        flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
+        if flux_amplitude_bias_ratio is None:
+            if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                    (model == ['approx'] and bias is not None and bias != 0)):
+                raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                 'required for this calculation.')
+
+        if model in ['transmon', 'transmon_res']:
+            vfc = self.fit_ge_freq_from_dc_offset()
+            if bias is None and flux is None:
+                flux = self.flux_parking()
+            if flux is not None:
+                bias = self.calculate_voltage_from_flux(flux, model)
+        else:
+            vfc = self.fit_ge_freq_from_flux_pulse_amp()
+            if flux is not None:
+                amplitude = self.calculate_voltage_from_flux(flux, model)
+
+        if model == 'approx':
+            ge_freq = fit_mods.Qubit_dac_to_freq(
+                amplitude + (0 if bias is None or np.all(bias == 0) else
+                             bias * flux_amplitude_bias_ratio), **vfc)
+        elif model == 'transmon':
+            kw = deepcopy(vfc)
+            kw.pop('coupling', None)
+            kw.pop('fr', None)
+            ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+                0 if np.all(amplitude == 0)
+                else amplitude / flux_amplitude_bias_ratio), **kw)
+        elif model == 'transmon_res':
+            ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
+                0 if np.all(amplitude == 0)
+                else amplitude / flux_amplitude_bias_ratio), **vfc)
+        else:
+            raise NotImplementedError(
+                "Currently, only the models 'approx', 'transmon', and"
+                "'transmon_res' are implemented.")
+        if update:
+            self.ge_freq(ge_freq)
+        return ge_freq
+
+    def calculate_flux_voltage(self, frequency=None, bias=None,
+                               amplitude=None, transition='ge',
+                               model='transmon_res', flux=None,
+                               branch='negative'):
+        """
+        Calculates the flux pulse amplitude or DC bias required to reach a
+        transition frequency using fit parameters stored in the qubit
+        object. Note that the qubit parameter flux_amplitude_bias_ratio is
+        used for conversion between bias values and amplitudes.
+        :param frequency: (float, default: None = use self.ge_freq())
+            transition frequency
+        :param bias: (float, default; None) DC bias. If None, the function
+            calculates the required DC bias to reach the target frequency
+            (potentially taking into account the given flux pulse amplitude).
+            Otherwise, it fixes the DC bias and calculates the required pulse
+            amplitude. See note below.
+        :param amplitude: (float, default: None) flux pulse amplitude. If None,
+            the function calculates the required pulse amplitude to reach
+            the target frequency (taking into account the given bias).
+            Otherwise, it fixes the pulse ammplitude and calculates the
+            required bias. See note below.
+        :param transition: (str, default: 'ge') the transition whose
+            frequency should be calculated. Currently, only 'ge' is
+            implemented.
+        :param model: (str, default: 'transmon_res') the model to use.
+            Currently 'transmon_res' and 'approx' are supported. See
+            docstring of self.calculate_frequency
+        :param flux: (float, default None) if this is not None, the bias
+            parameter is overwritten with the bias corresponding to the given
+            flux (in units of phi_0) for models 'transmon' and 'transmon_res'.
+            This parameter is ignored if the model is 'approx'.
+        :param branch: which branch of the flux-to-frequency curve should be
+            used. See the meaning of this parameter in Qubit_freq_to_dac
+            and Qubit_freq_to_dac_res.
+        :return: calculated bias or amplitude, depending on which parameters
+            are passed in (see above and notes below).
+
+        Notes:
+        If model='approx' is used, the bias (parameter or return
+            value) is understood relative to the parking position at
+            which the model was measured. Otherwise, it is interpreted as
+            voltage of the DC source.
+        If both bias and amplitude are None, an amplitude is returned if the
+            model is 'approx'. For the other models, a bias is returned in
+            this case.
+        """
+
+        if frequency is None:
+            frequency = self.ge_freq()
+        if transition not in ['ge']:
+            raise NotImplementedError(
+                'Currently, only ge transition is implemented.')
+        flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
+
+        if model in ['transmon', 'transmon_res']:
+            vfc = self.fit_ge_freq_from_dc_offset()
+            if flux is not None:
+                bias = self.calculate_voltage_from_flux(flux, model)
+        else:
+            vfc = self.fit_ge_freq_from_flux_pulse_amp()
+
+        if flux_amplitude_bias_ratio is None:
+            if bias is not None and amplitude is not None:
+                raise ValueError(
+                    'flux_amplitude_bias_ratio is None, but is '
+                    'required for this calculation.')
+
+        if model == 'approx':
+            val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
+        elif model == 'transmon_res':
+            val = fit_mods.Qubit_freq_to_dac_res(
+                frequency, **vfc, branch=branch)
+        else:
+            raise NotImplementedError(
+                "Currently, only the models 'approx' and"
+                "'transmon_res' are implemented.")
+
+        if model in ['transmon', 'transmon_res'] and bias is not None:
+            # return amplitude
+            val = (val - bias) * flux_amplitude_bias_ratio
+        elif model in ['approx'] and bias is not None:
+            # return amplitude
+            val = val - bias * flux_amplitude_bias_ratio
+        elif model in ['transmon', 'transmon_res'] and amplitude is not None:
+            # return bias, corrected for amplitude
+            val = val - amplitude / flux_amplitude_bias_ratio
+        elif model in ['approx'] and amplitude is not None:
+            # return bias
+            val = (val - amplitude) / flux_amplitude_bias_ratio
+        # If both bias and amplitude are None, the bare result is returned,
+        # see note in the doctring.
+        return val
+
+    def calculate_voltage_from_flux(self, flux, model='transmon_res'):
+        """
+        Calculates the DC bias for a given target flux.
+
+        :param flux: (float) flux in units of phi_0
+        :param model: (str, default: 'transmon_res') the model to use,
+            see calculate_frequency.
+        :return: calculated DC bias if model is transmon or transmon_res,
+            calculated flux pulse amplitude otherwise
+        """
+        if model in ['transmon', 'transmon_res']:
+            vfc = self.fit_ge_freq_from_dc_offset()
+        else:
+            vfc = self.fit_ge_freq_from_flux_pulse_amp()
+        return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+
+    def calc_flux_amplitude_bias_ratio(self, amplitude, ge_freq, bias=None,
+                                       flux=None, update=False):
+        """
+        Calculates the conversion factor between flux pulse amplitudes and bias
+        voltage changes that lead to the same qubit detuning. The calculation is
+        done based on the model Qubit_freq_to_dac_res and the parameters stored
+        in the qubit parameter fit_ge_freq_from_dc_offset.
+
+        :param amplitude: (float) flux pulse amplitude
+        :param ge_freq: (float) measured ge transition frequency
+        :param bias: (float) DC bias, i.e., voltage of the DC source.
+        :param flux: (float) if this is not None, the value of the bias
+            is overwritten with the voltage corresponding to the given flux
+            (in units of phi_0). If both bias and flux are None, the flux
+            value from self.flux_parking() is used.
+        :param update: (bool, default False) whether the result should be
+            stored as flux_amplitude_bias_ratio parameter of the qubit object.
+        :return: calculated conversion factor
+        """
+        if bias is None and flux is None:
+            flux = self.flux_parking()
+        if flux is not None:
+            bias = self.calculate_voltage_from_flux(flux)
+        v = fit_mods.Qubit_freq_to_dac_res(
+            ge_freq, **self.fit_ge_freq_from_dc_offset())
+        flux_amplitude_bias_ratio = amplitude / (v - bias)
+        if update:
+            self.flux_amplitude_bias_ratio(flux_amplitude_bias_ratio)
+        return flux_amplitude_bias_ratio
+
+    def generate_scaled_volt_freq_conv(self, scaling=None, flux=None,
+                                       bias=None):
+        """
+        Generates a scaled and shifted version of the voltage frequency
+        conversion dictionary (self.fit_ge_freq_from_dc_offset). This can,
+        e.g., be used to calculate flux pulse amplitude to ge frequency
+        conversion using fit_mods.Qubit_dac_to_freq_res. This shift is done
+        relative to obtain a model that is relative to a flux offset (
+        parking position) indicated by either flux or bias.
+        :param scaling: the scaling factor. Default: use
+            self.flux_amplitude_bias_ratio()
+        :param flux: parking position in unit of Phi_0. If both bias and flux
+            are None, the flux value from self.flux_parking() is used.
+        :param bias: If not None, overwrite flux with the flux resulting from
+            the given DC voltage.
+        :return: the scaled and shifed voltage frequency conversion dictionary
+        """
+        vfc = deepcopy(self.fit_ge_freq_from_dc_offset())
+        if scaling is None:
+            scaling = self.flux_amplitude_bias_ratio()
+        if bias is not None:
+            flux = (bias - vfc['dac_sweet_spot']) / vfc['V_per_phi0']
+        elif flux is None:
+            flux = self.flux_parking()
+        vfc['V_per_phi0'] *= scaling
+        vfc['dac_sweet_spot'] = -flux * vfc['V_per_phi0']
+        return vfc
 
     def update_detector_functions(self):
         if self.acq_Q_channel() is None or \
@@ -486,37 +810,20 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             result_logging_mode='raw', real_imag=False, single_int_avg=True)
 
+        if hasattr(self.instr_uhf.get_instr().daq, 'scopeModule'):
+            self.scope_fft_det = det.UHFQC_scope_detector(
+                UHFQC=self.instr_uhf.get_instr(),
+                AWG=self.instr_pulsar.get_instr(),
+                fft_mode='fft_power',
+                nr_averages=self.acq_averages(),
+                nr_samples=nr_samples,
+            )
+
     def prepare(self, drive='timedomain'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
-        # set awg channel dc offsets
-        offset_list = [('ro_I_channel', 'ro_I_offset'),
-                       ('ro_Q_channel', 'ro_Q_offset')]
-        if drive == 'timedomain':
-            if self.ge_lo_leakage_cal()['mode'] == 'fixed':
-                offset_list += [('ge_I_channel', 'ge_I_offset'),
-                                ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
-                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
-                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
-                # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
-                #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
-                lo_cal = ge_lo.get_instr().lo_cal_data()
-                qb_lo_cal = self.ge_lo_leakage_cal()
-                pulsar = self.instr_pulsar.get_instr()
-                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
-                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
-                lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
-                                            qb_lo_cal['I_offsets'])
-                lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
-                                            qb_lo_cal['Q_offsets'])
-
-        for channel_par, offset_par in offset_list:
-            self.instr_pulsar.get_instr().set(
-                self.get(channel_par) + '_offset', self.get(offset_par))
-
+        self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
         if ro_lo() is not None:
             ro_lo.get_instr().pulsemod_state('Off')
@@ -546,6 +853,8 @@ class QuDev_transmon(Qubit):
                 ge_lo.get_instr().on()
             elif drive == 'pulsed_spec':
                 ge_lo.get_instr().pulsemod_state('On')
+                if 'pulsemod_source' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().pulsemod_source('EXT')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
                 ge_lo.get_instr().on()
@@ -658,10 +967,14 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()['Acq ' + self.name]
 
     def get_ge_pars(self):
-        return self.get_operation_dict()['X180 ' + self.name]
+        return self.get_drive_pars('ge')
 
     def get_ef_pars(self):
-        return self.get_operation_dict()['X180_ef ' + self.name]
+        return self.get_drive_pars('ef')
+
+    def get_drive_pars(self, transition_name):
+        tn = '' if transition_name == 'ge' else f'_{transition_name}'
+        return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
         if operation_dict is None:
@@ -669,35 +982,36 @@ class QuDev_transmon(Qubit):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
         operation_dict['RO ' + self.name]['operation_type'] = 'RO'
-        operation_dict['X180 ' + self.name]['operation_type'] = 'MW'
-        operation_dict['X180_ef ' + self.name]['operation_type'] = 'MW'
-        operation_dict['X180 ' + self.name]['basis'] = self.name
-        operation_dict['X180_ef ' + self.name]['basis'] = self.name + \
-                                                                   '_ef'
-        operation_dict['X180_ef ' + self.name]['I_channel'] = \
-            operation_dict['X180 ' + self.name]['I_channel']
-        operation_dict['X180_ef ' + self.name]['Q_channel'] = \
-            operation_dict['X180 ' + self.name]['Q_channel']
-        operation_dict['X180_ef ' + self.name]['phi_skew'] = \
-            operation_dict['X180 ' + self.name]['phi_skew']
-        operation_dict['X180_ef ' + self.name]['alpha'] = \
-            operation_dict['X180 ' + self.name]['alpha']
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0
+        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
-        if self.ef_freq() == 0:
-            operation_dict['X180_ef ' + self.name]['mod_frequency'] = None
-        else:
-            operation_dict['X180_ef ' + self.name]['mod_frequency'] = \
-                self.ef_freq() - self.ge_freq() + self.ge_mod_freq()
+        for tr_name in self.transition_names:
+            tn = '' if tr_name == 'ge' else f'_{tr_name}'
+            operation_dict[f'X180{tn} ' + self.name]['basis'] = self.name + tn
+            operation_dict[f'X180{tn} ' + self.name]['operation_type'] = 'MW'
+            if tr_name != 'ge':
+                operation_dict[f'X180{tn} ' + self.name]['I_channel'] = \
+                    operation_dict['X180 ' + self.name]['I_channel']
+                operation_dict[f'X180{tn} ' + self.name]['Q_channel'] = \
+                    operation_dict['X180 ' + self.name]['Q_channel']
+                operation_dict[f'X180{tn} ' + self.name]['phi_skew'] = \
+                    operation_dict['X180 ' + self.name]['phi_skew']
+                operation_dict[f'X180{tn} ' + self.name]['alpha'] = \
+                    operation_dict['X180 ' + self.name]['alpha']
+                if self.get(f'{tr_name}_freq') == 0:
+                    operation_dict[f'X180{tn} ' + self.name][
+                        'mod_frequency'] = None
+                else:
+                    operation_dict['X180_ef ' + self.name][
+                        'mod_frequency'] = self.get(f'{tr_name}_freq') - \
+                                           self.ge_freq() + self.ge_mod_freq()
+            operation_dict.update(add_suffix_to_dict_keys(
+                sq.get_pulse_dict_from_pars(
+                    operation_dict[f'X180{tn} ' + self.name]),
+                f'{tn} ' + self.name))
 
-        operation_dict.update(add_suffix_to_dict_keys(
-            sq.get_pulse_dict_from_pars(
-                operation_dict['X180 ' + self.name]), ' ' + self.name))
-        operation_dict.update(add_suffix_to_dict_keys(
-            sq.get_pulse_dict_from_pars(
-                operation_dict['X180_ef ' + self.name]), '_ef ' + self.name))
         if np.ndim(self.ro_freq()) != 0:
             delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
             mods = [self.ro_mod_freq() + d for d in delta_freqs]
@@ -1705,10 +2019,44 @@ class QuDev_transmon(Qubit):
         a = ma.MeasurementAnalysis(plot_args=dict(log=True, marker=''))
         return a
 
-    def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
-                                      initial_stepsize=0.01, trigger_sep=5e-6,
-                                      no_improv_break=50, upload=True,
-                                      plot=True):
+    def measure_drive_mixer_spectrum_fft(self, ro_lo_freq, amplitude=0.5,
+                                         trigger_sep=5e-6):
+        MC = self.instr_mc.get_instr()
+        s = swf.None_Sweep(
+            name='UHF intermediate frequency',
+            parameter_name='UHF intermediate frequency',
+            unit='Hz')
+        drive_pulse = dict(
+            pulse_type='GaussFilteredCosIQPulse',
+            pulse_length=self.acq_length(),
+            ref_point='start',
+            amplitude=amplitude,
+            I_channel=self.ge_I_channel(),
+            Q_channel=self.ge_Q_channel(),
+            mod_frequency=self.ge_mod_freq(),
+            phase_lock=False,
+        )
+        sq.pulse_list_list_seq([[self.get_acq_pars(), drive_pulse]])
+
+        with temporary_value(
+                (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive='timedomain')
+            MC.set_sweep_function(s)
+            MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
+            MC.set_detector_function(self.scope_fft_det)
+            self.instr_pulsar.get_instr().start()
+            MC.run('ge_uc_spectrum' + self.msmt_suffix)
+
+        a = ma.MeasurementAnalysis(plot_args=dict(log=True, marker=''))
+        return a
+
+    def _calibrate_drive_mixer_carrier_common(
+            self, detector_generator, update=True, x0=(0., 0.),
+            initial_stepsize=0.01, trigger_sep=5e-6, no_improv_break=50,
+            upload=True, plot=True):
+
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': x0,
@@ -1733,16 +2081,14 @@ class QuDev_transmon(Qubit):
                             )]])
 
         with temporary_value(
-            (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
-            (self.acq_weights_type, 'SSB'),
-            (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
             self.prepare(drive='timedomain')
-            MC.set_detector_function(det.IndexDetector(
-                self.int_avg_det_spec, 0))
+            MC.set_detector_function(detector_generator())
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
-                mode='adaptive')
+                   mode='adaptive')
 
         a = ma.OptimizationAnalysis(label='drive_carrier_calibration')
         if plot:
@@ -1755,6 +2101,34 @@ class QuDev_transmon(Qubit):
             self.ge_I_offset(ch_1_min)
             self.ge_Q_offset(ch_2_min)
         return ch_1_min, ch_2_min
+
+    def calibrate_drive_mixer_carrier_fft(
+            self, update=True, x0=(0., 0.), initial_stepsize=0.01,
+            trigger_sep=5e-6, no_improv_break=50, upload=True, plot=True):
+
+        def detector_generator(s=self):
+            d = s.scope_fft_det
+            d.AWG = None
+            idx = np.argmin(np.abs(d.get_sweep_vals() -
+                                   np.abs(s.ro_mod_freq())))
+            return det.IndexDetector(det.SumDetector(d), (0, idx))
+
+        return self._calibrate_drive_mixer_carrier_common(
+            detector_generator, update=update, x0=x0,
+            initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
+            no_improv_break=no_improv_break, upload=upload, plot=plot)
+
+    def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
+                                      initial_stepsize=0.01, trigger_sep=5e-6,
+                                      no_improv_break=50, upload=True,
+                                      plot=True):
+        def detector_generator(s=self):
+            return det.IndexDetector(s.int_avg_det_spec, 0)
+
+        return self._calibrate_drive_mixer_carrier_common(
+            detector_generator, update=update, x0=x0,
+            initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
+            no_improv_break=no_improv_break, upload=upload, plot=plot)
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
@@ -2980,29 +3354,32 @@ class QuDev_transmon(Qubit):
             total_dist = np.abs(trace['e'] - trace['g']) + \
                          np.abs(trace['f'] - trace['g']) + \
                          np.abs(trace['f'] - trace['e'])
-            fmax = freqs[np.argmax(total_dist)]
-            # FIXME: just as debug plotting for now
-            fig, ax = plt.subplots(2)
-            ax[0].plot(freqs, np.abs(trace['g']), label='g')
-            ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        else:
+            total_dist = np.abs(trace['e'] - trace['g'])
+        fmax = freqs[np.argmax(total_dist)]
+        # Plotting which works for qubit or qutrit
+        fig, ax = plt.subplots(2)
+        ax[0].plot(freqs, np.abs(trace['g']), label='g')
+        ax[0].plot(freqs, np.abs(trace['e']), label='e')
+        if qutrit:
             ax[0].plot(freqs, np.abs(trace['f']), label='f')
-            ax[0].set_ylabel('Amplitude')
-            ax[0].legend()
-            ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        ax[0].set_ylabel('Amplitude')
+        ax[0].legend()
+        ax[1].plot(freqs, np.abs(trace['e'] - trace['g']), label='eg')
+        if qutrit:
             ax[1].plot(freqs, np.abs(trace['f'] - trace['g']), label='fg')
             ax[1].plot(freqs, np.abs(trace['e'] - trace['f']), label='ef')
-            ax[1].plot(freqs, total_dist, label='total distance')
-            ax[1].set_xlabel("Freq. [Hz]")
-            ax[1].set_ylabel('Distance in IQ plane')
-            ax[0].set_title("Current RO_freq: {} Hz\nOptimal Freq: {} Hz".format(
-                self.ro_freq(),
-                                                                          fmax))
-            plt.legend()
+        ax[1].plot(freqs, total_dist, label='total distance')
+        ax[1].set_xlabel("Freq. [Hz]")
+        ax[1].set_ylabel('Distance in IQ plane')
+        ax[0].set_title(f"Current RO_freq: {self.ro_freq()} Hz" + "\n"
+                        + f"Optimal Freq: {fmax} Hz")
+        plt.legend()
+        # Save figure into 'g' measurement folder
+        m_a['g'].save_fig(fig, 'IQplane_distance')
 
-            m_a['g'].save_fig(fig, 'IQplane_distance')
-            plt.show()
-            if kw.get('analyze', True):
-                sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
+        if kw.get('analyze', True):
+            sa.ResonatorSpectroscopy_v2(labels=[l for l in labels.values()])
         else:
             fmax = freqs[np.argmax(np.abs(trace['e'] - trace['g']))]
 
@@ -3836,7 +4213,65 @@ class QuDev_transmon(Qubit):
 
         ma.MeasurementAnalysis(TwoD=True)
 
-    def set_distortion_in_pulsar(self, pulsar=None, datadir=None):
+    def configure_pulsar(self):
+        """
+        Configure qubit-specific settings in pulsar:
+        - Reset modulation frequency and amplitude scaling
+        - set AWG channel DC offsets and switch sigouts on,
+           see configure_offsets
+        - set flux distortion, see set_distortion_in_pulsar
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        # make sure that some settings are reset to their default values
+        for quad in ['I', 'Q']:
+            ch = self.get(f'ge_{quad}_channel')
+            if f'{ch}_mod_freq' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_mod_freq'](None)
+            if f'{ch}_amplitude_scaling' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
+        # set offsets and turn on AWG outputs
+        self.configure_offsets()
+        # set flux distortion
+        self.set_distortion_in_pulsar()
+
+    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True):
+        """
+        Set AWG channel DC offsets and switch sigouts on.
+
+        :param set_ro_offsets: whether to set offsets for RO channels
+        :param set_ge_offsets: whether to set offsets for drive channels
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        offset_list = []
+        if set_ro_offsets:
+            offset_list += [('ro_I_channel', 'ro_I_offset'),
+                           ('ro_Q_channel', 'ro_Q_offset')]
+        if set_ge_offsets:
+            ge_lo = self.instr_ge_lo
+            if self.ge_lo_leakage_cal()['mode'] == 'fixed':
+                offset_list += [('ge_I_channel', 'ge_I_offset'),
+                                ('ge_Q_channel', 'ge_Q_offset')]
+                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
+            else:
+                # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
+                #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
+                lo_cal = ge_lo.get_instr().lo_cal_data()
+                qb_lo_cal = self.ge_lo_leakage_cal()
+                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
+                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
+                lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
+                                            qb_lo_cal['I_offsets'])
+                lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
+                                            qb_lo_cal['Q_offsets'])
+
+        for channel_par, offset_par in offset_list:
+            ch = self.get(channel_par)
+            pulsar.set(ch + '_offset', self.get(offset_par))
+            pulsar.sigout_on(ch)
+
+    def set_distortion_in_pulsar(self, datadir=None):
         """
         Configures the fluxline distortion in a pulsar object according to the
         settings in the parameter flux_distortion of the qubit object.
@@ -3847,8 +4282,7 @@ class QuDev_transmon(Qubit):
             self.find_instrument is used to find an obejct called 'MC' and
             the datadir of MC is used.
         """
-        if pulsar is None:
-            pulsar = self.find_instrument('Pulsar')
+        pulsar = self.instr_pulsar.get_instr()
         if datadir is None:
             datadir = self.find_instrument('MC').datadir()
         flux_distortion = deepcopy(self.DEFAULT_FLUX_DISTORTION)

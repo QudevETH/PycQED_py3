@@ -53,6 +53,7 @@ class Pulse:
         self.truncation_length = kw.pop('truncation_length', None)
         self.truncation_decay_length = kw.pop('truncation_decay_length', None)
         self.truncation_decay_const = kw.pop('truncation_decay_const', None)
+        self.crosstalk_cancellation_key = kw.pop('crosstalk_cancellation_key', None)
         self.crosstalk_cancellation_channels = []
         self.crosstalk_cancellation_mtx = None
         self.crosstalk_cancellation_shift_mtx = None
@@ -140,7 +141,11 @@ class Pulse:
             channels = self.channels
         else:
             channels = [ch for m, ch in zip(channel_mask, self.channels) if m]
-        return set(channels) | set(self.crosstalk_cancellation_channels)
+        if any([ch in self.crosstalk_cancellation_channels for ch in
+                channels]):
+            return set(channels) | set(self.crosstalk_cancellation_channels)
+        else:
+            return set(channels)
 
     def pulse_area(self, channel, tvals):
         """

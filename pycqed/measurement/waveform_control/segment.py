@@ -46,6 +46,18 @@ class Segment:
         self.element_start_end = {}
         self.elements_on_awg = {}
         self.distortion_dicts = {}
+        # The sweep_params dict is processed by generate_waveforms_sequences
+        # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
+        # Keys are of the form awgname_chid_nodename (with _ instead of / in
+        # the node name) and values are lists of hard sweep values.
+        # The segment will be repeated as many times as there are hard
+        # sweep values given in this property.
+        # FIXME: This is an experimental feature and needs to be further
+        #  cleaned up and documented in the future.
+        self.sweep_params = {}
+        # allow_filter specifies whether the segment can be filtered out in
+        # a FilteredSweep
+        self.allow_filter = False
         self.trigger_pars = {
             'pulse_length': self.trigger_pulse_length,
             'amplitude': self.trigger_pulse_amplitude,
@@ -56,6 +68,7 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.timer = Timer(self.name)
+        self.pulse_pars = []
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -66,6 +79,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
+        self.pulse_pars.append(deepcopy(pulse_pars))
         pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
@@ -130,7 +144,8 @@ class Segment:
             self.add(p)
 
     @Timer()
-    def resolve_segment(self, store_segment_length_timer=True):
+    def resolve_segment(self, allow_overlap=False,
+                        store_segment_length_timer=True):
         """
         Top layer method of Segment class. After having addded all pulses,
             * pulse elements are updated to enforce single element per segment
@@ -139,12 +154,17 @@ class Segment:
             * the virtual Z gates are resolved
             * the trigger pulses are generated
             * the charge compensation pulses are added
+
+        :param allow_overlap: (bool, default: False) see _test_overlap
+        :param store_segment_length_timer: (bool, default: True) whether
+            the segment length should be stored in the segment's Timer object
         """
         self.enforce_single_element()
         self.resolve_timing()
+        self.resolve_mirror()
         self.resolve_Z_gates()
         self.add_flux_crosstalk_cancellation_channels()
-        self.gen_trigger_el()
+        self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
             try:
@@ -169,7 +189,7 @@ class Segment:
                     self.pulsar.get(f'{ch_awg}_enforce_single_element'))
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
-                p.pulse_obj.element_name = f'default_{self.name}'
+                p.pulse_obj.element_name = f'default_ese_{self.name}'
                 self.resolved_pulses.append(p)
             elif any(ch_mask):
                 p0 = deepcopy(p)
@@ -177,7 +197,7 @@ class Segment:
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
-                p1.pulse_obj.element_name = f'default_{self.name}'
+                p1.pulse_obj.element_name = f'default_ese_{self.name}'
                 p1.pulse_obj.channel_mask = ch_mask
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
@@ -185,7 +205,14 @@ class Segment:
                 p1.basis_rotation = {}
                 p1.delay = 0
                 p1.pulse_obj.name += '_ese'
-                self.resolved_pulses.append(p1)
+                p1.is_ese_copy = True
+                if p1.pulse_obj.codeword == "no_codeword":
+                   self.resolved_pulses.append(p1)
+                else:
+                    ese_chs = [ch for m, ch in zip(ch_mask, p.pulse_obj.channels) if m]
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(ese_chs)}')
             else:
                 p = deepcopy(p)
                 self.resolved_pulses.append(p)
@@ -329,16 +356,28 @@ class Segment:
         self.resolved_pulses = ordered_unres_pulses
 
     def add_flux_crosstalk_cancellation_channels(self):
-        if self.pulsar.flux_crosstalk_cancellation():
-            for p in self.resolved_pulses:
-                if any([ch in self.pulsar.flux_channels() for ch in
-                        p.pulse_obj.channels]):
-                    p.pulse_obj.crosstalk_cancellation_channels = \
-                        self.pulsar.flux_channels()
-                    p.pulse_obj.crosstalk_cancellation_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_mtx()
+        for p in self.resolved_pulses:
+            calibration_key = getattr(p.pulse_obj,
+                                      'crosstalk_cancellation_key', None)
+            if calibration_key is None:
+                calibration_key = self.pulsar.flux_crosstalk_cancellation()
+            if calibration_key in (True, None):
+                calibration_key = 'default'
+            if not calibration_key:
+                continue
+            if any([ch in self.pulsar.flux_channels()[calibration_key] for ch in
+                    p.pulse_obj.channels]):
+                p.pulse_obj.crosstalk_cancellation_channels = \
+                    self.pulsar.flux_channels()[calibration_key]
+                p.pulse_obj.crosstalk_cancellation_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_mtx()\
+                        [calibration_key]
+                p.pulse_obj.crosstalk_cancellation_shift_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                if p.pulse_obj.crosstalk_cancellation_shift_mtx is not None:
                     p.pulse_obj.crosstalk_cancellation_shift_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                        p.pulse_obj.crosstalk_cancellation_shift_mtx\
+                            .get(calibration_key, None)
 
     def add_charge_compensation(self):
         """
@@ -552,7 +591,7 @@ class Segment:
         awg_hierarchy.reverse()
         return awg_hierarchy
 
-    def gen_trigger_el(self):
+    def gen_trigger_el(self, allow_overlap=False):
         """
         For each element:
             For each AWG the element is played on, this method:
@@ -561,6 +600,12 @@ class Segment:
                   AWG, placed in a suitable element on the triggering AWG,
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
+
+        For debugging, self.skip_trigger can be set to a list of AWG names
+        for which the triggering should be skipped (by using a 0-amplitude
+        trigger pulse).
+
+        :param allow_overlap: (bool, default: False) see _test_overlap
         """
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
@@ -620,11 +665,14 @@ class Segment:
                         '{}_trigger_channels'.format(awg)):
 
                     trigger_awg = self.pulsar.get('{}_awg'.format(channel))
+                    kw = deepcopy(self.trigger_pars)
+                    if awg in getattr(self, 'skip_trigger', []):
+                        kw['amplitude'] = 0
                     trig_pulse = pl.BufferedSquarePulse(
                         trigger_elements[trigger_awg],
                         channel=channel,
                         name='trigger_pulse_{}'.format(i),
-                        **self.trigger_pars)
+                        **kw)
                     i += 1
 
                     trig_pulse.algorithm_time(trigger_pulse_time -
@@ -657,7 +705,7 @@ class Segment:
                 self.element_start_length(el, awg)
 
         # checks if elements on AWGs overlap
-        self._test_overlap()
+        self._test_overlap(allow_overlap=allow_overlap)
         # checks if there is only one element on the master AWG
         self._test_trigger_awg()
 
@@ -725,9 +773,14 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12):
         """
         Tests for all AWGs if any of their elements overlap.
+
+        :param allow_overlap: (bool, default: False) If this is False,
+            an execption is raised in case of overlapping elements.
+            Otherwise, only a warning is shown (useful for plotting while
+            debugging overlaps).
         """
 
         for awg in self.elements_on_awg:
@@ -756,9 +809,16 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if el_prev_end > el_new_start:
-                    raise ValueError('{} and {} overlap on {}'.format(
-                        prev_el, el_list[i + 1][2], awg))
+                if (el_prev_end - el_new_start) > tol :
+                    print(el_prev_end, el_new_start)
+                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
+                    f'{el_list[i + 1][2]} (' \
+                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                          f'on {awg}'
+                    if allow_overlap:
+                        log.warning(msg)
+                    else:
+                        raise ValueError(msg)
 
     def _test_trigger_awg(self):
         """
@@ -773,6 +833,67 @@ class Segment:
             if len(self.elements_on_awg[awg]) > 1:
                 raise ValueError(
                     'There is more than one element on {}'.format(awg))
+
+    def resolve_mirror(self):
+        """
+        Resolves amplitude mirroring for pulses that have a mirror_pattern
+        property.
+
+        Pulses are categorized by their op_code and by whether or not they
+        are a copy created by enforce_single_element. The mirror_pattern
+        decides which pulses within a category get mirrored. The mirroring
+        is performed by multiplying all pulse parameters that contain
+        'amplitude' in their name by -1 (and adding a mirror_correction if
+        it is provided).
+
+        mirror_pattern:
+        - 'none'/'all': no/all pulses are mirrored
+        - 'odd'/'even': the i-th occurrence of a pulse from the category is
+          mirrored if i is odd (1, 3, ...) / even (2, 4, ...). Note that i is
+          meant as a natural number (i.e., 1-indexed and not 0-indexed).
+        - a list of bools (or of anything that can be interpreted as a bool).
+          In this case, the j-th element of the list indicates whether the
+          j-th occurrence of a pulse from the category is mirrored. If there
+          are more occurrences than elements in the list, the list is
+          repeated periodically.
+
+        mirror_correction:
+        None (no corrections) or a dict, where each key is a pulse
+        parameter name and the corresponding value specifies an additive
+        constant to be added after mirroring of this parameter. For parameters
+        not found in the dict, no correction is applied.
+        """
+        op_counts = {}
+        for p in self.resolved_pulses:
+            pulse_category = (p.op_code, getattr(p, "is_ese_copy", False))
+            if pulse_category not in op_counts:
+                op_counts[pulse_category] = 0
+            op_counts[pulse_category] += 1
+            pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            # interpret string pattern ('none'/'all'/'odd'/'even')
+            if pattern is None or pattern == 'none':
+                continue  # do not mirror
+            for pa1, pa2 in [('all', [1]), ('even', [0, 1]), ('odd', [1, 0])]:
+                if pattern == pa1:
+                    pattern = pa2
+            # periodically extend pattern if needed
+            pattern = deepcopy(pattern)
+            while len(pattern) < op_counts[pulse_category]:
+                pattern += pattern
+            # check whether the pulse should be mirrored
+            if not pattern[op_counts[pulse_category] - 1]:
+                continue  # do not mirror
+            # mirror all parameters that have 'amplitude' in their name
+            # (and apply mirror correction if applicable)
+            mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
+            if mirror_correction is None:
+                mirror_correction = {}
+            for k in p.pulse_obj.__dict__:
+                if 'amplitude' in k:
+                    amp = -getattr(p.pulse_obj, k)
+                    if k in mirror_correction:
+                        amp += mirror_correction[k]
+                    setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """
@@ -1029,24 +1150,37 @@ class Segment:
 
     def calculate_hash(self, elname, codeword, channel):
         if not self.pulsar.reuse_waveforms():
-            return (self.name, elname, codeword, channel)
+            # these hash entries avoid that the waveform is reused on another
+            # channel or in another element/codeword
+            hashlist = [self.name, elname, codeword, channel]
+            if not self.pulsar.use_sequence_cache():
+                return tuple(hashlist)
+            # when sequence cache is used, we still need to add the other
+            # hashables to allow pulsar to detect when a re-upload is required
+        else:
+            hashlist = []
 
         awg = self.pulsar.get(f'{channel}_awg')
         tstart, length = self.element_start_end[elname][awg]
-        hashlist = []
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_distortion') == 'precalculate':
-            # don't compare the kernels, just assume that all channels'
-            # distortion kernels are different
-            hashlist.append(channel)
+            hashlist.append(repr(self.pulsar.get(
+                f'{channel}_distortion_dict')))
         else:
             hashlist.append(self.pulsar.clock(channel=channel))  # clock rate
             for par in ['type', 'amp', 'internal_modulation']:
-                try:
-                    hashlist.append(self.pulsar.get(f'{channel}_{par}'))
-                except KeyError:
+                chpar = f'{channel}_{par}'
+                if chpar in self.pulsar.parameters:
+                    hashlist.append(self.pulsar.get(chpar))
+                else:
                     hashlist.append(False)
+        if self.pulsar.get(f'{channel}_type') == 'analog' and \
+                self.pulsar.get(f'{channel}_charge_buildup_compensation'):
+            for par in ['compensation_pulse_delay',
+                        'compensation_pulse_gaussian_filter_sigma',
+                        'compensation_pulse_scale']:
+                hashlist.append(self.pulsar.get(f'{channel}_{par}'))
 
         for pulse in self.elements[elname]:
             if pulse.codeword in {'no_codeword', codeword}:
@@ -1177,7 +1311,7 @@ class Segment:
             plot_kwargs['linewidth'] = 0.7
         try:
             # resolve segment and populate elements/waveforms
-            self.resolve_segment()
+            self.resolve_segment(allow_overlap=True)
             if demodulate:
                 for el in self.elements.values():
                     for pulse in el:
@@ -1190,7 +1324,7 @@ class Segment:
                 len(channel_map)
             if axes is not None:
                 if np.ndim(axes) == 0:
-                    axes = [[axes]]
+                    axes = np.array([[axes]])
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
@@ -1403,6 +1537,9 @@ class Segment:
                             f'current element name when renaming '
                             f'the segment.')
         self.acquisition_elements = new_acq_elements
+        # enforce that start and end times get recalculated using the new
+        # element names
+        self.element_start_end = {}
 
         # rename segment name
         self.name = new_name
