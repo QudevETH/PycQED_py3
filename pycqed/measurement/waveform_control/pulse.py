@@ -53,6 +53,7 @@ class Pulse:
         self.truncation_length = kw.pop('truncation_length', None)
         self.truncation_decay_length = kw.pop('truncation_decay_length', None)
         self.truncation_decay_const = kw.pop('truncation_decay_const', None)
+        self.crosstalk_cancellation_key = kw.pop('crosstalk_cancellation_key', None)
         self.crosstalk_cancellation_channels = []
         self.crosstalk_cancellation_mtx = None
         self.crosstalk_cancellation_shift_mtx = None
