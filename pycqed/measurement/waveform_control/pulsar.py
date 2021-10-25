@@ -898,6 +898,15 @@ class HDAWG8Pulsar:
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
                             continue
+                        ch_has_waveforms[ch1id] |= wave[0] is not None
+                        ch_has_waveforms[ch1mid] |= wave[1] is not None
+                        ch_has_waveforms[ch2id] |= wave[2] is not None
+                        ch_has_waveforms[ch2mid] |= wave[3] is not None
+                        if not len(channels_to_upload):
+                            # _program_awg was called only to decide which
+                            # sub-AWGs are active, and the rest of this loop
+                            # can be skipped
+                            continue
                         if use_placeholder_waves:
                             if wave in defined_waves[1].values():
                                 wave_idx_lookup[element][cw] = [
@@ -939,11 +948,11 @@ class HDAWG8Pulsar:
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
 
-                        ch_has_waveforms[ch1id] |= wave[0] is not None
-                        ch_has_waveforms[ch1mid] |= wave[1] is not None
-                        ch_has_waveforms[ch2id] |= wave[2] is not None
-                        ch_has_waveforms[ch2mid] |= wave[3] is not None
-
+                    if not len(channels_to_upload):
+                        # _program_awg was called only to decide which
+                        # sub-AWGs are active, and the rest of this loop
+                        # can be skipped
+                        continue
                     if not internal_mod:
                         if first_element_of_segment:
                             prepend_zeros = self.parameters[
