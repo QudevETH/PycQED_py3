@@ -740,7 +740,7 @@ class QuantumExperiment(CircuitBuilder):
 
 
     def plot(self, sequences=0, segments=0, qubits=None,
-             save=False, **plot_kwargs):
+             save=False, legend=True, **plot_kwargs):
         """
         Plots (a subset of) sequences / segments of the QuantumExperiment
         :param sequences (int, list, "all"): sequences to plot. Can be "all"
@@ -762,6 +762,7 @@ class QuantumExperiment(CircuitBuilder):
             or qubit objects.
         :param save (bool): whether or not to save the figures in the
             measurement folder.
+        :param legend (bool): whether or not to show the legend.
         :param plot_kwargs: kwargs passed on to segment.plot(). By default,
              channel_map is taken from dev.get_channel_map(qubits) if available.
         :return:
