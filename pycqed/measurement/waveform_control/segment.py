@@ -1342,6 +1342,8 @@ class Segment:
                 # plotting
                 for elem_name, v in wfs[instr].items():
                     for k, wf_per_ch in v.items():
+                        if k == "no_codeword":
+                            k = ""
                         sorted_chans = sorted(wf_per_ch.keys())
                         for n_wf, ch in enumerate(sorted_chans):
                             wf = wf_per_ch[ch]
@@ -1391,13 +1393,14 @@ class Segment:
                 a.spines["bottom"].set_visible(frameon.get("bottom", True))
                 a.spines["left"].set_visible(frameon.get("left", True))
                 if legend:
-                    a.legend(loc=[1.02, 0], prop={'size': 8})
+                    a.legend(loc=[1.02, 0], prop={'size': 8}, frameon=False)
                 if normalized_amplitudes:
                     a.set_ylabel('Amplitude (norm.)')
                 else:
                     a.set_ylabel('Voltage (V)')
             ax[-1, col_ind].set_xlabel('time ($\mu$s)')
             fig.suptitle(f'{self.name}', y=1.01)
+            fig.align_ylabels()
             plt.tight_layout()
             if savefig:
                 if save_kwargs is None:
