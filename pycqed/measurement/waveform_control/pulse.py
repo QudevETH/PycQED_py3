@@ -242,3 +242,23 @@ class Pulse:
         Returns a dictionary of pulse parameters and initial values.
         """
         raise NotImplementedError('pulse_params() not implemented for your pulse')
+
+
+def get_pulse_class(pulse_type):
+    """
+    Search in all registered pulse libraries for a given pulse type and
+    return the class that implements this pulse type.
+
+    :param pulse_type: (str) the pulse type
+
+    :return: (class) the class that implements the pulse type
+    """
+    pulse_func = None
+    for module in pulse_libraries:
+        try:
+            pulse_func = getattr(module, pulse_type)
+        except AttributeError:
+            pass
+    if pulse_func is None:
+        raise KeyError(f'pulse_type {pulse_type} not recognized.')
+    return pulse_func

@@ -1599,16 +1599,7 @@ class UnresolvedPulse:
         self.basis_rotation = pulse_pars.pop('basis_rotation', {})
         self.op_code = pulse_pars.get('op_code', '')
 
-        pulse_func = None
-        for module in bpl.pulse_libraries:
-            try:
-                pulse_func = getattr(module, pulse_pars['pulse_type'])
-            except AttributeError:
-                pass
-        if pulse_func is None:
-            raise KeyError('pulse_type {} not recognized'.format(
-                pulse_pars['pulse_type']))
-
+        pulse_func = bpl.get_pulse_class(pulse_pars['pulse_type'])
         self.pulse_obj = pulse_func(**pulse_pars)
         # allow a pulse to modify its op_code (e.g., for C-ARB gates)
         self.op_code = getattr(self.pulse_obj, 'op_code', self.op_code)
