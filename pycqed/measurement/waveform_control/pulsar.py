@@ -805,7 +805,10 @@ class HDAWG8Pulsar:
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      channels_to_upload='all', channels_to_program='all'):
         if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._program_awg(obj, awg_sequence, waveforms, repeat_pattern)
+            return super()._program_awg(
+                obj, awg_sequence, waveforms, repeat_pattern,
+                channels_to_upload=channels_to_upload,
+                channels_to_program=channels_to_program)
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, obj.name) for chid in chids}
