@@ -487,9 +487,15 @@ class QuDev_transmon(Qubit):
 
         # switch parameters
         DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
-        self.add_parameter('switch_modes', parameter_class=ManualParameter,
-                           initial_value=DEFAULT_SWITCH_MODES,
-                           vals=vals.Dict())
+        self.add_parameter(
+            'switch_modes', parameter_class=ManualParameter,
+            initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
+            docstring="A dictionary whose keys are identifiers of switch "
+                      "modes (must contain 'modulated', 'spec', and 'calib', "
+                      "and can contain 'no_drive' as well as additional "
+                      "custom modes) and whose values are dicts understood by "
+                      "the set_switch method of the SwitchControls instrument "
+                      "specified in the parameter instr_switch.")
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
@@ -999,6 +1005,14 @@ class QuDev_transmon(Qubit):
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
 
     def set_switch(self, switch_mode='modulated'):
+        """
+        Sets the switch control (given in the qcodes parameter instr_switch)
+        to the given mode.
+
+        :param switch_mode: (str) the name of a switch mode that is defined in
+            the qcodes parameter switch_modes of this qubit (default:
+            'modulated').
+        """
         if self.instr_switch() is None:
             return
         switch = self.instr_switch.get_instr()
