@@ -763,8 +763,7 @@ class QuantumExperiment(CircuitBuilder):
         :param save (bool): whether or not to save the figures in the
             measurement folder.
         :param plot_kwargs: kwargs passed on to segment.plot(). By default,
-            legend=False and channel_map is taken from
-            general.get_channel_map(qubits)
+             channel_map is taken from dev.get_channel_map(qubits) if available.
         :return:
         """
         plot_kwargs = deepcopy(plot_kwargs)
@@ -781,9 +780,12 @@ class QuantumExperiment(CircuitBuilder):
         if qubits is None:
             qubits = self.meas_objs
         qubits, _ = self.get_qubits(qubits) # get qubit objects
+        default_ch_map = \
+            self.dev.get_channel_map(qubits) if self.dev is not None else \
+                {qb.name: qb.get_channel_map() for qb in qubits}
         plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
-                           general.get_channel_map(qubits))))
-        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend', False)))
+                           default_ch_map)))
+        plot_kwargs.update(dict(legend=legend))
 
         if segments == "all":
             # plot all segments
