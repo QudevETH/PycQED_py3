@@ -6292,6 +6292,7 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
+        ss_type = self.get_param_value('sweet_spot_type')
         for qbn in self.qb_names:
             # old qb freq is the same for all keys in
             # self.proc_data_dict['analysis_params_dict'] so take qbn_0
@@ -6305,7 +6306,12 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
             voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
             fit_func = lambda V, V0, f0, fv: f0 - fv * (V - V0)**2
             model = lmfit.Model(fit_func)
-            if old_qb_freq > 5e9:  # USS
+
+            if ss_type is None:
+                fit_uss = old_qb_freq > 5e9
+            else:
+                fit_uss = ss_type == 'upper'
+            if fit_uss:  # USS
                 guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
                                    'f0': np.max(np.array(freqs['val'])),
                                    'fv': 2.5e9}
