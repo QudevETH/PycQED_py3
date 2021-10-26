@@ -2611,7 +2611,7 @@ class DriveAmpCalib(SingleQubitGateCalib):
             if n_pulses is not None:
                 self.experiment_name += f'_{n_pulses}pipulses'
             self.fixed_scaling = kw.get('fixed_scaling', None)
-            if n_pulses_pi is not None and self.fixed_scaling is not None:
+            if self.fixed_scaling is None:
                 self.experiment_name += f'_{n_pulses_pi}xpi_over_{n_pulses_pi}'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
