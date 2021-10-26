@@ -1,7 +1,8 @@
 """
-The Device class is intended to be used for two main tasks:
+The Device class is intended to be used for:
+    * store general information about the device (including connectivity graph)
+      and references to qubit objects
     * store two-qubit gate parameters
-    * run multi-qubit standard experiments
 
 The structure is chosen to resemble the one of the QuDev_transmon class. As such, the two-qubit gate parameters
 are stored as instrument parameters of the device, as is the case for single-qubit gates for the QuDev_transmon
@@ -16,21 +17,16 @@ qubit.
 * get_operation_dict *
 As for the QuDev_transmon class the Device class has the ability to return a dictionary of all device operations
 (single- and two-qubit) in the form of a dictionary, using the get_operation_dict method.
-
-* multi-qubit experiments *
-For regularly used methods we place wrapper functions calling methods from the multi_qubit_module. This list is readily
-extended by further methods from the multi_qubit_module or other modules.
 """
 
 # General imports
 import logging
-from copy import deepcopy
+from copy import copy, deepcopy
 import numpy as np
 import functools
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-import pycqed.measurement.multi_qubit_module as mqm
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
 from qcodes.instrument.base import Instrument
@@ -472,14 +468,7 @@ class Device(Instrument):
         self.set('two_qb_gates', self.get('two_qb_gates') + [gate_name])
 
         # find pulse module
-        pulse_func = None
-        for module in bpl.pulse_libraries:
-            try:
-                pulse_func = getattr(module, pulse_type)
-            except AttributeError:
-                pass
-        if pulse_func is None:
-            raise KeyError('pulse_type {} not recognized'.format(pulse_type))
+        pulse_func = bpl.get_pulse_class(pulse_type)
 
         # for all connected qubits add the operation with name gate_name
         for [qb1, qb2] in self.connectivity_graph():
@@ -508,6 +497,14 @@ class Device(Instrument):
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
 
     def get_channel_delays(self):
+        """
+        Get AWG channel delays
+
+        Returns:
+            Dictionary of delay values for the AWG channels of the system to
+            correct for relative delays of the channels according to
+            `self.relative_delay_graph()`.
+        """
         object_delays = self.relative_delay_graph().get_absolute_delays()
         channel_delays = {}
         for (qbn, obj_type), v in object_delays.items():
@@ -520,6 +517,12 @@ class Device(Instrument):
         return channel_delays
 
     def configure_pulsar(self):
+        """
+        Configure pulse generation instrument settings.
+
+        For now, only sets AWG channel delays.
+        """
+
         pulsar = self.instr_pulsar.get_instr()
 
         # configure channel delays
@@ -530,17 +533,47 @@ class Device(Instrument):
             awg.set(f'sigouts_{chid}_delay', v)
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
+        """
+        Configure flux crosstalk cancellation in pulsar based on the
+        calibrations stored in the qcodes parameter flux_crosstalk_calibs.
+        For each stored calibration, a crosstalk cancellation matrix is
+        generated and stored to pulsar's flux_crosstalk_cancellation_mtx dict.
+
+        Note: if a single unnamed calibration is stored in the qcodes
+        parameter flux_crosstalk_calibs (old format), the qcodes parameter
+        is updated to the new format by storing the single calibration as
+        the 'default' calibration.
+
+        :param qubits: (str, list) the qubits for which the cancellation
+            should be configure, see get_qubits for possible input formats.
+            In addition, the option 'auto' is understood, in which case the
+            function detects which qubits have been included in the
+            characterization measurements (by checking which diagonal
+            entries of the crosstalk matrix are not exactly equal to 1).
+            Default: 'auto'
+        :param rounds: (int, dict[str, int])
+            the number of calibration rounds to be used as a basis for
+            calculating the cancellation matrix, or -1 if all
+            available round should be used. If the number of rounds should
+            be different for the different calibration sets, a dictionary of
+            values can be passed, where the keys are calibration keys.
+            Default: -1
+        """
         # convert values from old format
         if self.flux_crosstalk_calibs() is not None and \
                 not isinstance(self.flux_crosstalk_calibs(), dict):
             self.flux_crosstalk_calibs(
                 {'default': self.flux_crosstalk_calibs()}
             )
+        if self.flux_crosstalk_calibs() is not None and \
+                not isinstance(rounds, dict):
+            rounds = {k: rounds for k in self.flux_crosstalk_calibs()}
 
         pulsar = self.instr_pulsar.get_instr()
         calibs = self.flux_crosstalk_calibs()
         if calibs is None:
             calibs = {}
+            rounds = {}
 
         flux_channels = {}
         flux_crosstalk_cancellation_mtx = {}
@@ -548,12 +581,13 @@ class Device(Instrument):
             calib = deepcopy(calib)
             if calib is None:
                 calib = [np.identity(len(self.get_qubits()))]
-            if rounds == -1:
-                rounds = len(calib)
+            rounds_calib = rounds[calibration_key]
+            if rounds_calib == -1:
+                rounds_calib = len(calib)
             xtalk_qbs = self.get_qubits('all' if qubits == 'auto' else qubits)
             if qubits == 'auto':
                 mask = [True] * len(xtalk_qbs)
-                for mtx in calib[:rounds]:
+                for mtx in calib[:rounds_calib]:
                     mask = np.logical_and(mask, np.diag(mtx) != 1)
                 xtalk_qbs = [qb for i, qb in enumerate(xtalk_qbs) if mask[i]]
             if len(xtalk_qbs) == 0:
@@ -561,9 +595,9 @@ class Device(Instrument):
                 # pulsar.flux_crosstalk_cancellation(False)
                 # return
 
-            for i in range(rounds):
+            for i in range(rounds_calib):
                 calib[i] = np.diag(1 / np.diag(calib[i])) @ calib[i]
-            mtx_all = functools.reduce(np.dot, calib[:rounds])
+            mtx_all = functools.reduce(np.dot, calib[:rounds_calib])
             qb_inds = {qb: ind for qb, ind in
                        zip(xtalk_qbs, self.get_qubits(xtalk_qbs, 'ind'))}
             mtx = np.zeros([len(xtalk_qbs)] * 2)
@@ -582,6 +616,22 @@ class Device(Instrument):
     def load_crosstalk_measurements(self, timestamps, round_ind=0,
                                     extract_only=True, options_dict=None,
                                     calibration_key='default'):
+        """
+        Load results of flux crosstalk calibration measurements and store
+        them in the qcodes parameter flux_crosstalk_calibs.
+
+        :param timestamps: (list of str) timestamps of the measurements to
+            be loaded.
+        :param round_ind: (int) the index of the calibration round to which
+            the measurement belong. Default: 0
+        :param extract_only: (bool) do not create figures while analyzing the
+            the given timestamps (to reduce processing time, useful if
+            figures have already been created before). Default: True
+        :param options_dict: (dict or None) options_dict to be passed to
+            FluxlineCrosstalkAnalysis. Default: None
+        :param calibration_key: (str) a name to identify the loaded
+            calibration. Default: 'default'
+        """
         if options_dict is None:
             options_dict = {}
         if 'TwoD' not in options_dict:
@@ -617,6 +667,25 @@ class Device(Instrument):
     def plot_flux_crosstalk_matrix(self, qubits='all', round_ind=0, unit='m',
                                    vmax=None, show_and_close=False,
                                    calibration_key='default'):
+        """
+        Visualize stored flux crosstalk calibration measurements as a matrix.
+
+        :param qubits: (str, list) the qubits to be included, see get_qubits
+            for possible input formats. Default: 'all'
+        :param round_ind: (int) the index of the calibration round to be
+            shown. Default: 0
+        :param unit: (str) unit of the flux coupling, where  allowed values
+            are '' (Phi_0/V), 'c' (centi Phi_0/V), 'm' (milli Phi_0/V),
+            'u' (micro Phi_0/V). Default: 'm'
+        :param vmax: (float) maximal value of the colormap of the flux
+            coupling. Default: 1 if unit is '', 4 if unit is 'c' or 'm',
+            100 if unit is 'u'.
+        :param show_and_close: (bool) whether the figure should be shown and
+            closed (True) or whether the figure handle should be returned
+            (False). Default: False
+        :param calibration_key: (str) an identifier of the stored
+            calibration that should be plotted. Default: 'default'
+        """
         qubits = self.get_qubits(qubits)
         qb_inds = self.get_qubits(qubits, return_type='ind')
         if unit not in ['', 'c', 'm', 'u', None]:
@@ -635,7 +704,10 @@ class Device(Instrument):
             def_vmax =  1
         vmax = vmax / phi_factor if vmax is not None else def_vmax
 
-        data_array = self.flux_crosstalk_calibs()[calibration_key][round_ind][
+        calibs = self.flux_crosstalk_calibs()
+        if not isinstance(calibs, dict):
+            calibs = {'default': calibs}
+        data_array = calibs[calibration_key][round_ind][
                      qb_inds, :][:, qb_inds]
         for i in range(len(qubits)):
             data_array[i, :] *= np.sign(data_array[i, i])
@@ -645,7 +717,7 @@ class Device(Instrument):
             2 + (plot_mod.FIGURE_WIDTH_2COL - 2) / 17 * len(qubits),
             1 + 6 / 17 * len(qubits))
 
-        cmap = mpl.cm.RdBu
+        cmap = copy(mpl.cm.RdBu)
         cmap.set_over('k')
         i = ax.imshow(data_array / phi_factor, vmax=vmax, vmin=-vmax,
                       cmap=cmap)
@@ -682,58 +754,13 @@ class Device(Instrument):
         else:
             return fig
 
-    # Wrapper functions for Device algorithms #
-
-    def measure_J_coupling(self, qbm, qbs, freqs, cz_pulse_name, **kwargs):
-
-        """
-        Wrapper function for the multi_qubit_module method measure_J_coupling.
-        """
-
-        mqm.measure_J_coupling(qbm, qbs, freqs, cz_pulse_name, **kwargs)
-
-    def measure_tomography(self, qubits, prep_sequence, state_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_two_qubit_randomized_benchmarking.
-        """
-
-        mqm.measure_tomography(self, qubits, prep_sequence, state_name, **kwargs)
-
-    def measure_two_qubit_randomized_benchmarking(self, qb1, qb2, cliffords, nr_seeds, cz_pulse_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_two_qubit_randomized_benchmarking.
-        """
-
-        mqm.measure_two_qubit_randomized_benchmarking(self, qb1, qb2, cliffords, nr_seeds, cz_pulse_name, **kwargs)
-
-    def measure_chevron(self, qbc, qbt, hard_sweep_params, soft_sweep_params, cz_pulse_name, **kwargs):
-        '''
-        Wrapper function for the multi_qubit_module method measure_chevron.
-        '''
-
-        mqm.measure_chevron(self, qbc, qbt, hard_sweep_params, soft_sweep_params, cz_pulse_name, **kwargs)
-
-    def measure_cphase(self, qbc, qbt, soft_sweep_params, cz_pulse_name, **kwargs):
-        '''
-        Wrapper function for the multi_qubit_module method measure_cphase.
-        '''
-
-        return mqm.measure_cphase(self, qbc, qbt, soft_sweep_params,
-                                  cz_pulse_name, **kwargs)
-
-    def measure_dynamic_phases(self, qbc, qbt, cz_pulse_name, **kwargs):
-        """
-        Wrapper function for the multi_qubit_module method measure_dynamic_phase.
-        """
-
-        mqm.measure_dynamic_phases(self, qbc, qbt, cz_pulse_name, **kwargs)
-
 
 class RelativeDelayGraph:
     """
-    Contains the informartion about the relative delays of channels of the device.
-    The relative delays are represented by a graph, where each channel is a node, and
-    edges represent the relative delays that we can measure.
+    Contains the information about relative delays of channels of the device.
+
+    The relative delays are represented by a graph, where each channel is a
+    node, and edges represent the relative delays that we can measure.
 
     Internally this is stored in a dictionary of the form:
         _d = {
@@ -743,7 +770,13 @@ class RelativeDelayGraph:
             }
         }
 
-    The relative delay is defined as the delay of the parent channel minus delay of child channel.
+    The relative delay is defined as the delay of the parent channel minus
+    delay of child channel.
+
+    Args:
+        reld: dict or RelativeDelayGraph, optional
+            Initial value for the delay graph either in the internal
+            representation or as another RelativeDelayGraph.
     """
 
     def __init__(self, reld=None):
@@ -756,27 +789,55 @@ class RelativeDelayGraph:
                 self._reld = deepcopy(reld)
 
     def increment_relative_delay(self, parent, child, delta_delay):
-        """Use this to update delays based on meas. results"""
+        """Increment a relative delay between two nodes.
+
+        Use this to update delays based on measurement results with previously
+        set delay values.
+
+        Args:
+            parent, child:
+                node names
+            delta_delay: float
+                Measured delay difference between the parent and the
+                child node that will be added to the graph.
+        """
         if child in self._reld[parent]:
             self._reld[parent][child] += delta_delay
         elif parent in self._reld[child]:
             self._reld[child][parent] -= delta_delay
         else:
-            raise KeyError(f'No connection between {parent} and {child} in '
-                            'relative delay graph')
+            raise KeyError(f'No direct connection between {parent} and {child}'
+                           ' in relative delay graph')
 
     def get_relative_delay(self, parent, child):
-        """Use with care, gets the raw value of the relative channel delay"""
+        """Get the raw relative delay between two directly connected nodes.
+
+        Args:
+            parent, child:
+                Node names
+        Returns:
+            relative delay between parent and child
+        """
         if child in self._reld[parent]:
             return self._reld[parent][child]
         elif parent in self._reld[child]:
             return -self._reld[child][parent]
         else:
-            raise KeyError(f'No connection between {parent} and {child} in '
-                            'relative delay graph')
+            raise KeyError(f'No direct connection between {parent} and {child}'
+                           f' in relative delay graph')
 
     def set_relative_delay(self, parent, child, delay):
-        """Use with care, sets the raw value of the relative channel delay"""
+        """Set the raw value of the relative channel delay.
+
+        Use with care, since it resets the previously configured delay between
+        the nodes.
+
+        Args:
+            parent, child:
+                Node names
+            delay: float
+                Raw delay delay difference between parent and child node.
+        """
         if child in self._reld[parent]:
             self._reld[parent][child] = delay
         elif parent in self._reld[child]:
@@ -786,6 +847,13 @@ class RelativeDelayGraph:
                             'relative delay graph')
 
     def get_absolute_delays(self):
+        """
+        Get an abs. delay for each node satisfying configured relative delays.
+
+        Returns: dict
+            Keys are node names, values are nonnegative delays for each node
+            such that the relative delays are satisfied.
+        """
         # determine root of the tree
         abs_delays = {}
         min_delay = np.inf

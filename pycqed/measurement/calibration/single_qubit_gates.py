@@ -1321,7 +1321,7 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
-class SingleQubitGateCalib(CalibBuilder):
+class SingleQubitGateCalibExperiment (CalibBuilder):
     """
     Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
     T1, QScale, InPhaseAmpCalib). This is a multitasking experiment, see
@@ -1384,6 +1384,7 @@ class SingleQubitGateCalib(CalibBuilder):
             if self.experiment_name is None:
                 self.experiment_name = 'SingleQubiGateCalib'
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.update_experiment_name()
 
             self.state_order = ['g', 'e', 'f', 'h']
             # transition_name_input is added in preprocess_task;
@@ -1419,9 +1420,8 @@ class SingleQubitGateCalib(CalibBuilder):
                 # Recreate cal points
                 self.create_cal_points(
                     n_cal_points_per_state=kw.get('n_cal_points_per_state', 1),
-                    transition_name=''.join(cal_states))
+                    cal_states=''.join(cal_states))
 
-            self.update_preproc_tasks()
             self.update_sweep_points()
             self.update_data_to_fit()
             self.define_cal_states_rotations()
@@ -1464,6 +1464,40 @@ class SingleQubitGateCalib(CalibBuilder):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        """
+        Updates the task with
+
+        - transition_name: one of the following: "", "_ef", "_fh".
+            These strings are needed for specifying op codes,
+            ex: X180 qb4, X90_ef qb3
+        - transition_name_input: one of the following: "ge", "ef", "fh".
+            These strings are needed when updating qubit parameters,
+            ex: qb.ge_amp180, qb.ef_freq
+        The input parameters are documented in the docstring of this method in
+        the parent class
+        """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+
+        # Check and update transition name.
+        transition_name = task.pop('transition_name', None)
+        if transition_name is not None:
+            # transition_name_input is one of the following: "ge", "ef", "fh".
+            # These strings are needed when updating
+            # qubit parameters, ex: qb.ge_amp180, qb.ef_freq
+            task['transition_name_input'] = transition_name
+            if '_' not in transition_name:
+                transition_name = f'_{transition_name}'
+            if transition_name == '_ge':
+                transition_name = ''
+            # transition_name will be one of the following: "", "_ef", "_fh".
+            # These strings are needed for specifying op codes,
+            # ex: X180 qb4, X90_ef qb3
+            task['transition_name'] = transition_name
+        return task
 
     def update_data_to_fit(self):
         """
@@ -1520,8 +1554,8 @@ class SingleQubitGateCalib(CalibBuilder):
 
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
 
-    def update_preproc_tasks(self):
-        # Base method for updating the preprocessed_task_list.
+    def update_experiment_name(self):
+        # Base method for updating the experiment_name.
         # To be overloaded by children.
         pass
 
@@ -1571,10 +1605,10 @@ class SingleQubitGateCalib(CalibBuilder):
         pass
 
 
-class Rabi(SingleQubitGateCalib):
+class Rabi(SingleQubitGateCalibExperiment):
     """
     Rabi measurement for finding the amplitude of a pi-pulse that excites
-    the desired transmon transition. This is a SingleQubitGateCalib experiment,
+    the desired transmon transition. This is a SingleQubitGateCalibExperiment,
     see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
@@ -1635,16 +1669,22 @@ class Rabi(SingleQubitGateCalib):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amps=amps, **kw)
-            if any([task.get('n', 1) > 1 for task in
-                    self.preprocessed_task_list]):
-                # check if n was given in the task_list
-                self.experiment_name = 'n' + self.experiment_name
-            elif kw['n'] > 1:
-                self.experiment_name += f'-n{kw["n"]}'
-
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name with the number of Rabi pulses n.
+        """
+        n_list = [task['n'] for task in self.preprocessed_task_list]
+        if any([n > 1 for n in n_list]):
+            # Rabi measurement with more than one pulse
+            self.experiment_name += f'-n'
+            if len(np.unique(n_list)) == 1:
+                # all tasks have the same n; add the value of n to the
+                # experiment name
+                self.experiment_name += f'{n_list[0]}'
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
         """
@@ -1705,11 +1745,11 @@ class Rabi(SingleQubitGateCalib):
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
 
 
-class Ramsey(SingleQubitGateCalib):
+class Ramsey(SingleQubitGateCalibExperiment):
     """
     Class for running a Ramsey or an Echo measurement.
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
 
     Ramsey measurement for finding the frequency and associated averaged
     dephasing time (T2*) of a transmon transition.
@@ -1792,17 +1832,21 @@ class Ramsey(SingleQubitGateCalib):
             self.exception = x
             traceback.print_exc()
 
-    def update_preproc_tasks(self):
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
         """
-        Updates each task in the preprocessed_task_list with the value of the
-        first pulse delay sweep point. Will be stored under the key
-        "first_delay_point" and will be used in sweep_block.
+        Updates the task with the value of the first pulse delay sweep point.
+        which will be stored under the key "first_delay_point" and will be used
+        in sweep_block.
+        See also the docstring of this method in the parent classes.
         """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+        sweep_points = task['sweep_points']
+        task['first_delay_point'] = sweep_points.get_sweep_params_property(
+            'values', 0, 'pulse_delay')[0]
 
-        for task in self.preprocessed_task_list:
-            sweep_points = task['sweep_points']
-            task['first_delay_point'] = sweep_points.get_sweep_params_property(
-                'values', 0, 'pulse_delay')[0]
+        return task
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
         """
@@ -1933,8 +1977,8 @@ class ReparkingRamsey(Ramsey):
         - artificial_detuning (see docstring of parent class)
 
         These kw parameters can be used together with "qubits" (see
-        SingleQubitGateCalib parent class) for convenience to avoid having
-        to specify a task_list.
+        SingleQubitGateCalibExperiment parent class) for convenience to avoid
+        having to specify a task_list.
         If a task_list is not specified, all qubits will use the same values for
         the parameters above.
 
@@ -2101,11 +2145,11 @@ class ReparkingRamsey(Ramsey):
             fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
 
 
-class T1(SingleQubitGateCalib):
+class T1(SingleQubitGateCalibExperiment):
     """
     T1 measurement for finding the lifetime (T1) associated with a transmon
-    transition. This is a SingleQubitGateCalib experiment, see docstring there
-    for general information.
+    transition. This is a SingleQubitGateCalibExperiment,
+    see docstring there for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -2213,7 +2257,7 @@ class T1(SingleQubitGateCalib):
             qubit.set(f'T1{task["transition_name"]}', T1)
 
 
-class QScale(SingleQubitGateCalib):
+class QScale(SingleQubitGateCalibExperiment):
     """
     QScale measurement for finding the motzoi parameter for driving a transmon
     transition without phase errors.
@@ -2221,8 +2265,8 @@ class QScale(SingleQubitGateCalib):
         https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.103.110501
         https://journals.aps.org/pra/abstract/10.1103/PhysRevA.83.012308
 
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -2383,12 +2427,12 @@ class QScale(SingleQubitGateCalib):
             qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
 
 
-class InPhaseAmpCalib(SingleQubitGateCalib):
+class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
     """
     In-phase calibration measurement for finding small miscalibrations in the
     pi-pulse amplitude associated with a transmon transition.
-    This is a SingleQubitGateCalib experiment, see docstring there for general
-    information.
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -2518,7 +2562,7 @@ class InPhaseAmpCalib(SingleQubitGateCalib):
                           qubit.name]['corrected_amp'])
 
 
-class DriveAmpCalib(SingleQubitGateCalib):
+class DriveAmpCalib(SingleQubitGateCalibExperiment):
     """
     Calibration measurement for the qubit drive amplitude that makes use of
     error amplification from application of N subsequent pulses.

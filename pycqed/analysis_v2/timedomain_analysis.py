@@ -295,16 +295,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # creates self.sp
         self.get_sweep_points()
 
-        # add extra parameters from file that children might need
-        self.get_params_from_file()
-
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if numeric_params is None:
-            numeric_params = {}
-        if params_dict is not None:
-            self.raw_data_dict.update(
-                self.get_data_from_timestamp_list(params_dict, numeric_params))
-
     def get_sweep_points(self):
         self.sp = self.get_param_value('sweep_points')
         if self.sp is not None:
@@ -1165,11 +1155,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         return rotated_data_dict, zero_coord, one_coord
 
     def get_transition_name(self, qb_name):
+        """
+        Extracts the transition_name:
+            - first by taking transition_name_input from the task in task_list
+                for qb_name
+            - then from options_dict/metadata
+        If not found in any of the above, it is inferred from data_to_fit.
+        :param qb_name: qubit name
+        :return: string indicating the transition name ("ge", "ef", etc.)
+        """
         task_list = self.get_param_value('task_list')
         trans_name = self.get_param_value('transition_name')
         if task_list is not None:
             task = [t for t in task_list if t['qb'] == qb_name][0]
-            trans_name = task.get('transition_name_input', None)
+            trans_name = task.get('transition_name_input', trans_name)
+
         if trans_name is None:
             if 'h' in self.data_to_fit.get(qb_name, ''):
                 trans_name = 'fh'
@@ -5173,38 +5173,45 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
             pdd['phase_contrast'][qb] = np.abs(pdd['phase_contrast'][qb])
             pdd['freq_offset'][qb] = pdd['phase_offset'][qb] / 360 / pdd[
                 'target_fluxpulse_length']
-            fr = lmfit.Model(lambda a, f_a=1, f0=0: a * f_a + f0).fit(
+            startval_slope = (pdd['freq_offset'][qb][-1] - pdd['freq_offset'][
+                qb][0]) / (pdd['target_amps'][-1] - pdd['target_amps'][0])
+            startval_offset = pdd['freq_offset'][qb][
+                len(pdd['freq_offset'][qb]) // 2]
+            fr = lmfit.Model(lambda a,
+                                    f_a=startval_slope,
+                                    f0=startval_offset: a * f_a + f0).fit(
                 data=pdd['freq_offset'][qb], a=pdd['target_amps'])
             pdd['freq_offset'][qb] -= fr.best_values['f0']
-
             if not self.skip_qb_freq_fits:
                 if self.vfc_method == 'approx':
                     mpars = self.raw_data_dict[
                         f'{qb}.fit_ge_freq_from_flux_pulse_amp']
-                    freq_idle = fit_mods.Qubit_dac_to_freq(
+                    freq_pulsed_no_crosstalk = fit_mods.Qubit_dac_to_freq(
                         pdd['crosstalk_qubits_amplitudes'].get(qb, 0), **mpars)
-                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_idle
+                    pdd['freq'][qb] = pdd['freq_offset'][
+                                          qb] + freq_pulsed_no_crosstalk
                     mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
                     pdd['flux'][qb] = fit_mods.Qubit_freq_to_dac(
                         pdd['freq'][qb], **mpars)
                 else:
-                    mpars = self.raw_data_dict[
-                        f'{qb}.fit_ge_freq_from_dc_offset']
-                    ratio = self.raw_data_dict[
-                        f'{qb}.flux_amplitude_bias_ratio']
-                    flux_parking = self.raw_data_dict[
-                        f'{qb}.flux_parking']
+                    mpars = self.get_param_value(
+                        f'{qb}.fit_ge_freq_from_dc_offset')
+                    ratio = self.get_param_value(
+                        f'{qb}.flux_amplitude_bias_ratio')
+                    flux_parking = self.get_param_value(
+                        f'{qb}.flux_parking')
                     bias = (mpars['dac_sweet_spot']
                             + mpars['V_per_phi0'] * flux_parking)
                     amp = pdd['crosstalk_qubits_amplitudes'].get(qb, 0)
-                    freq_idle = fit_mods.Qubit_dac_to_freq_res(
+                    freq_pulsed_no_crosstalk = fit_mods.Qubit_dac_to_freq_res(
                         (bias + amp / ratio), **mpars)
-                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_idle
-                    mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
-                    pdd['flux'][qb] = fit_mods.Qubit_freq_to_dac_res(
+                    pdd['freq'][qb] = pdd['freq_offset'][qb] + freq_pulsed_no_crosstalk
+                    # mpars.update({'V_per_phi0': 1, 'dac_sweet_spot': 0})
+                    volt = fit_mods.Qubit_freq_to_dac_res(
                         pdd['freq'][qb], **mpars,
-                        branch='negative' if amp < 0 else 'positive')
-
+                        branch=(bias + amp / ratio))
+                    pdd['flux'][qb] = (volt - mpars['dac_sweet_spot']) \
+                                      / mpars['V_per_phi0']  # convert volt to flux
         # fit fitted results to linear models
         lin_mod = lmfit.Model(lambda x, a=1, b=0: a*x + b)
         def guess(model, data, x, **kwargs):
@@ -5376,15 +5383,18 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
-            params_dict[f'{trans_name}_amp180_'+qbn] = s+f'.{trans_name}_amp180'
-            params_dict[f'{trans_name}_amp90scale_'+qbn] = s+f'.{trans_name}_amp90_scale'
-        super().get_params_from_file(params_dict, numeric_params)
+            params_dict[f'{trans_name}_amp180_'+qbn] = \
+                s+f'.{trans_name}_amp180'
+            params_dict[f'{trans_name}_amp90scale_'+qbn] = \
+                s+f'.{trans_name}_amp90_scale'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5698,16 +5708,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class RabiFrequencySweepAnalysis(RabiAnalysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
-        for qbn in self.qb_names:
-            params_dict[f'drive_ch_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_I_channel'
-            params_dict[f'ge_freq_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_freq'
-        super().get_params_from_file(params_dict, numeric_params)
-
     def extract_data(self):
         super().extract_data()
         # Set some default values specific to RabiFrequencySweepAnalysis if the
@@ -5716,6 +5716,16 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         # metadata has been extracted.)
         if self.get_param_value('TwoD', default_value=None) is None:
             self.options_dict['TwoD'] = True
+
+        # Extract additional parameters from the HDF file.
+        params_dict = {}
+        for qbn in self.qb_names:
+            params_dict[f'drive_ch_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_freq'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
@@ -5898,17 +5908,16 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_T1_'+qbn] = \
                 s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5942,6 +5951,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
             fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
@@ -5996,16 +6006,15 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         if self.options_dict.get('fit_gaussian_decay', True):
@@ -6086,6 +6095,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
+                    log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
 
             trans_name = self.get_transition_name(qbn)
@@ -6412,17 +6422,16 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        if params_dict is None:
-            params_dict = {}
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_qscale_'+qbn] = \
                 s+f'.{trans_name}_motzoi'
-        if numeric_params is None:
-            numeric_params = list(params_dict)
-        super().get_params_from_file(params_dict, numeric_params)
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def process_data(self):
         super().process_data()
@@ -6668,6 +6677,15 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self, *args, **kwargs):
+        """
+        This class is different to the other single qubit calib analysis classes
+        (Rabi, Ramsey, QScale, T1).
+        The analysis for an Echo measurement is identical to the T1 analysis
+        if no artificial_detuing was used, and identical to the Ramsey analysis
+        if an artificial_detuning was used. Hence, this class contains the
+        attribute self.echo_analysis which is an instance of either T1 or Ramsey
+        analysis.
+        """
         auto = kwargs.pop('auto', True)
         super().__init__(*args, auto=False, **kwargs)
         if self.options_dict.get('artificial_detuning', None) is not None:
@@ -6827,14 +6845,14 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.ramsey_add_pulse_analysis.proc_data_dict[
                     'analysis_params_dict'][qbn]
             self.cross_kerr = self.params_dict_ramsey[
-                                  'exp_decay_'+str(qbn)]['new_qb_freq'] \
+                                  'exp_decay']['new_qb_freq'] \
                             - self.params_dict_add_pulse[
-                                  'exp_decay_'+str(qbn)]['new_qb_freq']
+                                  'exp_decay']['new_qb_freq']
             self.cross_kerr_error = np.sqrt(
                 (self.params_dict_ramsey[
-                    'exp_decay_'+str(qbn)]['new_qb_freq_stderr'])**2 +
+                    'exp_decay']['new_qb_freq_stderr'])**2 +
                 (self.params_dict_add_pulse[
-                    'exp_decay_' + str(qbn)]['new_qb_freq_stderr'])**2)
+                    'exp_decay']['new_qb_freq_stderr'])**2)
 
     def prepare_plots(self):
         self.ramsey_analysis.prepare_plots()
@@ -6956,14 +6974,16 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def get_params_from_file(self):
+    def extract_data(self):
+        super().extract_data()
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = \
                 s+f'.{trans_name}_amp180'
-        super().get_params_from_file(params_dict, list(params_dict))
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -8126,7 +8146,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 self.get_param_value('cal_points', None, 0))
             self.qb_names = deepcopy(cp.qb_names)
 
-        self.channel_map = self.get_param_value('channel_map', None)
+        self.channel_map = self.get_param_value('channel_map', None,
+                                               index=0)
         if self.channel_map is None:
             # assume same channel map for all timetraces (pick 0th)
             value_names = self.raw_data_dict[0]['value_names']
@@ -8601,13 +8622,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # this classification method should not be used for multiplexed SSRO
             # analysis
             n_qb_states = len(np.unique(self.cp.get_states(qb_name)[qb_name]))
+            # give same weight to each class by default
+            weights_init = kw.pop("weights_init",
+                                  np.ones(n_qb_states)/n_qb_states)
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
-                    weights_init=[1 / n_qb_states] * n_qb_states,
+                    weights_init=weights_init,
                     means_init=[mu for _, mu in
                                 self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()])
+                                    ['means'][qb_name].items()], **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -8687,8 +8712,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             data, y_true=y_true, plot_fitting=plot_fitting, **kwargs)
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None):
-        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap)
+    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
+        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap,
+                                              spacing=spacing)
 
     @staticmethod
     def plot_std(mean, cov, ax, n_std=1.0, facecolor='none', **kwargs):
@@ -8787,7 +8813,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     except Exception as e: # not a gmm model--> no cov.
                         covs = []
 
-                    for i, mean in enumerate(means.values()):
+                    for i, mean in enumerate(means):
                         main_ax.scatter(mean[0], mean[1], color='w', s=80)
                         if len(clf_means):
                             main_ax.scatter(clf_means[i][0], clf_means[i][1],

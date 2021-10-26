@@ -647,7 +647,19 @@ class CircuitBuilder:
     def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
                             block_align='end', segment_prefix='calibration_',
                             **kw):
-
+        """
+        Returns a list of segments for each cal state in cal_points.states.
+        :param cal_points: CalibrationPoints instance
+        :param init_state: initialization state (string or list),
+            see documentation of initialize().
+        :param ro_kwargs: Keyword arguments (dict) for the function
+            mux_readout().
+        :param block_align: passed to simultaneous_blocks; see docstring there
+        :param segment_prefix: prefix for segment name (string)
+        :param kw: keyword arguments (to allow pass through kw even if it
+            contains entries that are not needed)
+        :return: list of Segment instances
+        """
         if ro_kwargs is None:
             ro_kwargs = {}
 
@@ -902,7 +914,7 @@ class CircuitBuilder:
                 body_block_func
             block_align_cal_pts (str, default: 'end'): aligment condition for
                 the calpoints segments. Passed to seg_from_cal_points. See
-                docstring for simultaneous_blocks.
+                block_align in docstring for simultaneous_blocks.
         :return:
             - if return_segments==True:
                 1D: list of segments, number of 1d sweep points or
