@@ -119,7 +119,10 @@ class VirtualSIM928(Instrument):
         else:
             name = self.slot_names.get(i, i)
         self._voltages[i] = voltage
-        self.parameters['volt_{}'.format(name)]._save_val(voltage)
+        try:
+            self.parameters['volt_{}'.format(name)].cache.set(voltage)
+        except AttributeError:  # old qcodes
+            self.parameters['volt_{}'.format(name)]._save_val(voltage)
 
     def get_voltage(self, i):
         """
