@@ -16,6 +16,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
+import qcodes
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -146,8 +147,21 @@ class MultiTaskingExperiment(QuantumExperiment):
             'ro_qubits': self.meas_obj_names,
             'data_to_fit': self.data_to_fit,
         })
+        if kw.get('store_preprocessed_task_list', False) and hasattr(
+                self, 'preprocessed_task_list'):
+            tl = [copy(t) for t in self.preprocessed_task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
-            self.exp_metadata.update({'task_list': self.task_list})
+            tl = [copy(t) for t in self.task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
 
@@ -161,11 +175,13 @@ class MultiTaskingExperiment(QuantumExperiment):
             calibration state
         :param cal_states: str or tuple of str; the calibration states
             to measure
-        :param for_ef: bool indicating whether to measure the |f> calibration
-            state for each qubit
-        :param kw: keyword arguments (to allow pass through kw even if it
+        :param for_ef: (deprecated) bool indicating whether to measure the
+            |f> calibration state for each qubit
+        :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
         """
+        if for_ef:
+            log.warning('for_ef is deprecated, use cal_states instead.')
         self.cal_states = CalibrationPoints.guess_cal_states(
             cal_states, for_ef=for_ef)
         self.cal_points = CalibrationPoints.multi_qubit(
@@ -236,6 +252,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names, [task]))
         prefix += ('_' if prefix[-1] != '_' else '')
         task['prefix'] = prefix
+
         # Get measure objects needed involved in this task. Will be used
         # below to generate entries for the meas_obj_sweep_points_map.
         mo = self.get_meas_objs_from_task(task)
@@ -247,8 +264,10 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Start with sweep points valid for all tasks
         current_sweep_points = SweepPoints(sweep_points)
-        # generate kw sweep points for the task
+
+        # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
+
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point
         # valid for all tasks, the task-specific one is used for this task.
@@ -258,7 +277,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # prefixed with the task prefix later on (in the global sweep
         # points, see below, and when used as ParametricValue during block
         # creation).
-        params_to_prefix = [d.keys() for d in task['sweep_points']]
+        params_to_prefix = [list(d) for d in task['sweep_points']]
         task['params_to_prefix'] = params_to_prefix
         # Save the current_sweep_points object to the preprocessed task
         task['sweep_points'] = current_sweep_points
@@ -302,7 +321,8 @@ class MultiTaskingExperiment(QuantumExperiment):
             keyword arguments for block_func, plus a key 'prefix' with a unique
             prefix string, plus optionally a key 'params_to_prefix' created
             by preprocess_task indicating which sweep parameters have to be
-            prefixed with the task prefix.
+            prefixed with the task prefix, plus optionally a key
+            pulse_modifs with pulse modifiers for the created blocks.
         :param block_func: a handle to a function that creates a block. As
             an alternative, a task-specific block_func can be given as a
             parameter of the task. If the block creation function instead
@@ -326,6 +346,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             # the block creation function
             prefix = task.pop('prefix')
             params_to_prefix = task.pop('params_to_prefix', None)
+            pulse_modifs = task.pop('pulse_modifs', None)
             # the block_func passed as argument is used for all tasks that
             # do not define their own block_func
             if not 'block_func' in task:
@@ -338,6 +359,8 @@ class MultiTaskingExperiment(QuantumExperiment):
             if not isinstance(new_block, list):
                 new_block = [new_block]
             for b in new_block:
+                if pulse_modifs is not None:
+                    b.pulses = b.pulses_sweepcopy([pulse_modifs], [None])
                 # prefix the block names to avoid naming conflicts later on
                 b.name = prefix + b.name
                 # For the sweep points that need to be prefixed (see
@@ -738,7 +761,7 @@ class CPhase(CalibBuilder):
                     task['prefix'] = f"{task['qbl']}{task['qbr']}_"
 
             # By default, include f-level cal points (for measuring leakage).
-            kw['for_ef'] = kw.get('for_ef', True)
+            kw['cal_states'] = kw.get('cal_states', 'gef')
 
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 

@@ -1039,7 +1039,7 @@ def add_preparation_pulses(pulse_list, operation_dict, qb_names,
         return preparation_pulses + pulse_list
 
 
-def sweep_pulse_params(pulses, params):
+def sweep_pulse_params(pulses, params, pulse_not_found_warning=True):
     """
     Sweeps a list of pulses over specified parameters.
     Args:
@@ -1051,6 +1051,8 @@ def sweep_pulse_params(pulses, params):
             all pulses with name starting with <pulse_starts_with> and ending
             with <pulse_endswith> will be modified. eg. "Rabi_*" will modify
             Rabi_1, Rabi_2 in [Rabi_1, Rabi_2, Other_Pulse]
+        pulse_not_found_warning (bool, default: True) whether a warning
+            should be issued if no pulse matches a given pulse name.
 
     Returns: a list of pulses_lists where each element is to be used
         for a single segment
@@ -1089,7 +1091,7 @@ def sweep_pulse_params(pulses, params):
             pulse_name, param_name = name.split('.')
             pulse_indices = [i for i, p in enumerate(pulses)
                              if check_pulse_name(p, pulse_name)]
-            if len(pulse_indices) == 0:
+            if len(pulse_indices) == 0 and pulse_not_found_warning:
                 log.warning(f"No pulse with name {pulse_name} found in list:"
                             f"{[p.get('name', 'No Name') for p in pulses]}")
             for p_idx in pulse_indices:

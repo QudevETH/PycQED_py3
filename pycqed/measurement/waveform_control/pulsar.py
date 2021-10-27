@@ -454,6 +454,13 @@ class UHFQCPulsar:
         return [(f'awgs_0_userregs_{UHFQC.USER_REG_FIRST_SEGMENT}',
                  f'awgs_0_userregs_{UHFQC.USER_REG_LAST_SEGMENT}')]
 
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+
+
 class HDAWG8Pulsar:
     """
     Defines the Zurich Instruments HDAWG8 specific functionality for the Pulsar
@@ -581,6 +588,15 @@ class HDAWG8Pulsar:
                             set_cmd=self._hdawg_setter(awg, id, 'amp'),
                             get_cmd=self._hdawg_getter(awg, id, 'amp'),
                             vals=vals.Numbers(0.01, 5.0))
+        self.add_parameter(
+            '{}_amplitude_scaling'.format(name),
+            set_cmd=self._hdawg_setter(awg, id, 'amplitude_scaling'),
+            get_cmd=self._hdawg_getter(awg, id, 'amplitude_scaling'),
+            vals=vals.Numbers(min_value=-1.0, max_value=1.0),
+            initial_value=1.0,
+            docstring=f"Scales the AWG output of channel {name} with a given "
+                      f"factor between -1 and +1."
+        )
         self.add_parameter('{}_distortion'.format(name),
                             label='{} distortion mode'.format(name),
                             initial_value='off',
@@ -605,7 +621,27 @@ class HDAWG8Pulsar:
         self.add_parameter('{}_internal_modulation'.format(name), 
                            initial_value=False, vals=vals.Bool(),
                            parameter_class=ManualParameter)
-    
+        if (int(id[2:]) - 1) % 2  == 0:  # first channel of a pair
+            awg_nr = int((int(id[2:]) - 1) / 2)
+            param_name = '{}_mod_freq'.format(name)
+            self.add_parameter(
+                param_name,
+                unit='Hz',
+                initial_value=None,
+                set_cmd=self._hdawg_mod_setter(awg, awg_nr),
+                get_cmd=self._hdawg_mod_getter(awg, awg_nr),
+                docstring=f"Carrier frequency of internal modulation for the "
+                          f"channel pair starting with {name}. Positive "
+                          f"(negative) sign corresponds to upper (lower) side "
+                          f"band. Setting the frequency to None disables "
+                          f"internal modulation."
+            )
+            # qcodes will not set the initial value if it is None, so we set
+            # it manually here to ensure that internal modulation gets
+            # switched off in the init.
+            self.set(param_name, None)
+
+
     def _hdawg_create_marker_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
         self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
@@ -624,30 +660,38 @@ class HDAWG8Pulsar:
     @staticmethod
     def _hdawg_setter(obj, id, par):
         if par == 'offset':
-            if id[-1] != 'm':
+            if id[-1] != 'm':  # analog channel
                 def s(val):
                     obj.set('sigouts_{}_offset'.format(int(id[2])-1), val)
-            else:
+            else:  # marker channel (offset cannot be set)
                 s = None
         elif par == 'amp':
-            if id[-1] != 'm':
+            if id[-1] != 'm':  # analog channel
                 def s(val):
                     obj.set('sigouts_{}_range'.format(int(id[2])-1), 2*val)
-            else:
+            else:  # marker channel (scaling cannot be set)
                 s = None
+        elif par == 'amplitude_scaling' and id[-1] != 'm':
+            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            awg = int((int(id[2:]) - 1) / 2)
+            # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
+            output = (int(id[2:]) - 1) - 2 * awg
+            def s(val):
+                obj.set(f'awgs_{awg}_outputs_{output}_amplitude', val)
+                log.debug(f'awgs_{awg}_outputs_{output}_amplitude: {val}')
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
         return s
 
     def _hdawg_getter(self, obj, id, par):
         if par == 'offset':
-            if id[-1] != 'm':
+            if id[-1] != 'm':  # analog channel
                 def g():
                     return obj.get('sigouts_{}_offset'.format(int(id[2])-1))
-            else:
+            else:  # marker channel (offset always 0)
                 return lambda: 0
         elif par == 'amp':
-            if id[-1] != 'm':
+            if id[-1] != 'm':  # analog channel
                 def g():
                     if self._awgs_prequeried_state:
                         return obj.parameters['sigouts_{}_range' \
@@ -655,11 +699,92 @@ class HDAWG8Pulsar:
                     else:
                         return obj.get('sigouts_{}_range' \
                             .format(int(id[2])-1))/2
-            else:
+            else:  # marker channel
                 return lambda: 1
+        elif par == 'amplitude_scaling' and id[-1] != 'm':  # analog channel
+            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            awg = int((int(id[2:]) - 1) / 2)
+            # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
+            output = (int(id[2:]) - 1) - 2 * awg
+            def g():
+                return obj.get(f'awgs_{awg}_outputs_{output}_amplitude')
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g 
+        return g
+
+    @staticmethod
+    def _hdawg_mod_setter(obj, awg_nr):
+        def s(val):
+            log.debug(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
+            if val == None:
+                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
+                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
+            else:
+                # FIXME: this currently only works for real-valued baseband
+                # signals (zero Q component), and it assumes that the the I
+                # component gets programmed to both channels, see the case
+                # of mod_frequency=None in
+                # pulse_library.SSB_DRAG_pulse.chan_wf.
+                # In the future, we should extended this to support general
+                # IQ modulation and adapt the pulse library accordingly.
+                # Also note that we here assume that the I (Q) channel is the
+                # first (second) channel of a pair.
+                sideband = np.sign(val)
+                freq = np.abs(val)
+                # see pycqed\instrument_drivers\physical_instruments\
+                #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
+                # for description of the nodes used below.
+                # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
+                # etc. Mode 1 (2) means that the AWG Output is multiplied with
+                # Sine Generator signal 0 (1) of this sub-awg
+                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
+                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
+                # For the oscillator, we can use any index, as long as the
+                # respective osc is not needed for anything else. Since we
+                # currently use oscs only here, the following index
+                # calculated from awg_nr can ensure that a unique osc is
+                # used for every channel pair for which we configure
+                # internal modulation.
+                osc_nr = awg_nr * 4
+                # set up the two sines of the channel pair with the same
+                # oscillator and with 90 phase shift
+                obj.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
+                obj.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
+                obj.set(f'sines_{awg_nr * 2}_phaseshift', 0)
+                # positive (negative) phase shift is needed for upper (
+                # lower) sideband
+                obj.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
+                # configure the oscillator frequency
+                obj.set(f'oscs_{osc_nr}_freq', freq)
+        return s
+
+    @staticmethod
+    def _hdawg_mod_getter(obj, awg_nr):
+        def g():
+            m0 = obj.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
+            m1 = obj.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
+            if m0 == 0 and m1 == 0:
+                # If modulation mode is 0 for both outputs, internal
+                # modulation is switched off (indicated by a modulation
+                # frequency set to None).
+                return None
+            elif m0 == 1 and m1 == 2:
+                # these calcuations invert the calculations in
+                # _hdawg_mod_setter, see therein for explaining comments
+                osc0 = obj.get(f'sines_{awg_nr * 2}_oscselect')
+                osc1 = obj.get(f'sines_{awg_nr * 2 + 1}_oscselect')
+                if osc0 == osc1:
+                    sideband = np.sign(obj.get(
+                        f'sines_{awg_nr * 2 + 1}_phaseshift'))
+                    return sideband * obj.get(f'oscs_{osc0}_freq')
+            # If we have not returned a result at this point, the current
+            # AWG settings do not correspond to a configuration made by
+            # _hdawg_mod_setter.
+            log.warning('The current modulation configuration is not '
+                        'supported by pulsar. Cannot retrieve modulation '
+                        'frequency.')
+            return None
+        return g
 
     def get_divisor(self, chid, awg):
         '''
@@ -921,8 +1046,9 @@ class HDAWG8Pulsar:
                     self._hdawg_update_waveforms(obj, awg_nr, idx,
                                                  wave_hashes, waveforms)
 
-        for ch in range(8):
-            obj.set('sigouts_{}_on'.format(ch), True)
+        if self.sigouts_on_after_programming():
+            for ch in range(8):
+                obj.set('sigouts_{}_on'.format(ch), True)
 
         if any(ch_has_waveforms.values()):
             self.awgs_with_waveforms(obj.name)
@@ -984,6 +1110,13 @@ class HDAWG8Pulsar:
         return [(f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_LAST_SEGMENT}')
                 for i in range(4) if obj._awg_program[i] is not None]
+
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+
 
 class AWG5014Pulsar:
     """
@@ -1361,6 +1494,14 @@ class AWG5014Pulsar:
             return super()._get_segment_filter_userregs(obj)
         return []
 
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set(f"{self.get(ch + '_id')}_state", on)
+        return
+
+
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
     """
     A meta-instrument responsible for all communication with the AWGs.
@@ -1396,9 +1537,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
-                           parameter_class=ManualParameter, vals=vals.Bool())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_channels', initial_value=[],
-                           parameter_class=ManualParameter, vals=vals.Lists())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',
@@ -1412,6 +1553,14 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            set_cmd=self._set_filter_segments,
                            get_cmd=self._get_filter_segments,
                            initial_value=None)
+        self.add_parameter('sigouts_on_after_programming', initial_value=True,
+                           parameter_class=ManualParameter, vals=vals.Bool(),
+                           docstring='Whether signal outputs should be '
+                                     'switched off automatically after '
+                                     'programming a AWGs. Can be set to '
+                                     'False to save time if it is ensured '
+                                     'that the channels are switched on '
+                                     'somewhere else.')
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
