@@ -14,6 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath('../..'))
+sys.path.append(os.path.abspath("./ext"))
 
 # Custom variable __sphinx_build__ which can be used to check inside the code
 # if the documentation is being built.
@@ -40,6 +41,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx_rtd_theme',
     'myst_parser',
+    'autodoc_instrument',
 ]
 
 source_suffix = ['.rst', '.md']
