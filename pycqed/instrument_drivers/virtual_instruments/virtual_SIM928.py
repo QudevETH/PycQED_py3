@@ -62,6 +62,18 @@ class VirtualSIM928(Instrument):
                                  "when changing the voltage smoothly",
                            parameter_class=ManualParameter,
                            vals=vals.Numbers(0, 1), initial_value=0.05)
+        self.add_parameter('max_attempts', unit='',
+                           label="Number of times get_voltage is retried in "
+                                 "case of an error.",
+                           get_cmd=None, set_cmd=None,
+                           docstring="Ignored. Only exists for compatibility "
+                                     "with physical instrument driver.",
+                           vals=vals.Ints(0, 100), initial_value=10)
+        self.add_parameter('verbose',
+                           parameter_class=ManualParameter,
+                           docstring="Ignored. Only exists for compatibility "
+                                     "with physical instrument driver.",
+                           vals=vals.Bool(), initial_value=False)
 
         self._voltages = {i: 0 for i in self.modules}
 
