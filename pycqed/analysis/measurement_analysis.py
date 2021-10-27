@@ -19,15 +19,6 @@ import pylab
 from pycqed.analysis.tools import data_manipulation as dm_tools
 import importlib
 from time import time
-
-try:
-    import pygsti
-except ImportError as e:
-    if str(e).find('pygsti') >= 0:
-        log.warning('Could not import pygsti')
-    else:
-        raise
-
 from scipy.constants import *
 from copy import deepcopy
 from pprint import pprint
@@ -680,7 +671,7 @@ class MeasurementAnalysis(object):
             self.exp_metadata = {}
 
     def plot_results_vs_sweepparam(self, x, y, fig, ax, show=False, marker='-o',
-                                       log=False, ticks_around=True, label=None,
+                                       log=False, ticks_around=False, label=None,
                                        **kw):
 
         save = kw.get('save', False)

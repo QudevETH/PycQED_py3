@@ -1348,7 +1348,11 @@ class ZI_base_instrument(Instrument):
     # Public methods
     ##########################################################################
 
-    def start(self):
+    def start(self, **kw):
+        """ Start the sequencer
+        :param kw: currently ignored, added for compatibilty with other
+            instruments that accept kwargs in start().
+        """
         log.info(f"{self.devname}: Starting '{self.name}'")
         self.check_errors()
 
