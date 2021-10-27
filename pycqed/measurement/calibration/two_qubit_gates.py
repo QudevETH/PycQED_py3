@@ -147,6 +147,14 @@ class MultiTaskingExperiment(QuantumExperiment):
             'ro_qubits': self.meas_obj_names,
             'data_to_fit': self.data_to_fit,
         })
+        if kw.get('store_preprocessed_task_list', False) and hasattr(
+                self, 'preprocessed_task_list'):
+            tl = [copy(t) for t in self.preprocessed_task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
+            self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
             tl = [copy(t) for t in self.task_list]
             for t in tl:
@@ -167,11 +175,13 @@ class MultiTaskingExperiment(QuantumExperiment):
             calibration state
         :param cal_states: str or tuple of str; the calibration states
             to measure
-        :param for_ef: bool indicating whether to measure the |f> calibration
-            state for each qubit
-        :param kw: keyword arguments (to allow pass through kw even if it
+        :param for_ef: (deprecated) bool indicating whether to measure the
+            |f> calibration state for each qubit
+        :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
         """
+        if for_ef:
+            log.warning('for_ef is deprecated, use cal_states instead.')
         self.cal_states = CalibrationPoints.guess_cal_states(
             cal_states, for_ef=for_ef)
         self.cal_points = CalibrationPoints.multi_qubit(
@@ -242,6 +252,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names, [task]))
         prefix += ('_' if prefix[-1] != '_' else '')
         task['prefix'] = prefix
+
         # Get measure objects needed involved in this task. Will be used
         # below to generate entries for the meas_obj_sweep_points_map.
         mo = self.get_meas_objs_from_task(task)
@@ -253,8 +264,10 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Start with sweep points valid for all tasks
         current_sweep_points = SweepPoints(sweep_points)
-        # generate kw sweep points for the task
+
+        # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
+
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point
         # valid for all tasks, the task-specific one is used for this task.
@@ -264,7 +277,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # prefixed with the task prefix later on (in the global sweep
         # points, see below, and when used as ParametricValue during block
         # creation).
-        params_to_prefix = [d.keys() for d in task['sweep_points']]
+        params_to_prefix = [list(d) for d in task['sweep_points']]
         task['params_to_prefix'] = params_to_prefix
         # Save the current_sweep_points object to the preprocessed task
         task['sweep_points'] = current_sweep_points
@@ -521,25 +534,30 @@ class MultiTaskingExperiment(QuantumExperiment):
         for k, sp_dict_list in self.kw_for_sweep_points.items():
             if isinstance(sp_dict_list, dict):
                 sp_dict_list = [sp_dict_list]
-            # This loop can create  multiple sweep points based on a single
+            # This loop can create multiple sweep points based on a single
             # keyword argument.
             for v in sp_dict_list:
                 # copy to allow popping the values_func, which should not be
                 # passed to SweepPoints.add_sweep_parameter
                 v = copy(v)
                 values_func = v.pop('values_func', None)
-                # if the respective task parameter (or keyword argument) exists
-                if k in task and task[k] is not None:
+                if isinstance(values_func, str):
+                    # assumes the string is the name of a self method
+                    values_func = getattr(self, values_func, None)
+
+                k_list = k.split(',')
+                # if the respective task parameters (or keyword arguments) exist
+                if all([k in task and task[k] is not None for k in k_list]):
                     if values_func is not None:
-                        values = values_func(task[k])
-                    elif isinstance(task[k], int):
+                        values = values_func(*[task[key] for key in k_list])
+                    elif isinstance(task[k_list[0]], int):
                         # A single int N as sweep value will be interpreted as
                         # a sweep over N indices.
-                        values = np.arange(task[k])
+                        values = np.arange(task[k_list[0]])
                     else:
-                        # Othervise it is assumed that list-like sweep
+                        # Otherwise it is assumed that list-like sweep
                         # values are provided.
-                        values = task[k]
+                        values = task[k_list[0]]
                     task['sweep_points'].add_sweep_parameter(
                         values=values, **v)
 
@@ -738,7 +756,7 @@ class CPhase(CalibBuilder):
                     task['prefix'] = f"{task['qbl']}{task['qbr']}_"
 
             # By default, include f-level cal points (for measuring leakage).
-            kw['for_ef'] = kw.get('for_ef', True)
+            kw['cal_states'] = kw.get('cal_states', 'gef')
 
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 

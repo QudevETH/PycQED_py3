@@ -635,6 +635,47 @@ class CircuitBuilder:
 
         return Block(block_name, pulses, pulse_modifs)
 
+    def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
+                            block_align='end', segment_prefix='calibration_',
+                            **kw):
+        """
+        Returns a list of segments for each cal state in cal_points.states.
+        :param cal_points: CalibrationPoints instance
+        :param init_state: initialization state (string or list),
+            see documentation of initialize().
+        :param ro_kwargs: Keyword arguments (dict) for the function
+            mux_readout().
+        :param block_align: passed to simultaneous_blocks; see docstring there
+        :param segment_prefix: prefix for segment name (string)
+        :param kw: keyword arguments (to allow pass through kw even if it
+            contains entries that are not needed)
+        :return: list of Segment instances
+        """
+        if ro_kwargs is None:
+            ro_kwargs = {}
+
+        segments = []
+        for i, seg_states in enumerate(cal_points.states):
+            cal_ops = [[f'{p}{qbn}' for p in cal_points.pulse_label_map[s]]
+                       for s, qbn in zip(seg_states, cal_points.qb_names)]
+            qb_blocks = [self.block_from_ops(
+                f'body_block_{i}_{o}', ops,
+                pulse_modifs=cal_points.pulse_modifs)
+                for o, ops in enumerate(cal_ops)]
+            parallel_qb_block = self.simultaneous_blocks(
+                f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
+
+            prep = self.initialize(init_state=init_state,
+                                   qb_names=cal_points.qb_names)
+            ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
+            cal_state_block = self.sequential_blocks(
+                f'cal_states_{i}', [prep, parallel_qb_block, ro])
+            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
+                          cal_state_block.build())
+            segments.append(seg)
+
+        return segments
+
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
         """
@@ -800,15 +841,18 @@ class CircuitBuilder:
         :param ro_qubits: is passed as argument qb_names to self.initialize()
             and self.mux_ro() to specify that only subset of qubits should
             be prepared and read out (default: 'all')
-        :param kw: keyword arguments
-            body_block_func_kw (dict, default: {}): keyword arguments for the
-                body_block_func
         :param repeat_ro: (bool) set repeat pattern for readout pulses
             (default: True)
         :param init_kwargs: Keyword arguments (dict) for the initialization,
             see method initialize().
         :param final_kwargs: Keyword arguments (dict) for the finalization,
             see method finalize().
+        :param kw: additional keyword arguments
+            body_block_func_kw (dict, default: {}): keyword arguments for the
+                body_block_func
+            block_align_cal_pts (str, default: 'end'): aligment condition for
+                the calpoints segments. Passed to seg_from_cal_points. See
+                block_align in docstring for simultaneous_blocks.
         :return:
             - if return_segments==True:
                 1D: list of segments, number of 1d sweep points or
@@ -904,8 +948,10 @@ class CircuitBuilder:
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
-                seq.extend(cal_points.create_segments(self.operation_dict,
-                                                      **self.get_prep_params()))
+                block_align_cal_pts = kw.get('block_align_cal_pts', 'end')
+                seq.extend(self.seg_from_cal_points(
+                    cal_points, init_state, ro_kwargs,
+                    block_align=block_align_cal_pts, **kw))
             seqs.append(seq)
 
         if return_segments:

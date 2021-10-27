@@ -336,6 +336,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         super().__init__(name, element_name, **kw)
         self._update_lengths_amps_channels()
 
+
     @classmethod
     def pulse_params(cls):
         params = {
@@ -346,6 +347,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'amplitude2': 0,
             'amplitude_offset': 0,
             'amplitude_offset2': 0,
+            'aux_pulses_list': [],
+            'extra_buffer_aux_pulse': 5e-9,
             'pulse_length': 0,
             'trans_amplitude': 0,
             'trans_amplitude2': 0,
@@ -358,16 +361,24 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         return params
 
     def _update_lengths_amps_channels(self):
-        self.channels = [self.channel, self.channel2]
+        self.channels = [c for c in [self.channel, self.channel2]
+                         if c is not None]
+        for pulse_pars in self.aux_pulses_list:
+            for k in pulse_pars:
+                if 'channel' in k:
+                    self.channels.append(pulse_pars[k])
         self.lengths = []
         self.amplitudes = []
 
-        for ma, ta, ao, d in [
+        # add amplitudes and lengths for gate pulses
+        for ma, ta, ao, d, c in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
-             -self.channel_relative_delay/2),
+             -self.channel_relative_delay/2, self.channel),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
-             self.channel_relative_delay/2),
+             self.channel_relative_delay/2, self.channel2),
         ]:
+            if c is None:
+                continue
             ml = self.pulse_length
             tl = self.trans_length
             bs = self.buffer_length_start
@@ -380,10 +391,30 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             self.amplitudes.append([0, ma + ao, ta, -ta, -ma + ao, 0])
             self.lengths.append([bs + d - cl0, cl0 + ml / 2, tl / 2,
                                  tl / 2, ml / 2 + cl1, be - d - cl1])
+        while len(self.lengths) < len(self.channels):
+            self.lengths += [[]]
+        while len(self.amplitudes) < len(self.channels):
+            self.amplitudes += [[]]
 
     def chan_wf(self, channel, t):
         self._update_lengths_amps_channels()
-        return super().chan_wf(channel, t)
+        wf = super().chan_wf(channel, t)
+
+        # add auxiliary channel pulses
+        for aux_dict in self.aux_pulses_list:
+            pulse_pars = {k: getattr(self, k) for k in self.pulse_params()}
+            pulse_pars['element_name'] = 'aux'
+            pulse_pars.update(aux_dict)
+            pulse_pars.pop('aux_pulses_list')
+            import pycqed.measurement.waveform_control.segment as seg_mod
+            pulse_obj = seg_mod.UnresolvedPulse(pulse_pars).pulse_obj
+            if channel not in pulse_obj.channels:
+                continue
+            pulse_obj.algorithm_time(self.algorithm_time() +
+                                     pulse_pars.get('pulse_delay', 0))
+            wf += pulse_obj.chan_wf(channel, t)
+
+        return wf
 
 
 class BufferedSquarePulse(pulse.Pulse):
@@ -1062,7 +1093,6 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             **params_super,
             'pulse_type': 'GaussFilteredCosIQPulseWithFlux',
             'flux_channel': None,
-            'disable_flux_crosstalk_cancellation': False,
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,

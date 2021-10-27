@@ -144,7 +144,8 @@ class Segment:
             self.add(p)
 
     @Timer()
-    def resolve_segment(self, store_segment_length_timer=True):
+    def resolve_segment(self, allow_overlap=False,
+                        store_segment_length_timer=True):
         """
         Top layer method of Segment class. After having addded all pulses,
             * pulse elements are updated to enforce single element per segment
@@ -153,13 +154,17 @@ class Segment:
             * the virtual Z gates are resolved
             * the trigger pulses are generated
             * the charge compensation pulses are added
+
+        :param allow_overlap: (bool, default: False) see _test_overlap
+        :param store_segment_length_timer: (bool, default: True) whether
+            the segment length should be stored in the segment's Timer object
         """
         self.enforce_single_element()
         self.resolve_timing()
         self.resolve_mirror()
         self.resolve_Z_gates()
         self.add_flux_crosstalk_cancellation_channels()
-        self.gen_trigger_el()
+        self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
             try:
@@ -356,16 +361,28 @@ class Segment:
         self.resolved_pulses = ordered_unres_pulses
 
     def add_flux_crosstalk_cancellation_channels(self):
-        if self.pulsar.flux_crosstalk_cancellation():
-            for p in self.resolved_pulses:
-                if any([ch in self.pulsar.flux_channels() for ch in
-                        p.pulse_obj.channels]):
-                    p.pulse_obj.crosstalk_cancellation_channels = \
-                        self.pulsar.flux_channels()
-                    p.pulse_obj.crosstalk_cancellation_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_mtx()
+        for p in self.resolved_pulses:
+            calibration_key = getattr(p.pulse_obj,
+                                      'crosstalk_cancellation_key', None)
+            if calibration_key is None:
+                calibration_key = self.pulsar.flux_crosstalk_cancellation()
+            if calibration_key in (True, None):
+                calibration_key = 'default'
+            if not calibration_key:
+                continue
+            if any([ch in self.pulsar.flux_channels()[calibration_key] for ch in
+                    p.pulse_obj.channels]):
+                p.pulse_obj.crosstalk_cancellation_channels = \
+                    self.pulsar.flux_channels()[calibration_key]
+                p.pulse_obj.crosstalk_cancellation_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_mtx()\
+                        [calibration_key]
+                p.pulse_obj.crosstalk_cancellation_shift_mtx = \
+                    self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                if p.pulse_obj.crosstalk_cancellation_shift_mtx is not None:
                     p.pulse_obj.crosstalk_cancellation_shift_mtx = \
-                        self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+                        p.pulse_obj.crosstalk_cancellation_shift_mtx\
+                            .get(calibration_key, None)
 
     def add_charge_compensation(self):
         """
@@ -579,7 +596,7 @@ class Segment:
         awg_hierarchy.reverse()
         return awg_hierarchy
 
-    def gen_trigger_el(self):
+    def gen_trigger_el(self, allow_overlap=False):
         """
         For each element:
             For each AWG the element is played on, this method:
@@ -592,6 +609,8 @@ class Segment:
         For debugging, self.skip_trigger can be set to a list of AWG names
         for which the triggering should be skipped (by using a 0-amplitude
         trigger pulse).
+
+        :param allow_overlap: (bool, default: False) see _test_overlap
         """
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
@@ -691,7 +710,7 @@ class Segment:
                 self.element_start_length(el, awg)
 
         # checks if elements on AWGs overlap
-        self._test_overlap()
+        self._test_overlap(allow_overlap=allow_overlap)
         # checks if there is only one element on the master AWG
         self._test_trigger_awg()
 
@@ -759,9 +778,14 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12):
         """
         Tests for all AWGs if any of their elements overlap.
+
+        :param allow_overlap: (bool, default: False) If this is False,
+            an execption is raised in case of overlapping elements.
+            Otherwise, only a warning is shown (useful for plotting while
+            debugging overlaps).
         """
 
         for awg in self.elements_on_awg:
@@ -790,9 +814,16 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if el_prev_end > el_new_start:
-                    raise ValueError('{} and {} overlap on {}'.format(
-                        prev_el, el_list[i + 1][2], awg))
+                if (el_prev_end - el_new_start) > tol :
+                    print(el_prev_end, el_new_start)
+                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
+                    f'{el_list[i + 1][2]} (' \
+                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                          f'on {awg}'
+                    if allow_overlap:
+                        log.warning(msg)
+                    else:
+                        raise ValueError(msg)
 
     def _test_trigger_awg(self):
         """
@@ -1290,7 +1321,7 @@ class Segment:
             plot_kwargs['linewidth'] = 0.7
         try:
             # resolve segment and populate elements/waveforms
-            self.resolve_segment()
+            self.resolve_segment(allow_overlap=True)
             if demodulate:
                 for el in self.elements.values():
                     for pulse in el:
@@ -1581,16 +1612,7 @@ class UnresolvedPulse:
         self.basis_rotation = pulse_pars.pop('basis_rotation', {})
         self.op_code = pulse_pars.get('op_code', '')
 
-        pulse_func = None
-        for module in bpl.pulse_libraries:
-            try:
-                pulse_func = getattr(module, pulse_pars['pulse_type'])
-            except AttributeError:
-                pass
-        if pulse_func is None:
-            raise KeyError('pulse_type {} not recognized'.format(
-                pulse_pars['pulse_type']))
-
+        pulse_func = bpl.get_pulse_class(pulse_pars['pulse_type'])
         self.pulse_obj = pulse_func(**pulse_pars)
         # allow a pulse to modify its op_code (e.g., for C-ARB gates)
         self.op_code = getattr(self.pulse_obj, 'op_code', self.op_code)
