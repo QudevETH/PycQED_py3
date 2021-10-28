@@ -4,7 +4,7 @@ import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.calibration.calibration_points as cp_mod
 from pycqed.measurement import sweep_points as sp_mod
 import numpy as np
-
+from copy import deepcopy
 
 class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
     block_align = 'center'
@@ -33,7 +33,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         super().__init__(**kw)
         self.data_qubits = data_qubits
         self.ancilla_qubits = ancilla_qubits
-        self.readout_rounds = readout_rounds
+        self.readout_rounds = deepcopy(readout_rounds)
         self.ancilla_reset = ancilla_reset
         self.nr_cycles = nr_cycles
         self.initializations = initializations
@@ -57,7 +57,7 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         self.two_qb_gates_off = two_qb_gates_off
 
         # ensure enabled_cycle_mask has correct format
-        for readout_round_pars in readout_rounds:
+        for readout_round_pars in self.readout_rounds:
             enabled_cycle_mask = np.ones(self.nr_cycles, dtype=bool)
             for i, e in enumerate(readout_round_pars.get('enabled_cycle_mask',
                                                          [])):
@@ -74,7 +74,8 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
             init_kwargs={'pulse_modifs': {'all': {
                 'element_name': 'init_element'}}},
             final_kwargs={'pulse_modifs': {'all': {
-                'element_name': 'final_element', 'pulse_delay': 5e-9}}},
+                'element_name': 'final_element',
+            }}},
         )
         if self.mc_points_override is not None:
             self.mc_points[0] = self.mc_points_override
@@ -101,6 +102,9 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
         elif self.finalizations == 'full_tomo':
             self.finalizations = self.tomography_pulses(
                 [q.name for q in self.qubits], basis_rots)
+        elif self.finalizations[0] == 'custom_tomo':
+            self.finalizations = self.tomography_pulses(
+                [q.name for q in self.finalizations[1]], basis_rots)
         for i in range(len(self.finalizations)):
             fin = list(self.finalizations[i])
             if len(fin) < len(self.qubits):
@@ -134,15 +138,15 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                 - The ancilla readout blocks, one for each readout round.
         """
         pulses = []
-        for cycle in range(self.nr_cycles):
-            c = self._cycle_block(cycle)
-            pulses += c.build(ref_pulse='start',
-                              block_delay=cycle*self.cycle_length)
         if extra_pulses is not None:
             extra_block = self.block_from_anything(extra_pulses, 'extra')
             if extra_pulses_kwargs is None:
                 extra_pulses_kwargs = {}
             pulses += extra_block.build(**extra_pulses_kwargs)
+        for cycle in range(self.nr_cycles):
+            c = self._cycle_block(cycle)
+            pulses += c.build(ref_pulse='start',
+                              block_delay=cycle*self.cycle_length)
         return block_mod.Block(
             'main', pulses, block_end={'pulse_delay': self.final_readout_delay})
 
@@ -242,8 +246,12 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                 )
             for a, ds in ancilla_steps.items():
                 ops_dd += [f'Y180 {a}', f'Z180 {a}']
-                ops_dd += [f'Z180 {d}' for d in ds[total_steps//2:]
-                           if d is not None]
+                for d in ds[total_steps//2:]:
+                    if d is not None:
+                        if f'Z180 {d}' not in ops_dd:
+                            ops_dd += [f'Z180 {d}']
+                        else:
+                            ops_dd.remove(f'Z180 {d}')
         if self.data_dd_simple:
             for a, ds in ancilla_steps.items():
                 for d in ds:
@@ -322,7 +330,6 @@ class SurfaceCodeExperiment(qe_mod.QuantumExperiment):
                   for op in ops_final]
         final_block = self.simultaneous_blocks('final_block', blocks,
                                                block_align=self.block_align)
-        final_block.pulses[-1]['pulse_delay'] = 6e-9
         blocks = [init_block] + cz_step_blocks + [final_block]
         # print('Init block: ', init_block)
         # print('CZ step block: ', cz_step_blocks)

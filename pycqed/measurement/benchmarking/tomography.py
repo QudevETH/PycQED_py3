@@ -152,6 +152,7 @@ class Tomography(CalibBuilder):
                     nr_segs = max(nr_segs, len(seg_map[qb]))
             return seg_map, nr_segs, rots_basis
 
+        finalizations_map_all = dict()
         for task in preprocessed_task_list:
             initializations_map, nr_inits, task['init_rots_basis'] = \
                 process_tomo(task['qubits'], task['init_rots_basis'],
@@ -162,15 +163,16 @@ class Tomography(CalibBuilder):
             if task.get('prepend_pulses', None) is not None:
                 prepend_block_list.append(self.block_from_anything(
                     task['prepend_pulses'], 'PrependPulses'))
+            finalizations_map_all.update(finalizations_map)
         for qb in self.meas_obj_names:
             if qb not in initializations_map:
                 initializations_map[qb] = []
-            if qb not in finalizations_map:
+            if qb not in finalizations_map_all:
                 finalizations_map[qb] = []
         for qb, tomo_init_qb in initializations_map.items():
             while len(tomo_init_qb) < nr_inits:
                 tomo_init_qb.append('I')
-        for qb, tomo_final_qb in finalizations_map.items():
+        for qb, tomo_final_qb in finalizations_map_all.items():
             while len(tomo_final_qb) < nr_finals:
                 tomo_final_qb.append('I')
         self.global_initializations = []
@@ -182,7 +184,7 @@ class Tomography(CalibBuilder):
         for i in range(nr_finals):
             self.global_finalizations += [[]]
             for qb in self.meas_obj_names:
-                self.global_finalizations[-1] += [finalizations_map[qb][i]]
+                self.global_finalizations[-1] += [finalizations_map_all[qb][i]]
         if len(prepend_block_list) > 0:
             self.global_prepend_block = self.simultaneous_blocks(
                 'prepend_block', prepend_block_list, block_align='end')

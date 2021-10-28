@@ -166,7 +166,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         super().run_measurement(**kw)
 
     def create_cal_points(self, n_cal_points_per_state=1, cal_states='auto',
-                          transition_name=None, for_ef=False, **kw):
+                          for_ef=False, **kw):
         """
         Creates a CalibrationPoints object based on the given parameters and
             saves it to self.cal_points.
@@ -175,27 +175,15 @@ class MultiTaskingExperiment(QuantumExperiment):
             calibration state
         :param cal_states: str or tuple of str; the calibration states
             to measure
-        :param transition_names: str or list of str specifying the name(s) of
-            the transition(s) involved in the measurement.
         :param for_ef: (deprecated) bool indicating whether to measure the
             |f> calibration state for each qubit
-        :param kw: keyword arguments (to allow pass through kw even if it
+        :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
         """
-        # check for transition_name inside tasks
-        if transition_name is None:
-            task_transition_name = [task.get('transition_name', '') for task in
-                                     self.task_list]
-            if len(''.join(task_transition_name)):
-                transition_name = task_transition_name
-            else:
-                transition_name = 'ge'
-
         if for_ef:
-            log.warning('for_ef is deprecated, use transition_name or '
-                        'cal_states instead.')
+            log.warning('for_ef is deprecated, use cal_states instead.')
         self.cal_states = CalibrationPoints.guess_cal_states(
-            cal_states, transition_names=transition_name, for_ef=for_ef)
+            cal_states, for_ef=for_ef)
         self.cal_points = CalibrationPoints.multi_qubit(
             self.meas_obj_names, self.cal_states,
             n_per_state=n_cal_points_per_state)
@@ -279,16 +267,6 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
-
-        # Check and update transition name
-        transition_name = task.pop('transition_name', None)
-        if transition_name is not None:
-            task['transition_name_input'] = transition_name
-            if '_' not in transition_name:
-                transition_name = f'_{transition_name}'
-            if transition_name == '_ge':
-                transition_name = ''
-            task['transition_name'] = transition_name
 
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point
@@ -685,8 +663,8 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse.
         :return: block containing the prepended pulses
         """
-        log.warning('Deprecate function name: use CircuitBuilder.'
-                    'block_from_pulse_dicts instead.')
+        log.warning('Deprecate function name prepend_pulses_block: use '
+                    'CircuitBuilder.block_from_pulse_dicts instead.')
 
         return self.block_from_pulse_dicts(prepend_pulse_dicts,
                                            block_name=block_name)
@@ -1488,6 +1466,12 @@ class Chevron(CalibBuilder):
                 # generate an informative task prefix
                 if not 'prefix' in task:
                     task['prefix'] = f"{task['qbc']}{task['qbt']}_"
+                if 'qbr' in kw:
+                    log.warning(
+                        "Chevron: the argument qbr is deprecated and will be "
+                        "ignored. The argument ro_qubits can be used to restrict"
+                        "the readout to a subset of qubits.")
+                    kw.pop('qbr')
 
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 
