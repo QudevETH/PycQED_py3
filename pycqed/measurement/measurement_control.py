@@ -73,10 +73,15 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
-        # Soft repetition is currently only available for "hard"
-        # measurements. It does not work with adaptive measurements.
         self.add_parameter('soft_repetitions',
                            label='Number of soft repetitions',
+                           docstring='Repeat hard measurements multiple '
+                                     'times in a software loop to collect '
+                                     'more results. All obtained results are '
+                                     'appended to the data table in the HDF '
+                                     'file (i.e., no soft averaging is done '
+                                     'on them). This is currently only '
+                                     'implemented for "hard" measurements.',
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
