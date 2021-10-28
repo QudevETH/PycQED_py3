@@ -518,6 +518,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
+
             for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
@@ -1414,6 +1415,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # where n_soft_sp is the inner most loop i.e. the first dim is ordered as
         # (shot0_ssp0, shot0_ssp1, ... , shot1_ssp0, shot1_ssp1, ...)
         shots_per_qb = self._get_single_shots_per_qb()
+
         # save single shots in proc_data_dict, as they will be overwritten in
         # 'meas_results_per_qb' with their averaged values for the rest of the
         # analysis to work.
