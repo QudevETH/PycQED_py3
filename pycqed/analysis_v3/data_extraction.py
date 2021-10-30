@@ -189,9 +189,14 @@ def add_measured_data_hdf(data_dict, folder=None, append_data=False,
 
     h5mode = hlp_mod.get_param('h5mode', data_dict, default_value='r+',
                                **params)
+    dtype = hlp_mod.get_param('meas_data_dtype', data_dict, default_value=None,
+                               **params)
+    if dtype is not None:
+        log.warning(f'Setting Experimental data type: {dtype}')
     h5filepath = a_tools.measurement_filename(folder)
     data_file = h5py.File(h5filepath, h5mode)
-    meas_data_array = np.array(data_file['Experimental Data']['Data']).T
+    meas_data_array = np.array(data_file['Experimental Data']['Data'],
+                               dtype=dtype).T
     if 'measured_data' in data_dict:
         if replace_data:
             data_dict['measured_data'] = meas_data_array
