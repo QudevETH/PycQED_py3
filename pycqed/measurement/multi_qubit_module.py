@@ -1202,4 +1202,3 @@ def get_multi_qubit_msmt_suffix(qubits):
     else:
         msmt_suffix = '_{}'.format(''.join([qbn for qbn in qubit_names]))
     return msmt_suffix
-
