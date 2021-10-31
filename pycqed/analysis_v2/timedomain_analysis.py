@@ -8831,7 +8831,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     except Exception as e: # not a gmm model--> no cov.
                         covs = []
 
-                    for i, mean in enumerate(means):
+                    for i, mean in enumerate(means.values()):
                         main_ax.scatter(mean[0], mean[1], color='w', s=80)
                         if len(clf_means):
                             main_ax.scatter(clf_means[i][0], clf_means[i][1],
