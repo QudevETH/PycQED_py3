@@ -783,7 +783,7 @@ class QuantumExperiment(CircuitBuilder):
         qubits, _ = self.get_qubits(qubits) # get qubit objects
         default_ch_map = \
             self.dev.get_channel_map(qubits) if self.dev is not None else \
-                {qb.name: qb.get_channel_map() for qb in qubits}
+                {qb.name: qb.get_channels() for qb in qubits}
         plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
                            default_ch_map)))
         plot_kwargs.update(dict(legend=legend))
