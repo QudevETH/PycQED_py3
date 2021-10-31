@@ -8039,7 +8039,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 label = state_labels[sp[0]] + state_labels[sp[1]] \
                     if state_labels is not None else sp
 
-                snr.update({label: dist/(std0 + std1)})
+                snr.update({label: dist/np.mean(std0 + std1)})
         return snr
 
     @staticmethod
