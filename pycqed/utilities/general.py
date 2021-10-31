@@ -870,16 +870,25 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
 
 class TempLogLevel:
     """
-    With Handler to temporarily change the log level.
+    With Handler to temporarily change the log level of a logger
     """
     LOG_LEVELS = dict(debug=logging.DEBUG, info=logging.INFO,
                       warning=logging.WARNING, error=logging.ERROR,
                       critical=logging.CRITICAL, fatal=logging.FATAL)
 
     def __init__(self, logger, log_level="info"):
+        """
+        Instantiate a TemporaryLogLevel.
+        Args:
+            logger (logging.Logger): logger of which the level should
+                be changed temporarily.
+            log_level (str): Desired temporary log level: "debug", "info",
+                "warning", "error", "critical", "fatal". Strings can also be
+                all caps, e.g. "INFO". Defaults to "info".
+        """
         self.logger = logger
         self.log_level = logger.level
-        self.temp_log_level = self.LOG_LEVELS.get(log_level, log_level)
+        self.temp_log_level = self.LOG_LEVELS.get(log_level.lower(), log_level)
 
     def __enter__(self):
         self.logger.setLevel(self.temp_log_level)
