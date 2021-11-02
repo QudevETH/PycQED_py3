@@ -705,6 +705,7 @@ def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
         pulse = deepcopy(operation_dict[f'FP {target_qubit_name}'])
         pulse['amplitude'] = amp
         pulse['pulse_length'] = target_fluxpulse_length
+        pulse['trans_length'] = target_fluxpulse_length / 2
         pulse['ref_point'] = 'middle'
         pulse['ref_point_new'] = 'middle'
         interleaved_pulse_list += [pulse]

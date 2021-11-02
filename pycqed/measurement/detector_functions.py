@@ -199,23 +199,86 @@ class Multi_Detector(Detector_Function):
 
 
 class IndexDetector(Detector_Function):
+    """Detector function that indexes the result of another detector function.
+
+    Args:
+        detector:
+            detector function that returns multiple values per sweep point
+        index:
+            Index if the element returned from the original detector function
+            output. Can be an integer or a tuple. If an integer, then value is
+            interpreted as a channel index of the original detector function.
+            In case of a tuple, the first value corresponds to a channel index
+            and the second value corresponds to an index in the original
+            hardware sweep. Using a tuple converts a hardware sweep to a
+            software sweep.
+    """
+
     def __init__(self, detector, index):
         super().__init__()
         self.detector = detector
         self.index = index
         self.name = detector.name + '[{}]'.format(index)
-        self.value_names = [detector.value_names[index]]
-        self.value_units = [detector.value_units[index]]
+        if isinstance(self.index, tuple):
+            self.value_names = [detector.value_names[index[0]]]
+            self.value_units = [detector.value_units[index[0]]]
+            self.detector_control = 'soft'
+        else:
+            self.value_names = [detector.value_names[index]]
+            self.value_units = [detector.value_units[index]]
+            self.detector_control = detector.detector_control
+            self.index = [index]
+
+    def prepare(self, **kw):
+        self.detector.prepare(**kw)
+
+    def get_values(self):
+        v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
+        for i in self.index:
+            v = v[i]
+        return v
+
+    def acquire_data_point(self):
+        v = self.detector.get_values()
+        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
+        for i in self.index:
+            v = v[i]
+        return v
+
+    def finish(self):
+        self.detector.finish()
+
+
+class SumDetector(Detector_Function):
+    """A detector function that adds up the channel values of another detector
+
+    Args:
+        detector: Underlying detector with several channels to be added
+        indices: Channel indices of the underlying detector that will be added
+    """
+
+    def __init__(self, detector, indices=None):
+        super().__init__()
+        self.detector = detector
+        if indices is None:
+            indices = np.arange(len(detector.value_names))
+        self.indices = indices
+        self.name = detector.name + '_sum'
+        self.value_names = [detector.value_names[indices[0]]]
+        self.value_units = [detector.value_units[indices[0]]]
         self.detector_control = detector.detector_control
 
     def prepare(self, **kw):
         self.detector.prepare(**kw)
 
     def get_values(self):
-        return self.detector.get_values()[self.index]
+        return [np.array(self.detector.get_values())[self.indices]
+                .sum(axis=0)]
 
     def acquire_data_point(self):
-        return self.detector.acquire_data_point()[self.index]
+        return [np.array(self.detector.acquire_data_point())[self.indices]
+                .sum(axis=0)]
 
     def finish(self):
         self.detector.finish()
@@ -845,6 +908,127 @@ class UHFQC_input_average_detector(UHFQC_Base):
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
                                           mode=self.ro_mode)
+
+
+class UHFQC_scope_detector(Hard_Detector):
+    """
+    Detector used for acquiring averaged timetraces and their Fourier'
+    transforms using the scope module of the UHF.
+
+    Requires the DIG option on the UHF to work. Required for the segmented
+    acquisition, that is needed to square the signal before averaging.
+
+    Args:
+        UHFQC: An UHFQC instance to use.
+        AWG: A pulsar or an AWG to start at the beginning of the measurement.
+            Typically used to generate pulses to look at and or provide
+            triggers.
+        channels: Tuple of UHFQA hardware channel indices.
+            Indices can be either 0 or 1, as the UHF has 2 input channels.
+        nr_averages: Number of times to average.
+        nr_samples: Number of samples in a scope trace.
+            Actual value will be rounded to the highest power of two that is at
+            most the provided value.
+        fft_mode: Data processing mode.
+            Can be one of the following:
+                'timedomain': Records timedomain traces.
+                'fft': Returns the absolute value of the Fourier' transform
+                       of the data.
+                'fft_power': Squares the data before averaging and taking the
+                             Fourier' transform.
+    Keyword arguments:
+        trigger: Boolean, whether to wait for a trigger to start acquisition.
+            Defaults to True if AWG instance is given, False otherwise.
+        trigger_channel: Integer, specifing the triggering channel.
+            Typical values here are
+                0: Signal Input 1,
+                1: Signal Input 2,
+                2: Trigger Input 1,
+                3: Trigger Input 2.
+            See the UHFQA manual for a full list. Defaults to Trigger Input 1.
+        trigger_level: Trigger activation level. Defaults to 0.1 V.
+
+    """
+    def __init__(self, UHFQC, AWG=None, channels=(0, 1),
+                 nr_averages=20, nr_samples=4096, fft_mode='timedomain',
+                 **kw):
+        super().__init__()
+
+        self.UHFQC = UHFQC
+        self.scope = UHFQC.daq.scopeModule()
+        self.AWG = AWG
+        self.channels = channels
+        self.nr_samples = max(int(2**np.floor(np.log2(nr_samples))), 4096)
+        self.nr_averages = nr_averages
+        self.fft_mode = fft_mode
+        self.value_names = [f'{UHFQC.name}_ch{ch}' for ch in channels]
+        if fft_mode == 'fft_power':
+            self.value_units = ['V^2' for _ in channels]
+        else:
+            self.value_units = ['V' for _ in channels]
+        self.trigger_channel = kw.get('trigger_channel', 2)
+        self.trigger_level = kw.get('trigger_level', 0.1)
+        self.trigger = kw.get('trigger', self.AWG is not None)
+
+    def finish(self):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.scope.unsubscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.finish()
+
+    def get_values(self):
+        self.UHFQC.scopes_0_single(1)
+        self.UHFQC.scopes_0_enable(1)
+        self.scope.subscribe(f'/{self.UHFQC.devname}/scopes/0/wave')
+        self.scope.execute()
+        if self.AWG is not None:
+            self.AWG.start()
+        result = self.scope.read()
+        while int(self.scope.progress()) != 1:
+            time.sleep(0.1)
+            result = self.scope.read()
+        return [x.reshape(self.nr_averages, -1).mean(0) for
+                x in result[self.UHFQC.devname]['scopes']['0']['wave'][0][0]['wave']]
+
+    def prepare(self, sweep_points=None):
+        if self.AWG is not None:
+            self.AWG.stop()
+
+        self.UHFQC.scopes_0_enable(0)
+        self.UHFQC.scopes_0_length(self.nr_samples)
+        self.UHFQC.scopes_0_channel((1 << len(self.channels)) - 1)
+        self.UHFQC.scopes_0_segments_count(self.nr_averages)
+        self.UHFQC.scopes_0_segments_enable(1)
+
+        for i, ch in enumerate(self.channels):
+            self.UHFQC.set(f'scopes_0_channels_{i}_inputselect', ch)
+
+        self.UHFQC.scopes_0_single(1)
+        if self.fft_mode == 'fft_power':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 1)
+        elif self.fft_mode == 'fft':
+            self.scope.set('scopeModule/mode', 3)
+            self.scope.set('scopeModule/fft/power', 0)
+        elif self.fft_mode == 'timedomain':
+            self.scope.set('scopeModule/mode', 1)
+            self.scope.set('scopeModule/fft/power', 0)
+        else:
+            raise ValueError("Invalid fft_mode. Allowed options are "
+                             "'timedomain', 'fft' and 'fft_power'")
+        self.scope.set('scopeModule/averager/weight', 1)
+
+        self.UHFQC.scopes_0_trigenable(self.trigger)
+        self.UHFQC.scopes_0_trigchannel(self.trigger_channel)
+        self.UHFQC.scopes_0_triglevel(self.trigger_level)
+        self.UHFQC.scopes_0_trigslope(0)
+
+    def get_sweep_vals(self):
+        if self.fft_mode == 'timedomain':
+            return np.linspace(0, self.nr_samples/1.8e9, self.nr_samples, endpoint=False)
+        elif self.fft_mode in ('fft', 'fft_power'):
+            return np.linspace(0, 0.9e9, self.nr_samples//2, endpoint=False)
 
 
 class UHFQC_integrated_average_detector(UHFQC_Base):
