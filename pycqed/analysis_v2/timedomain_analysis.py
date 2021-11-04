@@ -267,10 +267,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Creates the following attributes:
             - self.measurement_strings: {qbn: measurement_string}
-            - self.data_filter: callable used to filter or modify
             - self.prep_params: preparation parameters dict
-            - self.channel_map: {qbn: [ro channels]}, ro channels = value names
-                typically
             - self.rotate: bool; whether to do data rotation and projection.
                 Must be False if raw data is already classified.
             - self.predict_proba: bool (only used for SSRO data);
@@ -314,7 +311,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # to be used if data_type == singleshot (see process_data)
         self.predict_proba = self.get_param_value("predict_proba", False)
         if self.predict_proba and self.get_param_value("classified_ro", False):
-            log.warning("predict_proba set to 'False' as probabilities are"
+            log.warning("predict_proba set to 'False' as probabilities are "
                         "already obtained from classified readout")
             self.predict_proba = False
         # ensure rotation is removed when single shots yield probabilities
@@ -421,9 +418,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         way of passing calibration points information: by directly specifying
         cal_states_rotations and cal_states_dict.
 
-        ! Updates self.rotation_type if no calibration points information w
-        was found !
-
         Creates the following attributes:
             - self.cp: CalibrationPoints instance
             - self.cal_states_dict: dict of the form
@@ -433,9 +427,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 }
                 Ex: {'qb13': {'e': [-1, -2], 'g': [-3, -4]},
                       'qb5': {'e': [-1, -2], 'g': [-3, -4]}}
-
-                If this dict is None or empty, rotation_type
-                is updated to principle component analysis.
 
                 Note: this dict has an entry for each qubit in order to adhere
                 to the general structure of this class, but the inner dicts must
@@ -529,7 +520,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             log.warning('Parameter "global_PCA" is deprecated. Please set '
                         'rotation_type="global_PCA" instead.')
         # Get the rotation_type. See class docstring
-        # Without deepcopy, the value in the options_dict/metadata will be
+        # Without deepcopy, the value in the options_dict/metadata would be
         # modified as well.
         self.rotation_type = deepcopy(self.get_param_value(
             'rotation_type',
@@ -577,8 +568,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         direction (13.08.2021).
 
         """
-        # Without deepcopy, the value in the options_dict/metadata will be
-        # modified as well. This will break MultiCZgate_Calib_Analysis which
+        # Without deepcopy, the value in the options_dict/metadata would be
+        # modified as well. This would break MultiCZgate_Calib_Analysis which
         # compares what this class sets for self.data_to_fit and what was given
         # in options_dict/metadata
         self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
@@ -601,6 +592,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit.
+        # A nicer solution is needed at some point, but for now this feature is
+        # only needed by the MultiCZgate_Calib_Analysis to allow the same data
+        # to be fitted in two ways (to extract SWAP errors).
         for qbn in self.data_to_fit:
             if isinstance(self.data_to_fit[qbn], (list, tuple)):
                 self.data_to_fit[qbn] = self.data_to_fit[qbn][0]
@@ -1122,7 +1116,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Creates self.proc_data_dict['projected_data_dict'].
 
-        ! Note: self.data_to_fit is updated to reflect what was doe here for
+        ! Note: self.data_to_fit is updated to reflect what was done here for
         each qubit, in particular, whether pca was done or rotation based on
         calibration states. This cannot be done in self.extract_data with
         significant code duplication (going through the if/else statements).
@@ -2120,6 +2114,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_names_cal = []
         if plot_cal_points and self.num_cal_points != 0 and \
                 len(self.cal_states_dict[qb_name]):
+            # the cal points are part of the dataset and we want to indicate
+            # them in the plot with their own colour
             yvals = data[:-self.num_cal_points]
             xvals = sweep_points[:-self.num_cal_points]
             # plot cal points
@@ -7575,7 +7571,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
         # This is a hack. MultiQubit_TimeDomain_Analysis should be upgraded to
         # allow lists of multiple entries here but this would break every
         # analysis inheriting from it.
-        # For now, we just needed it to work for this analysis :)
+        # For now, we just needed it to work for this analysis to allow the same
+        # data to be fitted in two ways (allows to extract SWAP errors).
 
         # Take the data_to_fit provided by the user:
         data_to_fit = self.get_param_value('data_to_fit')
