@@ -1,5 +1,6 @@
 from qcodes.instrument_drivers.agilent import E8527D as E8527D
 from typing import Any
+from qcodes.utils import validators as vals
 
 
 class Agilent_E8527D(E8527D.Agilent_E8527D):
@@ -11,7 +12,7 @@ class Agilent_E8527D(E8527D.Agilent_E8527D):
         super().__init__(*args, **kwargs)
         # Allow powers up to 25 dBm
         self._max_power = 25
-        self.power.vals.valid_values = (self._min_power, self._max_power)
+        self.power.vals = vals.Numbers(self._min_power, self._max_power)
         # Add parameter pulsemod_state
         self.add_parameter(
             'pulsemod_state',
