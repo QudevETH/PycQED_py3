@@ -480,6 +480,19 @@ class Sequence:
                 setattr(new_seq, k, deepcopy(v, memo))
         return new_seq
 
+    def __getitem__(self, i):
+        """
+        Return a segment by its name or index, or a list of segments
+        corresponding to a slice.
+        :param i: (str, int, slice) Name, index, or slice identifying the
+            segment(s).
+        :return: segment or list of segments
+        """
+        if isinstance(i, str):
+            return self.segments[i]
+        else:
+            return list(self.segments.values())[i]
+
     def plot(self, segments=None, show_and_close=True, **segment_plot_kwargs):
         """
         :param segments: list of segment names to plot
