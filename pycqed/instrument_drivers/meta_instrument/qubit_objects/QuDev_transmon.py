@@ -471,12 +471,22 @@ class QuDev_transmon(Qubit):
         self.add_parameter(
             'switch_modes', parameter_class=ManualParameter,
             initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
-            docstring="A dictionary whose keys are identifiers of switch "
-                      "modes (must contain 'modulated', 'spec', and 'calib', "
-                      "and can contain 'no_drive' as well as additional "
-                      "custom modes) and whose values are dicts understood by "
-                      "the set_switch method of the SwitchControls instrument "
-                      "specified in the parameter instr_switch.")
+            docstring=
+            "A dictionary whose keys are identifiers of switch modes and "
+            "whose values are dicts understood by the set_switch method of "
+            "the SwitchControls instrument specified in the parameter "
+            "instr_switch. The keys must include 'modulated' (for routing "
+            "the upconverted IF signal to the experiment output of the "
+            "upconversion board, used for all experiments that do not "
+            "specify a different mode), 'spec' (for routing the LO input to "
+            "the experiment output of the upconversion board, used for "
+            "qubit spectroscopy), and 'calib' (for routing the upconverted "
+            "IF signal to the calibration output of upconversion board, "
+            "used for mixer calibration). The keys can include 'no_drive' "
+            "(to replace the 'modulated' setting in case of measurements "
+            "without drive signal, i.e., when calling qb.prepare with "
+            "drive=None) as well as additional custom modes (to be used in "
+            "manual calls to set_switch).")
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
@@ -886,14 +896,22 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        # See the docstring of switch_modes for an explanation of the
+        # following modes.
         if switch == 'default':
             if drive is None and 'no_drive' in self.switch_modes():
+                # use special mode for measurements without drive if that
+                # mode is defined
                 self.set_switch('no_drive')
             else:
+                # use 'spec' for qubit spectroscopy measurements
+                # (continuous_spec and pulsed_spec) and 'modulated' otherwise
                 self.set_switch(
                     'spec' if drive is not None and drive.endswith('_spec')
                     else 'modulated')
         else:
+            # switch mode was explicitly provided by the caller (e.g.,
+            # for mixer calib)
             self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
@@ -987,7 +1005,7 @@ class QuDev_transmon(Qubit):
 
         :param switch_mode: (str) the name of a switch mode that is defined in
             the qcodes parameter switch_modes of this qubit (default:
-            'modulated').
+            'modulated'). See the docstring of switch_modes for more details.
         """
         if self.instr_switch() is None:
             return
