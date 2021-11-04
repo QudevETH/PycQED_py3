@@ -202,7 +202,7 @@ class QuDev_transmon(Qubit):
                            parameter_class=ManualParameter)
         self.add_parameter('acq_length', initial_value=2.2e-6,
                            vals=vals.Numbers(min_value=1e-8,
-                                             max_value=4097/1.2e9),
+                                             max_value=100e-6),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_IQ_angle', initial_value=0,
                            docstring='The phase of the integration weights '
