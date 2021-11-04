@@ -800,8 +800,11 @@ class MeasurementControl(Instrument):
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
     def _live_plot_enabled(self):
-        return getattr(getattr(self, 'detector_function', None),
-                       'live_plot_enabled', self.live_plot_enabled())
+        if hasattr(self, 'detector_function') and \
+                not getattr(self.detector_function, 'live_plot_allowed', True):
+            return False
+        else:
+            return self.live_plot_enabled()
 
     def _get_plotmon_axes_info(self):
         '''
