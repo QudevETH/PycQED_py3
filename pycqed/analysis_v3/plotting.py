@@ -110,7 +110,8 @@ def get_default_plot_params(set_params=True, figure_width='1col',
 
 
 def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
-                           ha='left', va='top'):
+                           startletter="a", ha='left', va='top',
+                           fmt="({})", **kwargs):
     """
     Adds letters to top left corner of subplots corresponding to axes from fig.
     :param fig: figure object
@@ -119,8 +120,11 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
         This might not always work well. xoffset is added to this position.
     :param yoffset: the y location of the letter is the top margin of the axis.
         This might not always work well. yoffset is added to this position.
+    :param startletter: letter (string) of the alphabet for the first subplot.
     :param ha: horizontal alignment of letters
     :param va: vertical alignment of letters
+    :param fmt: string format for the numbering. Defaults to '({})' yielding
+        (a), (b), ...
     :return: fig, axes
 
     Attention!
@@ -128,13 +132,17 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
 
     """
     # ax_geom = get_axes_geometry_from_figure(fig)
-    letters = [f'({chr(x+97)})' for x in range(len(np.array(axes).flatten()))]
+    alphabet = 'abcdefghijklmnopqrstuvwxyz'
+    s = alphabet.index(startletter)
+    letters = [fmt.format(alphabet[x + s]) for x in range(len(np.array(axes).flatten()))]
     for i, ax in enumerate(np.array(axes).flatten()):
         letter = letters[i]
-        ax.text(ax.bbox.transformed(fig.transFigure.inverted()).x0 + xoffset,
-                ax.bbox.transformed(fig.transFigure.inverted()).y1 + yoffset,
+        xo = xoffset[i] if np.ndim(xoffset) != 0 else xoffset
+        yo = yoffset[i] if np.ndim(yoffset) != 0 else yoffset
+        ax.text(ax.bbox.transformed(fig.transFigure.inverted()).x0 + xo,
+                ax.bbox.transformed(fig.transFigure.inverted()).y1 + yo,
                 letter,
-                ha=ha, va=va, transform=fig.transFigure)
+                ha=ha, va=va, transform=fig.transFigure, **kwargs)
     return fig, axes
 
 
