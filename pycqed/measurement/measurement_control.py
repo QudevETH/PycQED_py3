@@ -73,10 +73,15 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
-        # Soft repetition is currently only available for "hard"
-        # measurements. It does not work with adaptive measurements.
         self.add_parameter('soft_repetitions',
                            label='Number of soft repetitions',
+                           docstring='Repeat hard measurements multiple '
+                                     'times in a software loop to collect '
+                                     'more results. All obtained results are '
+                                     'appended to the data table in the HDF '
+                                     'file (i.e., no soft averaging is done '
+                                     'on them). This is currently only '
+                                     'implemented for "hard" measurements.',
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
@@ -795,8 +800,11 @@ class MeasurementControl(Instrument):
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
     def _live_plot_enabled(self):
-        return getattr(getattr(self, 'detector_function', None),
-                       'live_plot_enabled', self.live_plot_enabled())
+        if hasattr(self, 'detector_function') and \
+                not getattr(self.detector_function, 'live_plot_allowed', True):
+            return False
+        else:
+            return self.live_plot_enabled()
 
     def _get_plotmon_axes_info(self):
         '''
