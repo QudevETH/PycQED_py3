@@ -393,6 +393,25 @@ class Device(Instrument):
 
         return msmt_suffix
 
+    def get_channel_map(self, qubits="all", drive=True, ro=True, flux=True):
+        """
+        Gets the channel map for `qubits`
+        Args:
+            qbs (list): list of qubit objects
+            drive (bool): whether or not to include drive pulse channel
+            ro (bool): whether or not to include the readout pulse channel
+            flux (bool): whether or not to include the flux pulse channel
+
+        Returns:
+            channel map (dict): keys are qubit names, values are list of channels
+                names.
+        """
+        qbs = self.get_qubits(qubits, "obj")
+        channel_map = {}
+        [channel_map.update(qb.get_channel_map(drive=drive, ro=ro, flux=flux))
+         for qb in qbs]
+        return channel_map
+
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """
         Sets a value to a two qubit gate parameter.
