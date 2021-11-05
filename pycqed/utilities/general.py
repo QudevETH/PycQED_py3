@@ -798,23 +798,6 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
                 UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
 
-def get_channel_map(qbs, drive=True, ro=True, flux=True):
-    """
-    Gets the channel map for qubits `qbs`
-    Args:
-        qbs (list): list of qubit objects
-        drive (bool): whether or not to include drive pulse channel
-        ro (bool): whether or not to include the readout pulse channel
-        flux (bool): whether or not to include the flux pulse channel
-
-    Returns:
-        channel map (dict): keys are qubit names, values are list of channels
-            names.
-    """
-    return {qb.name: ([qb.ge_I_channel(), qb.ge_Q_channel()] if drive else []) +
-                     ([qb.ro_I_channel(), qb.ro_Q_channel()] if ro else []) +
-                     ([qb.flux_pulse_channel()] if flux else [])
-            for qb in qbs}
 
 def find_symmetry_index(data):
     data = data.copy()
@@ -895,16 +878,25 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
 
 class TempLogLevel:
     """
-    With Handler to temporarily change the log level.
+    With Handler to temporarily change the log level of a logger
     """
     LOG_LEVELS = dict(debug=logging.DEBUG, info=logging.INFO,
                       warning=logging.WARNING, error=logging.ERROR,
                       critical=logging.CRITICAL, fatal=logging.FATAL)
 
     def __init__(self, logger, log_level="info"):
+        """
+        Instantiate a TemporaryLogLevel.
+        Args:
+            logger (logging.Logger): logger of which the level should
+                be changed temporarily.
+            log_level (str): Desired temporary log level: "debug", "info",
+                "warning", "error", "critical", "fatal". Strings can also be
+                all caps, e.g. "INFO". Defaults to "info".
+        """
         self.logger = logger
         self.log_level = logger.level
-        self.temp_log_level = self.LOG_LEVELS.get(log_level, log_level)
+        self.temp_log_level = self.LOG_LEVELS.get(log_level.lower(), log_level)
 
     def __enter__(self):
         self.logger.setLevel(self.temp_log_level)

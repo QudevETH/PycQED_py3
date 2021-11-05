@@ -4365,6 +4365,35 @@ class QuDev_transmon(Qubit):
             pulsar.set(f'{self.flux_pulse_channel()}_{param}',
                        flux_distortion[param])
 
+    def get_channels(self, drive=True, ro=True, flux=True):
+        """
+        Returns (a subset of) channels.
+        Args:
+            drive (bool): whether or not to include drive channels
+            ro (bool): whether or not to include readout channels
+            flux (bool): whether or not to include flux channel
+
+        Returns:
+            channels (list)
+        """
+        d = [self.ge_I_channel(), self.ge_Q_channel()] if drive else []
+        r = [self.ro_I_channel(), self.ro_Q_channel()] if ro else []
+        f = [self.flux_pulse_channel()] if flux else []
+        return d + r + f
+
+    def get_channel_map(self, drive=True, ro=True, flux=True):
+        """
+        Returns a channel map.
+        Args:
+            drive (bool): whether or not to include drive channels
+            ro (bool): whether or not to include readout channels
+            flux (bool): whether or not to include flux channel
+
+        Returns:
+            channels (dict): key is the qubit name and value is a
+            list of channels
+        """
+        return {self.name: self.get_channels(drive=drive, ro=ro, flux=flux)}
 
 def add_CZ_pulse(qbc, qbt):
     """

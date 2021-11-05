@@ -73,10 +73,15 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
-        # Soft repetition is currently only available for "hard"
-        # measurements. It does not work with adaptive measurements.
         self.add_parameter('soft_repetitions',
                            label='Number of soft repetitions',
+                           docstring='Repeat hard measurements multiple '
+                                     'times in a software loop to collect '
+                                     'more results. All obtained results are '
+                                     'appended to the data table in the HDF '
+                                     'file (i.e., no soft averaging is done '
+                                     'on them). This is currently only '
+                                     'implemented for "hard" measurements.',
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
@@ -795,8 +800,11 @@ class MeasurementControl(Instrument):
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
     def _live_plot_enabled(self):
-        return getattr(getattr(self, 'detector_function', None),
-                       'live_plot_enabled', self.live_plot_enabled())
+        if hasattr(self, 'detector_function') and \
+                not getattr(self.detector_function, 'live_plot_allowed', True):
+            return False
+        else:
+            return self.live_plot_enabled()
 
     def _get_plotmon_axes_info(self):
         '''
@@ -1075,9 +1083,20 @@ class MeasurementControl(Instrument):
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
                         # Check if the new_sweep_vals are not equidistant
+                        # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
-                        if any([np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
-                                for d in diff]):
+                        # To check for equidistant points, the distances
+                        # are normalized to the distance between the first
+                        # two points. The normalization is needed to choose a
+                        # meaningful threshold for distinguishing
+                        # non-equdistant points from rounding errors.
+                        # The order matters: we need to first check whether
+                        # the first two points are the same, and then check
+                        # for equidistant points. Otherwise, we might get a
+                        # division by zero error during the normalization.
+                        if np.abs(diff[0]) == 0 or any(
+                                [np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
+                                 for d in diff]):
                             # fall back to sweep indices in 2D plot
                             new_sweep_vals_2D[i] = range(len(
                                 new_sweep_vals[i]))

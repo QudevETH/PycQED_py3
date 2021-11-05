@@ -744,7 +744,7 @@ class QuantumExperiment(CircuitBuilder):
 
 
     def plot(self, sequences=0, segments=0, qubits=None,
-             save=False, **plot_kwargs):
+             save=False, legend=True, **plot_kwargs):
         """
         Plots (a subset of) sequences / segments of the QuantumExperiment
         :param sequences (int, list, "all"): sequences to plot. Can be "all"
@@ -766,9 +766,9 @@ class QuantumExperiment(CircuitBuilder):
             or qubit objects.
         :param save (bool): whether or not to save the figures in the
             measurement folder.
+        :param legend (bool): whether or not to show the legend.
         :param plot_kwargs: kwargs passed on to segment.plot(). By default,
-            legend=False and channel_map is taken from
-            general.get_channel_map(qubits)
+             channel_map is taken from dev.get_channel_map(qubits) if available.
         :return:
         """
         plot_kwargs = deepcopy(plot_kwargs)
@@ -785,9 +785,12 @@ class QuantumExperiment(CircuitBuilder):
         if qubits is None:
             qubits = self.meas_objs
         qubits, _ = self.get_qubits(qubits) # get qubit objects
+        default_ch_map = \
+            self.dev.get_channel_map(qubits) if self.dev is not None else \
+                {qb.name: qb.get_channels() for qb in qubits}
         plot_kwargs.update(dict(channel_map=plot_kwargs.pop('channel_map',
-                           general.get_channel_map(qubits))))
-        plot_kwargs.update(dict(legend=plot_kwargs.pop('legend', False)))
+                           default_ch_map)))
+        plot_kwargs.update(dict(legend=legend))
 
         if segments == "all":
             # plot all segments
