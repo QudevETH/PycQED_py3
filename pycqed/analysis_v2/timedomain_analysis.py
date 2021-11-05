@@ -1113,7 +1113,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             data_mostly_g = self.get_param_value('data_mostly_g',
                                                  default_value=True)
             if self.get_param_value('TwoD', default_value=False):
-                if self.rotation_type[qbn] == 'global_PCA':
+                if self.rotation_type[qbn].lower() == 'global_pca':
                     storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.global_pca_TwoD(
