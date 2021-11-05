@@ -279,7 +279,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             - self.get_rotation_type()
             - self.get_data_to_fit()
             - self.get_data_filter()
-            - self.get_params_from_file()
             - self.create_meas_results_per_qb()
             - self.create_sweep_points_dict()
             - self.get_num_cal_points()
@@ -333,9 +332,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # creates self.data_filter and self.data_with_reset
         self.get_data_filter()
 
-        # add extra parameters from file that children might need
-        self.get_params_from_file()
-
         # These calls need to stay here because otherwise QScaleAnalysis will
         # fail: in process_data, this child needs the correctly created
         # sweep_points_dict.
@@ -345,24 +341,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.update_sweep_points_dict()
         if self.options_dict.get('TwoD', False):
             self.create_sweep_points_2D_dict()
-
-    def get_params_from_file(self, params_dict=None, numeric_params=None):
-        """
-        Calls get_data_from_timestamp_list in the parent class with params_dict
-        and numeric_params.
-        :param params_dict: dict of the form {param_name: path to param inside
-            the hdf file (separated by .)}
-        :param numeric_params: list with the keys in params_dict that correspond
-            to parameters that are numeric (int, float)
-
-        Updates raw_data_dict with extracted parameters under the keys of
-        params_dict.
-        """
-        if numeric_params is None:
-            numeric_params = {}
-        if params_dict is not None:
-            self.raw_data_dict.update(
-                self.get_data_from_timestamp_list(params_dict, numeric_params))
 
     def get_channel_map(self):
         """
