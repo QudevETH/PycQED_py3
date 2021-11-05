@@ -98,6 +98,10 @@ class Agilent_33250A(VisaInstrument):
 
     def start(self, **kw):
         """
+        Start the pulse generation in a clean fashion.
+        Just commanding OUTP ON can lead to switch bounces that lead to multiple
+        triggers.
+
         :param kw: currently ignored, added for compatibilty with other
             instruments that accept kwargs in start().
         """
