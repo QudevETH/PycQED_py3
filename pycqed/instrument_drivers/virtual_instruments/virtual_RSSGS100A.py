@@ -31,9 +31,6 @@ class virtualRohdeSchwarz_SGS100A(Instrument):
 
     def __init__(self, name, address, **kwargs):
         super().__init__(name, **kwargs)
-        self.name = name
-        self.parameters = {}
-        self.functions = {}
 
         self.add_parameter(
             name='frequency',

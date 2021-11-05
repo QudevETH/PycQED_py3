@@ -1043,7 +1043,7 @@ class Segment:
                 # all codewords
                 if 'no_codeword' in wfs:
                     for codeword in wfs:
-                        if codeword is not 'no_codeword':
+                        if codeword != 'no_codeword':
                             for channel in wfs['no_codeword']:
                                 if channel in wfs[codeword]:
                                     wfs[codeword][channel] += wfs[
