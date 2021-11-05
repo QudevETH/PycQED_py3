@@ -503,6 +503,13 @@ class Sequence:
                     f'Segment index {i} out of range. The sequence '
                     f'{self.name} has {len(self.segments)} segments.')
 
+    def keys(self):
+        """
+        Returns the segments names (keys to access segments via __getitem__).
+        :return: a set-like object providing the keys
+        """
+        return self.segments.keys()
+
     def plot(self, segments=None, show_and_close=True, **segment_plot_kwargs):
         """
         :param segments: list of segment names to plot
