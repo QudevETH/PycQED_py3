@@ -1083,9 +1083,20 @@ class MeasurementControl(Instrument):
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
                         # Check if the new_sweep_vals are not equidistant
+                        # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
-                        if any([np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
-                                for d in diff]):
+                        # To check for equidistant points, the distances
+                        # are normalized to the distance between the first
+                        # two points. The normalization is needed to choose a
+                        # meaningful threshold for distinguishing
+                        # non-equdistant points from rounding errors.
+                        # The order matters: we need to first check whether
+                        # the first two points are the same, and then check
+                        # for equidistant points. Otherwise, we might get a
+                        # division by zero error during the normalization.
+                        if np.abs(diff[0]) == 0 or any(
+                                [np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
+                                 for d in diff]):
                             # fall back to sweep indices in 2D plot
                             new_sweep_vals_2D[i] = range(len(
                                 new_sweep_vals[i]))
