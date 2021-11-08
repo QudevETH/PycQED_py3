@@ -1194,19 +1194,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     def rotate_data(qb_name, meas_results_per_qb, channel_map,
                     cal_states_dict, storing_keys, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        qb_cal_states = cal_states_dict[qb_name].keys()
-        if len(qb_cal_states) != 2:
-            raise ValueError(f'Expected two cal states for {qb_name} '
-                             f'but found {len(qb_cal_states)}: {qb_cal_states}')
-        other_cs = [cs for cs in qb_cal_states if cs != storing_keys[qb_name][-1]]
-        if len(other_cs) == 0:
-            raise ValueError(f'There are no other cal states except for '
-                             f'{storing_keys[qb_name][-1]} from storing_keys.')
-        elif len(other_cs) > 1:
-            raise ValueError(f'There is more than one other cal state in '
-                             f'addition to {storing_keys[qb_name][-1]} from '
-                             f'storing_keys. Not clear which one to use.')
-        other_cs = f'p{other_cs[0]}'
+        if 'pca' not in storing_keys[qb_name].lower():
+            # Add the other state probability
+            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
+            qb_cal_states = cal_states_dict[qb_name].keys()
+            if len(qb_cal_states) != 2:
+                raise ValueError(f'Expected two cal states for {qb_name} but '
+                                 f'found {len(qb_cal_states)}: {qb_cal_states}')
+            other_cs = [cs for cs in qb_cal_states
+                        if cs != storing_keys[qb_name][-1]]
+            print(storing_keys, other_cs)
+            if len(other_cs) == 0:
+                raise ValueError(f'There are no other cal states except for '
+                                 f'{storing_keys[qb_name][-1]} from '
+                                 f'storing_keys.')
+            elif len(other_cs) > 1:
+                raise ValueError(f'There is more than one other cal state in '
+                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f' storing_keys. Not clear which one to use.')
+            other_cs = f'p{other_cs[0]}'
 
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
@@ -1231,8 +1237,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         data=meas_res_dict[list(meas_res_dict)[0]],
                         cal_zero_points=cal_zero_points,
                         cal_one_points=cal_one_points)
-            rotated_data_dict[qb_name][other_cs] = \
-                1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+            if 'pca' not in storing_keys[qb_name].lower():
+                rotated_data_dict[qb_name][other_cs] = \
+                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             data, _, _ = a_tools.rotate_and_normalize_data_IQ(
@@ -1243,8 +1250,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 data = a_tools.set_majority_sign(
                     data, -1 if data_mostly_g else 1)
             rotated_data_dict[qb_name][storing_keys[qb_name]] = data
-            rotated_data_dict[qb_name][other_cs] = \
-                1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+            if 'pca' not in storing_keys[qb_name].lower():
+                rotated_data_dict[qb_name][other_cs] = \
+                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1287,8 +1295,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data, -1 if data_mostly_g else 1)
                     rotated_data_dict[qb_name][ro_suf][
                         storing_keys[qb_name]] = data
-                rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                    1 - rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]]
+                if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][ro_suf][other_cs] = \
+                        1 - rotated_data_dict[qb_name][ro_suf][
+                            storing_keys[qb_name]]
         return rotated_data_dict
 
     @staticmethod
@@ -1357,19 +1367,24 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                          cal_states_dict, storing_keys,
                          column_PCA=False, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        qb_cal_states = cal_states_dict[qb_name].keys()
-        if len(qb_cal_states) != 2:
-            raise ValueError(f'Expected two cal states for {qb_name} '
-                             f'but found {len(qb_cal_states)}: {qb_cal_states}')
-        other_cs = [cs for cs in qb_cal_states if cs != storing_keys[qb_name][-1]]
-        if len(other_cs) == 0:
-            raise ValueError(f'There are no other cal states except for '
-                             f'{storing_keys[qb_name][-1]} from storing_keys.')
-        elif len(other_cs) > 1:
-            raise ValueError(f'There is more than one other cal state in '
-                             f'addition to {storing_keys[qb_name][-1]} from '
-                             f'storing_keys. Not clear which one to use.')
-        other_cs = f'p{other_cs[0]}'
+        if 'pca' not in storing_keys[qb_name].lower():
+            # Add the other state probability
+            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
+            qb_cal_states = cal_states_dict[qb_name].keys()
+            if len(qb_cal_states) != 2:
+                raise ValueError(f'Expected two cal states for {qb_name} but '
+                                 f'found {len(qb_cal_states)}: {qb_cal_states}')
+            other_cs = [cs for cs in qb_cal_states
+                        if cs != storing_keys[qb_name][-1]]
+            if len(other_cs) == 0:
+                raise ValueError(f'There are no other cal states except for '
+                                 f'{storing_keys[qb_name][-1]} from '
+                                 f'storing_keys.')
+            elif len(other_cs) > 1:
+                raise ValueError(f'There is more than one other cal state in '
+                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f' storing_keys. Not clear which one to use.')
+            other_cs = f'p{other_cs[0]}'
 
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
@@ -1405,9 +1420,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
                     rotated_data_dict[qb_name][storing_keys[qb_name]][col] = data
-
-            rotated_data_dict[qb_name][other_cs] = \
-                1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+            if 'pca' not in storing_keys[qb_name].lower():
+                rotated_data_dict[qb_name][other_cs] = \
+                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
@@ -1439,9 +1454,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data, -1 if data_mostly_g else 1)
                     rotated_data_dict[qb_name][
                         storing_keys[qb_name]][col] = data
-
-            rotated_data_dict[qb_name][other_cs] = \
-                1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+            if 'pca' not in storing_keys[qb_name].lower():
+                rotated_data_dict[qb_name][other_cs] = \
+                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1487,8 +1502,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 data, -1 if data_mostly_g else 1)
                         rotated_data_dict[qb_name][ro_suf][
                             storing_keys[qb_name]][col] = data
-                rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                    1 - rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]]
+                if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][ro_suf][other_cs] = \
+                        1 - rotated_data_dict[qb_name][ro_suf][
+                            storing_keys[qb_name]]
         return rotated_data_dict
 
     @staticmethod
