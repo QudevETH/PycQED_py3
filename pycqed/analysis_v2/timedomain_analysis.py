@@ -434,6 +434,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         cal_points = self.get_param_value('cal_points')
         last_ge_pulses = self.get_param_value('last_ge_pulses',
                                               default_value=False)
+        if hasattr(last_ge_pulses, '__iter__') and \
+                len(last_ge_pulses) != len(self.qb_names):
+            last_ge_pulses = len(self.qb_names) * list(last_ge_pulses)
 
         # default value for cal_states_rotations
         cal_states_rotations = {qbn: {} for qbn in self.qb_names}
