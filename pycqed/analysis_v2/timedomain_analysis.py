@@ -266,6 +266,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Extracts data and other relevant metadata.
 
         Creates the following attributes:
+            - self.data_to_fit: {qbn: proj_data_name}
             - self.measurement_strings: {qbn: measurement_string}
             - self.prep_params: preparation parameters dict
             - self.rotate: bool; whether to do data rotation and projection.
@@ -326,8 +327,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # creates self.rotation_type
         self.get_rotation_type()
 
-        # creates self.data_to_fit
-        self.get_data_to_fit()
+        # create self.data_to_fit
+        # here we don't create the attribute directly inside the method because
+        # we want to retain access to the data_to_fit returned by this method
+        # (self.data_to_fit gets overwritten later).
+        self.data_to_fit = self.get_data_to_fit()
 
         # creates self.data_filter and self.data_with_reset
         self.get_data_filter()
@@ -532,8 +536,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         and assigns it a reasonable default value based on the cal points
         information.
 
-        Creates the following attribute:
-            - self.data_to_fit: dict of the form {qbn: proj_data_name} where
+        Returns:
+            - data_to_fit: dict of the form {qbn: proj_data_name} where
             proj_data_name is a string corresponding to a key in
             self.proc_data_dict['projected_data_dict'] indicating which
             projected data the children should fit.
@@ -550,32 +554,33 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # modified as well. This would break MultiCZgate_Calib_Analysis which
         # compares what this class sets for self.data_to_fit and what was given
         # in options_dict/metadata
-        self.data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if self.data_to_fit is None or not len(self.data_to_fit):
+        data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
+        if data_to_fit is None or not len(data_to_fit):
             # If we have cal points, but data_to_fit is not specified,
             # choose a reasonable default value. In cases with only two cal
             # points, this decides which projected plot is generated. (In
             # cases with three cal points, we will anyways get all three
             # projected plots.)
-            self.data_to_fit = {}
+            data_to_fit = {}
             for qbn in self.qb_names:
                 if not len(self.cal_states_dict[qbn]) or \
                         'pca' in self.rotation_type[qbn].lower():
-                    self.data_to_fit[qbn] = self.rotation_type[qbn]
+                    data_to_fit[qbn] = self.rotation_type[qbn]
                 else:
                     csr = [(k, v) for k, v in
                            self.cal_states_rotations[qbn].items()]
                     csr.sort(key=lambda t: t[1])
-                    self.data_to_fit[qbn] = f'p{csr[-1][0]}'
+                    data_to_fit[qbn] = f'p{csr[-1][0]}'
 
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit.
         # A nicer solution is needed at some point, but for now this feature is
         # only needed by the MultiCZgate_Calib_Analysis to allow the same data
         # to be fitted in two ways (to extract SWAP errors).
-        for qbn in self.data_to_fit:
-            if isinstance(self.data_to_fit[qbn], (list, tuple)):
-                self.data_to_fit[qbn] = self.data_to_fit[qbn][0]
+        for qbn in data_to_fit:
+            if isinstance(data_to_fit[qbn], (list, tuple)):
+                data_to_fit[qbn] = data_to_fit[qbn][0]
+        return data_to_fit
 
     def get_data_filter(self):
         """
