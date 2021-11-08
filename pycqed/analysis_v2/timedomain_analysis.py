@@ -8165,6 +8165,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
        return SSROQutrit._get_covariances(gmm, cov_type=cov_type)
 
     @staticmethod
+    def _get_means(gmm):
+        return gmm.means_
+
+    @staticmethod
     def fidelity_matrix(prep_states, pred_states, levels=('g', 'e', 'f'),
                         plot=False, labels=None, normalize=True):
 
@@ -8271,7 +8275,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     n_shots_to_plot *= n_qb_states
                 if data['X'].shape[1] == 1:
                     if self.classif_method == "gmm":
-                        kwargs['means'] = pdd['analysis_params']['means'][qbn]
+                        kwargs['means'] = self._get_means(self.clf_[qbn])
                         kwargs['std'] = np.sqrt(self._get_covariances(self.clf_[qbn]))
                     kwargs['colors'] = cmap(np.unique(data['prep_states']))
                     fig, main_ax = self.plot_1D_hist(data['X'][:n_shots_to_plot],
