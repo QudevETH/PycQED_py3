@@ -1578,11 +1578,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             trans_name = task.get('transition_name_input', trans_name)
 
         if trans_name is None:
-            # is really a fallback but not ideal because data_to_fit get
+            # This is a fallback but not ideal because data_to_fit gets
             # overwritten by this class for certain rotation types.
-            if 'h' in self.data_to_fit.get(qb_name, ''):
+            if 'pca' in self.data_to_fit.get(qb_name, '').lower():
+                dtf = self.get_data_to_fit()
+            else:
+                dtf = self.data_to_fit
+            if 'h' in dtf.get(qb_name, ''):
                 trans_name = 'fh'
-            elif 'f' in self.data_to_fit.get(qb_name, ''):
+            elif 'f' in dtf.get(qb_name, ''):
                 trans_name = 'ef'
             else:
                 trans_name = 'ge'
