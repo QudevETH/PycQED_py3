@@ -412,10 +412,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
                 Note: this dict has an entry for each qubit in order to adhere
                 to the general structure of this class, but the inner dicts must
-                be identical for each qubit, since each calibration point is a
-                separate segment and the measurement cannot be configured to
-                have different number of segments for different qubit in the
-                same measurement.
+                contain all the cal states specified in CalibrationPoints for
+                each qubit.
             - self.cal_states_rotations: dict of the form
                 {qbn: {
                     'cal_state': int specifying the transmon state
