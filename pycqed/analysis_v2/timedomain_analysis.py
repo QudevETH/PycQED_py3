@@ -1218,7 +1218,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                  f'found {len(qb_cal_states)}: {qb_cal_states}')
             other_cs = [cs for cs in qb_cal_states
                         if cs != storing_keys[qb_name][-1]]
-            print(storing_keys, other_cs)
             if len(other_cs) == 0:
                 raise ValueError(f'There are no other cal states except for '
                                  f'{storing_keys[qb_name][-1]} from '
