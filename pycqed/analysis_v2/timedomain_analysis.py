@@ -575,6 +575,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     csr.sort(key=lambda t: t[1])
                     data_to_fit[qbn] = f'p{csr[-1][0]}'
 
+        # make sure no extra qubit names exist in data_to_fit compared to
+        # self.qb_names (can happen if user passes qb_names)
+        qbns = list(data_to_fit)
+        for qbn in qbns:
+            if qbn not in self.qb_names:
+                del data_to_fit[qbn]
+
         # TODO: Steph 15.09.2020
         # This is a hack to allow list inside data_to_fit.
         # A nicer solution is needed at some point, but for now this feature is
