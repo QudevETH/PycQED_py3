@@ -731,9 +731,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         elif len(self.cal_states_dict):
             csr = [(k, v) for k, v in self.cal_states_rotations.items()]
             csr.sort(key=lambda t: t[1])
-            storing_keys = {qbn: f'p{csr[-1][0]}' for qbn in self.qb_names}
+            storing_keys = OrderedDict({qbn: f'p{csr[-1][0]}'
+                                        for qbn in self.qb_names})
         else:
-            storing_keys = {qbn: 'pca' for qbn in self.qb_names}
+            storing_keys = OrderedDict({qbn: 'pca' for qbn in self.qb_names})
 
         for qbn in self.qb_names:
             cal_states_dict = self.cal_states_dict_for_rotation[qbn]
