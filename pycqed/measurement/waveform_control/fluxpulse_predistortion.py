@@ -3,6 +3,7 @@ import scipy.signal as signal
 import logging
 import os
 from copy import deepcopy
+from pycqed.analysis import analysis_toolbox as a_tools
 import logging
 log = logging.getLogger(__name__)
 
@@ -305,6 +306,15 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
                                             f['filename'].lstrip('\\'))
                 else:
                     filename = f['filename']
+                if (not os.path.exists(filename)
+                        and a_tools.fetch_data_dir is not None
+                        and filename.startswith(a_tools.datadir)):
+                    # If the missing file is supposed to be stored inside
+                    # the data folder, we can try to fetch it if a
+                    # fetch_data_dir is configured in a_tools.
+                    ts = filename.lstrip(a_tools.datadir).lstrip('\\')[
+                         :15].replace('\\', '_')  # extract timestamp
+                    a_tools.get_folder(ts)  # try to fetch the folder
                 if fclass == 'IIR':
                     coeffs = import_iir(filename)
                     scale_and_negate_IIR(
