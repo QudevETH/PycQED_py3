@@ -267,6 +267,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Creates the following attributes:
             - self.data_to_fit: {qbn: proj_data_name}
+                ! NOTE: This attribute will be modified later in
+                rotate_and_project_data !
             - self.measurement_strings: {qbn: measurement_string}
             - self.prep_params: preparation parameters dict
             - self.rotate: bool; whether to do data rotation and projection.
@@ -331,6 +333,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # here we don't create the attribute directly inside the method because
         # we want to retain access to the data_to_fit returned by this method
         # (self.data_to_fit gets overwritten later).
+        # ! NOTE: This attribute will be modified later in
+        # rotate_and_project_data !
         self.data_to_fit = self.get_data_to_fit()
 
         # creates self.data_filter and self.data_with_reset
@@ -558,10 +562,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
         if data_to_fit is None or not len(data_to_fit):
             # If we have cal points, but data_to_fit is not specified,
-            # choose a reasonable default value. In cases with only two cal
-            # points, this decides which projected plot is generated. (In
-            # cases with three cal points, we will anyways get all three
-            # projected plots.)
+            # choose a reasonable default value.
             data_to_fit = {}
             for qbn in self.qb_names:
                 if not len(self.cal_states_dict[qbn]) or \
@@ -1109,8 +1110,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         ! Note: self.data_to_fit is updated to reflect what was done here for
         each qubit, in particular, whether pca was done or rotation based on
-        calibration states. This cannot be done in self.extract_data with
-        significant code duplication (going through the if/else statements).
+        calibration states. This cannot be done in self.extract_data without
+        significant code duplication (the if/else statements here).
         """
         self.get_cal_states_dict_for_rotation()
         self.proc_data_dict['projected_data_dict'] = OrderedDict(
