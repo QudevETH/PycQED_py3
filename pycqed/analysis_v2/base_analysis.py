@@ -19,7 +19,7 @@ from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
-    flex_color_plot_vs_x, rainbow_text)
+    flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -1624,6 +1624,15 @@ class BaseDataAnalysis(object):
         """
 
         self.plot_color2D(flex_color_plot_vs_x, pdict, axs)
+
+    def plot_contourf(self, pdict, axs):
+        """
+        This wraps contourf_plot which excepts data of shape
+            x -> 2D array
+            y -> 2D array
+            z -> 2D array (same shape as x and y)
+        """
+        self.plot_color2D(contourf_plot, pdict, axs)
 
     def plot_color2D_grid_idx(self, pfunc, pdict, axs, idx):
         pfunc(pdict, np.ravel(axs)[idx])
