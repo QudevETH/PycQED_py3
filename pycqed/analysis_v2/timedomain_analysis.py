@@ -8910,3 +8910,160 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'legend_title': None,
             'legend_frameon': True
         }
+
+class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
+    def __init__(self, qb_names, *args, **kwargs):
+        super().__init__(qb_names, *args, **kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def process_data(self):
+        super().process_data()
+
+        hsp = self.raw_data_dict['hard_sweep_points']
+        ssp = self.raw_data_dict['soft_sweep_points']
+        mdata = self.raw_data_dict['measured_data']
+
+        VI = hsp
+        VQ = ssp
+        LO = np.log10(mdata['Magn'])
+
+        self.proc_data_dict['V_I'] = VI
+        self.proc_data_dict['V_Q'] = VQ
+        self.proc_data_dict['LO_leakage'] = LO
+        self.proc_data_dict['data_to_fit'] = LO
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+
+        VI = self.proc_data_dict['V_I']
+        VQ = self.proc_data_dict['V_Q']
+        data = self.proc_data_dict['data_to_fit']
+
+        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, independent_vars=['x', 'y'])
+        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod)
+
+        self.fit_dicts['mixer_lo_leakage'] = {
+            'model': mixer_lo_leakage_mod,
+            'fit_xvals': {'x': VI,
+                          'y': VQ},
+            'fit_yvals': {'data': data},
+            'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        fit_dict = self.fit_dicts['mixer_lo_leakage']
+        fit_values = fit_dict['fit_res'].best_values
+        li = fit_values['li']
+        lq = fit_values['lq']
+        theta_i = fit_values['theta_i']
+        theta_q = fit_values['theta_q']
+        scale = fit_values['scale']
+
+        analysis_params_dict = self.proc_data_dict['analysis_params_dict']
+        analysis_params_dict['li'] = li
+        analysis_params_dict['lq'] = lq
+        analysis_params_dict['theta_i'] = theta_i
+        analysis_params_dict['theta_q'] = theta_q
+        analysis_params_dict['scale'] = scale
+
+        def fitted_model(x, li, lq, theta_i, theta_q, scale):
+            return fit_dict['model'].func(x[0], x[1], li, lq, theta_i, theta_q, scale)
+
+        min_res = sp.optimize.minimize(fitted_model,
+                                       x0=np.array([1.0, 0.0]),
+                                       args=(li, lq, theta_i, theta_q, scale),
+                                       method='Powell',
+                                       )
+
+        if min_res.success:
+            VI = min_res.x[0]
+            VQ = min_res.x[1]
+            self.proc_data_dict['analysis_params_dict']['V_I'] = VI
+            self.proc_data_dict['analysis_params_dict']['V_Q'] = VQ
+            self.proc_data_dict['analysis_params_dict']['LO_leakage'] = min_res.x[1]
+
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        # super().prepare_plots()
+
+        # interpolate data for plot
+        # define grid.
+        xi = np.linspace(-0.15, 0.15, 500)
+        yi = np.linspace(-0.15, 0.15, 500)
+        x, y = np.meshgrid(xi, yi)
+
+        fit_res = self.fit_dicts['mixer_lo_leakage']['fit_res']
+        fit_values = fit_res.best_values
+        li = fit_values['li']
+        lq = fit_values['lq']
+        theta_i = fit_values['theta_i']
+        theta_q = fit_values['theta_q']
+        scale = fit_values['scale']
+        model_func = self.fit_dicts['mixer_lo_leakage']['model'].func
+        z = 10*model_func(x, y, li, lq, theta_i, theta_q, scale) # 10* for conversion to dBV
+
+        base_plot_name = 'mixer_lo_leakage'
+        self.plot_dicts['base_contour'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_contourf,
+            'xvals': x,
+            'yvals': y,
+            'zvals': z,
+            'xlabel': 'Offset, $V_\\mathrm{I}$',
+            'ylabel': 'Offset, $V_\\mathrm{Q}$',
+            'xunit': 'V',
+            'yunit': 'V',
+            'setlabel': 'lo leakage magnitude',
+            'cmap': 'plasma',
+            'title': 'Ampl., $V_\\mathrm{LO}$ (dBV)'
+        }
+
+        V_I = self.proc_data_dict['V_I']
+        V_Q = self.proc_data_dict['V_Q']
+        self.plot_dicts['base_measurements'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': V_I,
+            'yvals': V_Q,
+            'color': 'white',
+            'marker': '.',
+            'linestyle': 'None',
+            'setlabel': ''
+        }
+
+        V_I_min = self.proc_data_dict['analysis_params_dict']['V_I']
+        V_Q_min = self.proc_data_dict['analysis_params_dict']['V_Q']
+        self.plot_dicts['base_minimum'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': np.array([V_I_min]),
+            'yvals': np.array([V_Q_min]),
+            'setlabel': f'$V_I$ ={V_I_min*1e3:.1f}$\,$mV\n'
+                        f'$V_Q$ ={V_Q_min*1e3:.1f}$\,$mV',
+            'color': 'red',
+            'marker': 'o',
+            'linestyle': 'None',
+            'do_legend': True,
+            'legend_pos': 'upper right',
+            'legend_title': None,
+            'legend_frameon': True
+        }
+
+        for ch in ['I', 'Q']:
+            self.plot_dicts['raw_V_'+ch+'_vs_LO_magn'] = {
+                'plotfn': self.plot_line,
+                'xvals': self.proc_data_dict['V_'+ch],
+                'yvals': self.proc_data_dict['LO_leakage'],
+                'color': 'blue',
+                'marker': '.',
+                'linestyle': 'None',
+                'xlabel': 'Offset, $V_\\mathrm{'+ch+'}$',
+                'ylabel': 'Ampl., $V_\\mathrm{LO}$',
+                'xunit': 'V',
+                'yunit': 'dBV',
+            }
