@@ -324,7 +324,6 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
 
             if all_keys[-1] not in epd:
                 log.warning(f'Parameter {file_par} was not found.')
-                epd[all_keys[-1]] = 0
         data_file.close()
     except Exception as e:
         data_file.close()
