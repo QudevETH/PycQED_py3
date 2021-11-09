@@ -2084,6 +2084,53 @@ class QuDev_transmon(Qubit):
             self.ge_Q_offset(ch_2_min)
         return ch_1_min, ch_2_min
 
+    def calibrate_drive_mixer_carrier_new(self, update=True, trigger_sep=5e-6, limits=(-0.15, 0.15, -0.15, 0.15),
+                                      n_meas=200, meas_grid=None, upload=True, plot=True):
+        MC = self.instr_mc.get_instr()
+        if meas_grid is None:
+            # half as many points from a uniform distribution at first run
+            meas_grid = np.array([
+                np.random.uniform(limits[0], limits[1], n_meas),
+                np.random.uniform(limits[2], limits[3], n_meas)])
+
+        chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ge_I_channel())]
+        chQ_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ge_Q_channel())]
+        MC.set_sweep_functions([chI_par, chQ_par])
+        MC.set_sweep_points(meas_grid.T)
+        if upload:
+            print(len(meas_grid.T))
+            sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
+                pulse_type='GaussFilteredCosIQPulse',
+                pulse_length=self.acq_length(),
+                ref_point='start',
+                amplitude=0,
+                I_channel=self.ge_I_channel(),
+                Q_channel=self.ge_Q_channel(),
+            )]])
+
+        with temporary_value(
+                (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
+                (self.acq_weights_type, 'SSB'),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive='timedomain', switch='calib')
+            MC.set_detector_function(det.IndexDetector(
+                self.int_avg_det_spec, 0))
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            MC.run(name='drive_carrier_calibration' + self.msmt_suffix)
+
+        a = tda.MixerCarrierAnalysis()
+        analysis_params_dict = a.proc_data_dict['analysis_params_dict']
+
+        ch_I_min = analysis_params_dict['V_I']
+        ch_Q_min = analysis_params_dict['V_Q']
+        if update:
+            self.ge_I_offset(ch_I_min)
+            self.ge_Q_offset(ch_Q_min)
+        return ch_I_min, ch_Q_min, a
+
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
                                        initial_stepsize=(0.15, 10)):
@@ -2236,6 +2283,75 @@ class QuDev_transmon(Qubit):
             if update:
                 self.ge_alpha(_alpha)
                 self.ge_phi_skew(_phi)
+
+        return _alpha, _phi, a
+
+    def calibrate_drive_mixer_skewness_new(
+            self, update=True,make_fig=True, meas_grid=None, n_meas=100,
+            amplitude=0.1, trigger_sep=5e-6, first_round_limits=(0.6, 1.2, -50, 35), **kwargs):
+        if not len(first_round_limits) == 4:
+            log.error('Input variable `first_round_limits` in function call '
+                      '`calibrate_drive_mixer_skewness_NN` needs to be a list '
+                      'or 1D array of length 4.\nFound length '
+                      '{} object instead!'.format(len(first_round_limits)))
+
+        if meas_grid is None:
+            # half as many points from a uniform distribution at first run
+            meas_grid = np.array([
+                np.random.uniform(first_round_limits[0],
+                                  first_round_limits[1], n_meas // 2),
+                np.random.uniform(first_round_limits[2],
+                                  first_round_limits[3], n_meas // 2)])
+
+        MC = self.instr_mc.get_instr()
+        _alpha = self.ge_alpha()
+        _phi = self.ge_phi_skew()
+
+        s1 = swf.Hard_Sweep()
+        s1.name = 'Amplitude ratio hardware sweep'
+        s1.parameter_name = r'Amplitude ratio, $\alpha$'
+        s1.unit = ''
+        s2 = swf.Hard_Sweep()
+        s2.name = 'Phase skew hardware sweep'
+        s2.parameter_name = r'Phase skew, $\phi$'
+        s2.unit = 'deg'
+        MC.set_sweep_functions([s1, s2])
+        MC.set_sweep_points(meas_grid.T)
+
+        pulse_list_list = []
+        for alpha, phi_skew in meas_grid.T:
+            pulse_list_list.append([self.get_acq_pars(), dict(
+                        pulse_type='GaussFilteredCosIQPulse',
+                        pulse_length=self.acq_length(),
+                        ref_point='start',
+                        amplitude=amplitude,
+                        I_channel=self.ge_I_channel(),
+                        Q_channel=self.ge_Q_channel(),
+                        mod_frequency=self.ge_mod_freq(),
+                        phase_lock=False,
+                        alpha=alpha,
+                        phi_skew=phi_skew,
+                    )])
+        sq.pulse_list_list_seq(pulse_list_list)
+
+        with temporary_value(
+            (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
+            (self.acq_weights_type, 'SSB'),
+            (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive='timedomain', switch='calib')
+            MC.set_detector_function(self.int_avg_det)
+            MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
+
+        a = tda.MixerSkewnessAnalysis()
+        analysis_params_dict = a.proc_data_dict['analysis_params_dict']
+
+        _alpha = analysis_params_dict['alpha']
+        _phi = analysis_params_dict['phase']
+
+        if update:
+            self.ge_alpha(_alpha)
+            self.ge_phi_skew(_phi)
 
         return _alpha, _phi, a
 
