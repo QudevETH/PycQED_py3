@@ -8781,7 +8781,9 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
     def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,
                                percentage_measured):
         return n_ssp * n_hsp * repetition_rate * nr_averages \
-               * percentage_measured               
+               * percentage_measured
+
+
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     def __init__(self, qb_names, *args, **kwargs):
         super().__init__(qb_names, *args, **kwargs)
@@ -8800,8 +8802,17 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
         alpha = hsp
         phase = ssp
+
         sideband_I = mdata['UHF_raw w0']
         sideband_Q = mdata['UHF_raw w1']
+
+        if len(hsp) * len(ssp) == len(sideband_I.flatten()):
+            alpha, phase = np.meshgrid(hsp, ssp)
+            alpha = alpha.flatten()
+            phase = phase.flatten()
+            sideband_I = sideband_I.T.flatten()
+            sideband_Q = sideband_Q.T.flatten()
+
         sideband_log_amp = np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
 
         self.proc_data_dict['alpha'] = alpha
@@ -8831,19 +8842,12 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         fit_dict = self.fit_dicts['mixer_imbalance_sideband']
-        fit_values = fit_dict['fit_res'].best_values
-        g = fit_values['g']
-        phi = fit_values['phi']
-        scale = fit_values['scale']
+        best_values = fit_dict['fit_res'].best_values
 
-        self.proc_data_dict['analysis_params_dict']['g'] = g
-        self.proc_data_dict['analysis_params_dict']['phi'] = phi
-        self.proc_data_dict['analysis_params_dict']['scale'] = scale
+        def func(x):
+            return fit_dict['model'].func(x[0], x[1], **best_values)
 
-        def func(x, g, phi, scale):
-            return fit_dict['model'].func(x[0], x[1], g, phi, scale)
-
-        min_res = sp.optimize.minimize(func, x0=np.array([1.0, 0.0]), args=(g, phi, scale), method='Powell')
+        min_res = sp.optimize.minimize(func, x0=np.array([1.0, 0.0]), method='Powell')
         alpha = min_res.x[0]
         phase = min_res.x[1]
         self.proc_data_dict['analysis_params_dict']['alpha'] = alpha
@@ -8852,18 +8856,20 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        # super().prepare_plots()
+        pdict = self.proc_data_dict
 
-        xi = np.linspace(0.8, 1.2, 500)
-        yi = np.linspace(-25, 25, 500)
+        alpha = pdict['alpha']
+        phase = pdict['phase']
+
+        xi = np.linspace(np.min(alpha), np.max(alpha), 250)
+        yi = np.linspace(np.min(phase), np.max(phase), 250)
         x, y = np.meshgrid(xi, yi)
 
-        fit_res = self.fit_dicts['mixer_imbalance_sideband']['fit_res']
-        g = fit_res.best_values['g']
-        phi = fit_res.best_values['phi']
-        scale = fit_res.best_values['scale']
-        model_func = self.fit_dicts['mixer_imbalance_sideband']['model'].func
-        z = 10*model_func(x, y, g, phi, scale) # 10* for conversion to dBV
+        fit_dict = self.fit_dicts['mixer_imbalance_sideband']
+        fit_res = fit_dict['fit_res']
+        best_values = fit_res.best_values
+        model_func = fit_dict['model'].func
+        z = 10*model_func(x, y, **best_values) # 10* for conversion to dBV
 
         base_plot_name = 'mixer'
         self.plot_dicts['base_contour'] = {
@@ -8881,8 +8887,6 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'title': 'Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
         }
 
-        alpha = self.proc_data_dict['alpha']
-        phase = self.proc_data_dict['phase']
         self.plot_dicts['base_measurements'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
@@ -8894,8 +8898,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'setlabel': '',
         }
 
-        alpha_min = self.proc_data_dict['analysis_params_dict']['alpha']
-        phase_min = self.proc_data_dict['analysis_params_dict']['phase']
+        alpha_min = pdict['analysis_params_dict']['alpha']
+        phase_min = pdict['analysis_params_dict']['phase']
         self.plot_dicts['base_minimum'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
@@ -8909,6 +8913,34 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'legend_pos': 'upper right',
             'legend_title': None,
             'legend_frameon': True
+        }
+
+        self.plot_dicts['raw_alpha_vs_sb_magn'] = {
+            'plotfn': self.plot_line,
+            'xvals': pdict['alpha'],
+            'yvals': pdict['sideband_log_amp'],
+            'color': 'blue',
+            'marker': '.',
+            'linestyle': 'None',
+            'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
+            'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
+            'xunit': '',
+            'yunit': 'dBV',
+            'title': 'Ampl., $V_\\mathrm{LO-IF}$ projected onto ampl. ratio $\\alpha_\\mathrm{IQ}$$'
+        }
+
+        self.plot_dicts['raw_phase_vs_sb_magn'] = {
+            'plotfn': self.plot_line,
+            'xvals': pdict['phase'],
+            'yvals': pdict['sideband_log_amp'],
+            'color': 'blue',
+            'marker': '.',
+            'linestyle': 'None',
+            'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
+            'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
+            'xunit': '',
+            'yunit': 'dBV',
+            'title': 'Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
         }
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -8926,10 +8958,16 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         hsp = self.raw_data_dict['hard_sweep_points']
         ssp = self.raw_data_dict['soft_sweep_points']
         mdata = self.raw_data_dict['measured_data']
+        LO = np.log10(mdata['Magn'])
 
         VI = hsp
         VQ = ssp
-        LO = np.log10(mdata['Magn'])
+
+        if len(hsp) * len(ssp) == len(LO.flatten()):
+            VI, VQ = np.meshgrid(hsp, ssp)
+            VI = VI.flatten()
+            VQ = VQ.flatten()
+            LO = LO.T.flatten()
 
         self.proc_data_dict['V_I'] = VI
         self.proc_data_dict['V_Q'] = VQ
@@ -8956,63 +8994,49 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         fit_dict = self.fit_dicts['mixer_lo_leakage']
-        fit_values = fit_dict['fit_res'].best_values
-        li = fit_values['li']
-        lq = fit_values['lq']
-        theta_i = fit_values['theta_i']
-        theta_q = fit_values['theta_q']
-        scale = fit_values['scale']
+        best_values = fit_dict['fit_res'].best_values
 
-        analysis_params_dict = self.proc_data_dict['analysis_params_dict']
-        analysis_params_dict['li'] = li
-        analysis_params_dict['lq'] = lq
-        analysis_params_dict['theta_i'] = theta_i
-        analysis_params_dict['theta_q'] = theta_q
-        analysis_params_dict['scale'] = scale
-
-        def fitted_model(x, li, lq, theta_i, theta_q, scale):
-            return fit_dict['model'].func(x[0], x[1], li, lq, theta_i, theta_q, scale)
+        def fitted_model(x):
+            return fit_dict['model'].func(x[0], x[1], **best_values)
 
         min_res = sp.optimize.minimize(fitted_model,
                                        x0=np.array([1.0, 0.0]),
-                                       args=(li, lq, theta_i, theta_q, scale),
                                        method='Powell',
                                        )
 
+        adict = self.proc_data_dict['analysis_params_dict']
         if min_res.success:
             VI = min_res.x[0]
             VQ = min_res.x[1]
-            self.proc_data_dict['analysis_params_dict']['V_I'] = VI
-            self.proc_data_dict['analysis_params_dict']['V_Q'] = VQ
-            self.proc_data_dict['analysis_params_dict']['LO_leakage'] = min_res.x[1]
+            adict['V_I'] = VI
+            adict['V_Q'] = VQ
+            adict['LO_leakage'] = min_res.x[1]
 
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        # super().prepare_plots()
+        V_I = self.proc_data_dict['V_I']
+        V_Q = self.proc_data_dict['V_Q']
 
         # interpolate data for plot
         # define grid.
-        xi = np.linspace(-0.15, 0.15, 500)
-        yi = np.linspace(-0.15, 0.15, 500)
-        x, y = np.meshgrid(xi, yi)
+        vi = np.linspace(np.min(V_I), np.max(V_I), 250)
+        vq = np.linspace(np.min(V_Q), np.max(V_Q), 250)
+        V_I_plot, V_Q_plot = np.meshgrid(vi, vq)
 
-        fit_res = self.fit_dicts['mixer_lo_leakage']['fit_res']
-        fit_values = fit_res.best_values
-        li = fit_values['li']
-        lq = fit_values['lq']
-        theta_i = fit_values['theta_i']
-        theta_q = fit_values['theta_q']
-        scale = fit_values['scale']
-        model_func = self.fit_dicts['mixer_lo_leakage']['model'].func
-        z = 10*model_func(x, y, li, lq, theta_i, theta_q, scale) # 10* for conversion to dBV
+        fit_dict = self.fit_dicts['mixer_lo_leakage']
+        fit_res = fit_dict['fit_res']
+        best_values = fit_res.best_values
+        model_func = fit_dict['model'].func
+        # 10* for conversion to dBV
+        z = 10*model_func(V_I_plot, V_Q_plot, **best_values)
 
         base_plot_name = 'mixer_lo_leakage'
         self.plot_dicts['base_contour'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_contourf,
-            'xvals': x,
-            'yvals': y,
+            'xvals': V_I_plot,
+            'yvals': V_Q_plot,
             'zvals': z,
             'xlabel': 'Offset, $V_\\mathrm{I}$',
             'ylabel': 'Offset, $V_\\mathrm{Q}$',
@@ -9023,8 +9047,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'title': 'Ampl., $V_\\mathrm{LO}$ (dBV)'
         }
 
-        V_I = self.proc_data_dict['V_I']
-        V_Q = self.proc_data_dict['V_Q']
         self.plot_dicts['base_measurements'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
@@ -9043,8 +9065,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'plotfn': self.plot_line,
             'xvals': np.array([V_I_min]),
             'yvals': np.array([V_Q_min]),
-            'setlabel': f'$V_I$ ={V_I_min*1e3:.1f}$\,$mV\n'
-                        f'$V_Q$ ={V_Q_min*1e3:.1f}$\,$mV',
+            'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_min*1e3:.1f}$\,$mV\n'
+                        '$V_\\mathrm{Q}$' + f' ={V_Q_min*1e3:.1f}$\,$mV',
             'color': 'red',
             'marker': 'o',
             'linestyle': 'None',
@@ -9066,4 +9088,5 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ylabel': 'Ampl., $V_\\mathrm{LO}$',
                 'xunit': 'V',
                 'yunit': 'dBV',
+                'title': 'Ampl., $V_\\mathrm{LO}$ projected onto Offset, $V_\\mathrm{'+ch+'}$'
             }
