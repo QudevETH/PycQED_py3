@@ -1134,14 +1134,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, storing_keys,
                             data_mostly_g=data_mostly_g))
-                elif self.rotation_type[qbn] == 'cal_states' and \
+                elif self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_3_cal_states_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
-                elif self.rotation_type[qbn] == 'fixed_cal_points':
+                elif self.rotation_type[qbn].lower() == 'fixed_cal_points':
                     storing_keys[qbn] += '_fixed_cp'
                     rotated_data_dict, zero_coord, one_coord = \
                         self.rotate_data_TwoD_same_fixed_cal_idxs(
@@ -1155,14 +1155,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 else:
                     if 'pca' in self.rotation_type[qbn].lower():
                         storing_keys[qbn] = self.rotation_type[qbn]
+                    column_PCA = self.rotation_type[qbn].lower() == 'column_pca'
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
                             storing_keys, data_mostly_g=data_mostly_g,
-                            column_PCA=self.rotation_type[qbn] == 'column_PCA'))
+                            column_PCA=column_PCA))
             else:
-                if self.rotation_type[qbn] == 'cal_states' and \
+                if self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_3_cal_states(
