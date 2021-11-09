@@ -106,7 +106,7 @@ def get_default_plot_params(set_params=True, figure_width='1col',
     if set_params:
         plt.rcParams.update(plt.rcParamsDefault)
         plt.rcParams.update(rc_params)
-    return plt.rcParams
+    return rc_params
 
 
 def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
