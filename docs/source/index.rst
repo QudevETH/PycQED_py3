@@ -10,7 +10,7 @@ Welcome to PycQED's documentation!
    :maxdepth: 4
    :caption: Contents:
 
-   conventions/naming
+   conventions/coding
    writing_documentation
 
 
