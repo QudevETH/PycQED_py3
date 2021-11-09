@@ -1653,6 +1653,26 @@ def plot_fitres2D_heatmap(fit_res, x, y, axs=None, cmap='viridis'):
     axs[2].set_title('initial guess')
     return axs
 
+
+def mixer_imbalance_sideband(x, y, g=1.0, phi=0, scale=1.0):
+    return np.log10(np.abs(np.abs(1 - (x/g)*np.exp(1j*np.deg2rad(-phi-y))) * scale))
+
+def mixer_imbalance_sideband_guess(model, **kwargs):
+    return model.make_params(g=1.0, phi=0, scale=1)
+
+
+def mixer_lo_leakage(x, y, li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0):
+    vi = x
+    vq = y
+    return np.log10(np.abs((vi
+                            + li*np.exp(1j*theta_i)
+                            + vq*np.exp(-1j*np.pi/2)
+                            + lq*np.exp((1j*theta_q-1j*np.pi/2))
+                            ) * scale))
+
+def mixer_lo_leakage_guess(model, **kwargs):
+    return model.make_params(li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0)
+
 # Before defining a new model, take a look at the built in models in lmfit.
 
 # From http://lmfit.github.io/lmfit-py/builtin_models.html
