@@ -2084,14 +2084,20 @@ class QuDev_transmon(Qubit):
             self.ge_Q_offset(ch_2_min)
         return ch_1_min, ch_2_min
 
-    def calibrate_drive_mixer_carrier_new(self, update=True, trigger_sep=5e-6, limits=(-0.15, 0.15, -0.15, 0.15),
-                                      n_meas=200, meas_grid=None, upload=True, plot=True):
+    def calibrate_drive_mixer_carrier_new(self, update=True, trigger_sep=5e-6,
+                                          limits=(-0.15, 0.15, -0.15, 0.15),
+                                          n_meas=100, meas_grid=None,
+                                          upload=True):
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
             # half as many points from a uniform distribution at first run
             meas_grid = np.array([
                 np.random.uniform(limits[0], limits[1], n_meas),
                 np.random.uniform(limits[2], limits[3], n_meas)])
+
+        if np.max(meas_grid) >= 0.8:
+            log.error('Measurement grid contains DC amplitudes above 0.8 V:'
+                      'Maximum amplitude is {:.2f} mV!'.format(1e3*np.max(meas_grid)))
 
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
             self.ge_I_channel())]
@@ -2100,7 +2106,6 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_functions([chI_par, chQ_par])
         MC.set_sweep_points(meas_grid.T)
         if upload:
-            print(len(meas_grid.T))
             sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
                 pulse_type='GaussFilteredCosIQPulse',
                 pulse_length=self.acq_length(),
@@ -2121,7 +2126,7 @@ class QuDev_transmon(Qubit):
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix)
 
-        a = tda.MixerCarrierAnalysis()
+        a = tda.MixerCarrierAnalysis(qb_names=[self.name])
         analysis_params_dict = a.proc_data_dict['analysis_params_dict']
 
         ch_I_min = analysis_params_dict['V_I']
@@ -2129,6 +2134,8 @@ class QuDev_transmon(Qubit):
         if update:
             self.ge_I_offset(ch_I_min)
             self.ge_Q_offset(ch_Q_min)
+            chI_par(ch_I_min)
+            chQ_par(ch_Q_min)
         return ch_I_min, ch_Q_min, a
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
@@ -2287,21 +2294,20 @@ class QuDev_transmon(Qubit):
         return _alpha, _phi, a
 
     def calibrate_drive_mixer_skewness_new(
-            self, update=True,make_fig=True, meas_grid=None, n_meas=100,
-            amplitude=0.1, trigger_sep=5e-6, first_round_limits=(0.6, 1.2, -50, 35), **kwargs):
-        if not len(first_round_limits) == 4:
+            self, update=True, meas_grid=None, n_meas=50,
+            amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
+        if not len(limits) == 4:
             log.error('Input variable `first_round_limits` in function call '
                       '`calibrate_drive_mixer_skewness_NN` needs to be a list '
                       'or 1D array of length 4.\nFound length '
-                      '{} object instead!'.format(len(first_round_limits)))
+                      '{} object instead!'.format(len(limits)))
 
         if meas_grid is None:
-            # half as many points from a uniform distribution at first run
             meas_grid = np.array([
-                np.random.uniform(first_round_limits[0],
-                                  first_round_limits[1], n_meas // 2),
-                np.random.uniform(first_round_limits[2],
-                                  first_round_limits[3], n_meas // 2)])
+                np.random.uniform(limits[0],
+                                  limits[1], n_meas),
+                np.random.uniform(limits[2],
+                                  limits[3], n_meas)])
 
         MC = self.instr_mc.get_instr()
         _alpha = self.ge_alpha()
@@ -2343,7 +2349,7 @@ class QuDev_transmon(Qubit):
             MC.set_detector_function(self.int_avg_det)
             MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
 
-        a = tda.MixerSkewnessAnalysis()
+        a = tda.MixerSkewnessAnalysis(qb_names=[self.name])
         analysis_params_dict = a.proc_data_dict['analysis_params_dict']
 
         _alpha = analysis_params_dict['alpha']
