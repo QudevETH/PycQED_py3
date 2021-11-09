@@ -11,6 +11,7 @@ Welcome to PycQED's documentation!
    :caption: Contents:
 
    conventions/coding
+   conventions/docstring
    writing_documentation
 
 
