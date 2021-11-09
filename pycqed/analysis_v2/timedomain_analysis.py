@@ -8781,4 +8781,132 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
     def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,
                                percentage_measured):
         return n_ssp * n_hsp * repetition_rate * nr_averages \
-               * percentage_measured
+               * percentage_measured               
+class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
+    def __init__(self, qb_names, *args, **kwargs):
+        super().__init__(qb_names, *args, **kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def process_data(self):
+        super().process_data()
+
+        hsp = self.raw_data_dict['hard_sweep_points']
+        ssp = self.raw_data_dict['soft_sweep_points']
+        mdata = self.raw_data_dict['measured_data']
+
+        alpha = hsp
+        phase = ssp
+        sideband_I = mdata['UHF_raw w0']
+        sideband_Q = mdata['UHF_raw w1']
+        sideband_log_amp = np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
+
+        self.proc_data_dict['alpha'] = alpha
+        self.proc_data_dict['phase'] = phase
+        self.proc_data_dict['sideband_I'] = sideband_I
+        self.proc_data_dict['sideband_Q'] = sideband_Q
+        self.proc_data_dict['sideband_log_amp'] = sideband_log_amp
+        self.proc_data_dict['data_to_fit'] = sideband_log_amp
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+
+        alpha = self.proc_data_dict['alpha']
+        phase = self.proc_data_dict['phase']
+        data = self.proc_data_dict['data_to_fit']
+
+        mixer_imbalance_sideband_mod = lmfit.Model(fit_mods.mixer_imbalance_sideband, independent_vars=['x', 'y'])
+        guess_pars = fit_mods.mixer_imbalance_sideband_guess(mixer_imbalance_sideband_mod)
+
+        self.fit_dicts['mixer_imbalance_sideband'] = {
+            'model': mixer_imbalance_sideband_mod,
+            'fit_xvals': {'x': alpha,
+                          'y': phase},
+            'fit_yvals': {'data': data},
+            'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        fit_dict = self.fit_dicts['mixer_imbalance_sideband']
+        fit_values = fit_dict['fit_res'].best_values
+        g = fit_values['g']
+        phi = fit_values['phi']
+        scale = fit_values['scale']
+
+        self.proc_data_dict['analysis_params_dict']['g'] = g
+        self.proc_data_dict['analysis_params_dict']['phi'] = phi
+        self.proc_data_dict['analysis_params_dict']['scale'] = scale
+
+        def func(x, g, phi, scale):
+            return fit_dict['model'].func(x[0], x[1], g, phi, scale)
+
+        min_res = sp.optimize.minimize(func, x0=np.array([1.0, 0.0]), args=(g, phi, scale), method='Powell')
+        alpha = min_res.x[0]
+        phase = min_res.x[1]
+        self.proc_data_dict['analysis_params_dict']['alpha'] = alpha
+        self.proc_data_dict['analysis_params_dict']['phase'] = phase
+
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        # super().prepare_plots()
+
+        xi = np.linspace(0.8, 1.2, 500)
+        yi = np.linspace(-25, 25, 500)
+        x, y = np.meshgrid(xi, yi)
+
+        fit_res = self.fit_dicts['mixer_imbalance_sideband']['fit_res']
+        g = fit_res.best_values['g']
+        phi = fit_res.best_values['phi']
+        scale = fit_res.best_values['scale']
+        model_func = self.fit_dicts['mixer_imbalance_sideband']['model'].func
+        z = 10*model_func(x, y, g, phi, scale) # 10* for conversion to dBV
+
+        base_plot_name = 'mixer'
+        self.plot_dicts['base_contour'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_contourf,
+            'xvals': x,
+            'yvals': y,
+            'zvals': z,
+            'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
+            'ylabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
+            'xunit': '',
+            'yunit': 'deg',
+            'setlabel': 'sideband magnitude',
+            'cmap': 'plasma',
+            'title': 'Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
+        }
+
+        alpha = self.proc_data_dict['alpha']
+        phase = self.proc_data_dict['phase']
+        self.plot_dicts['base_measurements'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': alpha,
+            'yvals': phase,
+            'color': 'white',
+            'marker': '.',
+            'linestyle': 'None',
+            'setlabel': '',
+        }
+
+        alpha_min = self.proc_data_dict['analysis_params_dict']['alpha']
+        phase_min = self.proc_data_dict['analysis_params_dict']['phase']
+        self.plot_dicts['base_minimum'] = {
+            'fig_id': base_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': np.array([alpha_min]),
+            'yvals': np.array([phase_min]),
+            'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n$\phi$ ={phase_min:.2f}$^\\circ$',
+            'color': 'red',
+            'marker': 'o',
+            'linestyle': 'None',
+            'do_legend': True,
+            'legend_pos': 'upper right',
+            'legend_title': None,
+            'legend_frameon': True
+        }
