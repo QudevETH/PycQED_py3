@@ -828,10 +828,14 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
         'state_prob_name', data_dict,
         default_value='gg' if 'corr' in mobjn else 'e', **params)
     classified_msmt = any([v == 3 for v in [len(chs) for chs in movnm.values()]])
-    lw = plot_mod.get_default_plot_params(set=False)['lines.linewidth']
-    ms = plot_mod.get_default_plot_params(set=False)['lines.markersize']
-    llsp = plot_mod.get_default_plot_params(set=False)['legend.labelspacing']
-    lcsp = plot_mod.get_default_plot_params(set=False)['legend.columnspacing']
+    lw = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['lines.linewidth']
+    ms = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['lines.markersize']
+    llsp = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['legend.labelspacing']
+    lcsp = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['legend.columnspacing']
 
     ylabel = hlp_mod.pop_param('ylabel', data_dict, node_params=params)
     if ylabel is None:
@@ -1077,7 +1081,8 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
                             'setlabel': '', 'legend_ncol': 1}
             plot_dicts_updated[f'{pd_name} IRB'].update(updated_vals)
 
-    plotsize = plot_mod.get_default_plot_params(set=False)['figure.figsize']
+    plotsize = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 3*plotsize[1])
     last_pd = plot_dicts_updated[list(plot_dicts_updated)[-1]]
     last_pd.update({'legend_bbox_to_anchor': (0.35, 0.08),
