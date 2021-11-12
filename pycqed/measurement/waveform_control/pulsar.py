@@ -17,34 +17,20 @@ from copy import deepcopy
 
 from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
     VirtualAWG5014
-from pycqed.instrument_drivers.virtual_instruments.virtual_AWG8 import \
-    VirtualAWG8
-# exception catching removed because it does not work in python versions before
-# 3.6
 try:
     from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
 except Exception:
     Tektronix_AWG5014 = type(None)
 try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
-        UHFQuantumController import UHFQC
+        UHFQA_core import UHFQA_core
 except Exception:
-    UHFQC = type(None)
-try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
-        UHFQA_qudev import UHFQA_qudev
-except Exception:
-    UHFQA_qudev = type(None)
+    UHFQA_core = type(None)
 try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
-        ZI_HDAWG8 import ZI_HDAWG8
+        ZI_HDAWG_core import ZI_HDAWG_core
 except Exception:
-    ZI_HDAWG8 = type(None)
-try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
-        ZI_HDAWG_qudev import ZI_HDAWG_qudev
-except Exception:
-    ZI_HDAWG_qudev = type(None)
+    ZI_HDAWG_core = type(None)
 
 try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
@@ -54,15 +40,13 @@ except Exception:
 
 log = logging.getLogger(__name__)
 
-from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
-    dummy_UHFQC import dummy_UHFQC
 
 class UHFQCPulsar:
     """
     Defines the Zurich Instruments UHFQC specific functionality for the Pulsar
     class
     """
-    _supportedAWGtypes = (UHFQC, dummy_UHFQC, UHFQA_qudev)
+    _supportedAWGtypes = (UHFQA_core,)
 
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -476,7 +460,7 @@ class HDAWG8Pulsar:
     Defines the Zurich Instruments HDAWG8 specific functionality for the Pulsar
     class
     """
-    _supportedAWGtypes = (ZI_HDAWG8, VirtualAWG8, ZI_HDAWG_qudev)
+    _supportedAWGtypes = (ZI_HDAWG_core,)
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
