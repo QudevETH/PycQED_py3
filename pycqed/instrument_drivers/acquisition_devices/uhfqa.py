@@ -1,10 +1,11 @@
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .UHFQA_core import UHFQA_core
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
 import logging
 log = logging.getLogger(__name__)
 
 
-class UHFQA(UHFQA_core):
+class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev):
     """This is the Qudev specific PycQED driver for the 1.8 GSa/s UHFQA instrument
     from Zurich Instruments AG.
     """

@@ -5,10 +5,12 @@
 import logging
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_HDAWG_core as zicore
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
 
 log = logging.getLogger(__name__)
 
-class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core):
+class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
+                     ZI_base_qudev.ZI_base_instrument_qudev):
     """This is the Qudev specific PycQED driver for the HDAWG instrument
     from Zurich Instruments AG.
     """

@@ -726,10 +726,7 @@ class ZI_base_instrument(Instrument):
 
             # Create waveform parameters
             self._num_codewords = 0
-            # CH: this Delft function should not be needed for us, and removing it
-            # should save time in the init script. Please let me know if you
-            # experience any issues with the init of HDAWG/UHF.
-            # self._add_codeword_waveform_parameters(num_codewords)
+            self._add_codeword_waveform_parameters(num_codewords)
         else:
             self._awgModule = None
 
@@ -737,8 +734,6 @@ class ZI_base_instrument(Instrument):
         self._add_extra_parameters()
         # A list of all subscribed paths
         self._subscribed_paths = []
-
-        self._awg_source_strings = {}
 
         # Structure for storing errors
         self._errors = None
@@ -1529,9 +1524,6 @@ class ZI_base_instrument(Instrument):
         log.info(f'{self.devname}: Configuring AWG {awg_nr} from string.')
         # Check that awg_nr is set in accordance with devtype
         self._check_awg_nr(awg_nr)
-
-        self._awg_source_strings[awg_nr] = program_string
-
 
         t0 = time.time()
         success_and_ready = False
