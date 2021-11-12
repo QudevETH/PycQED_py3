@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 import re
-from datetime import datetime
 import copy
+from datetime import datetime
 from functools import partial
 
 from qcodes.instrument.base import Instrument
@@ -1237,6 +1237,8 @@ class ZI_base_instrument(Instrument):
                 wf_data = merge_waveforms(self._awg_waveforms[wf_name]['waveform'],
                                           self._awg_waveforms[other_wf_name]['waveform'])
                 # Write the new waveform
+                # print('DEBUG::upload_updated_waveforms awg_nr={}; dio_cw={}\n'.format(awg_nr,dio_cw))
+                # print('DEBUG::upload_updated_waveforms {}'.format(wf_data))
                 self.setv(
                     'awgs/{}/waveform/waves/{}'.format(awg_nr, dio_cw), wf_data)
 
@@ -1318,6 +1320,7 @@ class ZI_base_instrument(Instrument):
 
     def setv(self, path, value) -> None:
         # Handle absolute path
+        # print('DEBUG::setv {} {}'.format(path,value))
         if self.use_setVector:
             self._write_cmd_to_logfile(f'daq.setVector("{path}", np.array({np.array2string(value, separator=",")}))')
             self.daq.setVector(self._get_full_path(path), value)
