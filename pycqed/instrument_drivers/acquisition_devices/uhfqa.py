@@ -43,9 +43,6 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev):
         self.set('awgs_0_userregs_{}'.format(uhf.UHFQA_core.USER_REG_LOOP_CNT), loop_cnt)
         self.set('awgs_0_userregs_{}'.format(uhf.UHFQA_core.USER_REG_RO_MODE), ro_mode)
 
-    def start(self, **kwargs):
-        super().start()  # UHFQA_core.start() does not expect kwargs
-
     def poll(self, poll_time=0.1):
         # The timeout of 1ms (second argument) is smaller than in
         # ZI_base_instrument (500ms) to allow fast spectroscopy.

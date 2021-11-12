@@ -9,6 +9,14 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
         super().__init__(*args, **kwargs)
         self._awg_source_strings = {}
 
+    def start(self, **kw):
+        """
+        Start the sequencer
+        :param kw: currently ignored, added for compatibilty with other
+        instruments that accept kwargs in start().
+        """
+        super().start()  # ZI_base_instrument.start() does not expect kwargs
+
     def configure_awg_from_string(self, awg_nr: int, program_string: str,
                                   *args, **kwargs):
         self._awg_source_strings[awg_nr] = program_string
