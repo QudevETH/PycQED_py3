@@ -12,6 +12,7 @@ Welcome to PycQED's documentation!
 
    conventions/coding
    conventions/docstring
+   conventions/git
    writing_documentation
 
 
