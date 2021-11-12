@@ -56,3 +56,51 @@ link in Markdown:
 The link is too long to fit within 80 characters:
 [Google's Python styleguide](https://google.github.io/styleguide/pyguide.html#s3.16-naming)
 ```
+
+### Strings
+
+* Use double quotes:
+```python
+do = "use double quotes"
+dont = 'do not use single quotes'
+```
+
+* Exception: if the string contains a lot of `"` or `'`, you can use the other
+quotes to encompass the string:
+```python
+ok = 'This "string" contains a lot of "quotes", so it is "okay".'
+```
+
+* When you need to include values inside a string, favor using
+[f-strings](https://docs.python.org/3/tutorial/inputoutput.html#formatted-string-literals)
+rather than `string.format()` or adding strings:
+```python
+a = 2
+b = 3
+best = f"{a} + {b} = {a + b}"
+ok = "{} + {} = {}".format(a, b, a + b)
+avoid = str(a) + " + " + str(b) + " = " + str(a + b)
+```
+
+* Break your strings in multiple lines when needed:
+```python
+long_string = "One possible way to break lines in string " \
+              "is using a backslash"
+```
+
+### Comments
+
+* Always write comments in (reasonable) english.
+* Don't hesitate to add links if you copied a complex formula or code snippet
+from a website, if this helps for understanding.
+* Always flag any part of the code that would need to be cleaned, corrected or
+double checked. Use `TODO` or `FIXME` prefixes for such comments. This way, one
+can simply search for these terms to get a reasonable list of items that need to
+be cleaned or reviewed.
+* Avoid commenting out code, and always write a comment specifing a meaninful
+reason for the reason behing this code being commented. If a substantial
+modification needs to be made that justifies this commenting-out, you should
+rather work on a branch.
+* Do not comment out code with triple quotes, this syntax is used primarily for
+docstrings. All IDEs have a shortcut for commenting selected lines (e.g.
+`Ctrl+K, Ctrl+C` in VS code).
