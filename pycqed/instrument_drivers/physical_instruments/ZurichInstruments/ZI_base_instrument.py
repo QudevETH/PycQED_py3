@@ -307,6 +307,7 @@ class MockDAQServer():
         self.nodes[f'/{self.device}/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/raw/error/json/errors'] = {
                 'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+        # 1 line added to Delft version: create error/clear node
         self.nodes[f'/{self.device}/raw/error/clear'] = {'type': 'Integer', 'value': 0}
 
         if self.devtype == 'UHFQA':
@@ -330,6 +331,7 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/raw/error/blinkforever'] = {'type': 'Integer', 'value': 0}
             self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
             for awg_nr in range(4):
+                # 1 line different from Delft version: more waves
                 for i in range(2048):
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
                         'type': 'ZIVectorData', 'value': np.array([])}
@@ -347,6 +349,7 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/dios/0/drive'] = {'type': 'Integer', 'value': 0}
             for dio_nr in range(32):
                 self.nodes[f'/{self.device}/raw/dios/0/delays/{dio_nr}/value'] = {'type': 'Integer', 'value': 0}
+        # 5 lines removed from Delft version: unneeded (merge artifact)
 
     def listNodesJSON(self, path):
         pass
@@ -518,6 +521,7 @@ class MockDAQServer():
         Takes in a node_doc JSON file auto generates paths based on
         the contents of this file.
         """
+        # 2 lines different from Delft version: properly close file
         with open(filename) as fo:
             f = fo.read()
         node_pars = json.loads(f)
@@ -862,6 +866,7 @@ class ZI_base_instrument(Instrument):
         Takes in a node_doc JSON file auto generates parameters based on
         the contents of this file.
         """
+        # 2 lines different from Delft version: properly close file
         with open(filename) as fo:
             f = fo.read()
         node_pars = json.loads(f)
@@ -1264,6 +1269,7 @@ class ZI_base_instrument(Instrument):
 
             self.configure_awg_from_string(awg_nr, full_program)
         else:
+            # 1 line different from Delft version: reduced log level
             log.info(f"{self.devname}: No program configured for awg_nr {awg_nr}.")
 
     def _write_cmd_to_logfile(self, cmd):
@@ -1402,6 +1408,7 @@ class ZI_base_instrument(Instrument):
             if self._awg_program[awg_nr] is None:
                 # to configure all awgs use "upload_codeword_program" or specify
                 # another program
+                # 1 line different from Delft version: reduced log level
                 log.info(f"{self.devname}: Not starting awg_nr {awg_nr}.")
                 continue
             # Check that the AWG is ready
@@ -1455,6 +1462,7 @@ class ZI_base_instrument(Instrument):
             severity = m['severity']
             message  = m['message']
 
+            # 3 lines added to Delft version: severity 0 is no error
             if severity == 0:
                 log.info(f'{self.devname}: Code {code}: "{message}" ({severity})')
                 continue
@@ -1528,11 +1536,13 @@ class ZI_base_instrument(Instrument):
 
         t0 = time.time()
         success_and_ready = False
+        # 2 lines added to Delft version: store statusstring
         if not hasattr(self, 'compiler_statusstring'):
             self.compiler_statusstring = ''
 
         # This check (and while loop) is added as a workaround for #9
         while not success_and_ready:
+            # 3 lines different from Delft version: store and log statusstring (do not print)
             new_statusstring = f'{self.devname}: Configuring AWG {awg_nr}...'
             log.info(new_statusstring)
             self.compiler_statusstring += new_statusstring
@@ -1583,6 +1593,7 @@ class ZI_base_instrument(Instrument):
                     break
 
         t1 = time.time()
+        # 5 lines different from Delft version: store and log statusstring (do not print)
         new_statusstring = (self._awgModule.get(
             'awgModule/compiler/statusstring')
               ['compiler']['statusstring'][0] + ' in {:.2f}s'.format(t1-t0))
