@@ -44,6 +44,7 @@ Changelog:
 import logging
 import time
 import json
+import copy
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibase
 
@@ -106,8 +107,8 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
         Checks that the correct options are installed on the instrument.
         """
         options = self.gets('features/options').split('\n')
-        # if 'PC' not in options:
-        #     raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
+        if 'PC' not in options:
+            raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
 
     def _check_awg_nr(self, awg_nr):
         """
@@ -207,9 +208,6 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
         idn_dict = super().get_idn()
         idn_dict['slave_firmware'] = self.geti('system/slaverevision')
         return idn_dict
-
-    def clock_freq(self):
-        return 2.4e9
 
     ##########################################################################
     # 'public' functions: generic AWG/waveform support

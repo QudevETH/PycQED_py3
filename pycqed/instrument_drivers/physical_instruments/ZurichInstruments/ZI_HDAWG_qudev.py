@@ -23,3 +23,13 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core):
         instruments that accept kwargs in start().
         """
         super().start()  # ZI_HDAWG_core.start() does not expect kwargs
+
+    def _check_options(self):
+        """
+        Override the method in ZI_HDAWG_core, to bypass the unneeded check for
+        the PC option.
+        """
+        pass
+
+    def clock_freq(self):
+        return 2.4e9
