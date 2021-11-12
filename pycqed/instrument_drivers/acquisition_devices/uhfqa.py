@@ -45,3 +45,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev):
 
     def start(self, **kwargs):
         super().start()  # UHFQA_core.start() does not expect kwargs
+
+    def poll(self, poll_time=0.1):
+        # The timeout of 1ms (second argument) is smaller than in
+        # ZI_base_instrument (500ms) to allow fast spectroscopy.
+        return self.daq.poll(poll_time, 1, 4, True)

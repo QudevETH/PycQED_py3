@@ -1364,9 +1364,7 @@ class ZI_base_instrument(Instrument):
             self.daq.unsubscribe(full_path)
 
     def poll(self, poll_time=0.1):
-        # The timeout of 1ms (second argument) is smaller than in the Delft
-        # driver version (500ms) to allow fast spectroscopy.
-        return self.daq.poll(poll_time, 1, 4, True)
+        return self.daq.poll(poll_time, 500, 4, True)
 
     def sync(self) -> None:
         self.daq.sync()
