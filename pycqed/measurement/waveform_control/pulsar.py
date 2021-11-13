@@ -1561,6 +1561,16 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                                      'False to save time if it is ensured '
                                      'that the channels are switched on '
                                      'somewhere else.')
+        self.add_parameter(
+            'trigger_pulse_parameters', initial_value={},
+            label='trigger pulse parameters', parameter_class=ManualParameter,
+            docstring='A dict whose keys are channel names and whose values '
+                      'are dicts of pulse parameters to overwrite the '
+                      'default trigger pulse parameters whenever a trigger '
+                      'pulse is played on the respective channel. In '
+                      'addition, the dict can contain keys of the form '
+                      '{channel}_first to provide different parameters for '
+                      'the first trigger pulse on that channel in a sequence.')
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names

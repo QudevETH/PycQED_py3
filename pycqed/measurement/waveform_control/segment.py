@@ -69,6 +69,7 @@ class Segment:
         self.acquisition_elements = set()
         self.timer = Timer(self.name)
         self.pulse_pars = []
+        self.is_first_segment = False
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -593,6 +594,9 @@ class Segment:
 
     def gen_trigger_el(self, allow_overlap=False):
         """
+        For each resolved pulse with a nonempty list of trigger_channels:
+            * instatiates a trigger pulse on each of the triggering channels,
+              placed in a suitable element on the triggering AWG.
         For each element:
             For each AWG the element is played on, this method:
                 * adds the element to the elements_on_AWG dictionary
@@ -605,31 +609,110 @@ class Segment:
         for which the triggering should be skipped (by using a 0-amplitude
         trigger pulse).
 
+        Note the Pulsar parameters {AWG}_trigger_channels and
+        trigger_pulse_parameters.
+
         :param allow_overlap: (bool, default: False) see _test_overlap
         """
+        i = 1
+        def add_trigger_pulses(trigger_pulses):
+            if not len(trigger_pulses):
+                return
+
+            nonlocal i
+            # used for updating the length of the trigger elements after adding
+            # the trigger pulses
+            trigger_el_set = set()
+
+            trig_pulse_params = self.pulsar.trigger_pulse_parameters()
+
+            for ch, trigger_pulse_time, pars in trigger_pulses:
+                trigger_awg = self.pulsar.get('{}_awg'.format(ch))
+                # Find the element to play the trigger pulse in.
+                # If there is no element on that AWG create a new element
+                if self.elements_on_awg.get(trigger_awg, None) is None:
+                    trigger_element = f'trigger_element_{self.name}'
+                # else find the element that is closest to the
+                # trigger pulse
+                else:
+                    trigger_element = self.find_trigger_element(
+                            trigger_awg, trigger_pulse_time)
+
+                # Get the default trigger pulse parameters
+                kw = deepcopy(self.trigger_pars)
+                # overwrite with parameters provided in pulsar for trigger
+                # pulses on the current channel
+                pars_keys = [ch]
+                # FIXME The following check based on minimum time will fail
+                #  if the same trigger channel is used both as a trigger
+                #  channel in a pulse and as a trigger channel for an AWG.
+                #  However, there should anyways not be any reasonable use
+                #  case for this.
+                if self.is_first_segment and trigger_pulse_time == min(
+                        [tp[1] for tp in trigger_pulses if tp[0] == ch]):
+                    # Possibly overwrite with special params for the first
+                    # trigger pulse on this channel.
+                    pars_keys += [f'{ch}_first']
+                for k in pars_keys:
+                    kw.update(trig_pulse_params.get(k, {}))
+                # overwrite with parameters provided in trigger_pulses
+                kw.update(pars)
+                # Create the trigger pulse
+                trig_pulse = pl.BufferedSquarePulse(
+                    trigger_element,
+                    channel=ch,
+                    name='trigger_pulse_{}'.format(i),
+                    **kw)
+                i += 1
+                trig_pulse.algorithm_time(trigger_pulse_time -
+                                          0.25/self.pulsar.clock(ch))
+
+                # Add trigger element and pulse to seg.elements
+                if trig_pulse.element_name in self.elements:
+                    self.elements[trig_pulse.element_name].append(
+                        trig_pulse)
+                else:
+                    self.elements[trig_pulse.element_name] = [trig_pulse]
+
+                # Add the trigger_element to elements_on_awg[trigger_awg]
+                if trigger_awg not in self.elements_on_awg:
+                    self.elements_on_awg[trigger_awg] = [trigger_element]
+                elif trigger_element not in self.elements_on_awg[trigger_awg]:
+                    self.elements_on_awg[trigger_awg].append(trigger_element)
+
+                trigger_el_set = trigger_el_set | {
+                    (trigger_awg, trigger_element)}
+
+            # For all trigger elements update the start and length
+            # after having added the trigger pulses
+            for (awg, el) in trigger_el_set:
+                self.element_start_length(el, awg)
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
         # a list of the elements on that AWG
         self.gen_elements_on_awg()
+
+        # First, add trigger pulses that are requested in pulse parameters
+        trigger_pulses = []
+        for p in self.resolved_pulses:
+            pobj = p.pulse_obj
+            for ch in pobj.trigger_channels:
+                trigger_pulses.append(
+                    (ch, pobj.algorithm_time(), pobj.trigger_pars))
+        add_trigger_pulses(trigger_pulses)
 
         # Find the AWG hierarchy. Needed to add the trigger pulses first to
         # the AWG that do not trigger any other AWGs, then the AWGs that
         # trigger these AWGs and so on.
         awg_hierarchy = self.find_awg_hierarchy()
 
-        i = 1
         for awg in awg_hierarchy:
             if awg not in self.elements_on_awg:
                 continue
-
-            # for master AWG no trigger_pulse has to be added
             if len(self.pulsar.get('{}_trigger_channels'.format(awg))) == 0:
-                continue
+                continue  # for master AWG no trigger_pulse has to be added
 
-            # used for updating the length of the trigger elements after adding
-            # the trigger pulses
-            trigger_el_set = set()
-
+            trigger_pulses = []
             for element in self.elements_on_awg[awg]:
                 # Calculate the trigger pulse time
                 [el_start, _] = self.element_start_length(element, awg)
@@ -638,71 +721,15 @@ class Segment:
                                      - self.pulsar.get('{}_delay'.format(awg))\
                                      - self.trigger_pars['buffer_length_start']
 
-                # Find the trigger_AWGs that trigger the AWG
-                trigger_awgs = set()
+                # Find the trigger channels that trigger the AWG
                 for channel in self.pulsar.get(
                         '{}_trigger_channels'.format(awg)):
-                    trigger_awgs.add(self.pulsar.get('{}_awg'.format(channel)))
+                    trigger_pulses.append(
+                        (channel, trigger_pulse_time,
+                         {'amplitude': 0}
+                         if awg in getattr(self, 'skip_trigger', []) else {}))
 
-                # For each trigger_AWG, find the element to play the trigger
-                # pulse in
-                trigger_elements = {}
-                for trigger_awg in trigger_awgs:
-                    # if there is no element on that AWG create a new element
-                    if self.elements_on_awg.get(trigger_awg, None) is None:
-                        trigger_elements[
-                            trigger_awg] = 'trigger_element_{}'.format(
-                                self.name)
-                    # else find the element that is closest to the
-                    # trigger pulse
-                    else:
-                        trigger_elements[
-                            trigger_awg] = self.find_trigger_element(
-                                trigger_awg, trigger_pulse_time)
-
-                # Add the trigger pulse to all triggering channels
-                for channel in self.pulsar.get(
-                        '{}_trigger_channels'.format(awg)):
-
-                    trigger_awg = self.pulsar.get('{}_awg'.format(channel))
-                    kw = deepcopy(self.trigger_pars)
-                    if awg in getattr(self, 'skip_trigger', []):
-                        kw['amplitude'] = 0
-                    trig_pulse = pl.BufferedSquarePulse(
-                        trigger_elements[trigger_awg],
-                        channel=channel,
-                        name='trigger_pulse_{}'.format(i),
-                        **kw)
-                    i += 1
-
-                    trig_pulse.algorithm_time(trigger_pulse_time -
-                                              0.25/self.pulsar.clock(channel))
-
-                    # Add trigger element and pulse to seg.elements
-                    if trig_pulse.element_name in self.elements:
-                        self.elements[trig_pulse.element_name].append(
-                            trig_pulse)
-                    else:
-                        self.elements[trig_pulse.element_name] = [trig_pulse]
-
-                    # Add the trigger_element to elements_on_awg[trigger_awg]
-                    if trigger_awg not in self.elements_on_awg:
-                        self.elements_on_awg[trigger_awg] = [
-                            trigger_elements[trigger_awg]
-                        ]
-                    elif trigger_elements[
-                            trigger_awg] not in self.elements_on_awg[
-                                trigger_awg]:
-                        self.elements_on_awg[trigger_awg].append(
-                            trigger_elements[trigger_awg])
-
-                    trigger_el_set = trigger_el_set | set(
-                        trigger_elements.items())
-
-            # For all trigger elements update the start and length
-            # after having added the trigger pulses
-            for (awg, el) in trigger_el_set:
-                self.element_start_length(el, awg)
+            add_trigger_pulses(trigger_pulses)
 
         # checks if elements on AWGs overlap
         self._test_overlap(allow_overlap=allow_overlap)
