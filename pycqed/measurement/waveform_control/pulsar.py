@@ -458,7 +458,8 @@ class UHFQCPulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+        chid = self.get(ch + '_id')
+        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
 
 class HDAWG8Pulsar:
@@ -1127,7 +1128,8 @@ class HDAWG8Pulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+        chid = self.get(ch + '_id')
+        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
 
 class AWG5014Pulsar:
