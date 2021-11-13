@@ -8871,6 +8871,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         model_func = fit_dict['model'].func
         z = 10*model_func(x, y, **best_values) # 10* for conversion to dBV
 
+        timestamp = self.timestamps[0]
+
         base_plot_name = 'mixer'
         self.plot_dicts['base_contour'] = {
             'fig_id': base_plot_name,
@@ -8884,7 +8886,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'deg',
             'setlabel': 'sideband magnitude',
             'cmap': 'plasma',
-            'title': 'Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
+            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
         }
 
         self.plot_dicts['base_measurements'] = {
@@ -8926,7 +8928,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
             'xunit': '',
             'yunit': 'dBV',
-            'title': 'Ampl., $V_\\mathrm{LO-IF}$ projected onto ampl. ratio $\\alpha_\\mathrm{IQ}$$'
+            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto ampl. ratio $\\alpha_\\mathrm{IQ}$'
         }
 
         self.plot_dicts['raw_phase_vs_sb_magn'] = {
@@ -8940,7 +8942,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
             'xunit': '',
             'yunit': 'dBV',
-            'title': 'Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
+            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
         }
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9031,6 +9033,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         # 10* for conversion to dBV
         z = 10*model_func(V_I_plot, V_Q_plot, **best_values)
 
+        timestamp = self.timestamps[0]
+
         base_plot_name = 'mixer_lo_leakage'
         self.plot_dicts['base_contour'] = {
             'fig_id': base_plot_name,
@@ -9044,7 +9048,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'V',
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
-            'title': 'Ampl., $V_\\mathrm{LO}$ (dBV)'
+            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ (dBV)'
         }
 
         self.plot_dicts['base_measurements'] = {
@@ -9088,5 +9092,5 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ylabel': 'Ampl., $V_\\mathrm{LO}$',
                 'xunit': 'V',
                 'yunit': 'dBV',
-                'title': 'Ampl., $V_\\mathrm{LO}$ projected onto Offset, $V_\\mathrm{'+ch+'}$'
+                'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ projected onto Offset, $V_\\mathrm{'+ch+'}$'
             }
