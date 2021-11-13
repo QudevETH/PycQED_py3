@@ -8889,7 +8889,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
         }
 
-        self.plot_dicts['base_measurements'] = {
+        self.plot_dicts['base_measurement_points'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
             'xvals': alpha,
@@ -8917,9 +8917,11 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'legend_frameon': True
         }
 
+        raw_alpha_plot_name = 'alpha_vs_sb_magn'
         self.plot_dicts['raw_alpha_vs_sb_magn'] = {
+            'fig_id': raw_alpha_plot_name,
             'plotfn': self.plot_line,
-            'xvals': pdict['alpha'],
+            'xvals': alpha,
             'yvals': pdict['sideband_log_amp'],
             'color': 'blue',
             'marker': '.',
@@ -8931,9 +8933,22 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto ampl. ratio $\\alpha_\\mathrm{IQ}$'
         }
 
-        self.plot_dicts['raw_phase_vs_sb_magn'] = {
+        self.plot_dicts['optimum_in_alpha_vs_sb_magn'] = {
+            'fig_id': raw_alpha_plot_name,
             'plotfn': self.plot_line,
-            'xvals': pdict['phase'],
+            'xvals': np.array([alpha_min, alpha_min]),
+            'yvals': np.array([np.min(pdict['sideband_log_amp']),
+                               np.max(pdict['sideband_log_amp'])]),
+            'color': 'red',
+            'marker': 'None',
+            'linestyle': '--'
+        }
+
+        raw_phase_plot_name = 'phase_vs_sb_magn'
+        self.plot_dicts['raw_phase_vs_sb_magn'] = {
+            'fig_id': raw_phase_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': phase,
             'yvals': pdict['sideband_log_amp'],
             'color': 'blue',
             'marker': '.',
@@ -8943,6 +8958,17 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'xunit': '',
             'yunit': 'dBV',
             'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
+        }
+
+        self.plot_dicts['optimum_in_phase_vs_sb_magn'] = {
+            'fig_id': raw_phase_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': np.array([phase_min, phase_min]),
+            'yvals': np.array([np.min(pdict['sideband_log_amp']),
+                               np.max(pdict['sideband_log_amp'])]),
+            'color': 'red',
+            'marker': 'None',
+            'linestyle': '--'
         }
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9051,7 +9077,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ (dBV)'
         }
 
-        self.plot_dicts['base_measurements'] = {
+        self.plot_dicts['base_measurement_points'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
             'xvals': V_I,
@@ -9062,15 +9088,15 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'setlabel': ''
         }
 
-        V_I_min = self.proc_data_dict['analysis_params_dict']['V_I']
-        V_Q_min = self.proc_data_dict['analysis_params_dict']['V_Q']
+        V_I_opt = self.proc_data_dict['analysis_params_dict']['V_I']
+        V_Q_opt = self.proc_data_dict['analysis_params_dict']['V_Q']
         self.plot_dicts['base_minimum'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_line,
-            'xvals': np.array([V_I_min]),
-            'yvals': np.array([V_Q_min]),
-            'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_min*1e3:.1f}$\,$mV\n'
-                        '$V_\\mathrm{Q}$' + f' ={V_Q_min*1e3:.1f}$\,$mV',
+            'xvals': np.array([V_I_opt]),
+            'yvals': np.array([V_Q_opt]),
+            'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
+                        '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
             'color': 'red',
             'marker': 'o',
             'linestyle': 'None',
@@ -9081,10 +9107,13 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         }
 
         for ch in ['I', 'Q']:
+            plot_name = 'V_'+ch+'_vs_LO_magn'
+            leakage = self.proc_data_dict['LO_leakage']
             self.plot_dicts['raw_V_'+ch+'_vs_LO_magn'] = {
+                'fig_id': plot_name,
                 'plotfn': self.plot_line,
                 'xvals': self.proc_data_dict['V_'+ch],
-                'yvals': self.proc_data_dict['LO_leakage'],
+                'yvals': leakage,
                 'color': 'blue',
                 'marker': '.',
                 'linestyle': 'None',
@@ -9093,4 +9122,17 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'xunit': 'V',
                 'yunit': 'dBV',
                 'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ projected onto Offset, $V_\\mathrm{'+ch+'}$'
+            }
+
+            optimum =self.proc_data_dict['analysis_params_dict']['V_'+ch]
+            y_min = np.min(leakage)
+            y_max = np.max(leakage)
+            self.plot_dicts['optimum_V_'+ch+'_vs_LO_magn'] = {
+                'fig_id': plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([optimum, optimum]),
+                'yvals': np.array([y_min, y_max]),
+                'color': 'red',
+                'marker': 'None',
+                'linestyle': '--'
             }
