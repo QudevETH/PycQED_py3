@@ -60,7 +60,7 @@ class MeasurementControl(Instrument):
                  plotting_interval: float=3,
                  datadir: str=get_default_datadir(),
                  live_plot_enabled: bool=True, verbose: bool=True):
-        super().__init__(name=name, server_name=None)
+        super().__init__(name=name)
 
         self.add_parameter('datadir',
                            initial_value=datadir,
@@ -70,6 +70,18 @@ class MeasurementControl(Instrument):
         # measurements. It does not work with adaptive measurements.
         self.add_parameter('soft_avg',
                            label='Number of soft averages',
+                           parameter_class=ManualParameter,
+                           vals=vals.Ints(1, int(1e8)),
+                           initial_value=1)
+        self.add_parameter('soft_repetitions',
+                           label='Number of soft repetitions',
+                           docstring='Repeat hard measurements multiple '
+                                     'times in a software loop to collect '
+                                     'more results. All obtained results are '
+                                     'appended to the data table in the HDF '
+                                     'file (i.e., no soft averaging is done '
+                                     'on them). This is currently only '
+                                     'implemented for "hard" measurements.',
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
@@ -172,6 +184,8 @@ class MeasurementControl(Instrument):
         self._last_percdone_change_time = 0  # last time progress changed
         self._last_percdone_log_time = 0  # last time progress was logged
 
+        self.parameter_checks = {}
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -193,8 +207,9 @@ class MeasurementControl(Instrument):
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
         if sweep_points is not None:
-            self.set_sweep_points(np.tile(sweep_points,
-                                          self.acq_data_len_scaling))
+            self.set_sweep_points(np.tile(
+                sweep_points,
+                self.acq_data_len_scaling * self.soft_repetitions()))
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
@@ -281,7 +296,7 @@ class MeasurementControl(Instrument):
                 if not disable_snapshot_metadata:
                     self.save_instrument_settings(self.data_object)
                 self.create_experimentaldata_dataset()
-                if mode is not 'adaptive':
+                if mode != 'adaptive':
                     try:
                         # required for 2D plotting and data storing.
                         # try except because some swf get the sweep points in the
@@ -359,7 +374,7 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure(self):
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
 
         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
@@ -380,10 +395,10 @@ class MeasurementControl(Instrument):
             while self.get_percdone() < 100:
                 start_idx = self.get_datawriting_start_idx()
                 if len(self.sweep_functions) == 1:
-                    self.sweep_functions[0].set_parameter(
-                        sweep_points[start_idx])
-                    self.detector_function.prepare(
-                        sweep_points=self.get_sweep_points())
+                    sp = sweep_points[
+                         :len(sweep_points) // self.soft_repetitions()]
+                    self.sweep_functions[0].set_parameter(sp[start_idx])
+                    self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard()
                 else:  # If mode is 2D
                     for i, sweep_function in enumerate(self.sweep_functions):
@@ -396,6 +411,7 @@ class MeasurementControl(Instrument):
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
                     sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    sp = sp[:len(sp) // self.soft_repetitions()]
                     # If the soft sweep function has the filtered_sweep
                     # attribute, the AWGs are programmed in a way that only
                     # the subset of acquisitions indicated by the filter is
@@ -442,7 +458,7 @@ class MeasurementControl(Instrument):
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
         for sweep_function in self.sweep_functions:
@@ -485,10 +501,18 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
-        # Tell the detector_function to call print_progress for intermediate
-        # progress reports during get_detector_function.values.
-        self.detector_function.progress_callback = self.print_progress
-        new_data = np.array(self.detector_function.get_values()).T
+        n_acquired = 0
+        for i_rep in range(self.soft_repetitions()):
+            # Tell the detector_function to call print_progress for intermediate
+            # progress reports during get_detector_function.values.
+            self.detector_function.progress_callback = (
+                lambda x, n=n_acquired: self.print_progress(x + n))
+            this_new_data = np.array(self.detector_function.get_values()).T
+            n_acquired += this_new_data.shape[0]
+            new_data = this_new_data if i_rep == 0 else np.concatenate(
+                [new_data, this_new_data])
+            if i_rep < self.soft_repetitions() - 1:
+                self.print_progress(n_acquired)
         self.detector_function.progress_callback = None  # clean up
 
         if filtered_sweep is not None:
@@ -775,6 +799,12 @@ class MeasurementControl(Instrument):
     There are (will be) three kinds of plotmons, the regular plotmon,
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
+    def _live_plot_enabled(self):
+        if hasattr(self, 'detector_function') and \
+                not getattr(self.detector_function, 'live_plot_allowed', True):
+            return False
+        else:
+            return self.live_plot_enabled()
 
     def _get_plotmon_axes_info(self):
         '''
@@ -1053,9 +1083,20 @@ class MeasurementControl(Instrument):
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
                         # Check if the new_sweep_vals are not equidistant
+                        # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
-                        if any([np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
-                                for d in diff]):
+                        # To check for equidistant points, the distances
+                        # are normalized to the distance between the first
+                        # two points. The normalization is needed to choose a
+                        # meaningful threshold for distinguishing
+                        # non-equdistant points from rounding errors.
+                        # The order matters: we need to first check whether
+                        # the first two points are the same, and then check
+                        # for equidistant points. Otherwise, we might get a
+                        # division by zero error during the normalization.
+                        if np.abs(diff[0]) == 0 or any(
+                                [np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
+                                 for d in diff]):
                             # fall back to sweep indices in 2D plot
                             new_sweep_vals_2D[i] = range(len(
                                 new_sweep_vals[i]))
@@ -1131,8 +1172,8 @@ class MeasurementControl(Instrument):
 
     def update_plotmon(self, force_update=False):
         # Note: plotting_max_pts takes precendence over force update
-        if self.live_plot_enabled() and (self.dset.shape[0] <
-                                         self.plotting_max_pts()):
+        if self._live_plot_enabled() and (self.dset.shape[0] <
+                                          self.plotting_max_pts()):
             i = 0  # index of the plot
             try:
                 time_since_last_mon_update = time.time() - self._mon_upd_time
@@ -1194,7 +1235,7 @@ class MeasurementControl(Instrument):
         Made to work with at most 2 2D arrays (as this is how the labview code
         works). It should be easy to extend this function for more vals.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 self.time_last_2Dplot_update = time.time()
                 self._plotmon_axes_info = self._get_plotmon_axes_info()
@@ -1225,7 +1266,7 @@ class MeasurementControl(Instrument):
         Adds latest measured value to the TwoD_array and sends it
         to the QC_QtPlot.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
@@ -1269,7 +1310,7 @@ class MeasurementControl(Instrument):
         if self.adaptive_function.__module__ == 'cma.evolution_strategy':
             return self.update_plotmon_adaptive_cma(force_update=force_update)
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1410,7 +1451,7 @@ class MeasurementControl(Instrument):
         Special adaptive plotmon for
         """
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1490,7 +1531,7 @@ class MeasurementControl(Instrument):
         Note that the plotmon only supports evenly spaced lattices.
         '''
         try:
-            if self.live_plot_enabled():
+            if self._live_plot_enabled():
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
@@ -1698,7 +1739,6 @@ class MeasurementControl(Instrument):
         known in the snapshot)
         '''
 
-
         import numpy
         import sys
         opt = numpy.get_printoptions()
@@ -1707,8 +1747,8 @@ class MeasurementControl(Instrument):
         if data_object is None:
             data_object = self.data_object
         if not hasattr(self, 'station'):
-            log.warning('No station object specified, could not save',
-                            ' instrument settings')
+            log.warning('No station object specified, could not save '
+                        'instrument settings')
         else:
             # # This saves the snapshot of the entire setup
             # snap_grp = data_object.create_group('Snapshot')
@@ -1716,20 +1756,107 @@ class MeasurementControl(Instrument):
             # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
 
             # Below is old style saving of snapshot, exists for the sake of
-            # preserving deprecated functionality
+            # preserving deprecated functionality. Here only the values
+            # of the parameters are saved.
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
                 instrument_grp = set_grp.create_group(iname)
-                par_snap = ins.snapshot()['parameters']
-                parameter_list = dict_to_ordered_tuples(par_snap)
-                for (p_name, p) in parameter_list:
-                    try:
-                        val = repr(p['value'])
-                    except KeyError:
-                        val = ''
-                    instrument_grp.attrs[p_name] = val
+                inst_snapshot = ins.snapshot()
+                self.store_snapshot_parameters(inst_snapshot,
+                                               entry_point=instrument_grp,
+                                               instrument=ins)
         numpy.set_printoptions(**opt)
+
+    def store_snapshot_parameters(self, inst_snapshot, entry_point,
+                                  instrument, missing_in_whitelist=False):
+        """
+        Save the values of keys in the "parameters" entry of inst_snapshot.
+        If inst_snapshot contains "submodules," a new subgroup inside the
+        instrument group will be created for each key in "submodules" and the
+        values of the "parameters" entry will be stored.
+        :param inst_snapshot: (dict) snapshot of a QCoDeS instrument
+        :param entry_point: (hdf5 group.file) location in the nested hdf5
+            structure where to write to.
+        :param instrument: (obj) instrument whose snapshot is saved (or
+            submodule/channel in recursive calls)
+        :param missing_in_whitelist: (bool) only used in recursive calls to
+            indicate that a submodule/channel is not on the whitelist of
+            its parent (if such a whitelist exists).
+        """
+
+        # If a whitelist exists, we store only children (submodules, channels,
+        # parameters) that are on the whitelist. Whitelisted submodules and
+        # channels are by default stored including all their children,
+        # except if the submodule/channel again has a whitelist specifying
+        # that only a subset of its children should be stored.
+        # Note that we still have to do parameters checks even for parameters
+        # that are not whitelisted (or whose parent is not whitelisted).
+        sp_wl = getattr(instrument, '_snapshot_whitelist', None)
+
+        for k in ['submodules', 'channels']:
+            if k not in inst_snapshot:
+                continue
+            # store the parameters from the items in submodules, which
+            # are snapshots of QCoDeS instruments
+            for key, submod_snapshot in inst_snapshot[k].items():
+                submod_missing_in_whitelist = missing_in_whitelist
+                if k == 'channels':
+                    subins = [ch for ch in instrument if ch.name == key][0]
+                else:  # submodules
+                    subins = instrument.submodules[key]
+                if getattr(subins, 'snapshot_exclude', False):
+                    # qcodes does not implement snapshot_exclude for
+                    # submodules and channels, so we implement it here.
+                    # However, we treat it in the same way as submodules/
+                    # channels that are not whitelisted as this will allow us
+                    # to run parameter checks on parameters inside the
+                    # submodules/channel.
+                    submod_missing_in_whitelist = True
+                if sp_wl is not None and key not in sp_wl:
+                    # If a whitelist exists, only include submodules/channels
+                    # that are in the snapshot_whitelist
+                    submod_missing_in_whitelist = True
+                if submod_missing_in_whitelist:
+                    # call recursively for parameter checks, but do not write
+                    # to HDF
+                    submod_grp = None
+                else:
+                    submod_grp = entry_point.create_group(key)
+                self.store_snapshot_parameters(
+                    submod_snapshot, entry_point=submod_grp, instrument=subins,
+                    missing_in_whitelist=submod_missing_in_whitelist)
+
+        if 'parameters' in inst_snapshot:
+            inst_name = _get_instrument_name_for_parameter_checks(instrument)
+            parameter_checks_ins = self.parameter_checks.get(inst_name, {})
+            par_snap = inst_snapshot['parameters']
+            parameter_list = dict_to_ordered_tuples(par_snap)
+            for (p_name, p) in parameter_list:
+                param_missing_in_whitelist = missing_in_whitelist
+                if sp_wl is not None and p_name not in sp_wl:
+                    # If a whitelist exists, only include parameters that are
+                    # in the snapshot_whitelist.
+                    param_missing_in_whitelist = True
+                val = repr(p.get('value', ''))
+                if p_name in parameter_checks_ins:
+                    try:
+                        res = parameter_checks_ins[p_name](p['value'])
+                        if res != True:  # False or a string (error message)
+                            log.warning(
+                                f'Parameter {inst_name}.{p_name} has an '
+                                f'uncommon value: {val}.' +
+                                (f" ({res})" if res != False else ''))
+                    except Exception as e:
+                        log.warning(f'Could not run parameter check for '
+                                    f'{inst_name}.{p_name}: {e}')
+                if not param_missing_in_whitelist:
+                    entry_point.attrs[p_name] = val
+            for p_name in parameter_checks_ins:
+                if p_name not in par_snap:
+                    log.warning(f'Could not run parameter check for '
+                                f'{inst_name}.{p_name}: the parameter was not '
+                                f'found in the snapshot.')
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
@@ -1746,7 +1873,7 @@ class MeasurementControl(Instrument):
 
         set_grp.attrs['mode'] = self.mode
         set_grp.attrs['measurement_name'] = self.measurement_name
-        set_grp.attrs['live_plot_enabled'] = self.live_plot_enabled()
+        set_grp.attrs['live_plot_enabled'] = self._live_plot_enabled()
         sha1_id, diff = self.get_git_info()
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
@@ -1787,6 +1914,39 @@ class MeasurementControl(Instrument):
             except Exception:
                 log.error(f"Could not save timer for object: {obj}.")
                 traceback.print_exc()
+
+    def add_parameter_check(self, parameter, check_function):
+        """
+        Configure a parameter check that shall be performed at the start of
+        every measurement.
+        :param parameter: (qcodes parameter) the parameter for which a
+            check should be added
+        :param check_function: (function) a function that takes the
+            parameter value as input and returns True in case of a
+            successful check (e.g., if the value of the parameter is within
+            an expected range), and otherwise False or a string that
+            explains the unsuccessful check.
+        """
+        iname = _get_instrument_name_for_parameter_checks(parameter)
+        if iname not in self.parameter_checks:
+            self.parameter_checks[iname] = {}
+        self.parameter_checks[iname].update(
+            {parameter.name: check_function})
+
+    def remove_parameter_check(self, parameter):
+        """
+        Remove (a) parameter check(s).
+        :param parameter: (qcodes parameter or list thereof) the parameter(s)
+            for which the check(s) should be removed
+        """
+        if isinstance(parameter, list):
+            [self.remove_parameter_check(p) for p in parameter]
+        iname = _get_instrument_name_for_parameter_checks(parameter)
+        if parameter.name in self.parameter_checks.get(iname, {}):
+            self.parameter_checks[iname].pop(parameter)
+        else:
+            log.warning(f'No check for parameter {iname}.{parameter.name} was '
+                        f'configured.')
 
     def get_percdone(self, current_acq=0):
         """
@@ -2180,3 +2340,51 @@ class KeyboardFinish(KeyboardInterrupt):
     """
     pass
 
+
+def _get_instrument_name_for_parameter_checks(object, short_name=None):
+    """
+    Extracts a string representation of the instrument/submodule name as
+    expected for parameter checks in
+    MeasurementControl.store_snapshot_parameters.
+    :param object: a qcodes parameter, channel, submodule, or instrument
+    :param short_name: provide the short_name of the object instead of taking
+        it from the object (used in recursive calls of this function)
+    :return: (str)
+    """
+    def get_short_name():
+        if short_name is not None:
+            return short_name
+        elif hasattr(object, 'short_name'):
+            return object.short_name
+        else:
+            raise AttributeError(
+                f'Could not determine the name of {object}.')
+
+    if hasattr(object, 'instrument'):
+        # it is a parameter
+        return _get_instrument_name_for_parameter_checks(object.instrument)
+    elif getattr(object, 'parent', None) is not None:
+        if object.short_name in object.parent.submodules:
+            # it is a submodule, and will appear in the snapshot with
+            # its short_name
+            return _get_instrument_name_for_parameter_checks(
+                object.parent) + '.' + get_short_name()
+        # It might be a channel in a channel list that references the
+        # instrument as parent, but not the channel list.
+        l = [(s, k) for k, s in object.parent.submodules.items()
+             if hasattr(s, '__iter__') and object in s]
+        if len(l):
+            return _get_instrument_name_for_parameter_checks(
+                *l[0]) + '.' + object.name
+        else:
+            raise AttributeError(f'Could not determine the parent of '
+                                 f'{object.name}.')
+    elif hasattr(object, '__iter__') and getattr(
+            object[0], 'parent', None) is not None:
+        # If it is a list and we find the parent via the first element.
+        # A channel list is a submodule and thus appears in the snapshot with
+        # its short_name.
+        return _get_instrument_name_for_parameter_checks(
+            object[0].parent) + '.' + get_short_name()
+    else:  # it is an instrument
+        return object.name

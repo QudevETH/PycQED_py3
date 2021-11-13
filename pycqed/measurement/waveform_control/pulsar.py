@@ -454,6 +454,13 @@ class UHFQCPulsar:
         return [(f'awgs_0_userregs_{UHFQC.USER_REG_FIRST_SEGMENT}',
                  f'awgs_0_userregs_{UHFQC.USER_REG_LAST_SEGMENT}')]
 
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+
+
 class HDAWG8Pulsar:
     """
     Defines the Zurich Instruments HDAWG8 specific functionality for the Pulsar
@@ -1039,8 +1046,9 @@ class HDAWG8Pulsar:
                     self._hdawg_update_waveforms(obj, awg_nr, idx,
                                                  wave_hashes, waveforms)
 
-        for ch in range(8):
-            obj.set('sigouts_{}_on'.format(ch), True)
+        if self.sigouts_on_after_programming():
+            for ch in range(8):
+                obj.set('sigouts_{}_on'.format(ch), True)
 
         if any(ch_has_waveforms.values()):
             self.awgs_with_waveforms(obj.name)
@@ -1102,6 +1110,13 @@ class HDAWG8Pulsar:
         return [(f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{ZI_HDAWG8.USER_REG_LAST_SEGMENT}')
                 for i in range(4) if obj._awg_program[i] is not None]
+
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+
 
 class AWG5014Pulsar:
     """
@@ -1479,6 +1494,14 @@ class AWG5014Pulsar:
             return super()._get_segment_filter_userregs(obj)
         return []
 
+    def sigout_on(self, ch, on=True):
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        awg.set(f"{self.get(ch + '_id')}_state", on)
+        return
+
+
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
     """
     A meta-instrument responsible for all communication with the AWGs.
@@ -1514,9 +1537,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
-                           parameter_class=ManualParameter, vals=vals.Bool())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_channels', initial_value=[],
-                           parameter_class=ManualParameter, vals=vals.Lists())
+                           parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',
@@ -1530,6 +1553,14 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            set_cmd=self._set_filter_segments,
                            get_cmd=self._get_filter_segments,
                            initial_value=None)
+        self.add_parameter('sigouts_on_after_programming', initial_value=True,
+                           parameter_class=ManualParameter, vals=vals.Bool(),
+                           docstring='Whether signal outputs should be '
+                                     'switched off automatically after '
+                                     'programming a AWGs. Can be set to '
+                                     'False to save time if it is ensured '
+                                     'that the channels are switched on '
+                                     'somewhere else.')
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names

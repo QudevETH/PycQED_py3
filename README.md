@@ -24,18 +24,67 @@ Please see [Contributing.md](.github/CONTRIBUTING.md)
 
 ## Installation
 
-To use PycQED, clone this repository and add the directory to your path (no pip-install yet) and make sure you have a working python3 environment with the required dependencies.
-Go to the directory where you cloned the repository (in the shell) and run
-* `python setup.py develop`.
-For more details see the [installation instructions](docs/install.md).
+Clone the repository:
+```bash
+# cd a/convenient/directory
+git clone https://gitlab.ethz.ch/qudev/control_software/pycqed_py3.git
+```
 
-Test your installation using
-* `py.test pycqed/tests -v`
-(be sure that you are in the PycQED_py3 root folder)
+Install [Anaconda](https://www.anaconda.com/products/individual) if you don't 
+have it, and create a virtual environment:
+```bash
+conda create -n pycqed36 python=3.6
+conda activate pycqed36
 
-Or run a specific test using e.g.
-* `py.test pycqed/tests/test_cliffords.py -v`
-(be sure that you are in the PycQED_py3 root folder)
+# Update pip within the virtual environment
+python -m pip install --upgrade pip
+
+# Install the required packages for the repository
+pip install -r requirements.txt
+
+# Only on measurement PCs where the NI DAQmx package is installed
+# pip install nidaqmx  
+```
+
+Everytime you open a new terminal, you need to activate the virtual environment:
+```bash
+conda activate pycqed36 
+```
+
+Enable the [Jupyter notebook extensions](https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/install.html)
+which adds a tab "Nbextensions" in the main Jupyter window where you can 
+enable/disable any of the available extensions.
+```bash
+jupyter contrib nbextension install --user
+```
+
+PycQED depends on the following repositories, which should be installed as 
+symbolic links in your virtual environment (`pip install -e`). This way, the 
+changes inside these local repositories (branch switching or file modification)
+are reflected when using the modules within PycQED.
+
+```bash
+# Make sure to have activated your virtual environment
+# Go to the parent folder in which you cloned PycQED
+pip install -e ./PycQED_py3
+git clone https://gitlab.ethz.ch/qudev/control_software/qcodes.git
+pip install -e ./Qcodes
+git clone https://github.com/pyGSTio/pyGSTi.git
+pip install -e ./pyGSTi
+```
+
+## Building the documentation
+
+Assuming you have followed the installation steps, you can locally build the
+documentation as follows:
+```bash
+# From the root of the repo
+cd docs
+make html
+```
+
+You can then access the documentation by opening `docs/build/html/index.html` in
+your browser.
 
 ## Usage
 
@@ -98,7 +147,7 @@ MC.run()
 ```
 
 A sweep_function determines what parameter is varied, a qcodes parameter that contains a .set method can also be inserted here.
-A deterector_function determines what parameter is measrued, a qcodes parameter that has a .get method can also be inserted here.
+A detector_function determines what parameter is measured, a qcodes parameter that has a .get method can also be inserted here.
 
 #### The qubit object
 The qubit object is a (meta) instrument but it defies the general categorization of the other instruments.
@@ -127,14 +176,14 @@ In a hard measurement the measurement is prepared by the software and then trigg
 #### Analysis
 The measurement analysis currently (april 2015) contains three modules.
 
-#####Measurement analysis
+##### Measurement analysis
 The measurement analysis module contains the main analysis objects. By instantiating one of these objects a dataset can be analyzed. It contains default methods for the most common experiments and makes extensive use of object oriented hereditary relations. This means that for example the Rabi_Analysis is a child of the TD_Analysis which is a child of the MeasurementAnalysis and has all the functions of it's parent classes.
 
 When instantiating such an object you can pass it a timestamp and/or a label to determine what datafile to load. By giving it the argument auto=True the default analysis script is run.
-#####Analysis Toolbox
+##### Analysis Toolbox
 This toolbox contains tools for analysis such as file-handling tools, plotting tools and some data analysis tools such as a peak finder.
 
-#####Fitting models
+##### Fitting models
 This module contains the lmfit model definitions and fitting functions used for curve fitting.
 
 ### The scripts folder

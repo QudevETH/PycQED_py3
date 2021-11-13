@@ -172,7 +172,7 @@ class T1FrequencySweep(CalibBuilder):
         if isinstance(qubit_name, list):
             qubit_name = qubit_name[0]
         hard_sweep_dict, soft_sweep_dict = sweep_points
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         pulse_modifs = {'all': {'element_name': 'pi_pulse'}}
         pp = self.block_from_ops('pipulse',
@@ -396,7 +396,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
             # the waveform generation
             for task in self.preprocessed_task_list:
                 task['pulse_modifs'] = {'attr=mod_frequency': None}
-            self.cal_points.pulse_modifs = {'*.mod_frequency': [None]}
+            self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
 
         # If applicable, configure drive amplitude adaptation based on the
         # models stored in the qubit objects.
@@ -423,9 +423,9 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     if self.cal_points.pulse_modifs is None:
                         self.cal_points.pulse_modifs = {}
                     self.cal_points.pulse_modifs.update(
-                        {f'e_X180 {qb.name}*.amplitude': [
+                        {f'op_code=X180 {qb.name},attr=amplitude':
                             qb.ge_amp180() / (qb.get_ge_amp180_from_ge_freq(
-                                qb.ge_freq()) / max_amp)]})
+                                qb.ge_freq()) / max_amp)})
             self.exp_metadata['drive_amp_adaptation'] = {
                 qb.name: fnc(self.lo_sweep_points)
                 for qb, fnc in self.drive_amp_adaptation.items()}
@@ -901,7 +901,7 @@ class Cryoscope(CalibBuilder):
             dict must contain at least the 'op_code' entry.
         - for any of the cases described above, the user can specify the
             prepend_pulse_dicts entry in each task.
-            See CalibBuilder.prepend_pulses_block() for details.
+            See CalibBuilder.block_from_pulse_dicts() for details.
 
     Example of a task with all possible entry recognized by this class.
     See above for details on how they are used and which ones have priority
@@ -1101,8 +1101,8 @@ class Cryoscope(CalibBuilder):
             pihalf_2_bk.pulses[0]['pulse_delay'] = task['separation_buffer']
 
             # pulses to prepend
-            prep_bk = self.prepend_pulses_block(task.get('prepend_pulse_dicts',
-                                                         {}))
+            prep_bk = self.block_from_pulse_dicts(
+                task.get('prepend_pulse_dicts', {}))
 
             # pulse(s) to measure with cryoscope
             if 'flux_pulse_dicts' in task:
@@ -1318,6 +1318,1246 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
+class SingleQubitGateCalibExperiment (CalibBuilder):
+    """
+    Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
+    T1, QScale, InPhaseAmpCalib). This is a multitasking experiment, see
+    docstrings of MultiTaskingExperiment and of CalibBuilder for general
+    information. Each task corresponds to a particular qubit to be tuned up
+    (specified by the key "qb" in the task), i.e., multiple qubits can be
+    tuned up in parallel.
+    For convenience, this class accepts the "qubits" argument in which case
+    task_list is not needed and will be created from qubits.
+
+    The sequence for each task, further info, and possible parameters of
+    the task are described in the docstrings of each child.
+
+    :param task_list:  see MultiTaskingExperiment
+    :param sweep_points: (SweepPoints object or list of dicts or None)
+        sweep points valid for all tasks.
+    :param qubits: list of qubit class instances to be tuned up.
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to set_update_callback,
+        sweep_n_dim, autorun, and to the parent class.
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified:
+        - transition_name: one of the following strings "ge", "ef", "fh"
+            specifying which transmon transition to tune up.
+            This can be specified in the task list and can be different for
+            each task.
+
+            Note: this is different to the transition_name in sweep_block!
+
+    The following keys in a task are interpreted by this class:
+        - qb: identifies the qubit measured in the task
+        - transition_name
+
+    """
+    kw_for_task_keys = ['transition_name']
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        try:
+            if task_list is None:
+                if qubits is None:
+                    raise ValueError('Please provide either "qubits" or '
+                                     '"task_list"')
+                # Create task_list from qubits
+                task_list = [{'qb': qb.name} for qb in qubits]
+
+            for task in task_list:
+                if 'qb' in task and not isinstance(task['qb'], str):
+                    task['qb'] = task['qb'].name
+                if 'transition_name' not in task:
+                    task['transition_name'] = kw.get('transition_name', 'ge')
+
+            if 'force_2D_sweep' not in kw:
+                # Most single qubit time domain analyses do not work with
+                # dummy TwoD sweeps
+                kw['force_2D_sweep'] = False
+
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points, **kw)
+            if self.experiment_name is None:
+                self.experiment_name = 'SingleQubiGateCalib'
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.update_experiment_name()
+
+            self.state_order = ['g', 'e', 'f', 'h']
+            # transition_name_input is added in preprocess_task;
+            # see comments there.
+            transition_names = [task['transition_name_input'] for task in
+                                self.preprocessed_task_list]
+            # states in the experiment
+            states = ''.join(set([s for s in ''.join(transition_names)]))
+
+            # append sorted states to experiment name
+            states_idxs = [self.state_order.index(s) for s in states]
+            states_idxs.sort()
+            states_sorted = ''.join([self.state_order[i] for i in states_idxs])
+            self.experiment_name += f'_{states_sorted}'
+
+            # Used in sweep_block to prepend pulses (see docstring there). The
+            # strings in transition_order will be used to specify op codes.
+            # Thus "ge" is an empty string (ex: X180 qb4), while for the other
+            # recognized transitions there is a prepended underscore
+            # (ex: X90_ef qb3).
+            self.transition_order = ('', '_ef', '_fh')
+
+            if 'cal_states' not in kw:
+                # If the user didn't specify the cal states to be prepared,
+                # these will be determined based on the transition names
+                # the user wants to tune up (can be different for each task).
+
+                indices = [self.state_order.index(s) for s in states]
+                # By default, add a cal state for all the transmon levels from
+                # "g" to the highest level involved in the measurement.
+                # Ex: Rabi on qb2-ef and qb4-fh --> cal states g,e,f,h
+                cal_states = self.state_order[:max(indices)+1]
+                # Recreate cal points
+                self.create_cal_points(
+                    n_cal_points_per_state=kw.get('n_cal_points_per_state', 1),
+                    cal_states=''.join(cal_states))
+
+            self.update_sweep_points()
+            self.update_data_to_fit()
+            self.define_cal_states_rotations()
+            # meas_obj_sweep_points_map might be different after running some
+            # of the above methods
+            self.exp_metadata['meas_obj_sweep_points_map'] = \
+                self.sweep_points.get_meas_obj_sweep_points_map(
+                    self.meas_obj_names)
+
+            if 'qscale' in self.experiment_name.lower() or \
+                    'inphase_amp_calib' in self.experiment_name.lower():
+                # For these experiments the pulse sequence is not identical for
+                # each all sweep points so the block function must be called
+                # at each iteration in sweep_n_dim.
+                if len(self.sweep_points[1]) == 0:
+                    # This dummy sweep param is added in parallel_sweep of
+                    # MultiTaskingExperiment, but since we do not call that
+                    # method in this case, we need to add it here to the
+                    # sweep points. It is only needed because these experiments
+                    # are 1D sweeps but the framework assumes 2D in sweep_n_dim.
+                    self.sweep_points.add_sweep_parameter('dummy_sweep_param',
+                                                          [0])
+                self.sequences, self.mc_points = self.sweep_n_dim(
+                    self.sweep_points, body_block=None,
+                    body_block_func=self.sweep_block,
+                    cal_points=self.cal_points,
+                    ro_qubits=self.meas_obj_names, **kw)
+            else:
+                self.sequences, self.mc_points = self.parallel_sweep(
+                    self.preprocessed_task_list, self.sweep_block,
+                    block_align='end', **kw)
+
+            # Force 1D sweep: most single qubit time domain analyses do not
+            # work with dummy TwoD sweeps
+            self.mc_points = [self.mc_points[0], []]
+
+            self.autorun(store_preprocessed_task_list=True, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        """
+        Updates the task with
+
+        - transition_name: one of the following: "", "_ef", "_fh".
+            These strings are needed for specifying op codes,
+            ex: X180 qb4, X90_ef qb3
+        - transition_name_input: one of the following: "ge", "ef", "fh".
+            These strings are needed when updating qubit parameters,
+            ex: qb.ge_amp180, qb.ef_freq
+        The input parameters are documented in the docstring of this method in
+        the parent class
+        """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+
+        # Check and update transition name.
+        transition_name = task.pop('transition_name', None)
+        if transition_name is not None:
+            # transition_name_input is one of the following: "ge", "ef", "fh".
+            # These strings are needed when updating
+            # qubit parameters, ex: qb.ge_amp180, qb.ef_freq
+            task['transition_name_input'] = transition_name
+            if '_' not in transition_name:
+                transition_name = f'_{transition_name}'
+            if transition_name == '_ge':
+                transition_name = ''
+            # transition_name will be one of the following: "", "_ef", "_fh".
+            # These strings are needed for specifying op codes,
+            # ex: X180 qb4, X90_ef qb3
+            task['transition_name'] = transition_name
+        return task
+
+    def update_data_to_fit(self):
+        """
+        Update self.data_to_fit based on the transition_name_input of each task.
+        """
+        for task in self.preprocessed_task_list:
+            qb_name = task['qb']
+            transition_name = task['transition_name_input']
+            self.data_to_fit[qb_name] = f'p{transition_name[-1]}'
+
+    def define_cal_states_rotations(self):
+        """
+        Creates cal_states_rotations for each qubit based on the information
+        in the preprocessed_task_list, and adds it to exp_metadata.
+        This is of the form {qb_name: {cal_state: cal_state_order_index}}
+        and will be used by the analyses.
+        """
+        if len(self.cal_states) < 2:
+            # Data rotation in analysis needs at least 2 cal states
+            return
+
+        cal_states_rotations = {}
+        for task in self.preprocessed_task_list:
+            qb_name = task['qb']
+            if 'cal_states_rotations' in task:
+                # specified by user
+                cal_states_rotations.update(task['cal_states_rotations'])
+            else:
+                if len(self.cal_states) > 3:
+                    # Analysis can handle at most 3-state rotations
+                    # If we've got more than 3 cal states, we choose a subset of
+                    # 3: the states of the transition to be tuned up + the state
+                    # below the lowest state of the transition.
+                    # Ex: transition name = fh --> ['e', 'f', 'h']
+                    transition_name = task['transition_name_input']
+                    if transition_name == 'ge':
+                        # Exception: there no state below g, so here we
+                        # include f
+                        states = ['g', 'e', 'f']
+                    else:
+                        indices = [self.state_order.index(s)
+                                   for s in transition_name]
+                        states = self.state_order[
+                                 min(indices)-1:max(indices)+1]
+                    rots = [(s, self.cal_states.index(s)) for s in states]
+                    # sort by index of cal_state
+                    rots.sort(key=lambda t: t[1])
+                    cal_states_rotations[qb_name] = {t[0]: i for i, t in
+                                                     enumerate(rots)}
+                else:
+                    # Use all the cal states for rotation
+                    cal_states_rotations[qb_name] = \
+                        {s: self.state_order.index(s) for s in self.cal_states}
+
+        self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
+
+    def update_experiment_name(self):
+        # Base method for updating the experiment_name.
+        # To be overloaded by children.
+        pass
+
+    def update_sweep_points(self):
+        # Base method for updating the sweep_points.
+        # To be overloaded by children.
+        pass
+
+    def sweep_block(self, qb, sweep_points, transition_name,
+                    prepend_pulse_dicts=None, **kw):
+        """
+        Base method for the sweep blocks created by the children.
+        This function creates a list with the following two blocks
+         - prepended pulses specified by the user in prepend_pulse_dicts
+         - preparation pulses needed to reach the transition to be tuned up.
+
+        Ex: if transition to be tuned up is ef (fh), this function will prepend
+            the pulses specified in prepend_pulse_dicts followed by a ge pulse
+            (ge + ef pulses)
+
+        :param qb: name of qubit
+        :param sweep_points: SweepPoints instance
+        :param transition_name: (string) transition to be tuned up.
+            Must be in the form compatible with op codes:
+                ge --> ''
+                ef --> '_ef'
+                fh --> '_fh'
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
+        :param kw: keyword arguments
+        :return: list with prepended block and prepended transition block
+        """
+
+        # create user-specified prepended pulses (pb)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                         block_name='prepend')
+        # get transition prepended pulses
+        tr_prepended_pulses = self.transition_order[
+                              :self.transition_order.index(transition_name)]
+        return [pb, self.block_from_ops('tr_prepend',
+                                        [f'X180{trn} {qb}'
+                                         for trn in tr_prepended_pulses])]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # Base method for running analysis.
+        # To be overloaded by children.
+        pass
+
+
+class Rabi(SingleQubitGateCalibExperiment):
+    """
+    Rabi measurement for finding the amplitude of a pi-pulse that excites
+    the desired transmon transition. This is a SingleQubitGateCalibExperiment,
+    see docstring there for general information.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        |tr_prep_pulses**|  ---  |X180_tr_name**|  ---  |RO*|
+                                  sweep amplitude
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+             (i.e. ends of X180_tr_name are aligned with start of RO pulses)
+
+        Note: if the qubits have different drive pulse lengths, then alignment
+        at the start of RO pulse means the individual drive pulses may end up
+        not being applied in parallel between different qubits.
+        Ex: qb2 has longer ef pulse than qb1
+            qb1:             |X180| --- |X180_ef| --- |RO|
+            qb2:    |X180| --- |     X180_ef    | --- |RO|
+
+        Note: depending on which transition is tuned up in each task, the
+        sequence can have different number of pulses for each qubit.
+
+    See docstring of parent class for the first 3 parameters.
+    :param amps: (numpy array) amplitude sweep points for X180_tr_name.
+        This parameter can be used together with "qubits" for convenience to
+        avoid having to specify a task_list.
+        If not None, amps will be used to create the first dimension of
+        sweep points, which will be identical for all tasks.
+
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - n
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - n
+        - amps
+    """
+
+    kw_for_sweep_points = {
+        'amps': dict(param_name='amplitude', unit='V',
+                     label='Pulse Amplitude', dimension=0)
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 amps=None, **kw):
+        try:
+            self.kw_for_task_keys += ['n']
+            if 'n' not in kw:
+                # add default n to kw before passing to init of parent
+                kw['n'] = 1
+            self.experiment_name = 'Rabi'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             amps=amps, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name with the number of Rabi pulses n.
+        """
+        n_list = [task['n'] for task in self.preprocessed_task_list]
+        if any([n > 1 for n in n_list]):
+            # Rabi measurement with more than one pulse
+            self.experiment_name += f'-n'
+            if len(np.unique(n_list)) == 1:
+                # all tasks have the same n; add the value of n to the
+                # experiment name
+                self.experiment_name += f'{n_list[0]}'
+
+    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+        """
+        This function creates the blocks for a single Rabi measurement task,
+        see the pulse sequence in the class docstring.
+        :param qb: qubit name
+        :param sweep_points: SweepPoints instance
+        :param transition_name: transmon transition to be tuned up. Can be
+            "", "_ef", "_fh". See the docstring of parent method.
+        :param kw: keyword arguments
+            n: (int, default: 1) number of Rabi pulses (X180_tr_name in the
+                pulse sequence). Amplitude of all these pulses will be swept.
+        """
+
+        # create prepended pulses
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
+        n = kw.get('n', 1)
+        # add rabi block of n x X180_tr_name pulses
+        rabi_block = self.block_from_ops(f'rabi_pulses_{qb}',
+                                         n*[f'X180{transition_name} {qb}'])
+        # create ParametricValues from param_name in sweep_points
+        for sweep_dict in sweep_points:
+            for param_name in sweep_dict:
+                for pulse_dict in rabi_block.pulses:
+                    if param_name in pulse_dict:
+                        pulse_dict[param_name] = ParametricValue(param_name)
+
+        return self.sequential_blocks(f'rabi_{qb}',
+                                      prepend_blocks + [rabi_block])
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.RabiAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the pi-pulse amplitude (tr_name_amp180) of the qubit in
+        each task with the value extracted by the analysis.
+        :param kw: keyword arguments
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
+                qubit.name]['piPulse']
+            qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+
+
+class Ramsey(SingleQubitGateCalibExperiment):
+    """
+    Class for running a Ramsey or an Echo measurement.
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
+
+    Ramsey measurement for finding the frequency and associated averaged
+    dephasing time (T2*) of a transmon transition.
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        |tr_prep_pulses**| -- |X90_tr_name**| - ... - |X90_tr_name**| -- |RO*|
+                                               sweep      sweep
+                                             delay tau    phase
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+             (i.e. ends of 2nd X90_tr_name are aligned with start of RO pulses)
+
+    Echo measurement for finding the dephasing time (T2) associated with a
+    transmon transition.
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        |tpp**| -- |X90_tn**| - ... - |X180_tn**| - ... - |X90_tn**| -- |RO*|
+                               sweep               sweep      sweep
+                            delay tau/2         delay tau/2   phase
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+             (i.e. ends of 2nd X90_tn are aligned with start of RO pulses)
+
+    Note: if the qubits have different drive pulse lengths, then alignment
+    at the start of RO pulse means the individual drive pulses may end up
+    not being applied in parallel between different qubits.
+    See Rabi class docstring for an example of this situation.
+
+    Note: depending on which transition is tuned up in each task, the
+    sequence can have different number of pulses for each qubit.
+
+    See docstring of parent class for the first 3 parameters.
+    :param delays: (numpy array) sweep points for the delays of the second
+        X90_tr_name pulse.
+        This parameter can be used together with qubits for convenience to
+        avoid having to specify a task_list.
+        If not None, delays will be used to create the first dimension of
+        sweep points, which will be identical for all tasks.
+    :param echo: (bool, default: False) whether to do an Echo (True) or a
+        Ramsey (False) measurement.
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - artificial_detuning
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - artificial_detuning
+        - delays
+    """
+
+    kw_for_sweep_points = {
+        'delays': dict(param_name='pulse_delay', unit='s',
+                       label=r'Second $\pi$-half pulse delay', dimension=0)
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 delays=None, echo=False, **kw):
+        try:
+            self.kw_for_task_keys += ['artificial_detuning']
+            if 'artificial_detuning' not in kw:
+                # add default artificial_detuning to kw before passing to
+                # init of parent
+                kw['artificial_detuning'] = 0
+            self.echo = echo
+            if not hasattr(self, 'experiment_name'):
+                self.experiment_name = 'Echo' if self.echo else 'Ramsey'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             delays=delays, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        """
+        Updates the task with the value of the first pulse delay sweep point.
+        which will be stored under the key "first_delay_point" and will be used
+        in sweep_block.
+        See also the docstring of this method in the parent classes.
+        """
+        task = super().preprocess_task(task, global_sweep_points, sweep_points,
+                                       **kw)
+        sweep_points = task['sweep_points']
+        task['first_delay_point'] = sweep_points.get_sweep_params_property(
+            'values', 0, 'pulse_delay')[0]
+
+        return task
+
+    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+        """
+        This function creates the blocks for a single Ramsey/Echo measurement
+        task, see the pulse sequence in the class docstring.
+        :param qb: qubit name
+        :param sweep_points: SweepPoints instance
+        :param transition_name: transmon transition to be tuned up. Can be
+            "", "_ef", "_fh". See the docstring of parent method.
+        :param kw: keyword arguments
+            artificial_detuning: (float, default: 0) detuning of second pi-half
+            pulse (X90_tr_name in the pulse sequence). Will be used to calculate
+            phase of the 2nd X90_tr_name at each delay.
+            first_delay_point: (float) see docstring of update_preproc_tasks
+        """
+
+        # create prepended pulses
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
+
+        # add ramsey block of 2x X90_tr_name pulses
+        pulse_modifs = {1: {'ref_point': 'start'}}
+        ramsey_block = self.block_from_ops(f'ramsey_pulses_{qb}',
+                                           [f'X90{transition_name} {qb}',
+                                            f'X90{transition_name} {qb}'],
+                                           pulse_modifs=pulse_modifs)
+
+        first_delay_point = kw['first_delay_point']
+        art_det = kw['artificial_detuning']
+        # create ParametricValues for the 2nd X90_tr_name pulse from
+        # param_name in sweep_points
+        for param_name in sweep_points.get_sweep_dimension(0):
+            ramsey_block.pulses[-1][param_name] = ParametricValue(param_name)
+            if param_name == 'pulse_delay':
+                # PrametricValue for the phase to be calculated from each delay
+                ramsey_block.pulses[-1]['phase'] = ParametricValue(
+                    'pulse_delay', func=lambda x, o=first_delay_point:
+                    ((x-o)*art_det*360) % 360)
+
+        if self.echo:
+            # add echo block: pi-pulse halfway between the two X90_tr_name
+            # pulses
+            echo_block = self.block_from_ops(f'echo_pulse_{qb}',
+                                             [f'X180{transition_name} {qb}'])
+            ramsey_block = self.simultaneous_blocks(f'main_{qb}',
+                                                    [ramsey_block, echo_block],
+                                                    block_align='center')
+
+        return self.sequential_blocks(f'ramsey_{qb}',
+                                      prepend_blocks + [ramsey_block])
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        options_dict = analysis_kwargs.pop('options_dict', {})
+        options_dict.update(dict(
+            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
+            artificial_detuning=kw.pop('artificial_detuning', None)))
+        self.analysis = tda.EchoAnalysis if self.echo else tda.RamseyAnalysis
+        self.analysis = self.analysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            options_dict=options_dict, **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the following parameters of the qubit in each task with the
+        values extracted by the analysis:
+
+            For Ramsey measurement:
+                - transition frequency: tr_name_freq
+                - averaged dephasing time: T2_star_tr_name
+            For Echo measurement:
+                - dephasing time: T2_tr_name
+
+        :param kw: keyword arguments
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            if self.echo:
+                T2_echo = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name]['T2_echo']
+                qubit.set(f'T2{task["transition_name"]}', T2_echo)
+            else:
+                qb_freq = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name][
+                    'exp_decay']['new_qb_freq']
+                T2_star = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name][
+                    'exp_decay']['T2_star']
+                qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
+                qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+
+
+class ReparkingRamsey(Ramsey):
+    """
+    Class for reparking qubits by doing a set of Ramsey measurements at
+    different bias voltages. This is a Ramsey experiment, see docstring there
+    for pulse sequence and general information.
+
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+        The following keyword argument, if provided, will be used to create the
+        sweep points, which will be identical for all tasks.
+        - delays: (numpy array) first dimension sweep points for the delays of
+            the second X90_tr_name pulse, see pulse sequence in Ramsey class.
+        - dc_voltages: (numpy array) second dimension sweep points for the dc
+            voltage values
+        - dc_voltage_offsets: (numpy array) second dimension sweep points for
+            the voltage offsets from the qubit's current parking voltage value
+        Either dc_voltages or dc_voltage_offsets must be specified either as
+        kw or in the task_list.
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - fluxline: qcodes parameter to adjust the DC flux offset of the qubit.
+        - artificial_detuning (see docstring of parent class)
+
+        These kw parameters can be used together with "qubits" (see
+        SingleQubitGateCalibExperiment parent class) for convenience to avoid
+        having to specify a task_list.
+        If a task_list is not specified, all qubits will use the same values for
+        the parameters above.
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - fluxline
+        - dc_voltages
+        - dc_voltage_offsets
+    """
+
+    kw_for_sweep_points = {
+        'delays': dict(param_name='pulse_delay', unit='s',
+                       label=r'Second $\pi$-half pulse delay', dimension=0),
+        'dc_voltages': dict(param_name='dc_voltages', unit='V',
+                            label=r'DC voltage', dimension=1),
+        'dc_voltage_offsets': dict(param_name='dc_voltage_offsets', unit='V',
+                                   label=r'DC voltage offset', dimension=1),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 delays=None, dc_voltages=None, dc_voltage_offsets=None,  **kw):
+
+        try:
+            self.kw_for_task_keys += ['fluxline']
+            if 'fluxline' not in kw:
+                # add default value for fluxline to kw before passing to
+                # init of parent
+                kw['fluxline'] = None
+            self.experiment_name = 'ReparkingRamsey'
+            # the parent class enforces a 1D sweep, so here we must explicitly
+            # force it to be a 2D sweep
+            force_2D_sweep = True
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             delays=delays,
+                             dc_voltages=dc_voltages,
+                             dc_voltage_offsets=dc_voltage_offsets,
+                             force_2D_sweep=force_2D_sweep, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        """
+        Updates the sweep_points of each task with the dc_voltages sweep values
+        calculated from dc_voltage_offsets (if dc_voltages do not already
+        exist). They are needed in the analysis.
+        """
+        for task in self.preprocessed_task_list:
+            swpts = task['sweep_points']
+            if swpts.find_parameter('dc_voltage_offsets') is not None:
+                if swpts.find_parameter('dc_voltages') is not None:
+                    # Do not overwrite the values provided by the user
+                    log.warning(f'Both "dc_voltages" and "dc_voltage_offsets" '
+                                f'were provided for {task["qb"]}. The latter '
+                                f'will be ignored.')
+                    continue
+
+                fluxline = task['fluxline']
+                values_to_set = np.array(swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltage_offsets'),
+                    param_names='dc_voltage_offsets')) + fluxline()
+                # update sweep points
+                par_name = f'{task["prefix"]}dc_voltages'
+                self.sweep_points.add_sweep_parameter(par_name, values_to_set,
+                                                      'V', 'DC voltage', 1)
+
+    def run_measurement(self, **kw):
+        """
+        Configures additional sweep functions and temporary values for the
+        for the current dc voltage values, before calling the method of the
+        base class.
+        """
+        sweep_functions = []
+        temp_vals= []
+        sweep_param_name = 'Parking voltage'
+        nr_volt_points = self.sweep_points.length(1)
+        self.exp_metadata['current_voltages'] = {}
+        for task in self.preprocessed_task_list:
+            qb = self.get_qubits(task['qb'])[0][0]
+
+            fluxline = task['fluxline']
+            # add current voltage value to temporary values to reset it back to
+            # this value at the end of the measurement
+            temp_vals.append((fluxline, fluxline()))
+            self.exp_metadata['current_voltages'][qb.name] = fluxline()
+
+            # get the dc voltages sweep values
+            swpts = task['sweep_points']
+            if swpts.find_parameter('dc_voltages') is not None:
+                # absolute dc_voltage were given
+                values_to_set = swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltages'),
+                    param_names='dc_voltages')
+            elif swpts.find_parameter('dc_voltage_offsets') is not None:
+                # relative dc_voltages were given
+                values_to_set = np.array(swpts.get_sweep_params_property(
+                    'values',
+                    dimension=swpts.find_parameter('dc_voltage_offsets'),
+                    param_names='dc_voltage_offsets')) + fluxline()
+            else:
+                # one or the other must exist
+                raise KeyError(f'Please specify either dc_voltages or '
+                               f'dc_voltage_offsets for {qb.name}.')
+
+            if len(values_to_set) != nr_volt_points:
+                raise ValueError('All tasks must have the same number of '
+                                 'voltage sweep points.')
+
+            # create an Indexed_Sweep function for each task
+            sweep_functions += [swf.Indexed_Sweep(
+                task['fluxline'], values=values_to_set,
+                name=f'DC Offset {qb.name}',
+                parameter_name=f'{sweep_param_name} {qb.name}', unit='V')]
+
+        self.sweep_functions = [
+            self.sweep_functions[0], swf.multi_sweep_function(
+                sweep_functions, name=sweep_param_name,
+                parameter_name=sweep_param_name)]
+        self.mc_points[1] = np.arange(nr_volt_points)
+
+        with temporary_value(*temp_vals):
+            super().run_measurement(**kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        options_dict = analysis_kwargs.pop('options_dict', {})
+        options_dict.update(dict(
+            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
+            artificial_detuning=kw.pop('artificial_detuning', None)))
+        self.analysis = tda.ReparkingRamseyAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            options_dict=options_dict, **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the following parameters for the qubit in each task with the
+        values extracted by the analysis:
+            - transition frequency: tr_name_freq
+            - fluxline voltage
+        :param kw: keyword arguments
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = self.get_qubits(task['qb'])[0][0]
+            fluxline = task['fluxline']
+
+            apd = self.analysis.proc_data_dict['analysis_params_dict']
+            # set new qubit frequency
+            qubit.set(f'{task["transition_name_input"]}_freq',
+                      apd['reparking_params'][qubit.name]['ss_freq'])
+            # set new voltage
+            fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
+
+
+class T1(SingleQubitGateCalibExperiment):
+    """
+    T1 measurement for finding the lifetime (T1) associated with a transmon
+    transition. This is a SingleQubitGateCalibExperiment,
+    see docstring there for general information.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        |tr_prep_pulses**|  --  |X180_tr_name**|  --  ... --  |RO*|
+                                                  sweep delay
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+             (i.e. ends of X180_tr_name are aligned)
+
+        Note: if the qubits have different drive pulse lengths, then alignment
+        at the end of X180_tr_name means the individual drive pulses may end up
+        not being applied in parallel between different qubits.
+        See Rabi class docstring for an example of this situation.
+
+        Note: depending on which transition is tuned up in each task, the
+        sequence can have different number of pulses for each qubit.
+
+    See docstring of parent class for the first 3 parameters.
+    :param delays: (numpy array) sweep points for the delays between
+        X180_tr_name and the RO pulse.
+        This parameter can be used together with qubits for convenience to
+        avoid having to specify a task_list.
+        If not None, delays will be used to create the first dimension of
+        sweep points, which will be identical for all tasks.
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - delays
+    """
+
+    kw_for_sweep_points = {
+        'delays': dict(param_name='pulse_delay', unit='s',
+                       label=r'Readout pulse delay', dimension=0),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 delays=None, **kw):
+        try:
+            self.experiment_name = 'T1'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             delays=delays, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+        """
+        This function creates the blocks for a single T1 measurement task,
+        see the pulse sequence in the class docstring.
+        :param qb: qubit name
+        :param sweep_points: SweepPoints instance
+        :param transition_name: transmon transition to be tuned up. Can be
+            "", "_ef", "_fh". See the docstring of parent method.
+        :param kw: keyword arguments.
+        """
+
+        # create prepended pulses
+        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
+                                             **kw)
+        # add t1 block consisting of one X180_tr_name pulse
+        t1_block = self.block_from_ops(f'pi_pulse_{qb}',
+                                       [f'X180{transition_name} {qb}'])
+        # Create ParametricValue for the block end virtual pulse.
+        # This effectively introduces a delay between the X180_tr_pulse and
+        # the RO pulse which will be added in sweep_n_dim
+        t1_block.block_end.update({'ref_point': 'end',
+                                   'pulse_delay': ParametricValue('pulse_delay')
+                                   })
+
+        return self.sequential_blocks(f't1_{qb}', prepend_blocks + [t1_block])
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = tda.T1Analysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the T1_tr_name of the qubit in each task with the value
+        extracted by the analysis.
+        :param kw: keyword arguments
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            T1 = self.analysis.proc_data_dict['analysis_params_dict'][
+                qubit.name]['T1']
+            qubit.set(f'T1{task["transition_name"]}', T1)
+
+
+class QScale(SingleQubitGateCalibExperiment):
+    """
+    QScale measurement for finding the motzoi parameter for driving a transmon
+    transition without phase errors.
+    See the papers:
+        https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.103.110501
+        https://journals.aps.org/pra/abstract/10.1103/PhysRevA.83.012308
+
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+        For each qscale in sweep_points, the following 2 sequences are applied:
+
+        |tr_prep_pulses**|  --  |X90_tr_name**| - |X180_tr_name** |  --  |RO*|
+        |tr_prep_pulses**|  --  |X90_tr_name**| - |Y180_tr_name** |  --  |RO*|
+        |tr_prep_pulses**|  --  |X90_tr_name**| - |mY180_tr_name**|  --  |RO*|
+                                 sweep qscale       sweep qscale
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+            (i.e. ends of the last drive pulses aligned with start of RO pulses)
+
+        Note: if the qubits have different drive pulse lengths, then alignment
+        at the start of RO pulse means the individual drive pulses may end up
+        not being applied in parallel between different qubits.
+        See Rabi class docstring for an example of this situation.
+
+        Note: depending on which transition is tuned up in each task, the
+        sequence can have different number of pulses for each qubit.
+
+    See docstring of parent class for the first 3 parameters.
+    :param qscales: (numpy array) sweep points for the motzoi param of the pairs
+        of pulses in the pulse sequence above.
+        This parameter can be used together with "qubits" for convenience to
+        avoid having to specify a task_list.
+        If not None, qscales will be used to create the first dimension of
+        sweep points, which will be identical for all tasks.
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - qscales
+    """
+
+    kw_for_sweep_points = {
+        'qscales': dict(param_name='motzoi', unit='V',
+                        label='Pulse Amplitude', dimension=0,
+                        values_func=lambda q: np.repeat(q, 3))
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 qscales=None, **kw):
+        try:
+            self.experiment_name = 'Qscale'
+            # the 3 pairs of pulses to be applied for each sweep point
+            self.qscale_base_ops = [['X90', 'X180'], ['X90', 'Y180'],
+                                    ['X90', 'mY180']]
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             qscales=qscales, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        """
+        Checks if the qscale sweep points are repeated 3 times (there are 3
+        pairs of pulses in qscale_base_ops). Updates the self.sweep_points and
+        the sweep points in each task of preprocessed_task_list with the
+        repeated qscale sweep points.
+        """
+
+        # update self.sweep_points
+        swpts = deepcopy(self.sweep_points)
+        swp_dim0 = swpts.get_sweep_dimension(0)
+
+        par_names = []
+        vals = []
+        for par in swp_dim0:
+            if 'motzoi' not in par:
+                continue
+
+            values = swpts.get_sweep_params_property('values', param_names=par)
+            if np.unique(values[:3]).size > 1:
+                # the qscale sweep points are not repeated 3 times (for each
+                # pair of qscale_base_ops)
+                par_names += [par]
+                vals += [np.repeat(values, 3)]
+
+        self.sweep_points.update_property(par_names, values=vals)
+
+        # update sweep points in preprocessed_task_list
+        for task in self.preprocessed_task_list:
+            swpts = task['sweep_points']
+            values = swpts.get_sweep_params_property(
+                'values', param_names='motzoi')
+            if np.unique(values[:3]).size > 1:
+                swpts.update_property(['motzoi'], values=[np.repeat(values, 3)])
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        This function creates the blocks for each QScale measurement task,
+        see the pulse sequence in the class docstring.
+        :param sp1d_idx: sweep point index in the first sweep dimension
+        :param sp2d_idx: sweep point index in the second sweep dimension
+        :param kw: keyword arguments to be provided in each task
+            qb: qubit name
+            sweep_points: SweepPoints instance
+            transition_name: transmon transition to be tuned up. Can be
+                "", "_ef", "_fh". See the docstring of parent method.
+        """
+
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            transition_name = task['transition_name']
+            sweep_points = task['sweep_points']
+            qb = task['qb']
+
+            # create prepended pulses
+            prepend_blocks = super().sweep_block(**task)
+            # add qscale block consisting of the correct set of 2 pulses
+            # from qscale_base_ops (depending on sp1d_idx)
+            qscale_pulses_block = self.block_from_ops(
+                f'qscale_pulses_{qb}', [f'{p}{transition_name} {qb}' for p in
+                                        self.qscale_base_ops[sp1d_idx % 3]])
+            # set the motzoi parameter of the pulses in the qscale block
+            for p in qscale_pulses_block.pulses:
+                p['motzoi'] = sweep_points.get_sweep_params_property(
+                    'values', 0, 'motzoi')[sp1d_idx]
+            # gather the blocks for each task
+            parallel_block_list += [self.sequential_blocks(
+                f'qscale_{qb}', prepend_blocks + [qscale_pulses_block])]
+
+        return self.simultaneous_blocks(f'qscale_{sp2d_idx}_{sp1d_idx}',
+                                        parallel_block_list, block_align='end')
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = tda.QScaleAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the tr_name_motzoi parameter of the qubit in each task with
+        the value extracted by the analysis.
+        :param kw: keyword arguments
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            qscale = self.analysis.proc_data_dict['analysis_params_dict'][
+                qubit.name]['qscale']
+            qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
+
+
+class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
+    """
+    In-phase calibration measurement for finding small miscalibrations in the
+    pi-pulse amplitude associated with a transmon transition.
+    This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        |tr_prep_pulses**| -- |X90_tr_name**| -- Nx|X180_tr_name**| -- |RO*|
+                                                     sweep N
+
+        * = in parallel on all qubits_to_measure (key in the task)
+        ** = in parallel on all qubits_to_measure and aligned at the end
+             (i.e. ends of the last X180_tr_name are aligned with start of
+             RO pulses)
+
+        Note: if the qubits have different drive pulse lengths, then alignment
+        at the start of RO pulse means the individual drive pulses may end up
+        not being applied in parallel between different qubits.
+        See Rabi class docstring for an example of this situation.
+
+        Note: depending on which transition is tuned up in each task, the
+        sequence can have different number of pulses for each qubit.
+
+    See docstring of parent class for the first 3 parameters.
+    :param n_pulses: (int) max number of X180_tr_name in the experiment. The
+        class will then n_pulses/2 segments with even number of pi-pulses
+        (i.e. np.arange(nr_p + 1)[::2]).
+        This parameter can be used together with "qubits" for convenience to
+        avoid having to specify a task_list.
+        If not None, n_pulses will be used to create the first dimension of
+        sweep points, which will be identical for all tasks.
+    :param kw: keyword arguments.
+        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
+        to the parent class.
+
+        Moreover, the following keyword arguments are understood:
+            use_x90_pulses: (bool, default: False) whether apply a train of
+                pi-pulses or a train of pairs of pi/2-pulses (allows to
+                calibrate the pi/2-pulses)
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - n_pulses
+    """
+
+    kw_for_sweep_points = {
+        'n_pulses': dict(param_name='n_pulses', unit='',
+                         label='Nr. $\\pi$-pulses, $N$', dimension=0,
+                         values_func=lambda nr_p:
+                         np.arange(nr_p + 1)[::2])
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 n_pulses=None, **kw):
+        try:
+            self.use_x90_pulses = kw.get('use_x90_pulses', False)
+            self.experiment_name = f'Inphase_amp_calib_{n_pulses}'
+            if self.use_x90_pulses:
+                self.experiment_name += '_x90_pulses'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             n_pulses=n_pulses, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        This function creates the blocks for each InPhaseCalib measurement task,
+        see the pulse sequence in the class docstring.
+        :param sp1d_idx: sweep point index in the first sweep dimension
+        :param sp2d_idx: sweep point index in the second sweep dimension
+        :param kw: keyword arguments to be provided in each task
+            qb: qubit name
+            sweep_points: SweepPoints instance
+            transition_name: transmon transition to be tuned up. Can be
+                "", "_ef", "_fh". See the docstring of parent method.
+        """
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            transition_name = task['transition_name']
+            sweep_points = task['sweep_points']
+            qb = task['qb']
+
+            # create prepended pulses
+            prepend_blocks = super().sweep_block(**task)
+            # add inphase_calib block consisting of the number of X180_tr_name
+            # pulses indicated by sp1d_idx
+            n_pulses = sweep_points.get_sweep_params_property(
+                'values', 0, 'n_pulses')[sp1d_idx]
+            pulse_list = [f'X90{transition_name} {qb}'] + \
+                         (2*n_pulses * [f'X90{transition_name} {qb}'] if
+                          self.use_x90_pulses else
+                          n_pulses*[f'X180{transition_name} {qb}'])
+            inphase_calib_block = self.block_from_ops(
+                f'pulses_{qb}', pulse_list)
+            # gather the blocks for each task
+            parallel_block_list += [self.sequential_blocks(
+                f'inphase_calib_{qb}', prepend_blocks + [inphase_calib_block])]
+
+        return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
+                                        parallel_block_list, block_align='end')
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword argument for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = tda.InPhaseAmpCalibAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the pi-pulse amplitude (tr_name_amp180) of the qubit in
+        each task with the value extracted by the analysis.
+        :param kw: keyword arguments
+        """
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']]
+            qubit.set(f'{task["transition_name_input"]}_amp180',
+                      self.analysis.proc_data_dict['analysis_params_dict'][
+                          qubit.name]['corrected_amp'])
+
+
 class RabiFrequencySweep(ParallelLOSweepExperiment):
     """
     Performs a series of ge Rabi experiments for multiple drive frequencies.
@@ -1348,8 +2588,8 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
                       label=r'drive frequency, $f_d$',
                       dimension=1),
         'amps': dict(param_name='amplitude', unit='V',
-                       label=r'drive pulse amplitude',
-                       dimension=0),
+                     label=r'drive pulse amplitude',
+                     dimension=0),
     }
 
     def __init__(self, task_list, sweep_points=None, **kw):
