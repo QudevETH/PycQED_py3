@@ -1659,7 +1659,10 @@ def mixer_imbalance_sideband(x, y, g=1.0, phi=0, scale=1.0):
                             ) * scale))
 
 def mixer_imbalance_sideband_guess(model, **kwargs):
-    return model.make_params(g=1.0, phi=0, scale=1)
+    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('phi', value=0, min=-20, max=20)
+    model.set_param_hint('scale', value=1, min=-1e3, max=1e3)
+    return model.make_params()
 
 
 def mixer_lo_leakage(x, y, li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0):
@@ -1672,7 +1675,13 @@ def mixer_lo_leakage(x, y, li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0):
                             ) * scale))
 
 def mixer_lo_leakage_guess(model, **kwargs):
-    return model.make_params(li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0)
+    pi_half = np.pi/2
+    model.set_param_hint('li', value=0.1, min=1e-3, max=1)
+    model.set_param_hint('lq', value=0.1, min=1e-3, max=1)
+    model.set_param_hint('theta_i', value=0.1, min=-pi_half, max=pi_half)
+    model.set_param_hint('theta_q', value=0.1, min=-pi_half, max=pi_half)
+    model.set_param_hint('scale', value=1, min=-1e3, max=1e3)
+    return model.make_params()
 
 # Before defining a new model, take a look at the built in models in lmfit.
 
