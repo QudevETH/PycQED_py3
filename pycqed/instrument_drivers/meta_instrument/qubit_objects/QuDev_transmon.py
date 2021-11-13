@@ -2368,6 +2368,17 @@ class QuDev_transmon(Qubit):
         _alpha = analysis_params_dict['alpha']
         _phi = analysis_params_dict['phase']
 
+        if(_alpha < limits[0] or _alpha > limits[1]):
+            log.warning('Optimum for amplitude ratio is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best alpha according to fitting: {.2f}'.format(_alpha))
+            update = False
+        if(_phi < limits[2] or _phi > limits[3]):
+            log.warning('Optimum for phase correction is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best phi according to fitting: {.2f} deg'.format(_phi))
+            update = False
+
         if update:
             self.ge_alpha(_alpha)
             self.ge_phi_skew(_phi)
