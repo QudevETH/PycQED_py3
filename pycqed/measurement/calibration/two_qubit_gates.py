@@ -1455,6 +1455,14 @@ class Chevron(CalibBuilder):
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
+            for d in task_list + [kw]:
+                if 'qbr' in d:
+                    log.warning(
+                        "Chevron: the argument qbr is deprecated and will be "
+                        "ignored. The argument ro_qubits can be used to restrict"
+                        "the readout to a subset of qubits.")
+                    d.pop('qbr')
+
             super().__init__(task_list, sweep_points=sweep_points, **kw)
 
             # Preprocess sweep points and tasks before creating the sequences
