@@ -2131,11 +2131,24 @@ class QuDev_transmon(Qubit):
 
         ch_I_min = analysis_params_dict['V_I']
         ch_Q_min = analysis_params_dict['V_Q']
+
+        if(ch_I_min < limits[0] or ch_I_min > limits[1]):
+            log.warning('Optimum for DC bias voltage I channel is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best V_I according to fitting: {.2f} mV'.format(ch_I_min*1e-3))
+            update = False
+        if(ch_Q_min < limits[2] or ch_Q_min > limits[3]):
+            log.warning('Optimum for DC bias voltage Q channel is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best V_Q according to fitting: {.2f} mV'.format(ch_Q_min*1e-3))
+            update = False
+
         if update:
             self.ge_I_offset(ch_I_min)
             self.ge_Q_offset(ch_Q_min)
             chI_par(ch_I_min)
             chQ_par(ch_Q_min)
+
         return ch_I_min, ch_Q_min, a
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
