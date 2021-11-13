@@ -79,7 +79,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                 if not isinstance(task[k], str):
                     task[k] = task[k].name
             # generate an informative task prefix
-            if 'prefix' not in task:
+            if 'prefix' not in task and len(self.task_mobj_keys):
                 task['prefix'] = '_'.join([v for k, v in task.items() if k
                                            in self.task_mobj_keys]) + '_'
 
