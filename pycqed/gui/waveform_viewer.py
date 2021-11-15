@@ -144,7 +144,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         self.qubit_list = set(qkey for q_ch_map in self.qubit_channel_maps for qkey in list(q_ch_map.keys()))
         self.selectbox_qubits = CheckableComboBox()
         self.selectbox_qubits.default_display_text = 'Select...'
-        self.selectbox_qubits.addItems([qubit_name for qubit_name in self.qubit_list])
+        self.selectbox_qubits.addItems(list(self.qubit_list))
 
         self.instrument_list = set(self.get_current_segment().elements_on_awg)
         self.selectbox_instruments = CheckableComboBox()
@@ -352,7 +352,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
             return fig, axes
 
     def get_current_segment(self):
-        return self.sequences[self.current_sequence_index].segments[self.current_segment_index]
+        return self.sequences[self.current_sequence_index][self.current_segment_index]
 
     def get_active_channel_map(self):
         channel_map = None
