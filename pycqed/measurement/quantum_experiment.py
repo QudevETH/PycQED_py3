@@ -14,6 +14,7 @@ import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
 from copy import deepcopy
 import logging
+from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
 
 
@@ -213,6 +214,7 @@ class QuantumExperiment(CircuitBuilder):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type})
+        self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
@@ -827,3 +829,6 @@ class QuantumExperiment(CircuitBuilder):
 
     def __repr__(self):
         return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
+
+    def spawn_waveform_viewer(self, **kwargs):
+        self.waveform_viewer = WaveformViewer(self, **kwargs)

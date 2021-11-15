@@ -237,7 +237,7 @@ gui_rc_params = {
     'lines.dashed_pattern': [3.7, 1.6],
     'lines.dotted_pattern': [1.0, 1.65],
     'lines.linestyle': '-',
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.0,
     'lines.marker': 'None',
     'lines.markeredgecolor': 'auto',
     'lines.markeredgewidth': 1.0,

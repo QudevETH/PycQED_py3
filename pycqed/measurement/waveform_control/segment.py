@@ -41,6 +41,7 @@ class Segment:
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
         self.resolved_pulses = []
+        self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self.elements = odict()
         self.element_start_end = {}
@@ -164,6 +165,7 @@ class Segment:
         self.resolve_mirror()
         self.resolve_Z_gates()
         self.add_flux_crosstalk_cancellation_channels()
+        self.extra_pulses = []
         self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
@@ -489,6 +491,7 @@ class Segment:
             }
             pulse = pl.BufferedSquarePulse(
                 last_element, c, name='compensation_pulse_{}'.format(i), **kw)
+            self.extra_pulses.append(pulse)
             i += 1
 
             # Set the pulse to start after the last pulse of the sequence
@@ -673,6 +676,7 @@ class Segment:
                         channel=channel,
                         name='trigger_pulse_{}'.format(i),
                         **kw)
+                    self.extra_pulses.append(trig_pulse)
                     i += 1
 
                     trig_pulse.algorithm_time(trigger_pulse_time -
@@ -1360,10 +1364,16 @@ class Segment:
                                 if channel_map is None:
                                     # plot per device
                                     ax[i, col_ind].set_title(instr)
-                                    ax[i, col_ind].plot(
+                                    artists = ax[i, col_ind].plot(
                                         tvals * 1e6, wf,
                                         label=f"{elem_name[1]}_{k}_{ch}",
                                         **plot_kwargs)
+                                    for artist in artists:
+                                        artist.pycqed_metadata = {'channel': ch,
+                                                                  'element_name': elem_name[1],
+                                                                  'codeword': k,
+                                                                  'instrument': instr,
+                                                                  }
                                 else:
                                     # plot on each qubit subplot which includes
                                     # this channel in the channel map
@@ -1373,11 +1383,17 @@ class Segment:
                                              if f"{instr}_{ch}" in qb_chs}
                                     for qbi, qb_name in match.items():
                                         ax[qbi, col_ind].set_title(qb_name)
-                                        ax[qbi, col_ind].plot(
+                                        artists = ax[qbi, col_ind].plot(
                                             tvals * 1e6, wf,
                                             label=f"{elem_name[1]}"
                                                   f"_{k}_{instr}_{ch}",
                                             **plot_kwargs)
+                                        for artist in artists:
+                                            artist.pycqed_metadata = {'channel': ch,
+                                                                      'element_name': elem_name[1],
+                                                                      'codeword': k,
+                                                                      'instrument': instr,
+                                                                      }
                                         if demodulate: # filling
                                             ax[qbi, col_ind].fill_between(
                                                 tvals * 1e6, wf,

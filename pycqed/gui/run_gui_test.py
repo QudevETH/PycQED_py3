@@ -1,6 +1,7 @@
 # run the init script
 from pycqedscripts.init.demo.virtual_ATC75_M136_S17HW02_PQSC import *
-MC.datadir('C:\\Users\\Kuno Knapp\\Documents\\pydata')
+datadir_path = r'C:\Users\Kuno Knapp\Documents\pydata'
+MC.datadir(datadir_path)
 a_tools.datadir = MC.datadir()
 
 #%%
@@ -23,21 +24,34 @@ task_list = [chevron_task]
 # run the Chevron measurement
 chev = Chevron(task_list,
                dev=dev,
-               cal_states=('g', 'e', 'f'), # use calibration states g, e, f
+               cal_states=('g', 'e', 'f'),  # use calibration states g, e, f
                cz_pulse_name=cz_pulse_name,
                sweep_points=sweep_points,
-               label='Chevron',
-              )
+               )
 #%%
-from pycqed.gui import waveform_viewer
 import importlib
+from pycqed.gui import waveform_viewer
 from pycqed.gui import rc_params
-#%%
-ppv2 = ba.BaseDataAnalysis.get_default_plot_params(set_pars=False)  # v2
-ppv3 = plot_mod.get_default_plot_params(set_params=False)  # v3
 
 #%%
 importlib.reload(rc_params)
 importlib.reload(waveform_viewer)
-wpqe = waveform_viewer.WaveformViewer(chev)
+wpqe = waveform_viewer.WaveformViewer(chev, new_process=False)
 
+#%%
+# example of waveform viewer with keywords
+wpqe = waveform_viewer.WaveformViewer(chev,
+                                      sequence_index=1,
+                                      segment_index=2,
+                                      rc_params=
+                                      {'figure.facecolor': '#383838',
+                                       'axes.facecolor': '#505050',
+                                       'text.color': 'white',
+                                       'axes.labelcolor': 'white',
+                                       'xtick.color': 'white',
+                                       'ytick.color': 'white'},
+                                      linewidth='1.2',
+                                      )
+
+#%%
+chev.spawn_waveform_viewer()
