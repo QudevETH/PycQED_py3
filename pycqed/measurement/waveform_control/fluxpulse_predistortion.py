@@ -113,7 +113,7 @@ def combine_FIR_filters(kernels, FIR_n_force_zero_coeffs=None):
     convolution (optionally forcing some initial coefficients to zero).
 
     :param kernels: (list of arrays) the FIR filter kernels
-    :param combine_FIR_filters: (int or None) If this is an int n,
+    :param FIR_n_force_zero_coeffs: (int or None) If this is an int n,
         the first n coefficients of the combined filter are replaced by
         zeros and the filter is renormalized afterwards. This can, e.g., be
         used to create a causal filter.
