@@ -1422,7 +1422,6 @@ class Segment:
                 fig.suptitle(f'{self.name}', **figtitle_kwargs)
             else:
                 fig.suptitle(f'{self.name}', y=1.01)
-            fig.suptitle(f'{self.name}', y=1.01)
             fig.align_ylabels()
             plt.tight_layout()
             if savefig:
