@@ -1856,7 +1856,10 @@ class BaseDataAnalysis(object):
             if plot_nolabel and plot_nolabel_units:
                 no_label = False
             self.plot_colorbar(axs=axs, pdict=pdict,
-                               no_label=no_label)
+                               no_label=no_label,
+                               cax=pdict.get('cax', None),
+                               orientation=pdict.get('orientation',
+                                                     'vertical'))
 
     def label_color2D(self, pdict, axs):
         plot_transpose = pdict.get('transpose', False)
@@ -1898,19 +1901,22 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        if not isinstance(axs, Axes3D):
+            cmap = axs.cmap
+        else:
+            cmap = pdict.get('colormap')
         if cax is None:
             if not isinstance(axs, Axes3D):
                 axs.ax_divider = make_axes_locatable(axs)
                 axs.cax = axs.ax_divider.append_axes(
-                    'right', size=plot_cbarwidth, pad=plot_cbarpad)
-                cmap = axs.cmap
+                    'right' if orientation == 'vertical' else 'top',
+                    size=plot_cbarwidth, pad=plot_cbarpad)
             else:
                 plot_cbarwidth = str_to_float(plot_cbarwidth)
                 plot_cbarpad = str_to_float(plot_cbarpad)
                 axs.cax, _ = mpl.colorbar.make_axes(
                     axs, shrink=1 - plot_cbarwidth - plot_cbarpad, pad=plot_cbarpad,
                     orientation=orientation)
-                cmap = pdict.get('colormap')
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
@@ -1924,6 +1930,9 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
+        if orientation == 'horizontal':
+            axs.cax.xaxis.set_label_position("top")
+            axs.cax.xaxis.tick_top()
 
         if self.tight_fig:
             axs.figure.tight_layout()

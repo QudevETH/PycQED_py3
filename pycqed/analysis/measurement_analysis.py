@@ -486,6 +486,9 @@ class MeasurementAnalysis(object):
                     # only mpl scalar formatters support this feature
                     pass
 
+                plot_kw = {}
+                if 'plot_the_title' not in plot_args and i > 0:
+                    plot_kw['plot_the_title'] = False
                 self.plot_results_vs_sweepparam(x=self.sweep_points,
                                                 y=self.measured_values[i],
                                                 fig=fig, ax=ax,
@@ -493,7 +496,7 @@ class MeasurementAnalysis(object):
                                                 x_unit=self.sweep_unit[0],
                                                 ylabel=self.ylabels[i],
                                                 save=False,
-                                                **plot_args)
+                                                **plot_args, **plot_kw)
                 # fig.suptitle(self.plot_title)
             fig.subplots_adjust(hspace=1.5)
             if show:
