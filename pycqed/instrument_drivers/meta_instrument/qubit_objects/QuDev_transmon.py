@@ -68,6 +68,8 @@ class QuDev_transmon(Qubit):
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
+        self.add_parameter('instr_switch',
+            parameter_class=InstrumentRefParameter)
 
         # device parameters for user only
         # could be cleaned up
@@ -464,6 +466,28 @@ class QuDev_transmon(Qubit):
                            initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
                            vals=vals.Dict())
 
+        # switch parameters
+        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        self.add_parameter(
+            'switch_modes', parameter_class=ManualParameter,
+            initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
+            docstring=
+            "A dictionary whose keys are identifiers of switch modes and "
+            "whose values are dicts understood by the set_switch method of "
+            "the SwitchControls instrument specified in the parameter "
+            "instr_switch. The keys must include 'modulated' (for routing "
+            "the upconverted IF signal to the experiment output of the "
+            "upconversion board, used for all experiments that do not "
+            "specify a different mode), 'spec' (for routing the LO input to "
+            "the experiment output of the upconversion board, used for "
+            "qubit spectroscopy), and 'calib' (for routing the upconverted "
+            "IF signal to the calibration output of upconversion board, "
+            "used for mixer calibration). The keys can include 'no_drive' "
+            "(to replace the 'modulated' setting in case of measurements "
+            "without drive signal, i.e., when calling qb.prepare with "
+            "drive=None) as well as additional custom modes (to be used in "
+            "manual calls to set_switch).")
+
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
 
@@ -819,7 +843,7 @@ class QuDev_transmon(Qubit):
                 nr_samples=nr_samples,
             )
 
-    def prepare(self, drive='timedomain'):
+    def prepare(self, drive='timedomain', switch='default'):
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -872,6 +896,23 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        # See the docstring of switch_modes for an explanation of the
+        # following modes.
+        if switch == 'default':
+            if drive is None and 'no_drive' in self.switch_modes():
+                # use special mode for measurements without drive if that
+                # mode is defined
+                self.set_switch('no_drive')
+            else:
+                # use 'spec' for qubit spectroscopy measurements
+                # (continuous_spec and pulsed_spec) and 'modulated' otherwise
+                self.set_switch(
+                    'spec' if drive is not None and drive.endswith('_spec')
+                    else 'modulated')
+        else:
+            # switch mode was explicitly provided by the caller (e.g.,
+            # for mixer calib)
+            self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         if weights_type is None:
@@ -956,6 +997,24 @@ class QuDev_transmon(Qubit):
                 uhf.set('qas_0_integration_weights_{}_imag'.format(c1), sinI)
             else:
                 raise KeyError('Invalid weights type: {}'.format(weights_type))
+
+    def set_switch(self, switch_mode='modulated'):
+        """
+        Sets the switch control (given in the qcodes parameter instr_switch)
+        to the given mode.
+
+        :param switch_mode: (str) the name of a switch mode that is defined in
+            the qcodes parameter switch_modes of this qubit (default:
+            'modulated'). See the docstring of switch_modes for more details.
+        """
+        if self.instr_switch() is None:
+            return
+        switch = self.instr_switch.get_instr()
+        mode = self.switch_modes().get(switch_mode, None)
+        if mode is None:
+            log.warning(f'Switch mode {switch_mode} not configured for '
+                        f'{self.name}.')
+        switch.set_switch(mode)
 
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
@@ -2012,7 +2071,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             self.instr_pulsar.get_instr().start()
             MC.run('ge_uc_spectrum' + self.msmt_suffix)
 
@@ -2042,7 +2101,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, ro_lo_freq + self.ro_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_sweep_function(s)
             MC.set_sweep_points(self.scope_fft_det.get_sweep_vals())
             MC.set_detector_function(self.scope_fft_det)
@@ -2084,7 +2143,7 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(detector_generator())
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
@@ -2150,7 +2209,7 @@ class QuDev_transmon(Qubit):
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
         ):
-            self.prepare(drive='timedomain')
+            self.prepare(drive='timedomain', switch='calib')
             detector = self.int_avg_det_spec
             detector.always_prepare = True
             detector.AWG = self.instr_pulsar.get_instr()
@@ -2264,7 +2323,7 @@ class QuDev_transmon(Qubit):
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             ):
-                self.prepare(drive='timedomain')
+                self.prepare(drive='timedomain', switch='calib')
                 MC.set_detector_function(self.int_avg_det)
                 MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
 
