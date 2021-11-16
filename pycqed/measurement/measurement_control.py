@@ -159,12 +159,7 @@ class MeasurementControl(Instrument):
 
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
-            self.main_QtPlot = QtPlot(
-                window_title='Main plotmon of {}'.format(self.name),
-                figsize=(600, 400))
-            self.secondary_QtPlot = QtPlot(
-                window_title='Secondary plotmon of {}'.format(self.name),
-                figsize=(600, 400))
+            self.open_plotmon_windows()
 
         self.plotting_interval(plotting_interval)
 
@@ -814,6 +809,14 @@ class MeasurementControl(Instrument):
             return False
         else:
             return self.live_plot_enabled()
+
+    def open_plotmon_windows(self):
+        self.main_QtPlot = QtPlot(
+            window_title='Main plotmon of {}'.format(self.name),
+            figsize=(600, 400))
+        self.secondary_QtPlot = QtPlot(
+            window_title='Secondary plotmon of {}'.format(self.name),
+            figsize=(600, 400))
 
     def _get_plotmon_axes_info(self):
         '''
