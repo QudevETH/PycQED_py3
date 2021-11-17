@@ -28,7 +28,12 @@ class VirtualNationalInstrumentsUSB6501(Instrument):
     def write_port(self, port_number, value):
         self.prev_port_vals[port_number] = self.port_vals[port_number]
         self.port_vals[port_number] = value
-        log.info(f'Writing {value} to port {port_number}.')
+        log.info(f'{self.name}: Writing {value} to port {port_number}.')
+
+    def read_port(self, port_number):
+        val = self.port_vals[port_number]
+        log.info(f'{self.name}: Reading {val} from port {port_number}.')
+        return val
 
 
 class SwitchControl(Instrument):
