@@ -155,29 +155,35 @@ class MultiSwitchControl(Instrument):
     def __init__(self, name, switch_controls, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
         self.switch_controls = switch_controls
-        for key, switch in self.switches.items():
-            self.add_parameter(
-                f'{key[0]}_{key[1]}_mode',
-                label=f'{switch.label} in {key[0]}',
-                vals=qc.validators.Enum(*switch.modes),
-                get_cmd=switch.get,
-                set_cmd=switch.set,
-                docstring="possible values: " + ', '.join(
-                    [f'{m}' for m in switch.modes]),
-            )
+        self.switch_params = {}
+        for sc in self.switch_controls:
+            for k, param in sc.parameters.items():
+                if not k.endswith('_mode'):
+                    continue
+                sw_name = k[:-5]  # remove '_mode'
+                self.switch_params[(sc.name, sw_name)] = param
+                label = f'{param.label} in switch control {sc.name}'
+                self.add_parameter(
+                    f'{sc.name}_{sw_name}_mode',
+                    label=label, get_cmd=param, set_cmd=param,
+                    docstring=f'{label}\npossible values: ' + ', '.join(
+                        [f'{v}' for v in param.vals.valid_values]),
+                )
 
     @property
     def switches(self):
         return {(sc.name, sw_name): sw for sc in self.switch_controls
+                if hasattr(sc, 'switches')
                 for sw_name, sw in sc.switches.items()}
 
     def set_switch(self, values):
-        switches = self.switches
         for sc in self.switch_controls:
-            values_sc = {switches[k].name: val for k, val in values.items()
-                         if switches[k].instrument == sc}
-            print(sc.name, values_sc)
-            sc.set_switch(values_sc)
+            values_sc = {k[1]: v for k, v in values.items() if k[0] == sc.name}
+            if hasattr(sc, 'set_switch'):  # supports setting multiple params
+                sc.set_switch(values_sc)
+            else:  # set each parameter individually
+                for k, v in values_sc.items():
+                    self.parameters[f'{sc.name}_{k}_mode'](v)
 
 
 
