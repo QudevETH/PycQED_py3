@@ -141,10 +141,12 @@ modifications to be made before the merge request is accepted.
 to review:
   * 1 bugfix per MR, instead of multiple bugfixes (unless all related).
   * 1 new feature per MR, unless the new features do not make sense individually.
-* Fill in the provided merge request template.
+* Fill in the template on GitLab (see
+[Merge request template](./merge_Request_template.md)).
 * Provide background when necessary to facilitate the review, e.g. justify some
 implementation choices, or document the limitations of your implementation.
 * Reference related GitLab merge requests (e.g. `!3`) and issues (e.g. `#7`).
+* Mention people (e.g. `@thhavy`) in discussion if you need feedback from them.
 * Delete the source branch after it is merged, unless there is a reason to keep
 it alive (e.g. for archiving purposes).
 
