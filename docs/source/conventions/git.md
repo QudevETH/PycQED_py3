@@ -2,6 +2,11 @@
 
 ## Branches
 
+The branching model is based on the branching model described in the post
+[A successful Git branching model](http://nvie.com/posts/a-successful-git-branching-model/),
+but differs in that the development branch is replaced by several "project"
+branches. 
+
 ### Branch naming
 
 TODO: points to discuss: 
@@ -19,14 +24,21 @@ subsections:
 *  `cleanup/<branch_name>`: Clean-up branch.
 *  `tmp/<branch_name>`: Temporary branch.
 
-### Type of branches
-
 #### Main branch
 
 * The main branch of this repository is `qudev_master`.
 * It is the reference branch which should only contain valid code.
 * No one is allowed to directly push on it. It is only possible to modify it
 through merge requests.
+* When working on long-lasting branches, be sure to update them regularly with
+the latest changes from this branch. This can be done as follows:
+```bash
+git checkout master
+git pull origin master
+git checkout <your_branch>
+git merge qudev_master
+# git push origin <your_branch>
+```
 
 #### Project branches
 
