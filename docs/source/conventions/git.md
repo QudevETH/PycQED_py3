@@ -150,5 +150,18 @@ it alive (e.g. for archiving purposes).
 
 ## Issues tracking
 
-When encountering problems with PycQED, make sure to open an issue on GitLab, so
-that it can be properly tracked and eventually resolved.
+* When encountering problems with PycQED, make sure to open an issue on GitLab,
+so that it can be properly tracked and eventually resolved.
+* Issues may be reopenned later if the problem reoccurs or if a bug is
+re-introduced.
+* Fill in the template on GitLab (see [Issue template](./issue_template.md)).
+* Add adequate labels to classify issues.
+* You can create a merge request to fix and issue directly from the issue
+description in GitLab (see {numref}`mr_from_issue`).
+
+(mr_from_issue)=
+```{figure} /images/conventions/mr_from_issue.png
+:align: center
+
+Create a merge request from an issue in GitLab
+```
