@@ -73,6 +73,7 @@ class SwitchControl(Instrument):
         # parameters for the individual switches
         self.switch_config = deepcopy(switches)
         self.switches = {}
+        self.switch_params = {}
         for k, v in self.switch_config.items():
             v = copy(v)
             switch_type = v.pop('type')
@@ -80,8 +81,9 @@ class SwitchControl(Instrument):
                 switch_type = eval(switch_type)
             self.switches[k] = switch_type(name=k, instrument=self, **v)
         for switch in self.switches.values():
+            param_name = f'{switch.name}_mode'
             self.add_parameter(
-                f'{switch.name}_mode',
+                param_name,
                 label=switch.label,
                 vals=qc.validators.Enum(*switch.modes),
                 get_cmd=switch.get,
@@ -89,6 +91,7 @@ class SwitchControl(Instrument):
                 docstring="possible values: " + ', '.join(
                     [f'{m}' for m in switch.modes]),
             )
+            self.switch_params[switch.name] = self.parameters[param_name]
 
         # ensure that the initial switch states are written to the controller
         self.set_switch({})
