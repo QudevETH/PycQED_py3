@@ -49,6 +49,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         options to the analysis.
     """
 
+    default_experiment_name = 'MultitaskingExperiment'
     # The following dictionary can be overwritten by child classes to
     # specify keyword arguments from which sweep_points should be generated
     # automatically (see docstring of generate_kw_sweep_points).
@@ -62,17 +63,10 @@ class MultiTaskingExperiment(QuantumExperiment):
     # will then automatically replaced by measurement object names in case
     # the actual objects were provided.
     task_mobj_keys = ()
-    # The following string can be overwritten by child classes to provide a
-    # default value for the kwarg experiment_name.
-    default_experiment_name = 'MultitaskingExperiment'
 
     def __init__(self, task_list, dev=None, qubits=None,
                  operation_dict=None, **kw):
 
-        if getattr(self, 'experiment_name', None) is None:
-            # if not yet set by child class
-            self.experiment_name = kw.get('experiment_name',
-                                          self.default_experiment_name)
         for task in task_list:
             # convert qubit objects to qubit names
             for k in self.task_mobj_keys:
