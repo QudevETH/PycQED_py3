@@ -162,7 +162,7 @@ class SwitchControl(Instrument):
 class MultiSwitchControl(Instrument):
     def __init__(self, name, switch_controls, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
-        self.switch_controls = switch_controls
+        self.switch_controls = copy(switch_controls)
         for scA in switch_controls:
             for scB in switch_controls:
                 if scA.name.startswith(f'{scB.name}_'):
