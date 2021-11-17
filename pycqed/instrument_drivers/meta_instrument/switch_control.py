@@ -163,13 +163,21 @@ class MultiSwitchControl(Instrument):
     def __init__(self, name, switch_controls, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
         self.switch_controls = switch_controls
+        for scA in switch_controls:
+            for scB in switch_controls:
+                if scA.name.startswith(f'{scB.name}_'):
+                    raise NameError(
+                        f'The name "{scA.name}" starts with the name of '
+                        f'"{scB.name}" plus an underscore. This is not allowed '
+                        f'as it might lead to ambiguous parameter names.')
         self.switch_params = {}
         for sc in self.switch_controls:
             for k, param in sc.parameters.items():
                 if not k.endswith('_mode'):
                     continue
                 sw_name = k[:-5]  # remove '_mode'
-                self.switch_params[(sc.name, sw_name)] = param
+                self.switch_params[
+                    self._format_switch_name(sc.name, sw_name)] = param
                 label = f'{param.label} in switch control {sc.name}'
                 self.add_parameter(
                     f'{sc.name}_{sw_name}_mode',
@@ -178,13 +186,26 @@ class MultiSwitchControl(Instrument):
                         [f'{v}' for v in param.vals.valid_values]),
                 )
 
+    @staticmethod
+    def _format_switch_name(switch_control_name, switch_name):
+        return f'{switch_control_name}_{switch_name}'
+
+    def _split_switch_name(self, switch_name):
+        scs = [sc.name for sc in self.switch_controls
+               if switch_name.startswith(f'{sc.name}_')]
+        if len(scs) != 1:
+            raise KeyError(f'Could not find switch control for switch '
+                           f'{switch_name}.')
+        return scs[0], switch_name[(len(scs[0]) + 1):]
+
     @property
     def switches(self):
-        return {(sc.name, sw_name): sw for sc in self.switch_controls
-                if hasattr(sc, 'switches')
+        return {self._format_switch_name(sc.name, sw_name): sw
+                for sc in self.switch_controls if hasattr(sc, 'switches')
                 for sw_name, sw in sc.switches.items()}
 
     def set_switch(self, values):
+        values = {self._split_switch_name(k): v for k, v in values.items()}
         for sc in self.switch_controls:
             values_sc = {k[1]: v for k, v in values.items() if k[0] == sc.name}
             if hasattr(sc, 'set_switch'):  # supports setting multiple params
@@ -192,7 +213,6 @@ class MultiSwitchControl(Instrument):
             else:  # set each parameter individually
                 for k, v in values_sc.items():
                     self.parameters[f'{sc.name}_{k}_mode'](v)
-
 
 
 class SwitchType:
