@@ -6,7 +6,10 @@ from qcodes import Instrument
 from copy import copy, deepcopy
 
 # driver for NationalInstruments USB6501
-from pycqedscripts.drivers import NI_USB6501
+try:
+    from pycqedscripts.drivers.NI_USB6501 import NationalInstrumentsUSB6501
+except Exception:
+    NationalInstrumentsUSB6501 = type(None)
 
 import logging
 log = logging.getLogger(__name__)
@@ -49,7 +52,7 @@ class SwitchControl(Instrument):
     def __init__(self, name, dio, switches, switch_time=50e-3):
         super().__init__(name)
 
-        if not (isinstance(dio, NI_USB6501.NationalInstrumentsUSB6501) or
+        if not (isinstance(dio, NationalInstrumentsUSB6501) or
                 isinstance(dio, VirtualNationalInstrumentsUSB6501)):
             raise Exception('Specified Instrument is not an Instance of '
                             'NationalInstruments_USB6501.')
