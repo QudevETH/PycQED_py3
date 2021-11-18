@@ -427,6 +427,18 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter(op_name, ps_name + '_gaussian_filter_sigma',
                                  'gaussian_filter_sigma', initial_value=2e-9,
                                  vals=vals.Numbers(0))
+        self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
+                                 '_trans_amplitude', initial_value=0,
+                                 vals=vals.Numbers(),
+                                 docstring="Used for NZTransitionControlledPulse")
+        self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude2',
+                                 '_trans_amplitude2', initial_value=0,
+                                 vals=vals.Numbers(),
+                                 docstring="Used for NZTransitionControlledPulse")
+        self.add_pulse_parameter(op_name, ps_name + '_trans_length',
+                                 '_trans_length', initial_value=0,
+                                 vals=vals.Numbers(0),
+                                 docstring="Used for NZTransitionControlledPulse")
 
         # dc flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
