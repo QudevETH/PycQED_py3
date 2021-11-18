@@ -433,7 +433,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
-                         update=True, measure=True):
+                         update=True, measure=True, operation_dict=None):
     """
     Measures time traces for specified states and
     Args:
@@ -480,7 +480,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                             f"except if you know what you are doing.")
 
         # combine operations and preparation dictionaries
-        operation_dict = dev.get_operation_dict(qubits=qubits)
+        if operation_dict is None:
+            operation_dict = dev.get_operation_dict(qubits=qubits)
         prep_params = dev.get_prep_params(qubits)
         MC = qubits[0].instr_mc.get_instr()
 

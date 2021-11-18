@@ -439,13 +439,16 @@ class QuDev_transmon(Qubit):
                                  vals=vals.Bool())
         self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
                                  '_trans_amplitude', initial_value=0,
-                                 vals=vals.Numbers())
+                                 vals=vals.Numbers(),
+                                 docstring="Used for NZTransitionControlledPulse")
         self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude2',
                                  '_trans_amplitude2', initial_value=0,
-                                 vals=vals.Numbers())
+                                 vals=vals.Numbers(),
+                                 docstring="Used for NZTransitionControlledPulse")
         self.add_pulse_parameter(op_name, ps_name + '_trans_length',
                                  '_trans_length', initial_value=0,
-                                 vals=vals.Numbers(0))
+                                 vals=vals.Numbers(0),
+                                 docstring="Used for NZTransitionControlledPulse")
 
         # dc flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
@@ -4362,9 +4365,11 @@ class QuDev_transmon(Qubit):
         :param pulsar: the pulsar object. If None, self.find_instrument is
             used to find an obejct called 'Pulsar'.
         :param datadir: path to the pydata directory. If None,
-            self.find_instrument is used to find an obejct called 'MC' and
+            self.find_instrument is used to find an object called 'MC' and
             the datadir of MC is used.
         """
+        if not self.flux_pulse_channel():
+            return
         pulsar = self.instr_pulsar.get_instr()
         if datadir is None:
             datadir = self.find_instrument('MC').datadir()
