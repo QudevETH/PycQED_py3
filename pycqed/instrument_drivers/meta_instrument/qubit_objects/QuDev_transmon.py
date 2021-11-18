@@ -176,6 +176,9 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter('RO', 'ro_disable_repeat_pattern',
+                                 'disable_repeat_pattern',
+                                 initial_value=False, vals=vals.Bool())
         self.add_pulse_parameter(
             'RO', 'ro_trigger_channels', 'trigger_channels',
             vals=vals.MultiType(vals.Enum(None), vals.Strings(),
