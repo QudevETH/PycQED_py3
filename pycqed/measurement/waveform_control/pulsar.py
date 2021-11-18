@@ -1670,6 +1670,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
 
         fail = None
         super()._create_awg_parameters(awg, channel_name_map)
+        # Reconstruct the set of unique channel groups from the
+        # self.channel_groups dictionary, which stores for each channel a list
+        # of all channels in the same group.
         self.num_channel_groups[awg.name] = len(set(
             ['---'.join(v) for k, v in self.channel_groups.items()
              if self.get('{}_awg'.format(k)) == awg.name]))
