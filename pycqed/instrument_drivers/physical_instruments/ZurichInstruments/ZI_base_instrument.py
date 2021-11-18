@@ -1476,7 +1476,8 @@ class ZI_base_instrument(Instrument):
                 # Check if there are new errors
                 if code not in self._errors or count > self._errors[code]['count']:
                     if code in _errors_to_ignore:
-                        log.warning(f'{self.devname}: {message} ({code}/{severity})')
+                        # 1 line different from Delft version: reduced log level
+                        log.info(f'{self.devname}: {message} ({code}/{severity})')
                     else:
                         log.error(f'{self.devname}: {message} ({code}/{severity})')
                         found_errors = True
