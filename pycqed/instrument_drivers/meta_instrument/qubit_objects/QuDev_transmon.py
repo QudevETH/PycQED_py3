@@ -2141,8 +2141,10 @@ class QuDev_transmon(Qubit):
                 np.random.uniform(limits[0], limits[1], n_meas),
                 np.random.uniform(limits[2], limits[3], n_meas)])
 
-        if np.max(meas_grid) >= 0.8:
-            log.error('Measurement grid contains DC amplitudes above 0.8 V:'
+        # Check that bounds of measurement grid are reasonable and do not exceed
+        # 500 mV as this might damage the diodes inside the mixers.
+        if np.max(np.abs(meas_grid)) >= 0.5:
+            log.error('Measurement grid contains DC amplitudes above 500 mV:'
                       'Maximum amplitude is {:.2f} mV!'.format(1e3*np.max(meas_grid)))
 
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
@@ -2165,6 +2167,9 @@ class QuDev_transmon(Qubit):
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (chI_par, chI_par()),  # for automatic reset after the sweep
+                (chQ_par, chQ_par()),  # for automatic reset after the sweep
+
         ):
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(det.IndexDetector(
@@ -2181,12 +2186,12 @@ class QuDev_transmon(Qubit):
         if(ch_I_min < limits[0] or ch_I_min > limits[1]):
             log.warning('Optimum for DC bias voltage I channel is outside '
                         'the measured range and no settings will be updated. '
-                        'Best V_I according to fitting: {.2f} mV'.format(ch_I_min*1e-3))
+                        'Best V_I according to fitting: {:.2f} mV'.format(ch_I_min*1e-3))
             update = False
         if(ch_Q_min < limits[2] or ch_Q_min > limits[3]):
             log.warning('Optimum for DC bias voltage Q channel is outside '
                         'the measured range and no settings will be updated. '
-                        'Best V_Q according to fitting: {.2f} mV'.format(ch_Q_min*1e-3))
+                        'Best V_Q according to fitting: {:.2f} mV'.format(ch_Q_min*1e-3))
             update = False
 
         if update:
@@ -2403,6 +2408,8 @@ class QuDev_transmon(Qubit):
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+            (chI_par, chI_par()),  # for automatic reset after the sweep
+            (chQ_par, chQ_par()),  # for automatic reset after the sweep
         ):
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det)
