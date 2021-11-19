@@ -739,21 +739,10 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
                                            default_value='', **params)
     if not len(keys_out_container) or keys_out_container is None:
         keys_out_container = f'{mobjn}.{msmt_type}'
+
     fit_dicts = hlp_mod.get_param('fit_dicts', data_dict, raise_error=True)
     for keyi in keys_in:
         fit_res = fit_dicts['rb_fit' + keyi]['fit_res']
-        hlp_mod.add_param(f'{keys_out_container}.EPC value',
-                          fit_res.params['error_per_Clifford'].value,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.EPC stderr',
-                          fit_res.params['fidelity_per_Clifford'].stderr,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.depolarization parameter value',
-                          fit_res.params['p'].value,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.depolarization parameter stderr',
-                          fit_res.params['p'].stderr,
-                          data_dict, add_param_method='replace')
         if 'pf' in keyi:
             A = fit_res.best_values['Amplitude']
             Aerr = fit_res.params['Amplitude'].stderr
@@ -797,6 +786,21 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
                               fit_res.params['pd'].stderr,
                               data_dict,
                               add_param_method='replace')
+        else:
+            hlp_mod.add_param(f'{keys_out_container}.EPC value',
+                              fit_res.params['error_per_Clifford'].value,
+                              data_dict, add_param_method='replace')
+            hlp_mod.add_param(f'{keys_out_container}.EPC stderr',
+                              fit_res.params['fidelity_per_Clifford'].stderr,
+                              data_dict, add_param_method='replace')
+            hlp_mod.add_param(
+                f'{keys_out_container}.depolarization parameter value',
+                fit_res.params['p'].value, data_dict,
+                add_param_method='replace')
+            hlp_mod.add_param(
+                f'{keys_out_container}.depolarization parameter stderr',
+                fit_res.params['p'].stderr, data_dict,
+                add_param_method='replace')
 
     if hlp_mod.get_param('plot_T1_lim', data_dict, default_value=False,
                          **params):
