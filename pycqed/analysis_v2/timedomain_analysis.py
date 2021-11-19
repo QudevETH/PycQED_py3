@@ -8278,6 +8278,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     if self.classif_method == "gmm":
                         kwargs['means'] = self._get_means(self.clf_[qbn])
                         kwargs['std'] = np.sqrt(self._get_covariances(self.clf_[qbn]))
+                    else:
+                        # no Gaussian distribution can be plotted
+                        kwargs['plot_fitting'] = False
                     kwargs['colors'] = cmap(np.unique(data['prep_states']))
                     fig, main_ax = self.plot_1D_hist(data['X'][:n_shots_to_plot],
                                             data["prep_states"][:n_shots_to_plot],
