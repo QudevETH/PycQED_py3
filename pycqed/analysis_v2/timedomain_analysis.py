@@ -8292,10 +8292,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
-                    means = pdd['analysis_params']['means'][qbn]
+                    data_means = pdd['analysis_params']['means'][qbn]
                     try:
-                        clf_means = pdd['analysis_params'][
-                            'classifier_params'][qbn]['means_']
+                        clf_means = self._get_means(self.clf_[qbn])
                     except Exception as e: # not a gmm model--> no clf_means.
                         clf_means = []
                     try:
@@ -8303,14 +8302,14 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     except Exception as e: # not a gmm model--> no cov.
                         covs = []
 
-                    for i, mean in enumerate(means):
-                        main_ax.scatter(mean[0], mean[1], color='w', s=80)
+                    for i, data_mean in enumerate(data_means.values()):
+                        main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
                         if len(clf_means):
                             main_ax.scatter(clf_means[i][0], clf_means[i][1],
                                                       color='k', s=80)
                         if len(covs) != 0:
                             self.plot_std(clf_means[i] if len(clf_means)
-                                          else mean,
+                                          else data_mean,
                                           covs[i],
                                           n_std=1, ax=main_ax,
                                           edgecolor='k', linestyle='--',
