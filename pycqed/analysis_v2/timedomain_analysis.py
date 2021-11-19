@@ -8160,6 +8160,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                       "implemented. Available methods: {}"
                                       .format(method, ['ncc', 'gmm',
                                                        'threshold']))
+
     @staticmethod
     def _get_covariances(gmm, cov_type=None):
        return SSROQutrit._get_covariances(gmm, cov_type=cov_type)
@@ -8258,7 +8259,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 "states": list(pdd["analysis_params"]['means'][qbn].keys()),
                 "xlabel": "Integration Unit 1, $u_1$",
                 "ylabel": "Integration Unit 2, $u_2$",
-                "scale":self.options_dict.get("hist_scale", "log"),
+                "scale": self.options_dict.get("hist_scale", "log"),
                 "cmap":tab_x}
             data_keys = [k for k in list(pdd.keys()) if
                             k.startswith("data") and qbn in pdd[k]]
