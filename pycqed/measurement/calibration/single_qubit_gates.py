@@ -5,7 +5,7 @@ import traceback
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import ParametricValue
+from pycqed.measurement.waveform_control.block import Block, ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
@@ -2901,8 +2901,11 @@ class ActiveReset(CalibBuilder):
         # thresholds
         default_sp = SweepPoints("initialize", self.prep_states)
         default_sp.add_sweep_dimension()
-        # second dimension to have once only readout and once with feedback
-        default_sp.add_sweep_parameter("pulse_off", [1, 0])
+
+        # # second dimension to have once only readout and once with feedback
+        # default_sp.add_sweep_parameter("pulse_off", [1, 0, 0 ... 0])
+        # default_sp.add_sweep_parameter("thresholds_u1", thresholds)
+
         self.sweep_points = kw.get('sweep_points',
                                    default_sp)
 
