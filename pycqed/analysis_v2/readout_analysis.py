@@ -754,6 +754,12 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             'classif_kw': kw to pass to the classifier
             see BaseDataAnalysis for more.
         '''
+        msg = "This analysis is deprecated and will fail when the measurement " \
+              " is performed with mqm.measure_ssro. Please use " \
+              "'tda.MultiQutrit_Singleshot_Readout_Analysis' instead. Note that" \
+              " this analysis should still work if the measurement was perf" \
+              "ormed with 'qb.measure_ssro'."
+        log.warning(msg)
         super().__init__(t_start=t_start, t_stop=t_stop,
                          label=label, do_fitting=do_fitting,
                          data_file_path=data_file_path,
