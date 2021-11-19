@@ -1321,6 +1321,11 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return covs
 
     @staticmethod
+    def _get_means(gmm):
+        return gmm.means_
+
+
+    @staticmethod
     def plot_1D_hist(data, y_true=None, plot_fitting=True,
                      **kwargs):
         """
@@ -1391,7 +1396,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             kwargs.update(dict(title=title))
             if data['X'].shape[1] == 1:
                 if self.classif_method == "gmm":
-                    kwargs['means'] = pdd['analysis_params']['means']
+                    kwargs['means'] = self._get_means(self.clf_)
                     kwargs['std'] = np.sqrt(self._get_covariances(self.clf_))
                 kwargs['colors'] = cmap(np.unique(data['prep_states']))
                 fig, main_ax = self.plot_1D_hist(data['X'],
