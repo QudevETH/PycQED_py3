@@ -9504,9 +9504,6 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
-    def __init__(self, qb_names, *args, **kwargs):
-        super().__init__(qb_names, *args, **kwargs)
-
     def extract_data(self):
         super().extract_data()
         if self.get_param_value('TwoD', default_value=None) is None:
@@ -9522,8 +9519,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         alpha = hsp
         phase = ssp
 
-        sideband_I = mdata['UHF_raw w0']
-        sideband_Q = mdata['UHF_raw w1']
+        sideband_I, sideband_Q = list(mdata.values())
 
         if len(hsp) * len(ssp) == len(sideband_I.flatten()):
             alpha, phase = np.meshgrid(hsp, ssp)
@@ -9689,10 +9685,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'linestyle': '--'
         }
 
-class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
-    def __init__(self, qb_names, *args, **kwargs):
-        super().__init__(qb_names, *args, **kwargs)
 
+class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         if self.get_param_value('TwoD', default_value=None) is None:
@@ -9704,21 +9698,21 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         hsp = self.raw_data_dict['hard_sweep_points']
         ssp = self.raw_data_dict['soft_sweep_points']
         mdata = self.raw_data_dict['measured_data']
-        LO = np.log10(mdata['Magn'])
+        LO_dBV = 20*np.log10(list(mdata.values()))
 
         VI = hsp
         VQ = ssp
 
-        if len(hsp) * len(ssp) == len(LO.flatten()):
+        if len(hsp) * len(ssp) == len(LO_dBV.flatten()):
             VI, VQ = np.meshgrid(hsp, ssp)
             VI = VI.flatten()
             VQ = VQ.flatten()
-            LO = LO.T.flatten()
+            LO_dBV = LO_dBV.T.flatten()
 
         self.proc_data_dict['V_I'] = VI
         self.proc_data_dict['V_Q'] = VQ
-        self.proc_data_dict['LO_leakage'] = LO
-        self.proc_data_dict['data_to_fit'] = LO
+        self.proc_data_dict['LO_leakage'] = LO_dBV
+        self.proc_data_dict['data_to_fit'] = LO_dBV
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -9727,13 +9721,14 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         VQ = self.proc_data_dict['V_Q']
         data = self.proc_data_dict['data_to_fit']
 
-        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, independent_vars=['x', 'y'])
+        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, 
+                                           independent_vars=['vi', 'vq'])
         guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod)
 
         self.fit_dicts['mixer_lo_leakage'] = {
             'model': mixer_lo_leakage_mod,
-            'fit_xvals': {'x': VI,
-                          'y': VQ},
+            'fit_xvals': {'vi': VI,
+                          'vq': VQ},
             'fit_yvals': {'data': data},
             'guess_pars': guess_pars}
 
@@ -9774,8 +9769,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         fit_res = fit_dict['fit_res']
         best_values = fit_res.best_values
         model_func = fit_dict['model'].func
-        # 10* for conversion to dBV
-        z = 10*model_func(V_I_plot, V_Q_plot, **best_values)
+        z = model_func(V_I_plot, V_Q_plot, **best_values)
 
         timestamp = self.timestamps[0]
 
