@@ -1083,7 +1083,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             do_PCA = 'pca' in self.rotation_type[qbn].lower()
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
             cal_states_rot_qb = cal_states_rotations.get(qbn, {})
-            for i in range(len(cal_states_rot_qb)):
+            for i in list(cal_states_rot_qb.values()):
                 # cal state corresponding to transmon level i
                 cal_state = \
                     [k for k, idx in cal_states_rot_qb.items()
