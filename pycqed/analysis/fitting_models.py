@@ -1566,6 +1566,59 @@ def TwoErrorFunc_guess(model, delays, data):
     return params
 
 
+def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
+    """Analytical model for the max. amplitude of the unwanted SB of an IQ mixer.
+
+    Args:
+        alpha (float): Correction factor that was applied to the amplitude of 
+            the Q signal.
+        phi_skew (float): Phase correction of the Q signal relative to the I 
+            signal.
+        g (float, optional): Power ratio between the LO power splitter outputs. 
+            It is defined as power(LO_I)/power(LO_Q).
+            Defaults to 1.0.
+        phi (float, optional): Phase between the two ports of the LO power 
+            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). Defaults 
+            to 0 degree.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+
+    Returns:
+        float: maximum sideband amplitude for the specified parameters in dBV
+
+    Model Schematic:
+         I >------------------------------ I  R ----+
+                                            LO      |
+                                            |       |
+        LO >------\-/-----------------------+       |
+                   X  (90° power splitter)          +----> RF
+                --/-\--- 1/g*exp(i*phase) --+       |
+                                            |       |
+                                            LO      |
+         Q >--- alpha*exp(i*phi_skew) ---- I  R ----+
+    """
+    return 20*np.log10(np.abs(1 - alpha/g 
+                                   * np.exp(-1j*np.deg2rad(phi + phi_skew)))
+                        ) + offset
+
+
+def mixer_imbalance_sideband_guess(model, **kwargs):
+    """Prepare and return parameters of an :py:lmfit.model: for the model
+    mixer_imbalance_sideband.
+
+    Args:
+        model (:py:lmfit.model:): The model that the parameter hints will be 
+            added to and that is used to generate the parameters using the 
+            :py:lmfit.model.make_params() method.
+
+    Returns:
+        :py:lmfit.parameters: Parameters
+    """
+    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('phi', value=0, min=-20, max=20)
+    model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
+    return model.make_params()
+
 
 def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
     """Model for maximum amplitude of LO leakage of an IQ mixer.
@@ -1709,16 +1762,6 @@ def plot_fitres2D_heatmap(fit_res, x, y, axs=None, cmap='viridis'):
     axs[2].set_title('initial guess')
     return axs
 
-
-def mixer_imbalance_sideband(x, y, g=1.0, phi=0, scale=1.0):
-    return np.log10(np.abs((1 - x/g * np.exp(-1j*np.deg2rad(phi + y))
-                            ) * scale))
-
-def mixer_imbalance_sideband_guess(model, **kwargs):
-    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
-    model.set_param_hint('phi', value=0, min=-20, max=20)
-    model.set_param_hint('scale', value=1, min=-1e3, max=1e3)
-    return model.make_params()
 # Before defining a new model, take a look at the built in models in lmfit.
 
 # From http://lmfit.github.io/lmfit-py/builtin_models.html
