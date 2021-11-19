@@ -530,10 +530,9 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
-            # tuple measurement: 2D measurement where each pair of entries in
-            # mc_points[0] and mc_points[1] makes up one measurement point.
-            # For example: randomly distributed points in the 2D plane as they 
-            # are used in the mixer calibration.
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
+            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # point.
             tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
@@ -544,15 +543,19 @@ class BaseDataAnalysis(object):
                     tuple_measurement = True
                     hsp = mc_points[0]
                     ssp = mc_points[1]
-
-                if counts[0] != len(hsp) and not tuple_measurement:
+                elif counts[0] > len(hsp):
                     # ssro data
                     n_shots = counts[0] // len(hsp)
                     hsp = np.tile(hsp, n_shots)
                 # if needed, decompress the data (assumes hsp and ssp are indices)
-                if compression_factor != 1 and not tuple_measurement:
-                    hsp = hsp[:int(len(hsp) / compression_factor)]
-                    ssp = np.arange(len(ssp) * compression_factor)
+                if compression_factor != 1:
+                    if not tuple_measurement:
+                        hsp = hsp[:int(len(hsp) / compression_factor)]
+                        ssp = np.arange(len(ssp) * compression_factor)
+                    else:
+                        log.warning(f"Tuple measurement does not support "
+                                    f"compression_factor and it will be ignored.")
+                    
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
@@ -622,7 +625,7 @@ class BaseDataAnalysis(object):
                                     :(i_seq + 1) * meas_hsl] = data_seq
                         measured_data = np.reshape(tmp_data, (ssl, hsl)).T
                     elif tuple_measurement:
-                        measured_data = np.reshape(data[i], (ssl)).T
+                        measured_data = np.reshape(data[i], (hsl)).T
                     else:
                         measured_data = np.reshape(data[i], (ssl, hsl)).T
                     if soft_sweep_mask is not None:
