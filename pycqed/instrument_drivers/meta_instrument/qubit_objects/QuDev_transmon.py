@@ -2366,8 +2366,8 @@ class QuDev_transmon(Qubit):
             self, update=True, meas_grid=None, n_meas=50,
             amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
         if not len(limits) == 4:
-            log.error('Input variable `first_round_limits` in function call '
-                      '`calibrate_drive_mixer_skewness_NN` needs to be a list '
+            log.error('Input variable `limits` in function call '
+                      '`calibrate_drive_mixer_skewness_new` needs to be a list '
                       'or 1D array of length 4.\nFound length '
                       '{} object instead!'.format(len(limits)))
 
@@ -2434,12 +2434,12 @@ class QuDev_transmon(Qubit):
         if(_alpha < limits[0] or _alpha > limits[1]):
             log.warning('Optimum for amplitude ratio is outside '
                         'the measured range and no settings will be updated. '
-                        'Best alpha according to fitting: {.2f}'.format(_alpha))
+                        'Best alpha according to fitting: {:.2f}'.format(_alpha))
             update = False
         if(_phi < limits[2] or _phi > limits[3]):
             log.warning('Optimum for phase correction is outside '
                         'the measured range and no settings will be updated. '
-                        'Best phi according to fitting: {.2f} deg'.format(_phi))
+                        'Best phi according to fitting: {:.2f} deg'.format(_phi))
             update = False
 
         if update:
