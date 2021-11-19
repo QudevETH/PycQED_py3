@@ -8526,7 +8526,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def _extract_snr(gmm=None,  state_labels=None, clf_params=None,):
         """
         Extracts SNR between pairs of states. SNR is defined as dist(m1,
-        m2)/sum(std1, std2), where dist = L2 norm, m1, m2 are the means of the
+        m2)/mean(std1, std2), where dist = L2 norm, m1, m2 are the means of the
         pair of states and std1, std2 are the "standard deviation" (obtained
         from the confidence ellipse of the covariance if 2D).
         :param gmm: Gaussian mixture model
@@ -8568,7 +8568,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 label = state_labels[sp[0]] + state_labels[sp[1]] \
                     if state_labels is not None else sp
 
-                snr.update({label: dist/(std0 + std1)})
+                snr.update({label: dist/np.mean([std0, std1])})
         return snr
 
     @staticmethod
