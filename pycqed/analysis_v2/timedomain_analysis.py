@@ -8689,6 +8689,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                       "implemented. Available methods: {}"
                                       .format(method, ['ncc', 'gmm',
                                                        'threshold']))
+
     @staticmethod
     def _get_covariances(gmm, cov_type=None):
        return SSROQutrit._get_covariances(gmm, cov_type=cov_type)
@@ -8787,7 +8788,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 "states": list(pdd["analysis_params"]['means'][qbn].keys()),
                 "xlabel": "Integration Unit 1, $u_1$",
                 "ylabel": "Integration Unit 2, $u_2$",
-                "scale":self.options_dict.get("hist_scale", "log"),
+                "scale": self.options_dict.get("hist_scale", "log"),
                 "cmap":tab_x}
             data_keys = [k for k in list(pdd.keys()) if
                             k.startswith("data") and qbn in pdd[k]]
@@ -8806,6 +8807,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     if self.classif_method == "gmm":
                         kwargs['means'] = self._get_means(self.clf_[qbn])
                         kwargs['std'] = np.sqrt(self._get_covariances(self.clf_[qbn]))
+                    else:
+                        # no Gaussian distribution can be plotted
+                        kwargs['plot_fitting'] = False
                     kwargs['colors'] = cmap(np.unique(data['prep_states']))
                     fig, main_ax = self.plot_1D_hist(data['X'][:n_shots_to_plot],
                                             data["prep_states"][:n_shots_to_plot],
@@ -8821,10 +8825,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
-                    means = pdd['analysis_params']['means'][qbn]
+                    data_means = pdd['analysis_params']['means'][qbn]
                     try:
-                        clf_means = pdd['analysis_params'][
-                            'classifier_params'][qbn]['means_']
+                        clf_means = self._get_means(self.clf_[qbn])
                     except Exception as e: # not a gmm model--> no clf_means.
                         clf_means = []
                     try:
@@ -8832,14 +8835,14 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     except Exception as e: # not a gmm model--> no cov.
                         covs = []
 
-                    for i, mean in enumerate(means.values()):
-                        main_ax.scatter(mean[0], mean[1], color='w', s=80)
+                    for i, data_mean in enumerate(data_means.values()):
+                        main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
                         if len(clf_means):
                             main_ax.scatter(clf_means[i][0], clf_means[i][1],
                                                       color='k', s=80)
                         if len(covs) != 0:
                             self.plot_std(clf_means[i] if len(clf_means)
-                                          else mean,
+                                          else data_mean,
                                           covs[i],
                                           n_std=1, ax=main_ax,
                                           edgecolor='k', linestyle='--',
