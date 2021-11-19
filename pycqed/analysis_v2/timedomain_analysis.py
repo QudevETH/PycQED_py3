@@ -7302,7 +7302,17 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             f'{self.phase_key}_{qbn}'] = {
                             'val': phase_diffs, 'stderr': phase_diffs_stderrs}
 
-                        # population_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
+                        # contrast = (cos_amp_g + cos_amp_e)/ 2
+                        contrast = (amps[1::2] + amps[0::2])/2
+                        contrast_stderr = 0.5*np.sqrt(
+                            np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
+                                     dtype=np.float64))
+
+                        self.proc_data_dict['analysis_params_dict'][
+                            f'mean_contrast_{qbn}'] = {
+                            'val': contrast, 'stderr': contrast_stderr}
+
+                        # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
                         population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
@@ -7319,6 +7329,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             f'population_loss_{qbn}'] = \
                             {'val': population_loss,
                              'stderr': population_loss_stderrs}
+
                 else:
                     self.proc_data_dict['analysis_params_dict'][
                         f'amps_{qbn}'] = {
@@ -7401,6 +7412,15 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                           f'{self.phase_key}_{qbn}'][
                                           'stderr'][0] * 180 / np.pi) + \
                                   r'$^{\circ}$'
+                        textstr += '\nMean contrast = \n' + \
+                                   '{:.3f} $\\pm$ {:.3f}'.format(
+                                       self.proc_data_dict[
+                                           'analysis_params_dict'][
+                                           f'mean_contrast_{qbn}']['val'][0],
+                                       self.proc_data_dict[
+                                           'analysis_params_dict'][
+                                           f'mean_contrast_{qbn}'][
+                                           'stderr'][0])
                         textstr += '\nContrast loss = \n' + \
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
