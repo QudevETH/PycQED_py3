@@ -2140,7 +2140,12 @@ class QuDev_transmon(Qubit):
             meas_grid = np.array([
                 np.random.uniform(limits[0], limits[1], n_meas),
                 np.random.uniform(limits[2], limits[3], n_meas)])
-
+        else:
+            limits[0] = np.min(meas_grid[0, :])
+            limits[1] = np.min(meas_grid[0, :])
+            limits[2] = np.min(meas_grid[1, :])
+            limits[3] = np.min(meas_grid[1, :])
+        
         # Check that bounds of measurement grid are reasonable and do not exceed
         # 500 mV as this might damage the diodes inside the mixers.
         if np.max(np.abs(meas_grid)) >= 0.5:
@@ -2372,6 +2377,11 @@ class QuDev_transmon(Qubit):
                                   limits[1], n_meas),
                 np.random.uniform(limits[2],
                                   limits[3], n_meas)])
+        else:
+            limits[0] = np.min(meas_grid[0, :])
+            limits[1] = np.min(meas_grid[0, :])
+            limits[2] = np.min(meas_grid[1, :])
+            limits[3] = np.min(meas_grid[1, :])
 
         MC = self.instr_mc.get_instr()
         _alpha = self.ge_alpha()
