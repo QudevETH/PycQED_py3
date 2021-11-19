@@ -9532,30 +9532,31 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             sideband_I = sideband_I.T.flatten()
             sideband_Q = sideband_Q.T.flatten()
 
-        sideband_log_amp = np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
+        sideband_dBV_amp = 20*np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
 
         self.proc_data_dict['alpha'] = alpha
         self.proc_data_dict['phase'] = phase
         self.proc_data_dict['sideband_I'] = sideband_I
         self.proc_data_dict['sideband_Q'] = sideband_Q
-        self.proc_data_dict['sideband_log_amp'] = sideband_log_amp
-        self.proc_data_dict['data_to_fit'] = sideband_log_amp
+        self.proc_data_dict['sideband_dBV_amp'] = sideband_dBV_amp
+        self.proc_data_dict['data_to_fit'] = sideband_dBV_amp
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
 
-        alpha = self.proc_data_dict['alpha']
-        phase = self.proc_data_dict['phase']
-        data = self.proc_data_dict['data_to_fit']
-
-        mixer_imbalance_sideband_mod = lmfit.Model(fit_mods.mixer_imbalance_sideband, independent_vars=['x', 'y'])
-        guess_pars = fit_mods.mixer_imbalance_sideband_guess(mixer_imbalance_sideband_mod)
+        mixer_imbalance_sideband_mod = lmfit.Model(
+            fit_mods.mixer_imbalance_sideband, 
+            independent_vars=['alpha', 'phi_skew']
+            )
+        guess_pars = fit_mods.mixer_imbalance_sideband_guess(
+            mixer_imbalance_sideband_mod
+            )
 
         self.fit_dicts['mixer_imbalance_sideband'] = {
             'model': mixer_imbalance_sideband_mod,
-            'fit_xvals': {'x': alpha,
-                          'y': phase},
-            'fit_yvals': {'data': data},
+            'fit_xvals': {'alpha': self.proc_data_dict['alpha'],
+                          'phi_skew': self.proc_data_dict['phase']},
+            'fit_yvals': {'data': self.proc_data_dict['data_to_fit']},
             'guess_pars': guess_pars}
 
     def analyze_fit_results(self):
@@ -9567,10 +9568,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             return fit_dict['model'].func(x[0], x[1], **best_values)
 
         min_res = sp.optimize.minimize(func, x0=np.array([1.0, 0.0]), method='Powell')
-        alpha = min_res.x[0]
-        phase = min_res.x[1]
-        self.proc_data_dict['analysis_params_dict']['alpha'] = alpha
-        self.proc_data_dict['analysis_params_dict']['phase'] = phase
+        self.proc_data_dict['analysis_params_dict']['alpha'] = min_res.x[0]
+        self.proc_data_dict['analysis_params_dict']['phase'] = min_res.x[1]
 
         self.save_processed_data(key='analysis_params_dict')
 
@@ -9588,7 +9587,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         fit_res = fit_dict['fit_res']
         best_values = fit_res.best_values
         model_func = fit_dict['model'].func
-        z = 10*model_func(x, y, **best_values) # 10* for conversion to dBV
+        z = model_func(x, y, **best_values)
 
         timestamp = self.timestamps[0]
 
@@ -9674,7 +9673,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'linestyle': 'None',
             'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
             'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
-            'xunit': '',
+            'xunit': 'deg',
             'yunit': 'dBV',
             'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
         }

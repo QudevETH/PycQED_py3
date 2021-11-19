@@ -1565,6 +1565,62 @@ def TwoErrorFunc_guess(model, delays, data):
                                offset = offset_guess)
     return params
 
+
+
+def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
+    """Model for maximum amplitude of LO leakage of an IQ mixer.
+
+    Args:
+        vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
+        vq (:obj:'float'): DC bias voltage applied on the Q input of the mixer.
+        li (float, optional): [TODO:description]. Defaults to 0.0.
+        lq (float, optional): [TODO:description]. Defaults to 0.0.
+        theta_i (int, optional): [TODO:description]. Defaults to 0.0.
+        theta_q (int, optional): [TODO:description]. Defaults to 0.0.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+    Returns:
+        :obj:'float': maximum amplitude of the LO leakage for given parameters
+    
+    Model Schematic:
+         I >-- +V_I ---------------- I  R -- li*exp(i*theta_i) -------+
+                                      LO                              |
+                                      |                               |
+        LO >------------\-/-----------+                               |
+                         X                                            +----> RF
+                      --/-\-----------+                               |
+                                      |                               |
+                                      LO                              |
+         Q >-- +V_Q ---------------- I  R -- lq*exp(i*theta_q-pi/2) --+
+    """
+    return 20*np.log10(np.abs(vi
+                            + li * np.exp(1j*theta_i)
+                            - 1j * vq
+                            + lq * np.exp(1j*(theta_q-np.pi/2))
+                            )) + offset
+
+
+def mixer_lo_leakage_guess(model, **kwargs):
+    """Prepare and return parameters of an :py:lmfit.model: for the model
+    mixer_lo_leakage.
+
+    Args:
+        model (:py:lmfit.model:): The model that the parameter hints will be added to
+            and that is used to generate the parameters. this model should have
+            the following parameters: 'li', 'lq', 'theta_i', 'theta_q', 'scale'
+
+    Returns:
+        :py:lmfit.parameters: Parameters
+    """
+    pi_half = np.pi/2
+    model.set_param_hint('li', value=0.0, min=0, max=1)
+    model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
+    model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
+    model.set_param_hint('theta_q', value=0.0, min=-pi_half, max=pi_half, vary=False)
+    model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
+    return model.make_params()
+
+
 #################################
 #     User defined Models       #
 #################################
@@ -1663,26 +1719,6 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     model.set_param_hint('phi', value=0, min=-20, max=20)
     model.set_param_hint('scale', value=1, min=-1e3, max=1e3)
     return model.make_params()
-
-
-def mixer_lo_leakage(x, y, li=0.1, lq=0.1, theta_i=0, theta_q=0, scale=1.0):
-    vi = x
-    vq = y
-    return np.log10(np.abs((vi
-                            + li * np.exp(1j*theta_i)
-                            - 1j * vq
-                            + lq * np.exp(1j*(theta_q-np.pi/2))
-                            ) * scale))
-
-def mixer_lo_leakage_guess(model, **kwargs):
-    pi_half = np.pi/2
-    model.set_param_hint('li', value=0.1, min=1e-3, max=1)
-    model.set_param_hint('lq', value=0.1, min=1e-3, max=1)
-    model.set_param_hint('theta_i', value=0.1, min=-pi_half, max=pi_half)
-    model.set_param_hint('theta_q', value=0.1, min=-pi_half, max=pi_half)
-    model.set_param_hint('scale', value=1, min=-1e3, max=1e3)
-    return model.make_params()
-
 # Before defining a new model, take a look at the built in models in lmfit.
 
 # From http://lmfit.github.io/lmfit-py/builtin_models.html
