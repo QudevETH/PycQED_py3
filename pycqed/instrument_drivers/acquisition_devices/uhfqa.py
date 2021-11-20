@@ -98,8 +98,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             self.qas_0_monitor_averages(averages)
             ro_mode = 1
 
-        self.set('awgs_0_userregs_{}'.format(self.USER_REG_LOOP_CNT), loop_cnt)
-        self.set('awgs_0_userregs_{}'.format(self.USER_REG_RO_MODE), ro_mode)
+        self.set(f'awgs_0_userregs_{self.USER_REG_LOOP_CNT}', loop_cnt)
+        self.set(f'awgs_0_userregs_{self.USER_REG_RO_MODE}', ro_mode)
 
     def poll(self, poll_time=0.1):
         # The timeout of 1ms (second argument) is smaller than in
