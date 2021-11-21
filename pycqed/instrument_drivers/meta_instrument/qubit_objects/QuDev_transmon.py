@@ -2416,8 +2416,6 @@ class QuDev_transmon(Qubit):
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
-            (chI_par, chI_par()),  # for automatic reset after the sweep
-            (chQ_par, chQ_par()),  # for automatic reset after the sweep
         ):
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det)
