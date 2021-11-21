@@ -9753,22 +9753,13 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         fit_dict = self.fit_dicts['mixer_lo_leakage']
         best_values = fit_dict['fit_res'].best_values
-
-        def fitted_model(x):
-            return fit_dict['model'].func(x[0], x[1], **best_values)
-
-        min_res = sp.optimize.minimize(fitted_model,
-                                       x0=np.array([1.0, 0.0]),
-                                       method='Powell',
-                                       )
-
+        
+        compute values that minimize the fitted model:
+        leakage = best_values['li'] * np.exp(1j* best_values['theta_i']) \
+                  - 1j * best_values['lq'] * np.exp(1j*best_values['theta_q'])
         adict = self.proc_data_dict['analysis_params_dict']
-        if min_res.success:
-            VI = min_res.x[0]
-            VQ = min_res.x[1]
-            adict['V_I'] = VI
-            adict['V_Q'] = VQ
-            adict['LO_leakage'] = min_res.x[1]
+        adict['V_I'] = -leakage.real
+        adict['V_Q'] = leakage.imag
 
         self.save_processed_data(key='analysis_params_dict')
 
