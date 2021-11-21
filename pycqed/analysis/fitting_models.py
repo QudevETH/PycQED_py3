@@ -1573,7 +1573,7 @@ def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
         alpha (float): Correction factor that was applied to the amplitude of 
             the Q signal.
         phi_skew (float): Phase correction of the Q signal relative to the I 
-            signal.
+            signal in degree.
         g (float, optional): Power ratio between the LO power splitter outputs. 
             It is defined as power(LO_I)/power(LO_Q).
             Defaults to 1.0.
@@ -1587,89 +1587,115 @@ def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
         float: maximum sideband amplitude for the specified parameters in dBV
 
     Model Schematic:
+        Note: In the schematic phases are shown as radiant quantities while the 
+              function expects phases expressed in degree.
          I >------------------------------ I  R ----+
                                             LO      |
                                             |       |
         LO >------\-/-----------------------+       |
                    X  (90° power splitter)          +----> RF
-                --/-\--- 1/g*exp(i*phase) --+       |
+                --/-\--- 1/g*exp(i*phi) ----+       |
                                             |       |
                                             LO      |
          Q >--- alpha*exp(i*phi_skew) ---- I  R ----+
     """
     return 20*np.log10(np.abs(1 - alpha/g 
-                                   * np.exp(-1j*np.deg2rad(phi + phi_skew)))
-                        ) + offset
+                                  * np.exp(-1j*np.deg2rad(phi + phi_skew)))
+                       ) + offset
 
 
 def mixer_imbalance_sideband_guess(model, **kwargs):
-    """Prepare and return parameters of an :py:lmfit.model: for the model
-    mixer_imbalance_sideband.
+    """Prepare and return parameters for the model :py:func:'.mixer_imbalance_sideband.'
 
     Args:
-        model (:py:lmfit.model:): The model that the parameter hints will be 
-            added to and that is used to generate the parameters using the 
-            :py:lmfit.model.make_params() method.
+        model (:py:class:'lmfit.model'): The model that the parameter hints will
+            be added to and that is used to generate the parameters using the 
+            :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
 
     Returns:
-        :py:lmfit.parameters: Parameters
+        :py:class:'lmfit.parameters': Parameters
     """
     model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
     model.set_param_hint('phi', value=0, min=-20, max=20)
     model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
-    return model.make_params()
+    return model.make_params(**kwargs)
 
 
 def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
-    """Model for maximum amplitude of LO leakage of an IQ mixer.
+    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
 
     Args:
         vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
         vq (:obj:'float'): DC bias voltage applied on the Q input of the mixer.
-        li (float, optional): [TODO:description]. Defaults to 0.0.
-        lq (float, optional): [TODO:description]. Defaults to 0.0.
-        theta_i (int, optional): [TODO:description]. Defaults to 0.0.
-        theta_q (int, optional): [TODO:description]. Defaults to 0.0.
+        li (float, optional): Amplitude of the LO leakage of the I port mixer. 
+            Also see note below. Defaults to 0.0.
+        lq (float, optional): Amplitude of the LO leakage of the Q port mixer. 
+            Also see note below. Defaults to 0.0.
+        theta_i (int, optional): Phase in radiant of the LO leakage of the I 
+            port mixer. Also see note below. Defaults to 0.0 rad.
+        theta_q (int, optional): Phase in radiant of the LO leakage of the Q 
+            port mixer. Also see note below. Defaults to 0.0 rad.
         offset (float, optional): Offset in dBV accounting for losses in the 
             signal chain. Defaults to 0.0 dBV.
+
     Returns:
         :obj:'float': maximum amplitude of the LO leakage for given parameters
+
+    Important Note:
+        As can be seen from the model schematic and the implementation the 
+        pair of arguments li and theta_i as well as lq and theta_q each define a
+        complex number that will be added within the model. Therefore they are 
+        not uniquely defined from the models value and one should prefer to set 
+        one of the two pairs constant when fitting the model to data to prevent 
+        unneccesary overhead in the fitting routine.
     
     Model Schematic:
-         I >-- +V_I ---------------- I  R -- li*exp(i*theta_i) -------+
-                                      LO                              |
-                                      |                               |
-        LO >------------\-/-----------+                               |
-                         X                                            +----> RF
-                      --/-\-----------+                               |
-                                      |                               |
-                                      LO                              |
-         Q >-- +V_Q ---------------- I  R -- lq*exp(i*theta_q-pi/2) --+
+        Note: We are only interested in the amplitudes of signals that are of 
+              LO frequency.
+
+         I >-- +V_I ---------------- I  R --- +V_I ---------------+-----+
+                                      LO                          |     |
+                                      |                           |     |
+        LO >------------\-/-----------+--- li*exp(i*theta_i) -----+     |
+                         X                                              +--> RF
+                      --/-\-----------+--- -i*lq*exp(i*theta_q) --+     |
+                                      |                           |     |
+                                      LO                          |     |
+         Q >-- +V_Q ---------------- I  R --- -iV_Q --------------+-----+
     """
     return 20*np.log10(np.abs(vi
                             + li * np.exp(1j*theta_i)
                             - 1j * vq
-                            + lq * np.exp(1j*(theta_q-np.pi/2))
+                            - 1j * lq * np.exp(1j*theta_q)
                             )) + offset
 
 
 def mixer_lo_leakage_guess(model, **kwargs):
-    """Prepare and return parameters of an :py:lmfit.model: for the model
-    mixer_lo_leakage.
+    """Prepare and return parameters  for the model :py:func:'.mixer_lo_leakage'.
 
     Args:
-        model (:py:lmfit.model:): The model that the parameter hints will be added to
-            and that is used to generate the parameters. this model should have
-            the following parameters: 'li', 'lq', 'theta_i', 'theta_q', 'scale'
+        model (:py:class:'lmfit.model'): The model that the parameter hints will 
+            be added to and that is used to generate the parameters using the 
+            :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
 
     Returns:
-        :py:lmfit.parameters: Parameters
+        :py:class:'lmfit.parameters': Parameters
+
+    Note:
+        The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
+        descibed in the documentation of :py:func:'.mixer_lo_leakage'.
     """
     pi_half = np.pi/2
     model.set_param_hint('li', value=0.0, min=0, max=1)
     model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
     model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
-    model.set_param_hint('theta_q', value=0.0, min=-pi_half, max=pi_half, vary=False)
+    model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
+                         max=pi_half, vary=False
+                         )
     model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
     return model.make_params()
 
