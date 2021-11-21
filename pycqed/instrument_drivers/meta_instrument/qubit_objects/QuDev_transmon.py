@@ -2384,8 +2384,6 @@ class QuDev_transmon(Qubit):
             limits[3] = np.min(meas_grid[1, :])
 
         MC = self.instr_mc.get_instr()
-        _alpha = self.ge_alpha()
-        _phi = self.ge_phi_skew()
 
         s1 = swf.Hard_Sweep()
         s1.name = 'Amplitude ratio hardware sweep'
