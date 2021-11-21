@@ -2422,6 +2422,58 @@ class QuDev_transmon(Qubit):
     def calibrate_drive_mixer_skewness_new(
             self, update=True, meas_grid=None, n_meas=(10, 10),
             amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
+        """Method for calibrating the sideband suppression of the drive IQ Mixer
+
+        The two settings that are used to calibrate the suppression of the 
+        unwanted sideband are the amplitude ratio and phase between I and Q. 
+        This method measures the sideband suppression for different values of 
+        these two settings that are either handed over as meas_grid or generated 
+        automatically. The subsequent analysis fits an analytical model to the 
+        measured data and extracts the settings minimizing the amplitude of the 
+        sideband.
+
+        Args:
+            update (bool, optional): Determines whether the setting found from 
+                the measurements that are supposed to minimize the sideband 
+                suppression are written into the qubit parameters or not. 
+                Defaults to True.
+            meas_grid (:py:class:'np.array', optional): Grid of points to be 
+                measured in form
+                of a np.array of shape (2, #points). The first dimension holding 
+                the values for the amplitude ratio and the second dimension 
+                holding the phi_skew values in degrees. If no meas_grid is 
+                provided a uniform grid is generated using n_meas and limits. 
+                Defaults to None.
+            n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
+                determines the number of measurement points in case meas_grid is
+                not provided. 
+                n_meas[0] = points in amplitude ratio.
+                n_meas[1] = points in phi_skew.
+                Defaults to (10, 10).
+            amplitude (float, optional): Amplitude of the IF signal in V applied
+                to the mixer during the measurement. Defaults to 0.1 V.
+            trigger_sep (float, optional): Seperation time in s between trigger
+                signals. Also see note below! Defaults to 5e-6 s.
+            limits (tuple, optional): Tuple, list or 1D array of length 4 
+                holding the limits of the measurement grid in case 
+                meas_grid is not provided. Ordered as follows
+                (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
+                Units: (None, None, deg, deg)
+                Defaults to (0.9, 1.1, -10, 10).
+
+        Returns:
+            alpha (float): The amplitude ratio that maximizes the suppression of 
+                the unwanted sideband.
+            phi_skew (float): The phi_skew that maximizes the suppression of 
+                the unwanted sideband.
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
+                The MixerSkewnessAnalysis object.
+
+        Note:
+            When the hack is applied that suppresses bugs of the ZI devices
+            one might need to increase the trigger seperation to values above 
+            25e-5 s.
+        """
         if meas_grid is None:
             if not len(limits) == 4:
                 log.error('Input variable `limits` in function call '
