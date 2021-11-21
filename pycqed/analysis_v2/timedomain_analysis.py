@@ -9563,7 +9563,9 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         def func(x):
             return fit_dict['model'].func(x[0], x[1], **best_values)
 
-        min_res = sp.optimize.minimize(func, x0=np.array([1.0, 0.0]), method='Powell')
+        min_res = sp.optimize.minimize(func, 
+                                       x0=np.array([1.0, 0.0]), 
+                                       method='Powell')
         self.proc_data_dict['analysis_params_dict']['alpha'] = min_res.x[0]
         self.proc_data_dict['analysis_params_dict']['phase'] = min_res.x[1]
 
@@ -9587,7 +9589,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
         timestamp = self.timestamps[0]
 
-        base_plot_name = 'mixer'
+        base_plot_name = 'mixer_sideband_suppression'
         self.plot_dicts['base_contour'] = {
             'fig_id': base_plot_name,
             'plotfn': self.plot_contourf,
@@ -9600,7 +9602,9 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'deg',
             'setlabel': 'sideband magnitude',
             'cmap': 'plasma',
-            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ (dBV)'
+            'clabel': '$V_\\mathrm{LO-IF}$ (dBV)',
+            'title': f'{timestamp}_calibrate_drive_mixer_skewness_'
+                     f'{self.qb_names[0]}'
         }
 
         self.plot_dicts['base_measurement_points'] = {
@@ -9621,7 +9625,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'plotfn': self.plot_line,
             'xvals': np.array([alpha_min]),
             'yvals': np.array([phase_min]),
-            'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n$\phi$ ={phase_min:.2f}$^\\circ$',
+            'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
+                        f'$\phi$ ={phase_min:.2f}$^\\circ$',
             'color': 'red',
             'marker': 'o',
             'linestyle': 'None',
@@ -9641,10 +9646,11 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
-            'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
+            'ylabel': '$V_\\mathrm{LO-IF}$',
             'xunit': '',
             'yunit': 'dBV',
-            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto ampl. ratio $\\alpha_\\mathrm{IQ}$'
+            'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO-IF}}$ '
+                     f'projected onto ampl. ratio $\\alpha_\\mathrm{{IQ}}$'
         }
 
         self.plot_dicts['optimum_in_alpha_vs_sb_magn'] = {
@@ -9668,10 +9674,11 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
-            'ylabel': 'Ampl., $V_\\mathrm{LO-IF}$',
+            'ylabel': '$V_\\mathrm{LO-IF}$',
             'xunit': 'deg',
             'yunit': 'dBV',
-            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO-IF}$ projected onto Phase Off., $\\Delta\\phi_\\mathrm{IQ}$'
+            'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO-IF}}$ '
+                     f'projected onto phase offset $\\Delta\\phi_\\mathrm{{IQ}}$'
         }
 
         self.plot_dicts['optimum_in_phase_vs_sb_magn'] = {
@@ -9786,7 +9793,9 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'V',
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
-            'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ (dBV)'
+            'clabel': '$V_\\mathrm{LO}$ (dBV)',
+            'title': f'{timestamp}_calibrate_drive_mixer_carrier_'
+                     f'{self.qb_names[0]}'
         }
 
         self.plot_dicts['base_measurement_points'] = {
@@ -9819,27 +9828,28 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         }
 
         for ch in ['I', 'Q']:
-            plot_name = 'V_'+ch+'_vs_LO_magn'
+            plot_name = f'V_{ch}_vs_LO_magn'
             leakage = self.proc_data_dict['LO_leakage']
-            self.plot_dicts['raw_V_'+ch+'_vs_LO_magn'] = {
+            self.plot_dicts[f'raw_V_{ch}_vs_LO_magn'] = {
                 'fig_id': plot_name,
                 'plotfn': self.plot_line,
-                'xvals': self.proc_data_dict['V_'+ch],
+                'xvals': self.proc_data_dict[f'V_{ch}'],
                 'yvals': leakage,
                 'color': 'blue',
                 'marker': '.',
                 'linestyle': 'None',
-                'xlabel': 'Offset, $V_\\mathrm{'+ch+'}$',
-                'ylabel': 'Ampl., $V_\\mathrm{LO}$',
+                'xlabel': f'Offset, $V_\\mathrm{{{ch}}}$',
+                'ylabel': '$V_\\mathrm{LO}$',
                 'xunit': 'V',
                 'yunit': 'dBV',
-                'title': '('+timestamp+') Ampl., $V_\\mathrm{LO}$ projected onto Offset, $V_\\mathrm{'+ch+'}$'
+                'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO}}$ '
+                         f'projected onto offset $V_\\mathrm{{{ch}}}$'
             }
 
             optimum =self.proc_data_dict['analysis_params_dict']['V_'+ch]
             y_min = np.min(leakage)
             y_max = np.max(leakage)
-            self.plot_dicts['optimum_V_'+ch+'_vs_LO_magn'] = {
+            self.plot_dicts[f'optimum_V_{ch}_vs_LO_magn'] = {
                 'fig_id': plot_name,
                 'plotfn': self.plot_line,
                 'xvals': np.array([optimum, optimum]),
