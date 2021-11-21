@@ -9583,8 +9583,14 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         alpha = pdict['alpha']
         phase = pdict['phase']
 
-        xi = np.linspace(np.min(alpha), np.max(alpha), 250)
-        yi = np.linspace(np.min(phase), np.max(phase), 250)
+        # define grid with limits based on measurement points and make it 10 % 
+        # larger in both axes
+        size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
+        size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
+        xi = np.linspace(np.min(alpha) - size_offset_alpha, 
+                         np.max(alpha) + size_offset_alpha, 250)
+        yi = np.linspace(np.min(phase) - size_offset_phase, 
+                         np.max(phase) + size_offset_phase, 250)
         x, y = np.meshgrid(xi, yi)
 
         fit_dict = self.fit_dicts['mixer_imbalance_sideband']
@@ -9778,9 +9784,14 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         V_Q = self.proc_data_dict['V_Q']
 
         # interpolate data for plot
-        # define grid.
-        vi = np.linspace(np.min(V_I), np.max(V_I), 250)
-        vq = np.linspace(np.min(V_Q), np.max(V_Q), 250)
+        # define grid with limits based on measurement points and make it 10 % 
+        # larger in both axes
+        size_offset_vi = 0.05*(np.max(V_I)-np.min(V_I))
+        size_offset_vq = 0.05*(np.max(V_Q)-np.min(V_Q))
+        vi = np.linspace(np.min(V_I) - size_offset_vi, 
+                         np.max(V_I) + size_offset_vi, 250)
+        vq = np.linspace(np.min(V_Q) - size_offset_vq, 
+                         np.max(V_Q) + size_offset_vq, 250)
         V_I_plot, V_Q_plot = np.meshgrid(vi, vq)
 
         fit_dict = self.fit_dicts['mixer_lo_leakage']
