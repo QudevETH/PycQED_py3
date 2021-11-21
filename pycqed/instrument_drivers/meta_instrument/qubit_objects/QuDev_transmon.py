@@ -2134,6 +2134,53 @@ class QuDev_transmon(Qubit):
                                           limits=(-0.15, 0.15, -0.15, 0.15),
                                           n_meas=(10, 10), meas_grid=None,
                                           upload=True):
+        """Method for calibrating the lo leakage of the drive IQ Mixer
+
+        By applying DC biases on the I and Q inputs of an IQ mixer one can 
+        change the bias conditions of the diodes inside the mixer. This can be 
+        used to reduce LO leakage. This method measures the LO leakage for 
+        different values of DC biases. The subsequent analysis fits an 
+        analytical model to the measured data and extracts the settings 
+        minimizing the LO leakage.
+
+        Args:
+            update (bool, optional): Determines whether the DC biases found from 
+                the measurements that minimize the LO leakage 
+                are written into the qubit parameters or not. 
+                Defaults to True.
+            meas_grid (:py:class:'np.array', optional): Grid of points to be 
+                measured in form of a Numpy array of shape (2, number of points). 
+                The first dimension holding 
+                the values for I channel DC biases and the second dimension 
+                holding the Q channel DC biases. Both in volts. If no meas_grid 
+                is provided a uniform grid is generated using n_meas and limits. 
+                Defaults to None.
+            n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
+                determines the number of measurement points in case meas_grid is
+                not provided. 
+                n_meas[0] = points in V_I.
+                n_meas[1] = points in V_Q.
+                Defaults to (10, 10).
+            trigger_sep (float, optional): Seperation time in s between trigger
+                signals. Also see note below! Defaults to 5e-6 s.
+            limits (tuple, optional): Tuple, list or 1D array of length 4 
+                holding the limits of the measurement grid in case 
+                meas_grid is not provided. Ordered as follows
+                (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
+                Units: (None, None, deg, deg)
+                Defaults to (0.9, 1.1, -10, 10).
+
+        Returns:
+            V_I (float): DC bias on I channel that minimizes LO leakage.
+            V_Q (float): DC bias on Q channel that minimizes LO leakage.
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
+                The MixerCarrierAnalysis object.
+
+        Note:
+            When the hack is applied that suppresses bugs of the ZI devices
+            one might need to increase the trigger seperation to values above 
+            25e-5 s.
+        """
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
             if not len(limits) == 4:
