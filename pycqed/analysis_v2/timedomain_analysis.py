@@ -9504,7 +9504,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
-    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_skewness_new' measurement.
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_skewness_model' measurement.
     
     The class extracts the phase and amplitude correction settings of the Q 
     channel input of the measured IQ mixer that maximize the suppression of the 
@@ -9699,7 +9699,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
-    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_new' measurement.
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_model' measurement.
     
     The class extracts the DC biases on the I and Q channel inputs of the 
     measured IQ mixer that minimize the LO leakage.
@@ -9754,7 +9754,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         fit_dict = self.fit_dicts['mixer_lo_leakage']
         best_values = fit_dict['fit_res'].best_values
         
-        compute values that minimize the fitted model:
+        # compute values that minimize the fitted model:
         leakage = best_values['li'] * np.exp(1j* best_values['theta_i']) \
                   - 1j * best_values['lq'] * np.exp(1j*best_values['theta_q'])
         adict = self.proc_data_dict['analysis_params_dict']

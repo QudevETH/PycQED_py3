@@ -2130,10 +2130,10 @@ class QuDev_transmon(Qubit):
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
             no_improv_break=no_improv_break, upload=upload, plot=plot)
 
-    def calibrate_drive_mixer_carrier_new(self, update=True, trigger_sep=5e-6,
-                                          limits=(-0.15, 0.15, -0.15, 0.15),
-                                          n_meas=(10, 10), meas_grid=None,
-                                          upload=True):
+    def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
+                                            limits=(-0.15, 0.15, -0.15, 0.15),
+                                            n_meas=(10, 10), meas_grid=None,
+                                            upload=True):
         """Method for calibrating the lo leakage of the drive IQ Mixer
 
         By applying DC biases on the I and Q inputs of an IQ mixer one can 
@@ -2419,7 +2419,7 @@ class QuDev_transmon(Qubit):
 
         return _alpha, _phi, a
 
-    def calibrate_drive_mixer_skewness_new(
+    def calibrate_drive_mixer_skewness_model(
             self, update=True, meas_grid=None, n_meas=(10, 10),
             amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
         """Method for calibrating the sideband suppression of the drive IQ Mixer
