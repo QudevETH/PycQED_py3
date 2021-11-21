@@ -2132,7 +2132,7 @@ class QuDev_transmon(Qubit):
 
     def calibrate_drive_mixer_carrier_new(self, update=True, trigger_sep=5e-6,
                                           limits=(-0.15, 0.15, -0.15, 0.15),
-                                          n_meas=100, meas_grid=None,
+                                          n_meas=(10, 10), meas_grid=None,
                                           upload=True):
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
@@ -2141,14 +2141,20 @@ class QuDev_transmon(Qubit):
                         '`calibrate_drive_mixer_carrier_new` needs to be a list '
                         'or 1D array of length 4.\nFound length '
                         '{} object instead!'.format(len(limits)))
-            meas_grid = np.array([
-                np.random.uniform(limits[0], limits[1], n_meas),
-                np.random.uniform(limits[2], limits[3], n_meas)])
+            if not len(n_meas) == 2:
+                log.error('Input variable `n_meas` in function call '
+                        '`calibrate_drive_mixer_carrier_new` needs to be a list, '
+                        'tuple or 1D array of length 2.\nFound length '
+                        '{} object instead!'.format(len(n_meas)))
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+                                    np.linspace(limits[2], limits[3], n_meas[1]))
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
         else:
-            limits[0] = np.min(meas_grid[0, :])
-            limits[1] = np.min(meas_grid[0, :])
-            limits[2] = np.min(meas_grid[1, :])
-            limits[3] = np.min(meas_grid[1, :])
+            limits = []
+            limits.append(np.min(meas_grid[0, :]))
+            limits.append(np.max(meas_grid[0, :]))
+            limits.append(np.min(meas_grid[1, :]))
+            limits.append(np.max(meas_grid[1, :]))
         
         # Check that bounds of measurement grid are reasonable and do not exceed
         # 500 mV as this might damage the diodes inside the mixers.
@@ -2367,24 +2373,28 @@ class QuDev_transmon(Qubit):
         return _alpha, _phi, a
 
     def calibrate_drive_mixer_skewness_new(
-            self, update=True, meas_grid=None, n_meas=100,
+            self, update=True, meas_grid=None, n_meas=(10, 10),
             amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
         if meas_grid is None:
             if not len(limits) == 4:
                 log.error('Input variable `limits` in function call '
-                          '`calibrate_drive_mixer_skewness_new` needs to be a list '
-                          'or 1D array of length 4.\nFound length '
-                          '{} object instead!'.format(len(limits)))
-            meas_grid = np.array([
-                np.random.uniform(limits[0],
-                                  limits[1], n_meas),
-                np.random.uniform(limits[2],
-                                  limits[3], n_meas)])
+                        '`calibrate_drive_mixer_skewness_new` needs to be a list '
+                        'or 1D array of length 4.\nFound length '
+                        '{} object instead!'.format(len(limits)))
+            if not len(n_meas) == 2:
+                log.error('Input variable `n_meas` in function call '
+                        '`calibrate_drive_mixer_skewness_new` needs to be a list, '
+                        'tuple or 1D array of length 2.\nFound length '
+                        '{} object instead!'.format(len(n_meas)))
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+                                    np.linspace(limits[2], limits[3], n_meas[1]))
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
         else:
-            limits[0] = np.min(meas_grid[0, :])
-            limits[1] = np.min(meas_grid[0, :])
-            limits[2] = np.min(meas_grid[1, :])
-            limits[3] = np.min(meas_grid[1, :])
+            limits = []
+            limits.append(np.min(meas_grid[0, :]))
+            limits.append(np.max(meas_grid[0, :]))
+            limits.append(np.min(meas_grid[1, :]))
+            limits.append(np.max(meas_grid[1, :]))
 
         MC = self.instr_mc.get_instr()
 
