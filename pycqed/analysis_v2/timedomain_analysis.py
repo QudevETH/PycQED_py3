@@ -9565,15 +9565,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         fit_dict = self.fit_dicts['mixer_imbalance_sideband']
         best_values = fit_dict['fit_res'].best_values
-
-        def func(x):
-            return fit_dict['model'].func(x[0], x[1], **best_values)
-
-        min_res = sp.optimize.minimize(func, 
-                                       x0=np.array([1.0, 0.0]), 
-                                       method='Powell')
-        self.proc_data_dict['analysis_params_dict']['alpha'] = min_res.x[0]
-        self.proc_data_dict['analysis_params_dict']['phase'] = min_res.x[1]
+        self.proc_data_dict['analysis_params_dict']['alpha'] = best_values['g']
+        self.proc_data_dict['analysis_params_dict']['phase'] = -best_values['phi']
 
         self.save_processed_data(key='analysis_params_dict')
 
