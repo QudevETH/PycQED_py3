@@ -9504,6 +9504,12 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_skewness_new' measurement.
+    
+    The class extracts the phase and amplitude correction settings of the Q 
+    channel input of the measured IQ mixer that maximize the suppression of the 
+    unwanted sideband.
+    """
     def extract_data(self):
         super().extract_data()
         if self.get_param_value('TwoD', default_value=None) is None:
@@ -9694,6 +9700,11 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_new' measurement.
+    
+    The class extracts the DC biases on the I and Q channel inputs of the 
+    measured IQ mixer that minimize the LO leakage.
+    """
     def extract_data(self):
         super().extract_data()
         if self.get_param_value('TwoD', default_value=None) is None:
