@@ -2136,7 +2136,11 @@ class QuDev_transmon(Qubit):
                                           upload=True):
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
-            # half as many points from a uniform distribution at first run
+            if not len(limits) == 4:
+                log.error('Input variable `limits` in function call '
+                        '`calibrate_drive_mixer_carrier_new` needs to be a list '
+                        'or 1D array of length 4.\nFound length '
+                        '{} object instead!'.format(len(limits)))
             meas_grid = np.array([
                 np.random.uniform(limits[0], limits[1], n_meas),
                 np.random.uniform(limits[2], limits[3], n_meas)])
@@ -2363,15 +2367,14 @@ class QuDev_transmon(Qubit):
         return _alpha, _phi, a
 
     def calibrate_drive_mixer_skewness_new(
-            self, update=True, meas_grid=None, n_meas=50,
+            self, update=True, meas_grid=None, n_meas=100,
             amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
-        if not len(limits) == 4:
-            log.error('Input variable `limits` in function call '
-                      '`calibrate_drive_mixer_skewness_new` needs to be a list '
-                      'or 1D array of length 4.\nFound length '
-                      '{} object instead!'.format(len(limits)))
-
         if meas_grid is None:
+            if not len(limits) == 4:
+                log.error('Input variable `limits` in function call '
+                          '`calibrate_drive_mixer_skewness_new` needs to be a list '
+                          'or 1D array of length 4.\nFound length '
+                          '{} object instead!'.format(len(limits)))
             meas_grid = np.array([
                 np.random.uniform(limits[0],
                                   limits[1], n_meas),
