@@ -2204,9 +2204,11 @@ class QuDev_transmon(Qubit):
             limits.append(np.max(meas_grid[1, :]))
         
         # Check that bounds of measurement grid are reasonable and do not exceed
-        # 500 mV as this might damage the diodes inside the mixers.
-        if np.max(np.abs(meas_grid)) >= 0.5:
-            log.error('Measurement grid contains DC amplitudes above 500 mV:'
+        # 1 V as this might damage the diodes inside the mixers.
+        if np.max(np.abs(meas_grid)) > 1.0:
+            log.error('Measurement grid contains DC amplitudes above 1 V. '
+                      'Too high DC biases can potentially damage the diodes'
+                      'inside the mixer. \n'
                       'Maximum amplitude is {:.2f} mV!'.format(1e3*np.max(meas_grid)))
 
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
