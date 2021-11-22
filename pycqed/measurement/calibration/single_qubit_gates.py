@@ -2120,12 +2120,15 @@ class ReparkingRamsey(Ramsey):
             qb_names=self.meas_obj_names, t_start=self.timestamp,
             options_dict=options_dict, **analysis_kwargs)
 
-    def run_update(self, **kw):
+    def run_update(self, max_voltage_change: float=1.0, **kw):
         """
         Updates the following parameters for the qubit in each task with the
         values extracted by the analysis:
             - transition frequency: tr_name_freq
             - fluxline voltage
+        :param max_voltage_change: maximum fluxline voltage change set in order
+        to prevent changing the voltage to an unreasonable value e.g. due to
+        poor fitting. Defaults to 1.0V.
         :param kw: keyword arguments
         """
 
@@ -2134,11 +2137,52 @@ class ReparkingRamsey(Ramsey):
             fluxline = task['fluxline']
 
             apd = self.analysis.proc_data_dict['analysis_params_dict']
-            # set new qubit frequency
-            qubit.set(f'{task["transition_name_input"]}_freq',
-                      apd['reparking_params'][qubit.name]['ss_freq'])
-            # set new voltage
-            fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
+
+            # calculate the voltage change corresponding to qubit
+            voltage_change = apd['reparking_params'][qubit.name]['ss_volt'] - \
+                             fluxline()
+            print(f"Voltage change: {voltage_change}")
+
+            # if max_voltage_change is None, assume no maximum voltage change
+            if abs(voltage_change) <= max_voltage_change or \
+                                      max_voltage_change is None:
+                # set new fluxline voltage corresponding to qubit
+                new_voltage = apd['reparking_params'][qubit.name]['ss_volt']
+                fluxline(new_voltage)
+
+                # set new qubit frequency
+                new_freq = apd['reparking_params'][qubit.name]['ss_freq']
+                qubit.set(f'{task["transition_name_input"]}_freq', new_freq)
+
+            else:
+                # if voltage_change exceeds max_voltage_change, set new_voltage
+                # to the first or last probed voltage depending on the sign of
+                # voltage_change
+                if voltage_change < 0:
+                    new_voltage = self.sweep_points[1][f'{qubit.name}'
+                                                        '_dc_voltages'][0][0]
+                    new_freq = apd['qubit_frequencies'][qubit.name]['val'][0]
+                else:
+                    new_voltage = self.sweep_points[1][f'{qubit.name}'
+                                                        '_dc_voltages'][0][-1]
+                    new_freq = apd['qubit_frequencies'][qubit.name]['val'][-1]
+                fluxline(new_voltage)
+                qubit.set(f'{task["transition_name_input"]}_freq', new_freq)
+
+                print(f"Qubit values set to: {new_voltage}V, {new_freq}Hz")
+
+                # log that voltage_change exceeded max_voltage_change and print
+                # set values
+                logging.warning(f"{qubit.name}: voltage change exceeds maximum "
+                                "voltage change. Fluxline voltage set to "
+                                f"{new_voltage:4f}V and corresponding qubit "
+                                f"frequency set to {new_freq/1e9:6f}GHz. "
+                                "ReparkingRamsey measurement suggested a "
+                                f"frequency change of {voltage_change} (from "
+                                f"{fluxline()} to "
+                            f"{apd['reparking_params'][qubit.name]['ss_volt']}"
+                                "), while the maximum allowed frequency change "
+                                f"set by the user is {max_voltage_change}.")
 
 
 class T1(SingleQubitGateCalibExperiment):
