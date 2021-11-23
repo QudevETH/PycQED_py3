@@ -911,7 +911,7 @@ class UHFQC_input_average_detector(UHFQC_Base):
         self.nr_sweep_points = self.nr_samples
         self.ro_mode = 'iavg'
         self._check_hardware_limitations()
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels,
+        self.UHFQC.acquisition_initialize(channels=self.channels,
                                           samples=self.nr_samples,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
@@ -1282,7 +1282,7 @@ class UHFQC_integrated_average_detector(UHFQC_Base):
         self.UHFQC.awgs_0_single(1)
         self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
         self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
+        self.UHFQC.acquisition_initialize(channels=self.channels,
                                           samples=self.nr_sweep_points,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages),
@@ -1366,7 +1366,7 @@ class UHFQC_correlation_detector(UHFQC_integrated_average_detector):
         self.set_up_correlation_weights()
 
         self.ro_mode = 'rl'
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels,
+        self.UHFQC.acquisition_initialize(channels=self.channels,
                                           samples=self.nr_sweep_points,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_averages*self.nr_sweep_points),
@@ -1570,7 +1570,7 @@ class UHFQC_integration_logging_det(UHFQC_Base):
         self.ro_mode = 'rl'
         self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
         self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.qudev_acquisition_initialize(channels=self.channels, 
+        self.UHFQC.acquisition_initialize(channels=self.channels,
                                           samples=self.nr_sweep_points,
                                           averages=self.nr_averages,
                                           loop_cnt=int(self.nr_shots),
@@ -1710,7 +1710,7 @@ class UHFQC_classifier_detector(UHFQC_integration_logging_det):
         self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
 
         self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.qudev_acquisition_initialize(
+        self.UHFQC.acquisition_initialize(
             channels=self.channels,
             samples=self.nr_shots * self.nr_sweep_points,
             averages=1,  # for single shot readout
