@@ -975,7 +975,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     if axs_dict is not None:
         for key, val in list(axs_dict.items()):
             axs[key] = val
-    if keys_in is 'all':
+    if keys_in == 'all':
         keys_in = plot_dicts.keys()
     if type(keys_in) is str:
         keys_in = [keys_in]

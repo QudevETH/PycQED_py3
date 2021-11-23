@@ -60,7 +60,7 @@ class MeasurementControl(Instrument):
                  plotting_interval: float=3,
                  datadir: str=get_default_datadir(),
                  live_plot_enabled: bool=True, verbose: bool=True):
-        super().__init__(name=name, server_name=None)
+        super().__init__(name=name)
 
         self.add_parameter('datadir',
                            initial_value=datadir,
@@ -70,6 +70,18 @@ class MeasurementControl(Instrument):
         # measurements. It does not work with adaptive measurements.
         self.add_parameter('soft_avg',
                            label='Number of soft averages',
+                           parameter_class=ManualParameter,
+                           vals=vals.Ints(1, int(1e8)),
+                           initial_value=1)
+        self.add_parameter('soft_repetitions',
+                           label='Number of soft repetitions',
+                           docstring='Repeat hard measurements multiple '
+                                     'times in a software loop to collect '
+                                     'more results. All obtained results are '
+                                     'appended to the data table in the HDF '
+                                     'file (i.e., no soft averaging is done '
+                                     'on them). This is currently only '
+                                     'implemented for "hard" measurements.',
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
@@ -195,8 +207,9 @@ class MeasurementControl(Instrument):
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
         if sweep_points is not None:
-            self.set_sweep_points(np.tile(sweep_points,
-                                          self.acq_data_len_scaling))
+            self.set_sweep_points(np.tile(
+                sweep_points,
+                self.acq_data_len_scaling * self.soft_repetitions()))
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
@@ -283,7 +296,7 @@ class MeasurementControl(Instrument):
                 if not disable_snapshot_metadata:
                     self.save_instrument_settings(self.data_object)
                 self.create_experimentaldata_dataset()
-                if mode is not 'adaptive':
+                if mode != 'adaptive':
                     try:
                         # required for 2D plotting and data storing.
                         # try except because some swf get the sweep points in the
@@ -361,7 +374,7 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def measure(self):
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
 
         self.timer.checkpoint("MeasurementControl.measure.prepare.start")
@@ -382,10 +395,10 @@ class MeasurementControl(Instrument):
             while self.get_percdone() < 100:
                 start_idx = self.get_datawriting_start_idx()
                 if len(self.sweep_functions) == 1:
-                    self.sweep_functions[0].set_parameter(
-                        sweep_points[start_idx])
-                    self.detector_function.prepare(
-                        sweep_points=self.get_sweep_points())
+                    sp = sweep_points[
+                         :len(sweep_points) // self.soft_repetitions()]
+                    self.sweep_functions[0].set_parameter(sp[start_idx])
+                    self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard()
                 else:  # If mode is 2D
                     for i, sweep_function in enumerate(self.sweep_functions):
@@ -398,6 +411,7 @@ class MeasurementControl(Instrument):
                         sweep_function.set_parameter(val)
                         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
                     sp = sweep_points[start_idx:start_idx+self.xlen, 0]
+                    sp = sp[:len(sp) // self.soft_repetitions()]
                     # If the soft sweep function has the filtered_sweep
                     # attribute, the AWGs are programmed in a way that only
                     # the subset of acquisitions indicated by the filter is
@@ -444,7 +458,7 @@ class MeasurementControl(Instrument):
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
         for sweep_function in self.sweep_functions:
@@ -487,10 +501,18 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
-        # Tell the detector_function to call print_progress for intermediate
-        # progress reports during get_detector_function.values.
-        self.detector_function.progress_callback = self.print_progress
-        new_data = np.array(self.detector_function.get_values()).T
+        n_acquired = 0
+        for i_rep in range(self.soft_repetitions()):
+            # Tell the detector_function to call print_progress for intermediate
+            # progress reports during get_detector_function.values.
+            self.detector_function.progress_callback = (
+                lambda x, n=n_acquired: self.print_progress(x + n))
+            this_new_data = np.array(self.detector_function.get_values()).T
+            n_acquired += this_new_data.shape[0]
+            new_data = this_new_data if i_rep == 0 else np.concatenate(
+                [new_data, this_new_data])
+            if i_rep < self.soft_repetitions() - 1:
+                self.print_progress(n_acquired)
         self.detector_function.progress_callback = None  # clean up
 
         if filtered_sweep is not None:
@@ -777,6 +799,12 @@ class MeasurementControl(Instrument):
     There are (will be) three kinds of plotmons, the regular plotmon,
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
+    def _live_plot_enabled(self):
+        if hasattr(self, 'detector_function') and \
+                not getattr(self.detector_function, 'live_plot_allowed', True):
+            return False
+        else:
+            return self.live_plot_enabled()
 
     def _get_plotmon_axes_info(self):
         '''
@@ -1055,9 +1083,20 @@ class MeasurementControl(Instrument):
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
                         # Check if the new_sweep_vals are not equidistant
+                        # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
-                        if any([np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
-                                for d in diff]):
+                        # To check for equidistant points, the distances
+                        # are normalized to the distance between the first
+                        # two points. The normalization is needed to choose a
+                        # meaningful threshold for distinguishing
+                        # non-equdistant points from rounding errors.
+                        # The order matters: we need to first check whether
+                        # the first two points are the same, and then check
+                        # for equidistant points. Otherwise, we might get a
+                        # division by zero error during the normalization.
+                        if np.abs(diff[0]) == 0 or any(
+                                [np.abs(d - diff[0]) / np.abs(diff[0]) > 1e-5
+                                 for d in diff]):
                             # fall back to sweep indices in 2D plot
                             new_sweep_vals_2D[i] = range(len(
                                 new_sweep_vals[i]))
@@ -1133,8 +1172,8 @@ class MeasurementControl(Instrument):
 
     def update_plotmon(self, force_update=False):
         # Note: plotting_max_pts takes precendence over force update
-        if self.live_plot_enabled() and (self.dset.shape[0] <
-                                         self.plotting_max_pts()):
+        if self._live_plot_enabled() and (self.dset.shape[0] <
+                                          self.plotting_max_pts()):
             i = 0  # index of the plot
             try:
                 time_since_last_mon_update = time.time() - self._mon_upd_time
@@ -1196,7 +1235,7 @@ class MeasurementControl(Instrument):
         Made to work with at most 2 2D arrays (as this is how the labview code
         works). It should be easy to extend this function for more vals.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 self.time_last_2Dplot_update = time.time()
                 self._plotmon_axes_info = self._get_plotmon_axes_info()
@@ -1227,7 +1266,7 @@ class MeasurementControl(Instrument):
         Adds latest measured value to the TwoD_array and sends it
         to the QC_QtPlot.
         '''
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
@@ -1271,7 +1310,7 @@ class MeasurementControl(Instrument):
         if self.adaptive_function.__module__ == 'cma.evolution_strategy':
             return self.update_plotmon_adaptive_cma(force_update=force_update)
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1412,7 +1451,7 @@ class MeasurementControl(Instrument):
         Special adaptive plotmon for
         """
 
-        if self.live_plot_enabled():
+        if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
                         self.plotting_interval() or force_update):
@@ -1492,7 +1531,7 @@ class MeasurementControl(Instrument):
         Note that the plotmon only supports evenly spaced lattices.
         '''
         try:
-            if self.live_plot_enabled():
+            if self._live_plot_enabled():
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
@@ -1834,7 +1873,7 @@ class MeasurementControl(Instrument):
 
         set_grp.attrs['mode'] = self.mode
         set_grp.attrs['measurement_name'] = self.measurement_name
-        set_grp.attrs['live_plot_enabled'] = self.live_plot_enabled()
+        set_grp.attrs['live_plot_enabled'] = self._live_plot_enabled()
         sha1_id, diff = self.get_git_info()
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
