@@ -159,22 +159,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                                      'move nr_seeds from keyword arguments '
                                      'into the tasks.')
 
-            # remove the redundant 'seeds' and 'cliffords' entries in
-            # self.sweep_points which are created if these parameters are passed
-            # both as globals and in the task_list
-            intlvd_msmt = self.interleaved_gate is not None
-            factor = 1 + intlvd_msmt
-            condition = factor * (len(task_list) + 1)
-            for param in ['seeds', 'cliffords']:
-                dim = self.sweep_points.find_parameter(param)
-                if dim is not None and len(
-                        self.sweep_points.get_sweep_dimension(dim)) == \
-                        condition:
-                    # only remove if they are redundant, i.e. if these
-                    # parameters also exist with the prefixed qb names
-                    self.sweep_points.get_sweep_params_description(
-                        [param] + ['seeds_irb']*intlvd_msmt, dim, pop=True)
-
             self.sequences, self.mc_points = self.sweep_n_dim(
                 self.sweep_points, body_block=None,
                 body_block_func=self.rb_block, cal_points=self.cal_points,
