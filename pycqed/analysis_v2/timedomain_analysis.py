@@ -7302,7 +7302,17 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             f'{self.phase_key}_{qbn}'] = {
                             'val': phase_diffs, 'stderr': phase_diffs_stderrs}
 
-                        # population_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
+                        # contrast = (cos_amp_g + cos_amp_e)/ 2
+                        contrast = (amps[1::2] + amps[0::2])/2
+                        contrast_stderr = 0.5*np.sqrt(
+                            np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
+                                     dtype=np.float64))
+
+                        self.proc_data_dict['analysis_params_dict'][
+                            f'mean_contrast_{qbn}'] = {
+                            'val': contrast, 'stderr': contrast_stderr}
+
+                        # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
                         population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
@@ -7319,6 +7329,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             f'population_loss_{qbn}'] = \
                             {'val': population_loss,
                              'stderr': population_loss_stderrs}
+
                 else:
                     self.proc_data_dict['analysis_params_dict'][
                         f'amps_{qbn}'] = {
@@ -7401,6 +7412,15 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                           f'{self.phase_key}_{qbn}'][
                                           'stderr'][0] * 180 / np.pi) + \
                                   r'$^{\circ}$'
+                        textstr += '\nMean contrast = \n' + \
+                                   '{:.3f} $\\pm$ {:.3f}'.format(
+                                       self.proc_data_dict[
+                                           'analysis_params_dict'][
+                                           f'mean_contrast_{qbn}']['val'][0],
+                                       self.proc_data_dict[
+                                           'analysis_params_dict'][
+                                           f'mean_contrast_{qbn}'][
+                                           'stderr'][0])
                         textstr += '\nContrast loss = \n' + \
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
@@ -8292,7 +8312,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         pdd['analysis_params']['state_prob_mtx'] = defaultdict(dict)
         pdd['analysis_params']['classifier_params'] = defaultdict(dict)
         pdd['analysis_params']['means'] = defaultdict(dict)
+        pdd['analysis_params']['snr'] = defaultdict(dict)
         pdd['analysis_params']["n_shots"] = len(shots_per_qb[qbn])
+        pdd['analysis_params']['slopes'] = defaultdict(dict)
         self.clf_ = defaultdict(dict)
         # create placeholders for analysis with preselection
         if self.preselection:
@@ -8348,6 +8370,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # save fidelity matrix and classifier
             pdd['analysis_params']['state_prob_mtx'][qbn] = fm
             pdd['analysis_params']['classifier_params'][qbn] = clf_params
+            if 'means_' in clf_params:
+                pdd['analysis_params']['snr'][qbn] = \
+                    self._extract_snr(clf, state_labels_ordered)
+                pdd['analysis_params']['slopes'][qbn] = self._extract_slopes(
+                    clf, state_labels_ordered)
+
             self.clf_[qbn] = clf
             if self.preselection:
                 #re do with classification first of preselection and masking
@@ -8371,6 +8399,94 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     qb_shots_masked.shape[0]
 
         self.save_processed_data()
+
+    @staticmethod
+    def _extract_snr(gmm=None,  state_labels=None, clf_params=None,):
+        """
+        Extracts SNR between pairs of states. SNR is defined as dist(m1,
+        m2)/mean(std1, std2), where dist = L2 norm, m1, m2 are the means of the
+        pair of states and std1, std2 are the "standard deviation" (obtained
+        from the confidence ellipse of the covariance if 2D).
+        :param gmm: Gaussian mixture model
+        :param clf_params: Classifier parameters. Not implemented but could
+        reconstruct gmm from clf params. Would be more analysis friendly.
+        :param state_labels (list): state labels for the SNR dict. If not provided,
+            tuples indicating the index of the state pairs is used.
+        :return: snr (dict): e.g. {"ge": 2.4} or  {"ge": 3, "ef": 2, "gf": 4}
+        """
+        snr = {}
+        if clf_params is not None:
+            raise NotImplementedError("Look in a_tools.predict_probas to "
+                                      "recreate GMM from clf_params")
+        means = MultiQutrit_Singleshot_Readout_Analysis._get_means(gmm)
+        covs = MultiQutrit_Singleshot_Readout_Analysis._get_covariances(gmm)
+        n_states = len(means)
+        if n_states >= 2:
+            state_pairs = list(itertools.combinations(np.arange(n_states), 2))
+            for sp in state_pairs:
+                m0, m1 = means[sp[0]], means[sp[1]]
+                if len(m0) == 1:
+                    # pad second element to treat as 2d
+                    m0, m1 = np.concatenate([m0, [0]]), np.concatenate([m1, [0]])
+                dist = np.linalg.norm(m0 - m1)
+                std0_candidates = math.find_intersect_line_ellipse(
+                    math.slope(m0- m1),
+                    *math.get_ellipse_radii_and_rotation(covs[sp[0]]))
+                idx = np.argmin([np.linalg.norm(std0_candidates[0] - m1),
+                                 np.linalg.norm(std0_candidates[1] -
+                                                m1)]).flatten()[0]
+                std0 = np.linalg.norm(std0_candidates[idx])
+                std1_candidates = math.find_intersect_line_ellipse(
+                    math.slope(m0 - m1),
+                    *math.get_ellipse_radii_and_rotation(covs[sp[1]]))
+                idx = np.argmin([np.linalg.norm(std0_candidates[0] - m0),
+                                 np.linalg.norm(std0_candidates[1] -
+                                                m1)]).flatten()[0]
+                std1 = np.linalg.norm(std1_candidates[idx])
+                label = state_labels[sp[0]] + state_labels[sp[1]] \
+                    if state_labels is not None else sp
+
+                snr.update({label: dist/np.mean([std0, std1])})
+        return snr
+
+    @staticmethod
+    def _extract_slopes(gmm=None,  state_labels=None, clf_params=None, means=None):
+        """
+        Extracts slopes of line connecting two means of different states.
+        :param gmm: Gaussian mixture model from which means are extracted
+        :param clf_params: Classifier parameters from which means are extracted.
+        :param state_labels (list): state labels for the SNR dict. If not provided,
+            tuples indicating the index of the state pairs is used.
+        :param means (array):
+        :return: slopes (dict): e.g. {"ge": 0.1} or  {"ge": 0.1, "ef": 2,
+        "gf": 0.4}
+        """
+        slopes = {}
+        if clf_params is not None:
+            if not 'means_' in clf_params:
+                raise ValueError(f"could not find 'means_' in clf_params:"
+                                 f" {clf_params}. Please pass in means directly "
+                                 f"provide a classifier that fits means.")
+            means = clf_params.get('means_')
+        if gmm is not None:
+            means = MultiQutrit_Singleshot_Readout_Analysis._get_means(gmm)
+        if means is None:
+            raise ValueError('Please provide one of kwarg gmm, clf_params or '
+                             'means to extract the means of the different '
+                             'distributions')
+        n_states = len(means)
+        if n_states >= 2:
+            state_pairs = list(itertools.combinations(np.arange(n_states), 2))
+            for sp in state_pairs:
+                m0, m1 = means[sp[0]], means[sp[1]]
+                if len(m0) == 1:
+                    # pad second element to treat as 2d
+                    m0, m1 = np.concatenate([m0, [0]]), np.concatenate([m1, [0]])
+
+                label = state_labels[sp[0]] + state_labels[sp[1]] \
+                    if state_labels is not None else sp
+                slopes.update({label: math.slope(m0 - m1)})
+        return slopes
 
     def _classify(self, X, prep_state, method, qb_name, **kw):
         """
@@ -8403,13 +8519,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # this classification method should not be used for multiplexed SSRO
             # analysis
             n_qb_states = len(np.unique(self.cp.get_states(qb_name)[qb_name]))
+            # give same weight to each class by default
+            weights_init = kw.pop("weights_init",
+                                  np.ones(n_qb_states)/n_qb_states)
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
-                    weights_init=[1 / n_qb_states] * n_qb_states,
+                    weights_init=weights_init,
                     means_init=[mu for _, mu in
                                 self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()])
+                                    ['means'][qb_name].items()], **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -8438,7 +8558,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     " a second threshold manually (fidelity will likely be " \
                     "worse), make the data more separable, or use another " \
                     "classification method."
-                logging.warning(msg.format(list(params['thresholds'].keys())[0]))
+                log.warning(msg.format(list(params['thresholds'].keys())[0]))
             return pred_states, params, tree
         elif method == "threshold_brute":
             raise NotImplementedError()
@@ -8447,9 +8567,14 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                       "implemented. Available methods: {}"
                                       .format(method, ['ncc', 'gmm',
                                                        'threshold']))
+
     @staticmethod
     def _get_covariances(gmm, cov_type=None):
        return SSROQutrit._get_covariances(gmm, cov_type=cov_type)
+
+    @staticmethod
+    def _get_means(gmm):
+        return gmm.means_
 
     @staticmethod
     def fidelity_matrix(prep_states, pred_states, levels=('g', 'e', 'f'),
@@ -8485,8 +8610,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             data, y_true=y_true, plot_fitting=plot_fitting, **kwargs)
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None):
-        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap)
+    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
+        return SSROQutrit.plot_clf_boundaries(X, clf, ax=ax, cmap=cmap,
+                                              spacing=spacing)
 
     @staticmethod
     def plot_std(mean, cov, ax, n_std=1.0, facecolor='none', **kwargs):
@@ -8540,7 +8666,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 "states": list(pdd["analysis_params"]['means'][qbn].keys()),
                 "xlabel": "Integration Unit 1, $u_1$",
                 "ylabel": "Integration Unit 2, $u_2$",
-                "scale":self.options_dict.get("hist_scale", "linear"),
+                "scale": self.options_dict.get("hist_scale", "log"),
                 "cmap":tab_x}
             data_keys = [k for k in list(pdd.keys()) if
                             k.startswith("data") and qbn in pdd[k]]
@@ -8557,8 +8683,11 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     n_shots_to_plot *= n_qb_states
                 if data['X'].shape[1] == 1:
                     if self.classif_method == "gmm":
-                        kwargs['means'] = pdd['analysis_params']['means'][qbn]
+                        kwargs['means'] = self._get_means(self.clf_[qbn])
                         kwargs['std'] = np.sqrt(self._get_covariances(self.clf_[qbn]))
+                    else:
+                        # no Gaussian distribution can be plotted
+                        kwargs['plot_fitting'] = False
                     kwargs['colors'] = cmap(np.unique(data['prep_states']))
                     fig, main_ax = self.plot_1D_hist(data['X'][:n_shots_to_plot],
                                             data["prep_states"][:n_shots_to_plot],
@@ -8574,10 +8703,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
-                    means = pdd['analysis_params']['means'][qbn]
+                    data_means = pdd['analysis_params']['means'][qbn]
                     try:
-                        clf_means = pdd['analysis_params'][
-                            'classifier_params'][qbn]['means_']
+                        clf_means = self._get_means(self.clf_[qbn])
                     except Exception as e: # not a gmm model--> no clf_means.
                         clf_means = []
                     try:
@@ -8585,14 +8713,14 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     except Exception as e: # not a gmm model--> no cov.
                         covs = []
 
-                    for i, mean in enumerate(means.values()):
-                        main_ax.scatter(mean[0], mean[1], color='w', s=80)
+                    for i, data_mean in enumerate(data_means.values()):
+                        main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
                         if len(clf_means):
                             main_ax.scatter(clf_means[i][0], clf_means[i][1],
                                                       color='k', s=80)
                         if len(covs) != 0:
                             self.plot_std(clf_means[i] if len(clf_means)
-                                          else mean,
+                                          else data_mean,
                                           covs[i],
                                           n_std=1, ax=main_ax,
                                           edgecolor='k', linestyle='--',
