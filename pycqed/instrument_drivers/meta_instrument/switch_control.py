@@ -6,7 +6,10 @@ from qcodes import Instrument
 from copy import copy, deepcopy
 
 # driver for NationalInstruments USB6501
-from pycqedscripts.drivers import NI_USB6501
+try:
+    from pycqedscripts.drivers.NI_USB6501 import NationalInstrumentsUSB6501
+except Exception:
+    NationalInstrumentsUSB6501 = type(None)
 
 import logging
 log = logging.getLogger(__name__)
@@ -49,7 +52,7 @@ class SwitchControl(Instrument):
     def __init__(self, name, dio, switches, switch_time=50e-3):
         super().__init__(name)
 
-        if not (isinstance(dio, NI_USB6501.NationalInstrumentsUSB6501) or
+        if not (isinstance(dio, NationalInstrumentsUSB6501) or
                 isinstance(dio, VirtualNationalInstrumentsUSB6501)):
             raise Exception('Specified Instrument is not an Instance of '
                             'NationalInstruments_USB6501.')
@@ -70,6 +73,7 @@ class SwitchControl(Instrument):
         # parameters for the individual switches
         self.switch_config = deepcopy(switches)
         self.switches = {}
+        self.switch_params = {}
         for k, v in self.switch_config.items():
             v = copy(v)
             switch_type = v.pop('type')
@@ -77,8 +81,9 @@ class SwitchControl(Instrument):
                 switch_type = eval(switch_type)
             self.switches[k] = switch_type(name=k, instrument=self, **v)
         for switch in self.switches.values():
+            param_name = f'{switch.name}_mode'
             self.add_parameter(
-                f'{switch.name}_mode',
+                param_name,
                 label=switch.label,
                 vals=qc.validators.Enum(*switch.modes),
                 get_cmd=switch.get,
@@ -86,6 +91,7 @@ class SwitchControl(Instrument):
                 docstring="possible values: " + ', '.join(
                     [f'{m}' for m in switch.modes]),
             )
+            self.switch_params[switch.name] = self.parameters[param_name]
 
         # ensure that the initial switch states are written to the controller
         self.set_switch({})
@@ -146,6 +152,42 @@ class SwitchControl(Instrument):
         write_ports(state_set)
         time.sleep(self.switch_time())
         write_ports(state_keep)
+
+
+class MultiSwitchControl(Instrument):
+    def __init__(self, name, switch_controls, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
+        self.switch_controls = switch_controls
+        self.switch_params = {}
+        for sc in self.switch_controls:
+            for k, param in sc.parameters.items():
+                if not k.endswith('_mode'):
+                    continue
+                sw_name = k[:-5]  # remove '_mode'
+                self.switch_params[(sc.name, sw_name)] = param
+                label = f'{param.label} in switch control {sc.name}'
+                self.add_parameter(
+                    f'{sc.name}_{sw_name}_mode',
+                    label=label, get_cmd=param, set_cmd=param,
+                    docstring=f'{label}\npossible values: ' + ', '.join(
+                        [f'{v}' for v in param.vals.valid_values]),
+                )
+
+    @property
+    def switches(self):
+        return {(sc.name, sw_name): sw for sc in self.switch_controls
+                if hasattr(sc, 'switches')
+                for sw_name, sw in sc.switches.items()}
+
+    def set_switch(self, values):
+        for sc in self.switch_controls:
+            values_sc = {k[1]: v for k, v in values.items() if k[0] == sc.name}
+            if hasattr(sc, 'set_switch'):  # supports setting multiple params
+                sc.set_switch(values_sc)
+            else:  # set each parameter individually
+                for k, v in values_sc.items():
+                    self.parameters[f'{sc.name}_{k}_mode'](v)
+
 
 
 class SwitchType:

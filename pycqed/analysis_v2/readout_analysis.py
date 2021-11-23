@@ -754,6 +754,12 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             'classif_kw': kw to pass to the classifier
             see BaseDataAnalysis for more.
         '''
+        msg = "This analysis is deprecated and will fail when the measurement " \
+              " is performed with mqm.measure_ssro. Please use " \
+              "'tda.MultiQutrit_Singleshot_Readout_Analysis' instead. Note that" \
+              " this analysis should still work if the measurement was perf" \
+              "ormed with 'qb.measure_ssro'."
+        log.warning(msg)
         super().__init__(t_start=t_start, t_stop=t_stop,
                          label=label, do_fitting=do_fitting,
                          data_file_path=data_file_path,
@@ -1315,6 +1321,11 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return covs
 
     @staticmethod
+    def _get_means(gmm):
+        return gmm.means_
+
+
+    @staticmethod
     def plot_1D_hist(data, y_true=None, plot_fitting=True,
                      **kwargs):
         """
@@ -1385,7 +1396,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             kwargs.update(dict(title=title))
             if data['X'].shape[1] == 1:
                 if self.classif_method == "gmm":
-                    kwargs['means'] = pdd['analysis_params']['means']
+                    kwargs['means'] = self._get_means(self.clf_)
                     kwargs['std'] = np.sqrt(self._get_covariances(self.clf_))
                 kwargs['colors'] = cmap(np.unique(data['prep_states']))
                 fig, main_ax = self.plot_1D_hist(data['X'],
