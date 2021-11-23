@@ -77,3 +77,8 @@ html_static_path = ['_static']
 
 # Hide "View page source" link
 html_show_sourcelink = False
+
+
+# -- autodoc_instrument extensin ---------------------------------------------
+
+autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")
