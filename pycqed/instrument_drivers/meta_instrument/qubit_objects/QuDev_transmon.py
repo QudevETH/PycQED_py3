@@ -2233,6 +2233,142 @@ class QuDev_transmon(Qubit):
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
             no_improv_break=no_improv_break, upload=upload, plot=plot)
 
+    def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
+                                            limits=(-0.15, 0.15, -0.15, 0.15),
+                                            n_meas=(10, 10), meas_grid=None,
+                                            upload=True):
+        """Method for calibrating the lo leakage of the drive IQ Mixer
+
+        By applying DC biases on the I and Q inputs of an IQ mixer one can 
+        change the bias conditions of the diodes inside the mixer. This can be 
+        used to reduce LO leakage. This method measures the LO leakage for 
+        different values of DC biases. The subsequent analysis fits an 
+        analytical model to the measured data and extracts the settings 
+        minimizing the LO leakage.
+
+        Args:
+            update (bool, optional): Determines whether the DC biases found from 
+                the measurements that minimize the LO leakage 
+                are written into the qubit parameters or not. 
+                Defaults to True.
+            meas_grid (:py:class:'np.array', optional): Grid of points to be 
+                measured in form of a Numpy array of shape (2, number of points). 
+                The first dimension holding 
+                the values for I channel DC biases and the second dimension 
+                holding the Q channel DC biases. Both in volts. If no meas_grid 
+                is provided a uniform grid is generated using n_meas and limits. 
+                Defaults to None.
+            n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
+                determines the number of measurement points in case meas_grid is
+                not provided. 
+                n_meas[0] = points in V_I.
+                n_meas[1] = points in V_Q.
+                Defaults to (10, 10).
+            trigger_sep (float, optional): Seperation time in s between trigger
+                signals. Also see note below! Defaults to 5e-6 s.
+            limits (tuple, optional): Tuple, list or 1D array of length 4 
+                holding the limits of the measurement grid in case 
+                meas_grid is not provided. Ordered as follows
+                (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
+                Units: (None, None, deg, deg)
+                Defaults to (0.9, 1.1, -10, 10).
+
+        Returns:
+            V_I (float): DC bias on I channel that minimizes LO leakage.
+            V_Q (float): DC bias on Q channel that minimizes LO leakage.
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
+                The MixerCarrierAnalysis object.
+
+        Note:
+            When the hack is applied that suppresses bugs of the ZI devices
+            one might need to increase the trigger seperation to values above 
+            25e-5 s.
+        """
+        MC = self.instr_mc.get_instr()
+        if meas_grid is None:
+            if not len(limits) == 4:
+                log.error('Input variable `limits` in function call '
+                        '`calibrate_drive_mixer_carrier_new` needs to be a list '
+                        'or 1D array of length 4.\nFound length '
+                        '{} object instead!'.format(len(limits)))
+            if not len(n_meas) == 2:
+                log.error('Input variable `n_meas` in function call '
+                        '`calibrate_drive_mixer_carrier_new` needs to be a list, '
+                        'tuple or 1D array of length 2.\nFound length '
+                        '{} object instead!'.format(len(n_meas)))
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+                                    np.linspace(limits[2], limits[3], n_meas[1]))
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
+        else:
+            limits = []
+            limits.append(np.min(meas_grid[0, :]))
+            limits.append(np.max(meas_grid[0, :]))
+            limits.append(np.min(meas_grid[1, :]))
+            limits.append(np.max(meas_grid[1, :]))
+        
+        # Check that bounds of measurement grid are reasonable and do not exceed
+        # 1 V as this might damage the diodes inside the mixers.
+        if np.max(np.abs(meas_grid)) > 1.0:
+            log.error('Measurement grid contains DC amplitudes above 1 V. '
+                      'Too high DC biases can potentially damage the diodes'
+                      'inside the mixer. \n'
+                      'Maximum amplitude is {:.2f} mV!'.format(1e3*np.max(meas_grid)))
+
+        chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ge_I_channel())]
+        chQ_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ge_Q_channel())]
+        MC.set_sweep_functions([chI_par, chQ_par])
+        MC.set_sweep_points(meas_grid.T)
+        if upload:
+            sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
+                pulse_type='GaussFilteredCosIQPulse',
+                pulse_length=self.acq_length(),
+                ref_point='start',
+                amplitude=0,
+                I_channel=self.ge_I_channel(),
+                Q_channel=self.ge_Q_channel(),
+            )]])
+
+        with temporary_value(
+                (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
+                (self.acq_weights_type, 'SSB'),
+                (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (chI_par, chI_par()),  # for automatic reset after the sweep
+                (chQ_par, chQ_par()),  # for automatic reset after the sweep
+
+        ):
+            self.prepare(drive='timedomain', switch='calib')
+            MC.set_detector_function(det.IndexDetector(
+                self.int_avg_det_spec, 0))
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            MC.run(name='drive_carrier_calibration' + self.msmt_suffix)
+
+        a = tda.MixerCarrierAnalysis(qb_names=[self.name])
+        analysis_params_dict = a.proc_data_dict['analysis_params_dict']
+
+        ch_I_min = analysis_params_dict['V_I']
+        ch_Q_min = analysis_params_dict['V_Q']
+
+        if(ch_I_min < limits[0] or ch_I_min > limits[1]):
+            log.warning('Optimum for DC bias voltage I channel is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best V_I according to fitting: {:.2f} mV'.format(ch_I_min*1e-3))
+            update = False
+        if(ch_Q_min < limits[2] or ch_Q_min > limits[3]):
+            log.warning('Optimum for DC bias voltage Q channel is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best V_Q according to fitting: {:.2f} mV'.format(ch_Q_min*1e-3))
+            update = False
+
+        if update:
+            self.ge_I_offset(ch_I_min)
+            self.ge_Q_offset(ch_Q_min)
+            chI_par(ch_I_min)
+            chQ_par(ch_Q_min)
+
+        return ch_I_min, ch_Q_min, a
+
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
                                        initial_stepsize=(0.15, 10)):
@@ -2387,6 +2523,143 @@ class QuDev_transmon(Qubit):
             if update:
                 self.ge_alpha(_alpha)
                 self.ge_phi_skew(_phi)
+
+        return _alpha, _phi, a
+
+    def calibrate_drive_mixer_skewness_model(
+            self, update=True, meas_grid=None, n_meas=(10, 10),
+            amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
+        """Method for calibrating the sideband suppression of the drive IQ Mixer
+
+        The two settings that are used to calibrate the suppression of the 
+        unwanted sideband are the amplitude ratio and phase between I and Q. 
+        This method measures the sideband suppression for different values of 
+        these two settings that are either handed over as meas_grid or generated 
+        automatically. The subsequent analysis fits an analytical model to the 
+        measured data and extracts the settings minimizing the amplitude of the 
+        sideband.
+
+        Args:
+            update (bool, optional): Determines whether the setting found from 
+                the measurements that are supposed to minimize the sideband 
+                suppression are written into the qubit parameters or not. 
+                Defaults to True.
+            meas_grid (:py:class:'np.array', optional): Grid of points to be 
+                measured in form
+                of a np.array of shape (2, #points). The first dimension holding 
+                the values for the amplitude ratio and the second dimension 
+                holding the phi_skew values in degrees. If no meas_grid is 
+                provided a uniform grid is generated using n_meas and limits. 
+                Defaults to None.
+            n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
+                determines the number of measurement points in case meas_grid is
+                not provided. 
+                n_meas[0] = points in amplitude ratio.
+                n_meas[1] = points in phi_skew.
+                Defaults to (10, 10).
+            amplitude (float, optional): Amplitude of the IF signal in V applied
+                to the mixer during the measurement. Defaults to 0.1 V.
+            trigger_sep (float, optional): Seperation time in s between trigger
+                signals. Also see note below! Defaults to 5e-6 s.
+            limits (tuple, optional): Tuple, list or 1D array of length 4 
+                holding the limits of the measurement grid in case 
+                meas_grid is not provided. Ordered as follows
+                (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
+                Units: (None, None, deg, deg)
+                Defaults to (0.9, 1.1, -10, 10).
+
+        Returns:
+            alpha (float): The amplitude ratio that maximizes the suppression of 
+                the unwanted sideband.
+            phi_skew (float): The phi_skew that maximizes the suppression of 
+                the unwanted sideband.
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
+                The MixerSkewnessAnalysis object.
+
+        Note:
+            When the hack is applied that suppresses bugs of the ZI devices
+            one might need to increase the trigger seperation to values above 
+            25e-5 s.
+        """
+        if meas_grid is None:
+            if not len(limits) == 4:
+                log.error('Input variable `limits` in function call '
+                        '`calibrate_drive_mixer_skewness_new` needs to be a list '
+                        'or 1D array of length 4.\nFound length '
+                        '{} object instead!'.format(len(limits)))
+            if not len(n_meas) == 2:
+                log.error('Input variable `n_meas` in function call '
+                        '`calibrate_drive_mixer_skewness_new` needs to be a list, '
+                        'tuple or 1D array of length 2.\nFound length '
+                        '{} object instead!'.format(len(n_meas)))
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+                                    np.linspace(limits[2], limits[3], n_meas[1]))
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
+        else:
+            limits = []
+            limits.append(np.min(meas_grid[0, :]))
+            limits.append(np.max(meas_grid[0, :]))
+            limits.append(np.min(meas_grid[1, :]))
+            limits.append(np.max(meas_grid[1, :]))
+
+        MC = self.instr_mc.get_instr()
+
+        s1 = swf.Hard_Sweep()
+        s1.name = 'Amplitude ratio hardware sweep'
+        s1.parameter_name = r'Amplitude ratio, $\alpha$'
+        s1.unit = ''
+        s2 = swf.Hard_Sweep()
+        s2.name = 'Phase skew hardware sweep'
+        s2.parameter_name = r'Phase skew, $\phi$'
+        s2.unit = 'deg'
+        MC.set_sweep_functions([s1, s2])
+        MC.set_sweep_points(meas_grid.T)
+
+        pulse_list_list = []
+        for alpha, phi_skew in meas_grid.T:
+            pulse_list_list.append([self.get_acq_pars(), dict(
+                        pulse_type='GaussFilteredCosIQPulse',
+                        pulse_length=self.acq_length(),
+                        ref_point='start',
+                        amplitude=amplitude,
+                        I_channel=self.ge_I_channel(),
+                        Q_channel=self.ge_Q_channel(),
+                        mod_frequency=self.ge_mod_freq(),
+                        phase_lock=False,
+                        alpha=alpha,
+                        phi_skew=phi_skew,
+                    )])
+        sq.pulse_list_list_seq(pulse_list_list)
+
+        with temporary_value(
+            (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
+            (self.acq_weights_type, 'SSB'),
+            (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive='timedomain', switch='calib')
+            MC.set_detector_function(self.int_avg_det)
+            MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
+
+        a = tda.MixerSkewnessAnalysis(qb_names=[self.name])
+        analysis_params_dict = a.proc_data_dict['analysis_params_dict']
+
+        _alpha = analysis_params_dict['alpha']
+        _phi = analysis_params_dict['phase']
+
+        if(_alpha < limits[0] or _alpha > limits[1]):
+            log.warning('Optimum for amplitude ratio is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best alpha according to fitting: {:.2f}'.format(_alpha))
+            update = False
+        if(_phi < limits[2] or _phi > limits[3]):
+            log.warning('Optimum for phase correction is outside '
+                        'the measured range and no settings will be updated. '
+                        'Best phi according to fitting: {:.2f} deg'.format(_phi))
+            update = False
+
+        if update:
+            self.ge_alpha(_alpha)
+            self.ge_phi_skew(_phi)
 
         return _alpha, _phi, a
 
