@@ -2320,24 +2320,24 @@ class QuDev_transmon(Qubit):
             self.ge_Q_channel())]
         MC.set_sweep_functions([chI_par, chQ_par])
         MC.set_sweep_points(meas_grid.T)
-        if upload:
-            sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
-                pulse_type='GaussFilteredCosIQPulse',
-                pulse_length=self.acq_length(),
-                ref_point='start',
-                amplitude=0,
-                I_channel=self.ge_I_channel(),
-                Q_channel=self.ge_Q_channel(),
-            )]])
-
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.acq_weights_type, 'SSB'),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
                 (chI_par, chI_par()),  # for automatic reset after the sweep
                 (chQ_par, chQ_par()),  # for automatic reset after the sweep
-
+                *self._drive_mixer_calibration_tmp_vals()
         ):
+            if upload:
+                sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
+                    pulse_type='GaussFilteredCosIQPulse',
+                    pulse_length=self.acq_length(),
+                    ref_point='start',
+                    amplitude=0,
+                    I_channel=self.ge_I_channel(),
+                    Q_channel=self.ge_Q_channel(),
+                )]])
+
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(det.IndexDetector(
                 self.int_avg_det_spec, 0))
@@ -2615,27 +2615,28 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_functions([s1, s2])
         MC.set_sweep_points(meas_grid.T)
 
-        pulse_list_list = []
-        for alpha, phi_skew in meas_grid.T:
-            pulse_list_list.append([self.get_acq_pars(), dict(
-                        pulse_type='GaussFilteredCosIQPulse',
-                        pulse_length=self.acq_length(),
-                        ref_point='start',
-                        amplitude=amplitude,
-                        I_channel=self.ge_I_channel(),
-                        Q_channel=self.ge_Q_channel(),
-                        mod_frequency=self.ge_mod_freq(),
-                        phase_lock=False,
-                        alpha=alpha,
-                        phi_skew=phi_skew,
-                    )])
-        sq.pulse_list_list_seq(pulse_list_list)
-
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+            *self._drive_mixer_calibration_tmp_vals()
         ):
+            pulse_list_list = []
+            for alpha, phi_skew in meas_grid.T:
+                pulse_list_list.append([self.get_acq_pars(), dict(
+                            pulse_type='GaussFilteredCosIQPulse',
+                            pulse_length=self.acq_length(),
+                            ref_point='start',
+                            amplitude=amplitude,
+                            I_channel=self.ge_I_channel(),
+                            Q_channel=self.ge_Q_channel(),
+                            mod_frequency=self.ge_mod_freq(),
+                            phase_lock=False,
+                            alpha=alpha,
+                            phi_skew=phi_skew,
+                        )])
+            sq.pulse_list_list_seq(pulse_list_list)
+
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det)
             MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
