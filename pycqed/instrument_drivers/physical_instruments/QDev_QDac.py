@@ -2,6 +2,7 @@ import numpy as np
 import time
 
 from qcodes.utils import validators as vals
+from qcodes.instrument.parameter import ManualParameter
 from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac
 
 
@@ -32,10 +33,38 @@ class QDacSmooth(QDac):
                     {ch_number: val}),
                 #                 initial_value=self.qdac.getDCVoltage(key)
             )
+        self.add_parameter('verbose',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(), initial_value=False)
 
     def set_smooth(self, voltage_dict):
+        def print_progress(index, total, begintime):
+            if self.verbose() and total > 3:  # do not print for tiny changes
+                percdone = index / total * 100
+                elapsed_time = time.time() - begintime
+                # The trailing spaces are to overwrite some characters in case the
+                # previous progress message was longer.
+                progress_message = (
+                    "\r{name}\t{percdone}% completed \telapsed time: "
+                    "{t_elapsed}s \ttime left: {t_left}s     ").format(
+                    name=self.name,
+                    percdone=int(percdone),
+                    t_elapsed=round(elapsed_time, 1),
+                    t_left=round((100. - percdone) / (percdone) *
+                                 elapsed_time, 1) if
+                    percdone != 0 else '')
+
+                if percdone != 100:
+                    end_char = ''
+                else:
+                    end_char = '\n'
+                print('\r', progress_message, end=end_char)
+
+
         v_sweep = {}
-        for ch_number, voltage in voltage_dict.items():  # generate lists of
+        self._update_cache()
+        for ch_number, voltage in voltage_dict.items():  #
+        # generate lists of
             # V to apply over time
             old_voltage = self.channels[ch_number].v()
             if np.abs(voltage - old_voltage) < 1e-10:
@@ -48,11 +77,19 @@ class QDacSmooth(QDac):
                 v_sweep[ch_number] = np.append(v_sweep[ch_number],
                                                voltage)  # end on the correct value
         N_steps = max([len(v_sweep[ch_number]) for ch_number in v_sweep])
+        begintime = time.time()
         for step in range(N_steps):
+            steptime = time.time()
             for ch_number, v_list in v_sweep.items():
                 if step < len(v_list):
                     self.channels[ch_number].v(v_list[step])
-            time.sleep(self.parameters['smooth_timestep']())
+            # print(self.parameters['smooth_timestep']() - (time.time() - steptime))
+            time.sleep(max(
+                self.parameters['smooth_timestep']() - (time.time() - steptime),
+                0))
+            # time.sleep(self.parameters['smooth_timestep']())
+            print_progress(step + 1, N_steps, begintime)
+        self._update_cache()
 
 
 # channel_map_qdac = {i: f'fluxline{i + 1}' for i in range(6)}
