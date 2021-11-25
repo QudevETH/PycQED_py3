@@ -1745,6 +1745,7 @@ class Rabi(SingleQubitGateCalibExperiment):
             amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['piPulse']
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+            qubit.set(f'{task["transition_name_input"]}_amp90_scale', 0.5)
 
 
 class Ramsey(SingleQubitGateCalibExperiment):
