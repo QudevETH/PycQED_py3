@@ -160,6 +160,16 @@ class SwitchControl(Instrument):
 
 
 class MultiSwitchControl(Instrument):
+    """
+    Meta instrument to combine multiple switch controls into one.
+    The switch names in the combined switch control are generated as
+    <name of switch control>_<original switch name>.
+
+    :param name: instrument name of the MultiSwitchControl
+    :switch_controls: a list of switch control instruments
+
+    *args & **kwargs are passed on to the init of the qcodes Instrument class.
+    """
     def __init__(self, name, switch_controls, *args, **kwargs):
         super().__init__(name, *args, **kwargs)
         self.switch_controls = copy(switch_controls)
@@ -200,11 +210,26 @@ class MultiSwitchControl(Instrument):
 
     @property
     def switches(self):
+        """
+        Returns a dict of the switches objects of all switch controls.
+        Note that this requires that the switches property is implemented
+        in the respective switch control (which is, e.g., the case for the
+        SwitchControl class in this module).
+        """
         return {self._format_switch_name(sc.name, sw_name): sw
                 for sc in self.switch_controls if hasattr(sc, 'switches')
                 for sw_name, sw in sc.switches.items()}
 
     def set_switch(self, values):
+        """
+        Set multiple switches to the given mode. If the respective switch
+        control implements a set_switch method for setting multiple switches
+        simultaneously (e.g., with a single hardware access), this method is
+        called. Otherwise, the switches are set individually.
+
+        :param values: dict where each key is a switch name and value is the
+            mode to set the switch to.
+        """
         values = {self._split_switch_name(k): v for k, v in values.items()}
         for sc in self.switch_controls:
             values_sc = {k[1]: v for k, v in values.items() if k[0] == sc.name}
