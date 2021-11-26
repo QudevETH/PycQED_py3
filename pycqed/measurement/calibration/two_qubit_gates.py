@@ -652,29 +652,6 @@ class CalibBuilder(MultiTaskingExperiment):
                 max_length = max(p.pulse_obj.length, max_length)
         return max_length
 
-    def prepend_pulses_block(self, prepend_pulse_dicts):
-        """
-        Generates a list of prepended pulses to run a calibration under the
-        influence of previous operations (e.g.,  charge in the fluxlines).
-
-        :param prepend_pulse_dicts: list of pulse dictionaries,
-            each containing the op_code of the desired pulse, plus optional
-            pulse parameters to overwrite the default values of the chosen
-            pulse.
-        :return: block containing the prepended pulses
-        """
-        prepend_pulses = []
-        if prepend_pulse_dicts is not None:
-            for i, pp in enumerate(prepend_pulse_dicts):
-                # op_code determines which pulse to use
-                prepend_pulse = self.get_pulse(pp['op_code']) \
-                    if 'op_code' in pp else {}
-                # all other entries in the pulse dict are interpreted as
-                # pulse parameters that overwrite the default values
-                prepend_pulse.update(pp)
-                prepend_pulses += [prepend_pulse]
-        return Block('prepend', prepend_pulses)
-
     @staticmethod
     def add_default_ramsey_sweep_points(sweep_points, tile=2,
                                         repeat=0, **kw):
@@ -739,6 +716,14 @@ class CPhase(CalibBuilder):
         TODO
         :param cz_pulse_name: see CircuitBuilder
         :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
+        :param kw:
+            cal_states_rotations: (dict) Overwrite the default choice of
+                cal_states_rotations written to the meta data. The keys are
+                qubit names, and the values are dictionaries mapping state
+                names to state indices, e.g., {'g': 0, 'e': 1, 'f': 2}. For
+                qubits that are not contained in the dict, the value
+                generated in cphase_block will be used.
+            TODO further kws
     ...
     """
     kw_for_task_keys = ['ref_pi_half', 'num_cz_gates']
@@ -778,6 +763,9 @@ class CPhase(CalibBuilder):
                 self.preprocessed_task_list, self.cphase_block,
                 block_align=['center', 'end', 'center', 'start'], **kw)
 
+            # allow the user to overwrite entries in cal_states_rotations
+            self.cal_states_rotations.update(
+                kw.get('cal_states_rotations', {}))
             # save CPhase-specific metadata
             self.exp_metadata.update({
                 'cz_durations': self.cz_durations,
@@ -816,7 +804,7 @@ class CPhase(CalibBuilder):
             rotations to the, default: None, in which case it will be
             determined automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
-            prepend_pulses_block
+            CircuitBuilder.block_from_pulse_dicts
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
@@ -829,7 +817,7 @@ class CPhase(CalibBuilder):
 
         hard_sweep_dict, soft_sweep_dict = sweep_points
 
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         pulse_modifs = {'all': {'element_name': 'cphase_initial_rots_el'}}
         ir = self.block_from_ops('initial_rots',
@@ -930,7 +918,7 @@ class CPhase(CalibBuilder):
                                      qb.int_avg_det.value_names]
                            for qb in self.meas_objs}
         self.analysis = tda.CPhaseLeakageAnalysis(
-            qb_names=self.qb_names,
+            qb_names=self.meas_obj_names,
             options_dict={'TwoD': True, 'plot_all_traces': plot_all_traces,
                           'plot_all_probs': plot_all_probs,
                           'channel_map': channel_map,
@@ -1196,7 +1184,7 @@ class DynamicPhase(CalibBuilder):
             initial X90 rotation (see class docstring) shall be applied
             (default=None, in which case qubits_to_measure will be used).
         :param prepend_pulse_dicts: (dict) prepended pulses, see
-            prepend_pulses_block
+            CircuitBuilder.block_from_pulse_dicts
         :param num_cz_gates: number of sequential CZ gates, default: 1
         :param init_for_swap: (bool, default: False) Expert-level feature for
             swap gate characterization (see the note in the class docstring).
@@ -1216,7 +1204,7 @@ class DynamicPhase(CalibBuilder):
                 f"cannot be measured simultaneously ({op_code}).")
 
         # create prepended pulses (pb)
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         # create pulses for initial rotations (ir)
         if qubits_to_drive is None:
@@ -1498,14 +1486,14 @@ class Chevron(CalibBuilder):
             parameter is understood as a net pulse length, and buffer times
             are automatically added if applicable.
         :param prepend_pulse_dicts: (dict) prepended pulses, see
-            prepend_pulses_block
+            CircuitBuilder.block_from_pulse_dicts
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
         """
 
         # create prepended pulses (pb)
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         # create pulses for initial rotations (ir)
         pulse_modifs = {'all': {'element_name': 'initial_rots_el'}}

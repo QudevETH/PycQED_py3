@@ -175,7 +175,7 @@ class T1FrequencySweep(CalibBuilder):
         if isinstance(qubit_name, list):
             qubit_name = qubit_name[0]
         hard_sweep_dict, soft_sweep_dict = sweep_points
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         pulse_modifs = {'all': {'element_name': 'pi_pulse'}}
         pp = self.block_from_ops('pipulse',
@@ -904,7 +904,7 @@ class Cryoscope(CalibBuilder):
             dict must contain at least the 'op_code' entry.
         - for any of the cases described above, the user can specify the
             prepend_pulse_dicts entry in each task.
-            See CalibBuilder.prepend_pulses_block() for details.
+            See CalibBuilder.block_from_pulse_dicts() for details.
 
     Example of a task with all possible entry recognized by this class.
     See above for details on how they are used and which ones have priority
@@ -1104,8 +1104,8 @@ class Cryoscope(CalibBuilder):
             pihalf_2_bk.pulses[0]['pulse_delay'] = task['separation_buffer']
 
             # pulses to prepend
-            prep_bk = self.prepend_pulses_block(task.get('prepend_pulse_dicts',
-                                                         {}))
+            prep_bk = self.block_from_pulse_dicts(
+                task.get('prepend_pulse_dicts', {}))
 
             # pulse(s) to measure with cryoscope
             if 'flux_pulse_dicts' in task:
@@ -1583,13 +1583,14 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
                 ef --> '_ef'
                 fh --> '_fh'
         :param prepend_pulse_dicts: (dict) prepended pulses, see
-            prepend_pulses_block
+            block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
         """
 
         # create user-specified prepended pulses (pb)
-        pb = self.prepend_pulses_block(prepend_pulse_dicts)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                         block_name='prepend')
         # get transition prepended pulses
         tr_prepended_pulses = self.transition_order[
                               :self.transition_order.index(transition_name)]

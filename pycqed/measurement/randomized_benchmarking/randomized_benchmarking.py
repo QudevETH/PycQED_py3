@@ -41,9 +41,9 @@ def calculate_recovery_clifford(cl_in, desired_cl=0):
 def decompose_clifford_seq(clifford_sequence,
                            gate_decomp='HZ'):
 
-    if gate_decomp is 'HZ':
+    if gate_decomp == 'HZ':
         gate_decomposition = HZ_gate_decomposition
-    elif gate_decomp is 'XY':
+    elif gate_decomp == 'XY':
         gate_decomposition = XY_gate_decomposition
     else:
         raise ValueError('Specify a valid gate decomposition, "HZ" or "XY".')
@@ -66,9 +66,9 @@ def decompose_clifford_seq_n_qubits(clifford_sequence_list, gate_decomp='HZ'):
     :param gate_decomp: the physical decomposition for the Cliffords
     :return: decomposed_seq
     """
-    if gate_decomp is 'HZ':
+    if gate_decomp == 'HZ':
         gate_decomposition = HZ_gate_decomposition
-    elif gate_decomp is 'XY':
+    elif gate_decomp == 'XY':
         gate_decomposition = XY_gate_decomposition
     else:
         raise ValueError('Specify a valid gate decomposition, "HZ" or "XY".')
@@ -135,9 +135,9 @@ def convert_clifford_sequence_to_tape(clifford_sequence, lutmapping,
     # decomposed_seq = decompose_clifford_seq(clifford_sequence,
     #                                         gate_decomposition)
 
-    if gate_decomp is 'HZ':
+    if gate_decomp == 'HZ':
         gate_decomposition = HZ_gate_decomposition
-    elif gate_decomp is 'XY':
+    elif gate_decomp == 'XY':
         gate_decomposition = XY_gate_decomposition
     else:
         raise ValueError('Specify a valid gate decomposition, "HZ" or "XY".')
@@ -196,11 +196,11 @@ def randomized_benchmarking_sequence(n_cl, desired_net_cl=0,
 
 def get_clifford_decomposition(decomposition_name: str):
 
-    if decomposition_name is 'HZ':
+    if decomposition_name == 'HZ':
         return HZ_gate_decomposition
-    elif decomposition_name is 'XY':
+    elif decomposition_name == 'XY':
         return XY_gate_decomposition
-    elif decomposition_name is '5Primitives':
+    elif decomposition_name == '5Primitives':
         return Five_primitives_decomposition
     else:
         raise ValueError('Specify a valid gate decomposition, "HZ", "XY",'

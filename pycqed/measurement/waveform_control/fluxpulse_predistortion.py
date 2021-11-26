@@ -107,14 +107,28 @@ def scale_and_negate_IIR(filter_coeffs, scale):
     filter_coeffs[1][0] /= scale
 
 
-def combine_FIR_filters(kernels):
+def combine_FIR_filters(kernels, FIR_n_force_zero_coeffs=None):
+    """
+    Combine multiple FIR filter kernels to a single FIR filter kernel via
+    convolution (optionally forcing some initial coefficients to zero).
+
+    :param kernels: (list of arrays) the FIR filter kernels
+    :param FIR_n_force_zero_coeffs: (int or None) If this is an int n,
+        the first n coefficients of the combined filter are replaced by
+        zeros and the filter is renormalized afterwards. This can, e.g., be
+        used to create a causal filter.
+    """
     if hasattr(kernels[0], '__iter__'):
         kernel_combined = kernels[0]
         for kernel in kernels[1:]:
             kernel_combined = np.convolve(kernel, kernel_combined)
-        return kernel_combined
-    else:
-        return kernels
+        kernels = kernel_combined
+    elif FIR_n_force_zero_coeffs is not None:
+        kernels = deepcopy(kernels)  # make sure that we do not modify user input
+    if FIR_n_force_zero_coeffs is not None:
+        kernels[:FIR_n_force_zero_coeffs] = 0
+        kernels /= np.sum(kernels)  # re-normalize
+    return kernels
 
 
 def convert_expmod_to_IIR(expmod, dt, inverse_IIR=True, direct=False):
@@ -266,6 +280,8 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
         already existing in FIR/IIR.
         If flux_distortion is already in the format to be stored in pulsar,
         it is returned unchanged.
+        If flux_distortion contains the key FIR_n_force_zero_coeffs, its value
+        is passed to combine_FIR_filters when combining FIR filters.
     :param datadir: (str) base dir for loading csv files. If None,
         it is assumed that the specified filename includes the full path.
     :param default_dt: (float) AWG sampling period to be used in cases where
@@ -313,8 +329,10 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
             filterCoeffs[fclass].append(coeffs)
 
     if len(filterCoeffs['FIR']) > 0:
-        filterCoeffs['FIR'] = [
-            combine_FIR_filters(filterCoeffs['FIR'])]
+        filterCoeffs['FIR'] = [combine_FIR_filters(
+            filterCoeffs['FIR'],
+            FIR_n_force_zero_coeffs=flux_distortion.get(
+                'FIR_n_force_zero_coeffs', None))]
     else:
         del filterCoeffs['FIR']
     if len(filterCoeffs['IIR']) > 0:

@@ -305,7 +305,8 @@ class CircuitBuilder:
         self.qb_names[i], self.qb_names[j] = self.qb_names[j], self.qb_names[i]
 
     def initialize(self, init_state='0', qb_names='all', prep_params=None,
-                   simultaneous=True, block_name=None, pulse_modifs=None):
+                   simultaneous=True, block_name=None, pulse_modifs=None,
+                   prepend_block=None):
         """
         Initializes the specified qubits with the corresponding init_state
         :param init_state (String or list): Can be one of the following
@@ -325,6 +326,8 @@ class CircuitBuilder:
             automatically generated block name of the initialization block
         :param pulse_modifs: (dict) Modification of pulses parameters.
             See method block_from_ops.
+        :param prepend_block: (Block, optional) An extra block that will be
+            executed between the preparation and the initialization.
         :return: init block
         """
         if block_name is None:
@@ -357,11 +360,17 @@ class CircuitBuilder:
                 pulses += tmp_block.pulses
         block = Block(block_name, pulses)
         block.set_end_after_all_pulses()
+        blocks = []
         if len(prep_params) != 0:
-            block = self.sequential_blocks(
-                block_name, [self.prepare(qb_names, ref_pulse="start",
-                                          **prep_params), block])
+            blocks.append(self.prepare(qb_names, ref_pulse="start",
+                                       **prep_params))
+        if prepend_block is not None:
+            blocks.append(prepend_block)
+        if len(blocks) > 0:
+            blocks.append(block)
+            block = self.sequential_blocks(block_name, blocks)
         return block
+
 
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):
@@ -675,6 +684,63 @@ class CircuitBuilder:
             segments.append(seg)
 
         return segments
+
+    def block_from_anything(self, pulses, block_name):
+        """
+        Convert various input formats into a `Block`.
+        Args:
+            pulses: A specification of a pulse sequence. Can have the following
+                formats:
+                    1) Block: A block class is returned unmodified.
+                    2) str: A single op code.
+                    3) dict: A single pulse dictionary. If the dictionary
+                           includes the key `op_code`, then the unspecified
+                           pulse parameters are taken from the corresponding
+                           operation.
+                    4) list of str: A list of op codes.
+                    5) list of dict: A list of pulse dictionaries, optionally
+                           including the op-codes, see also format 3).
+            block_name: Name of the resulting block
+        Returns: The input converted to a Block.
+        """
+
+        if hasattr(pulses, 'build'):  # Block
+            return pulses
+        elif isinstance(pulses, str):  # opcode
+            return self.block_from_ops(block_name, [pulses])
+        elif isinstance(pulses, dict):  # pulse dict
+            return self.block_from_pulse_dicts([pulses], block_name=block_name)
+        elif isinstance(pulses[0], str):  # list of opcodes
+            return self.block_from_ops(block_name, pulses)
+        elif isinstance(pulses[0], dict):  # list of pulse dicts
+            return self.block_from_pulse_dicts(pulses, block_name=block_name)
+
+    def block_from_pulse_dicts(self, pulse_dicts,
+                               block_name='from_pulse_dicts'):
+        """
+        Generates a block from a list of pulse dictionaries.
+
+        Args:
+            pulse_dicts: list
+                Pulse dictionaries, each containing either 1) an op_code of the
+                desired pulse plus optional pulse parameters to overwrite the
+                default values of the chosen operation, or 2) a full set of
+                pulse parameters.
+            block_name: str, optional
+                Name of the resulting block
+        Returns:
+             A block containing the pulses in pulse_dicts
+        """
+        pulses = []
+        if pulse_dicts is not None:
+            for i, pp in enumerate(pulse_dicts):
+                # op_code determines which pulse to use
+                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
+                # all other entries in the pulse dict are interpreted as
+                # pulse parameters that overwrite the default values
+                pulse.update(pp)
+                pulses += [pulse]
+        return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
