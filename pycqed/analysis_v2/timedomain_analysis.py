@@ -4,6 +4,7 @@ from numpy.linalg import inv
 import scipy as sp
 import itertools
 import matplotlib as mpl
+import cmath
 from collections import OrderedDict, defaultdict
 
 from pycqed.utilities import timer as tm_mod
@@ -9545,7 +9546,12 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
 
         mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, 
                                            independent_vars=['vi', 'vq'])
-        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod)
+        minimum = VI[np.argmin(data)]+ 1j*VQ[np.argmin(data)]
+        li_guess = np.abs(minimum)
+        theta_i_guess = - np.pi - cmath.phase(minimum)
+        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod, 
+                                                     li=li_guess, 
+                                                     theta_i=theta_i_guess)
 
         self.fit_dicts['mixer_lo_leakage'] = {
             'model': mixer_lo_leakage_mod,
@@ -9713,13 +9719,18 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
+        data = self.proc_data_dict['data_to_fit']
 
         mixer_imbalance_sideband_mod = lmfit.Model(
             fit_mods.mixer_imbalance_sideband, 
             independent_vars=['alpha', 'phi_skew']
             )
+        g_guess = self.proc_data_dict['alpha'][np.argmin(data)]
+        phi_guess = -self.proc_data_dict['phase'][np.argmin(data)]
         guess_pars = fit_mods.mixer_imbalance_sideband_guess(
-            mixer_imbalance_sideband_mod
+            mixer_imbalance_sideband_mod,
+            g=g_guess,
+            phi=phi_guess
             )
 
         self.fit_dicts['mixer_imbalance_sideband'] = {
