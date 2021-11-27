@@ -1620,8 +1620,8 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
         :py:class:'lmfit.parameters': Parameters
     """
     model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
-    model.set_param_hint('phi', value=0, min=-20, max=20)
-    model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
+    model.set_param_hint('phi', value=0, min=-180, max=180)
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)
 
 
@@ -1698,8 +1698,8 @@ def mixer_lo_leakage_guess(model, **kwargs):
     model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
                          max=pi_half, vary=False
                          )
-    model.set_param_hint('offset', value=0.0, min=-4.0, max=+4.0)
-    return model.make_params()
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
+    return model.make_params(**kwargs)
 
 
 #################################
