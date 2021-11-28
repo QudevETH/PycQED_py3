@@ -63,10 +63,7 @@ class Device(Instrument):
         for qb in qubits:
             setattr(self, qb.name, qb)
 
-        self.add_parameter('qubits',
-                           vals=vals.Lists(),
-                           initial_value=qubits,
-                           parameter_class=ManualParameter)
+        self.qubits = qubits
         self.add_parameter('qb_names',
                            vals=vals.Lists(),
                            initial_value=qb_names,
@@ -242,17 +239,17 @@ class Device(Instrument):
             - list of integers specifying the index, e.g. [0, 1] for qb1, qb2
         :param return_type (str): "obj" --> qubit objects are returned.
             "str": --> qubit names are returned.
-            "ind": --> returns indices to find the qubits in self.qubits()
+            "ind": --> returns indices to find the qubits in self.qubits
         :return: list of qb_names or qb objects. Note that a list is
             returned in all cases
         """
         if return_type not in ['obj', 'str', 'ind']:
             raise ValueError(f'Return type: {return_type} not understood')
 
-        qb_names = [qb.name for qb in self.qubits()]
+        qb_names = [qb.name for qb in self.qubits]
         if qubits == 'all':
             if return_type == "obj":
-                return self.qubits()
+                return copy(self.qubits)
             elif return_type == "str":
                 return qb_names
             else:
@@ -284,7 +281,7 @@ class Device(Instrument):
         if return_type == "str":
             return qubits_to_return
         elif return_type == "obj":
-            return [self.qubits()[qb_names.index(qbn)]
+            return [self.qubits[qb_names.index(qbn)]
                     for qbn in qubits_to_return]
         else:
             return [qb_names.index(qb) for qb in qubits_to_return]
