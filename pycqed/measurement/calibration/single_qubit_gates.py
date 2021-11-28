@@ -623,6 +623,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         for task in self.task_list:
             if 'fluxline' not in task:
                 continue
+            temp_vals.append((task['fluxline'], task['fluxline']()))
             qb = self.get_qubits(task['qb'])[0][0]
             dc_amp = (lambda x, o=self.qb_offsets[qb], qb=qb:
                       qb.calculate_flux_voltage(x + o))
