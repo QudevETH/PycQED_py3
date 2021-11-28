@@ -2303,7 +2303,9 @@ class QuDev_transmon(Qubit):
                         '`calibrate_drive_mixer_carrier_new` needs to be a list '
                         'or 1D array of length 4.\nFound length '
                         '{} object instead!'.format(len(limits)))
-            if not len(n_meas) == 2:
+            if isinstance(n_meas, int):
+                n_meas = [n_meas, n_meas]
+            elif not len(n_meas) == 2:
                 log.error('Input variable `n_meas` in function call '
                         '`calibrate_drive_mixer_carrier_new` needs to be a list, '
                         'tuple or 1D array of length 2.\nFound length '
