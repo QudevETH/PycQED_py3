@@ -53,6 +53,19 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._snapshot_whitelist = {
+            'IDN',
+            'clockbase',}
+        for i in range(1):
+            self._snapshot_whitelist.update({
+                'awgs_{}_enable'.format(i),
+                'awgs_{}_outputs_0_amplitude'.format(i),
+                'awgs_{}_outputs_1_amplitude'.format(i)})
+        for i in range(2):
+            self._snapshot_whitelist.update({
+                'sigouts_{}_offset'.format(i),
+                'sigouts_{}_on'.format(i) ,
+                'sigouts_{}_range'.format(i),})
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
 
     def prepare_poll(self):
