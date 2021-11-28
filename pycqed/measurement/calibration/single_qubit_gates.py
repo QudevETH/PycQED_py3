@@ -702,7 +702,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         if fp_during_ro_buffer is None:
             fp_during_ro_buffer = 0.2e-6
 
-        if ro_pulse_delay is 'auto' and (fp_truncation or \
+        if ro_pulse_delay == 'auto' and (fp_truncation or \
             hasattr(fp_truncation, '__iter__')):
             raise Exception('fp_truncation does currently not work ' + \
                             'with the auto mode of ro_pulse_delay.')
