@@ -1741,6 +1741,7 @@ class MeasurementControl(Instrument):
             res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -1770,11 +1771,17 @@ class MeasurementControl(Instrument):
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.start")
                 instrument_grp = set_grp.create_group(iname)
                 inst_snapshot = ins.snapshot()
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.store")
                 self.store_snapshot_parameters(inst_snapshot,
                                                entry_point=instrument_grp,
                                                instrument=ins)
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.end")
         numpy.set_printoptions(**opt)
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
