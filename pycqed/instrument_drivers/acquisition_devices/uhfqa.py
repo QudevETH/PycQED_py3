@@ -13,6 +13,22 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev):
     USER_REG_FIRST_SEGMENT = 5
     USER_REG_LAST_SEGMENT = 6
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._snapshot_whitelist = {
+            'IDN',
+            'clockbase',}
+        for i in range(1):
+            self._snapshot_whitelist.update({
+                'awgs_{}_enable'.format(i),
+                'awgs_{}_outputs_0_amplitude'.format(i),
+                'awgs_{}_outputs_1_amplitude'.format(i)})
+        for i in range(2):
+            self._snapshot_whitelist.update({
+                'sigouts_{}_offset'.format(i),
+                'sigouts_{}_on'.format(i) ,
+                'sigouts_{}_range'.format(i),})
+
     def acquisition_initialize(self, samples, averages, loop_cnt, channels=(0, 1), mode='rl') -> None:
         # Define the channels to use and subscribe to them
         self._acquisition_nodes = []
