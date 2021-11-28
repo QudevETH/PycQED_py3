@@ -5686,6 +5686,10 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 mask = np.array([i in excl_idxs for i in np.arange(len(freqs))])
                 ampls = ampls[np.logical_not(mask)]
                 freqs = freqs[np.logical_not(mask)]
+            if 'cal_data' not in self.proc_data_dict['analysis_params_dict']:
+                self.proc_data_dict['analysis_params_dict']['cal_data'] = {}
+            self.proc_data_dict['analysis_params_dict']['cal_data'][qbn] = \
+                [freqs, ampls[:, 0]]
 
             optimal_idx = np.argmin(np.abs(
                 freqs - self.raw_data_dict[f'ge_freq_{qbn}']))
