@@ -56,7 +56,8 @@ def legend_unique_labels(ax, **kwargs):
 
 
 def get_default_plot_params(set_params=True, figure_width='1col',
-                            figure_height=None, params=None, **kw):
+                            figure_height=None, params=None,
+                            return_full_rc_params=False, **kw):
     """
     Generates the rcParams that produce nice paper-style figures.
     Optionally updates the rcParams if set_pars == True.
@@ -67,6 +68,8 @@ def get_default_plot_params(set_params=True, figure_width='1col',
         representing a fraction of 1 column PRX style.
     :param figure_height: height of the figure in inches. If None, uses
         the function default_figure_height defined above.
+    :param return_full_rc_params: whether to return the rc_params created in
+        this function (False) or plt.rcParams (True)
     :param params: keyword arguments
     :return: rcParams dictionary
     """
@@ -106,7 +109,10 @@ def get_default_plot_params(set_params=True, figure_width='1col',
     if set_params:
         plt.rcParams.update(plt.rcParamsDefault)
         plt.rcParams.update(rc_params)
-    return rc_params
+    if return_full_rc_params:
+        return plt.rcParams
+    else:
+        return rc_params
 
 
 def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,

@@ -739,21 +739,10 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
                                            default_value='', **params)
     if not len(keys_out_container) or keys_out_container is None:
         keys_out_container = f'{mobjn}.{msmt_type}'
+
     fit_dicts = hlp_mod.get_param('fit_dicts', data_dict, raise_error=True)
     for keyi in keys_in:
         fit_res = fit_dicts['rb_fit' + keyi]['fit_res']
-        hlp_mod.add_param(f'{keys_out_container}.EPC value',
-                          fit_res.params['error_per_Clifford'].value,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.EPC stderr',
-                          fit_res.params['fidelity_per_Clifford'].stderr,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.depolarization parameter value',
-                          fit_res.params['p'].value,
-                          data_dict, add_param_method='replace')
-        hlp_mod.add_param(f'{keys_out_container}.depolarization parameter stderr',
-                          fit_res.params['p'].stderr,
-                          data_dict, add_param_method='replace')
         if 'pf' in keyi:
             A = fit_res.best_values['Amplitude']
             Aerr = fit_res.params['Amplitude'].stderr
@@ -797,6 +786,21 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
                               fit_res.params['pd'].stderr,
                               data_dict,
                               add_param_method='replace')
+        else:
+            hlp_mod.add_param(f'{keys_out_container}.EPC value',
+                              fit_res.params['error_per_Clifford'].value,
+                              data_dict, add_param_method='replace')
+            hlp_mod.add_param(f'{keys_out_container}.EPC stderr',
+                              fit_res.params['fidelity_per_Clifford'].stderr,
+                              data_dict, add_param_method='replace')
+            hlp_mod.add_param(
+                f'{keys_out_container}.depolarization parameter value',
+                fit_res.params['p'].value, data_dict,
+                add_param_method='replace')
+            hlp_mod.add_param(
+                f'{keys_out_container}.depolarization parameter stderr',
+                fit_res.params['p'].stderr, data_dict,
+                add_param_method='replace')
 
     if hlp_mod.get_param('plot_T1_lim', data_dict, default_value=False,
                          **params):
@@ -828,10 +832,14 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
         'state_prob_name', data_dict,
         default_value='gg' if 'corr' in mobjn else 'e', **params)
     classified_msmt = any([v == 3 for v in [len(chs) for chs in movnm.values()]])
-    lw = plot_mod.get_default_plot_params(set=False)['lines.linewidth']
-    ms = plot_mod.get_default_plot_params(set=False)['lines.markersize']
-    llsp = plot_mod.get_default_plot_params(set=False)['legend.labelspacing']
-    lcsp = plot_mod.get_default_plot_params(set=False)['legend.columnspacing']
+    lw = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['lines.linewidth']
+    ms = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['lines.markersize']
+    llsp = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['legend.labelspacing']
+    lcsp = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['legend.columnspacing']
 
     ylabel = hlp_mod.pop_param('ylabel', data_dict, node_params=params)
     if ylabel is None:
@@ -1077,7 +1085,8 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
                             'setlabel': '', 'legend_ncol': 1}
             plot_dicts_updated[f'{pd_name} IRB'].update(updated_vals)
 
-    plotsize = plot_mod.get_default_plot_params(set=False)['figure.figsize']
+    plotsize = plot_mod.get_default_plot_params(
+        set=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 3*plotsize[1])
     last_pd = plot_dicts_updated[list(plot_dicts_updated)[-1]]
     last_pd.update({'legend_bbox_to_anchor': (0.35, 0.08),

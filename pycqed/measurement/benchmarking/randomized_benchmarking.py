@@ -27,7 +27,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
     }
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 sweep_type=None, interleaved_gate=None,
+                 sweep_type=None, interleaved_gate=None, purity=False,
                  gate_decomposition='HZ', **kw):
         """
         Class to run and analyze the randomized benchmarking experiment on
@@ -43,13 +43,27 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
         :param interleaved_gate: string specifying the interleaved gate in
             pycqed notation (ex: X90, Y180 etc). Gate must be part of the
             Clifford group.
+        :param purity: bool indicating whether to do purity benchmarking
         :param gate_decomposition: string specifying what decomposition to use
             to translate the Clifford elements into applicable pulses.
             Possible choices are 'HZ' or 'XY'.
             See HZ_gate_decomposition and XY_gate_decomposition in
             pycqed\measurement\randomized_benchmarking\clifford_decompositions.py
         :param kw: keyword arguments
-            passed to CalibBuilder; see docstring there
+            passed to parent class; see docstring there
+
+            - tomo_pulses (list, default: ['I', 'X90', 'Y90']) list of op codes
+                to use as tomography pulses if purity==True
+
+            The following keyword arguments will be used to construct
+            sweep points:
+            - nr_seeds
+            - cliffords
+
+        The following keys in a task are interpreted by this class in
+        addition to the ones recognized by the parent classes:
+            - seeds
+            - cliffords
 
         Assumptions:
          - If nr_seeds and cliffords are specified in kw and they do not exist
@@ -86,7 +100,16 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             self.kw_for_sweep_points['cliffords']['dimension'] = \
                 self.sweep_type['cliffords']
 
+            # tomo pulses for purity benchmarking
+            self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
+
+            self.purity = purity
             self.interleaved_gate = interleaved_gate
+            if self.interleaved_gate is not None and self.purity:
+                raise ValueError('There is no interleaved purity benchmarking '
+                                 'measurement. Please either set '
+                                 '"interleaved_gate=None" or "purity=False."')
+
             if self.interleaved_gate is not None:
                 self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
@@ -99,6 +122,14 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                          values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T)]
+            elif self.purity:
+                self.kw_for_sweep_points['nr_seeds,cliffords'] = [
+                    dict(param_name='seeds', unit='',
+                         label='Seeds', dimension=self.sweep_type['seeds'],
+                         values_func=lambda ns, cliffords: np.array(
+                             [np.repeat(np.random.randint(0, 1e8, ns), 3)
+                              for _ in range(len(cliffords))]).T)]
+
             kw['cal_states'] = kw.get('cal_states', '')
 
             super().__init__(task_list, qubits=qubits,
@@ -127,22 +158,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                                      'To use non-identical pulses, '
                                      'move nr_seeds from keyword arguments '
                                      'into the tasks.')
-
-            # remove the redundant 'seeds' and 'cliffords' entries in
-            # self.sweep_points which are created if these parameters are passed
-            # both as globals and in the task_list
-            intlvd_msmt = self.interleaved_gate is not None
-            factor = 1 + intlvd_msmt
-            condition = factor * (len(task_list) + 1)
-            for param in ['seeds', 'cliffords']:
-                dim = self.sweep_points.find_parameter(param)
-                if dim is not None and len(
-                        self.sweep_points.get_sweep_dimension(dim)) == \
-                        condition:
-                    # only remove if they are redundant, i.e. if these
-                    # parameters also exist with the prefixed qb names
-                    self.sweep_points.get_sweep_params_description(
-                        [param] + ['seeds_irb']*intlvd_msmt, dim, pop=True)
 
             self.sequences, self.mc_points = self.sweep_n_dim(
                 self.sweep_points, body_block=None,
@@ -232,8 +247,14 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
             cl_seq = rb.randomized_benchmarking_sequence(
                 clifford, seed=seed,
                 interleaved_gate=interleaved_gate)
-            pulse_op_codes_list += [rb.decompose_clifford_seq(
-                cl_seq, gate_decomp=self.gate_decomposition)]
+            pulse_list = rb.decompose_clifford_seq(
+                cl_seq, gate_decomp=self.gate_decomposition)
+            if self.purity:
+                idx = sp1d_idx if self.sweep_type['seeds'] == 0 else sp2d_idx
+                pulse_op_codes_list += [pulse_list +
+                                        [self.tomo_pulses[idx % 3]]]
+            else:
+                pulse_op_codes_list += [pulse_list]
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
                                  pulse_op_codes_list[0 if self.identical_pulses
@@ -258,6 +279,10 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
             product of 2 single qubit Clifford groups.
         See docstring for RandomizedBenchmarking for the other parameters.
         """
+        if kw.get('purity', False):
+            raise NotImplementedError('Purity benchmarking is not implemented '
+                                      'for 2QB RB. Set "purity=False."')
+
         self.max_clifford_idx = max_clifford_idx
         tqc.gate_decomposition = rb.get_clifford_decomposition(
             kw.get('gate_decomposition', 'HZ'))

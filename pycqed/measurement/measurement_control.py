@@ -242,6 +242,12 @@ class MeasurementControl(Instrument):
                     calls itself recursively.
         '''
 
+        def try_finish():
+            try:
+                self.detector_function.finish()
+            except Exception:
+                pass  # no need to raise an exception if cleanup fails
+
         self.timer = Timer("MeasurementControl")
         # reset properties that are used by get_percdone
         self._last_percdone_value = 0
@@ -314,8 +320,10 @@ class MeasurementControl(Instrument):
                     raise ValueError('Mode "{}" not recognized.'
                                      .format(self.mode))
             except KeyboardFinish as e:
+                try_finish()
                 print(e)
             except KeyboardInterrupt as e:
+                try_finish()
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
@@ -324,6 +332,7 @@ class MeasurementControl(Instrument):
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
+                try_finish()
                 # We store the exception instead of raising it directly.
                 # After creating the results dict and storing end time +
                 # metadata, the exception will be either logged (if an
@@ -1732,6 +1741,7 @@ class MeasurementControl(Instrument):
             res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -1761,11 +1771,17 @@ class MeasurementControl(Instrument):
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.start")
                 instrument_grp = set_grp.create_group(iname)
                 inst_snapshot = ins.snapshot()
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.store")
                 self.store_snapshot_parameters(inst_snapshot,
                                                entry_point=instrument_grp,
                                                instrument=ins)
+                self.timer.checkpoint(
+                    f"MeasurementControl.save_instrument_settings.{iname}.end")
         numpy.set_printoptions(**opt)
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,

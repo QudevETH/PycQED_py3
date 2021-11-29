@@ -19,7 +19,7 @@ from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
-    flex_color_plot_vs_x, rainbow_text)
+    flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -564,19 +564,32 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
+            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # point.
+            tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
                 TwoD = True
                 hsp = np.unique(mc_points[0])
                 ssp, counts = np.unique(mc_points[1:], return_counts=True)
-                if counts[0] != len(hsp):
+                if (len(hsp) * len(ssp)) > len(mc_points[0]):
+                    tuple_measurement = True
+                    hsp = mc_points[0]
+                    ssp = mc_points[1]
+                elif counts[0] > len(hsp):
                     # ssro data
                     n_shots = counts[0] // len(hsp)
                     hsp = np.tile(hsp, n_shots)
                 # if needed, decompress the data (assumes hsp and ssp are indices)
                 if compression_factor != 1:
-                    hsp = hsp[:int(len(hsp) / compression_factor)]
-                    ssp = np.arange(len(ssp) * compression_factor)
+                    if not tuple_measurement:
+                        hsp = hsp[:int(len(hsp) / compression_factor)]
+                        ssp = np.arange(len(ssp) * compression_factor)
+                    else:
+                        log.warning(f"Tuple measurement does not support "
+                                    f"compression_factor and it will be ignored.")
+                    
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
@@ -645,6 +658,8 @@ class BaseDataAnalysis(object):
                             tmp_data[i_seq * meas_hsl
                                     :(i_seq + 1) * meas_hsl] = data_seq
                         measured_data = np.reshape(tmp_data, (ssl, hsl)).T
+                    elif tuple_measurement:
+                        measured_data = np.reshape(data[i], (hsl)).T
                     else:
                         measured_data = np.reshape(data[i], (ssl, hsl)).T
                     if soft_sweep_mask is not None:
@@ -1660,6 +1675,15 @@ class BaseDataAnalysis(object):
 
         self.plot_color2D(flex_color_plot_vs_x, pdict, axs)
 
+    def plot_contourf(self, pdict, axs):
+        """
+        This wraps contourf_plot which excepts data of shape
+            x -> 2D array
+            y -> 2D array
+            z -> 2D array (same shape as x and y)
+        """
+        self.plot_color2D(contourf_plot, pdict, axs)
+
     def plot_color2D_grid_idx(self, pfunc, pdict, axs, idx):
         pfunc(pdict, np.ravel(axs)[idx])
 
@@ -1856,7 +1880,10 @@ class BaseDataAnalysis(object):
             if plot_nolabel and plot_nolabel_units:
                 no_label = False
             self.plot_colorbar(axs=axs, pdict=pdict,
-                               no_label=no_label)
+                               no_label=no_label,
+                               cax=pdict.get('cax', None),
+                               orientation=pdict.get('orientation',
+                                                     'vertical'))
 
     def label_color2D(self, pdict, axs):
         plot_transpose = pdict.get('transpose', False)
@@ -1898,19 +1925,22 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        if not isinstance(axs, Axes3D):
+            cmap = axs.cmap
+        else:
+            cmap = pdict.get('colormap')
         if cax is None:
             if not isinstance(axs, Axes3D):
                 axs.ax_divider = make_axes_locatable(axs)
                 axs.cax = axs.ax_divider.append_axes(
-                    'right', size=plot_cbarwidth, pad=plot_cbarpad)
-                cmap = axs.cmap
+                    'right' if orientation == 'vertical' else 'top',
+                    size=plot_cbarwidth, pad=plot_cbarpad)
             else:
                 plot_cbarwidth = str_to_float(plot_cbarwidth)
                 plot_cbarpad = str_to_float(plot_cbarpad)
                 axs.cax, _ = mpl.colorbar.make_axes(
                     axs, shrink=1 - plot_cbarwidth - plot_cbarpad, pad=plot_cbarpad,
                     orientation=orientation)
-                cmap = pdict.get('colormap')
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
@@ -1924,6 +1954,9 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
+        if orientation == 'horizontal':
+            axs.cax.xaxis.set_label_position("top")
+            axs.cax.xaxis.tick_top()
 
         if self.tight_fig:
             axs.figure.tight_layout()

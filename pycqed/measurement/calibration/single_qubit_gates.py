@@ -5,7 +5,7 @@ import traceback
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import ParametricValue
+from pycqed.measurement.waveform_control.block import Block, ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
@@ -578,6 +578,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         for task in self.task_list:
             if 'fluxline' not in task:
                 continue
+            temp_vals.append((task['fluxline'], task['fluxline']()))
             qb = self.get_qubits(task['qb'])[0][0]
             dc_amp = (lambda x, o=self.qb_offsets[qb], qb=qb:
                       qb.calculate_flux_voltage(x + o))
@@ -701,7 +702,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         if fp_during_ro_buffer is None:
             fp_during_ro_buffer = 0.2e-6
 
-        if ro_pulse_delay is 'auto' and (fp_truncation or \
+        if ro_pulse_delay == 'auto' and (fp_truncation or \
             hasattr(fp_truncation, '__iter__')):
             raise Exception('fp_truncation does currently not work ' + \
                             'with the auto mode of ro_pulse_delay.')
@@ -1743,6 +1744,7 @@ class Rabi(SingleQubitGateCalibExperiment):
             amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['piPulse']
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+            qubit.set(f'{task["transition_name_input"]}_amp90_scale', 0.5)
 
 
 class Ramsey(SingleQubitGateCalibExperiment):
@@ -2140,9 +2142,9 @@ class ReparkingRamsey(Ramsey):
             apd = self.analysis.proc_data_dict['analysis_params_dict']
             # set new qubit frequency
             qubit.set(f'{task["transition_name_input"]}_freq',
-                      apd['reparking_params'][qubit.name]['ss_freq'])
+                      apd['reparking_params'][qubit.name]['new_ss_vals']['ss_freq'])
             # set new voltage
-            fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
+            fluxline(apd['reparking_params'][qubit.name]['new_ss_vals']['ss_volt'])
 
 
 class T1(SingleQubitGateCalibExperiment):
@@ -2901,8 +2903,11 @@ class ActiveReset(CalibBuilder):
         # thresholds
         default_sp = SweepPoints("initialize", self.prep_states)
         default_sp.add_sweep_dimension()
-        # second dimension to have once only readout and once with feedback
-        default_sp.add_sweep_parameter("pulse_off", [1, 0])
+
+        # # second dimension to have once only readout and once with feedback
+        # default_sp.add_sweep_parameter("pulse_off", [1, 0, 0 ... 0])
+        # default_sp.add_sweep_parameter("thresholds_u1", thresholds)
+
         self.sweep_points = kw.get('sweep_points',
                                    default_sp)
 

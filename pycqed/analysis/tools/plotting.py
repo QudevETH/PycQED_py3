@@ -361,6 +361,23 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
 
     return {'fig': ax.figure, 'ax': ax, 'cmap': colormap}
 
+def contourf_plot(xvals, yvals, zvals, ax=None,
+                  cmap='plasma', levels=25, **kw):
+    """
+    Wrapper for Matplotlib contourf plot
+    """
+    xvals = np.array(xvals)
+    yvals = np.array(yvals)
+    zvals = np.array(zvals)
+
+    # create a figure and set of axes
+    if ax is None:
+        fig = plt.figure(figsize=(12, 7))
+        ax = fig.add_subplot(111)
+
+    colormap = ax.contourf(xvals, yvals, zvals, levels=levels, cmap=cmap)
+
+    return {'fig': ax.figure, 'ax': ax, 'cmap': colormap}
 
 def autolabel_barplot(ax, rects, rotation=90):
     """
