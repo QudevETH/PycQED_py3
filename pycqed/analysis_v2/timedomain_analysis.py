@@ -581,7 +581,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn in qbns:
             if qbn not in self.qb_names:
                 del data_to_fit[qbn]
-        
+
         # This is a hack to allow list inside data_to_fit.
         # A nicer solution is needed at some point, but for now this feature is
         # only needed by the MultiCZgate_Calib_Analysis to allow the same data
@@ -657,7 +657,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             - self.mospm (the meas_ibj_sweep_points_map)
 
         Possible keyword arguments taken from metadata or options_dict:
-            - sp_filter: function to filter or process the sweep points
+            - sp1d_filter: function to filter or process the sweep points. Can
+                be specified either as a callable or a string. In the later
+                case, the string will be evaluated
             - sweep_points_dict: dict of the form {qbn: swpts_1d_array}
             - hard_sweep_params: dict of the form
                 {sweep_param_name: {'values': swpts_1d_array, 'unit': unit_str}}
@@ -669,6 +671,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 points values to be taken.
         """
         sp1d_filter = self.get_param_value('sp1d_filter', lambda x: x)
+        if isinstance(sp1d_filter, str):
+            sp1d_filter = eval(sp1d_filter)
         sweep_points_dict = self.get_param_value('sweep_points_dict')
         hard_sweep_params = self.get_param_value('hard_sweep_params')
         if self.sp is not None:
