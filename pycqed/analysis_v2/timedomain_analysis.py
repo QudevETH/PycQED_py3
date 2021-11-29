@@ -281,7 +281,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             - self.get_sweep_points()
             - self.get_cal_points()
             - self.get_rotation_type()
-            - self.get_data_to_fit()
+            - self._get_default_data_to_fit()
+            - self.update_data_to_fit()
             - self.get_data_filter()
             - self.create_meas_results_per_qb()
             - self.create_sweep_points_dict()
@@ -333,10 +334,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # create self.data_to_fit
         # here we don't create the attribute directly inside the method because
         # we want to retain access to the data_to_fit returned by this method
-        # (self.data_to_fit gets overwritten later).
-        # ! NOTE: This attribute will be modified later in
-        # rotate_and_project_data !
-        self.data_to_fit = self.get_data_to_fit()
+        self.data_to_fit = self._get_default_data_to_fit()
+        # update self.data_to_fit based on the rotation_type
+        self.update_data_to_fit()
 
         # creates self.data_filter and self.data_with_reset
         self.get_data_filter()
@@ -536,7 +536,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 f'Setting rotation_type for {qbn} to '
                                 f'{self.rotation_type[qbn]}.')
 
-    def get_data_to_fit(self):
+    def _get_default_data_to_fit(self):
         """
         Extracts the data_to_fit parameter from the options_dict or metadata
         and assigns it a reasonable default value based on the cal points
@@ -581,8 +581,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn in qbns:
             if qbn not in self.qb_names:
                 del data_to_fit[qbn]
-
-        # TODO: Steph 15.09.2020
+        
         # This is a hack to allow list inside data_to_fit.
         # A nicer solution is needed at some point, but for now this feature is
         # only needed by the MultiCZgate_Calib_Analysis to allow the same data
@@ -590,7 +589,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn in data_to_fit:
             if isinstance(data_to_fit[qbn], (list, tuple)):
                 data_to_fit[qbn] = data_to_fit[qbn][0]
+
         return data_to_fit
+
+    def update_data_to_fit(self):
+        """
+        Updates self.data_to_fit based on the rotation_type.
+        """
+        for qbn in self.data_to_fit:
+            if self.get_param_value('TwoD', default_value=False):
+                if self.rotation_type[qbn].lower() == 'global_pca':
+                    self.data_to_fit[qbn] = self.rotation_type[qbn]
+                elif self.rotation_type[qbn].lower() == 'fixed_cal_points':
+                    self.data_to_fit[qbn] += '_fixed_cp'
+                else:
+                    if 'pca' in self.rotation_type[qbn].lower():
+                        self.data_to_fit[qbn] = self.rotation_type[qbn]
+            else:
+                if 'pca' in self.rotation_type[qbn].lower():
+                    self.data_to_fit[qbn] = self.rotation_type[qbn]
 
     def get_data_filter(self):
         """
@@ -1114,11 +1131,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         calibration states. This cannot be done in self.extract_data without
         significant code duplication (the if/else statements here).
         """
+        # creates self.cal_states_dict_for_rotation
         self.get_cal_states_dict_for_rotation()
         self.proc_data_dict['projected_data_dict'] = OrderedDict(
             {qbn: '' for qbn in self.qb_names})
 
-        storing_keys = self.data_to_fit
         for qbn in self.qb_names:
             cal_states_dict = self.cal_states_dict_for_rotation[qbn]
             if len(cal_states_dict) not in [0, 2, 3]:
@@ -1129,11 +1146,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                  default_value=True)
             if self.get_param_value('TwoD', default_value=False):
                 if self.rotation_type[qbn].lower() == 'global_pca':
-                    storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.global_pca_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
-                            self.channel_map, storing_keys,
+                            self.channel_map, self.data_to_fit,
                             data_mostly_g=data_mostly_g))
                 elif self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
@@ -1143,25 +1159,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
                 elif self.rotation_type[qbn].lower() == 'fixed_cal_points':
-                    storing_keys[qbn] += '_fixed_cp'
                     rotated_data_dict, zero_coord, one_coord = \
                         self.rotate_data_TwoD_same_fixed_cal_idxs(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
-                            storing_keys)
+                            self.data_to_fit)
                     self.proc_data_dict['projected_data_dict'].update(
                         rotated_data_dict)
                     self.proc_data_dict['rotation_coordinates'] = \
                         [zero_coord, one_coord]
                 else:
-                    if 'pca' in self.rotation_type[qbn].lower():
-                        storing_keys[qbn] = self.rotation_type[qbn]
                     column_PCA = self.rotation_type[qbn].lower() == 'column_pca'
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data_TwoD(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
-                            storing_keys, data_mostly_g=data_mostly_g,
+                            self.data_to_fit, data_mostly_g=data_mostly_g,
                             column_PCA=column_PCA))
             else:
                 if self.rotation_type[qbn].lower() == 'cal_states' and \
@@ -1172,16 +1185,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map,
                             self.cal_states_dict_for_rotation))
                 else:
-                    if 'pca' in self.rotation_type[qbn].lower():
-                        storing_keys[qbn] = self.rotation_type[qbn]
                     self.proc_data_dict['projected_data_dict'].update(
                         self.rotate_data(
                             qbn, self.proc_data_dict['meas_results_per_qb'],
                             self.channel_map, self.cal_states_dict_for_rotation,
-                            storing_keys, data_mostly_g=data_mostly_g))
-
-        # Update this attribute to reflect what was done for each qubit
-        self.data_to_fit.update(storing_keys)
+                            self.data_to_fit, data_mostly_g=data_mostly_g))
 
     @staticmethod
     def rotate_data_3_cal_states(qb_name, meas_results_per_qb, channel_map,
@@ -1591,7 +1599,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # This is a fallback but not ideal because data_to_fit gets
             # overwritten by this class for certain rotation types.
             if 'pca' in self.data_to_fit.get(qb_name, '').lower():
-                dtf = self.get_data_to_fit()
+                dtf = self._get_default_data_to_fit()
             else:
                 dtf = self.data_to_fit
             if 'h' in dtf.get(qb_name, ''):
