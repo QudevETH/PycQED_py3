@@ -26,6 +26,15 @@
 * 
 * 
 
+## Discussion
+
+(List points on which you want to share your opinion, or receive specific
+feedback.)
+
+*
+*
+*
+
 ## Conformity
 
 (Tick the items `[x]`)
