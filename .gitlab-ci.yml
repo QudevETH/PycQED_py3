@@ -1,0 +1,55 @@
+image: python:3.6-buster
+
+variables:
+  # Change cache directories to be inside the project directory since we can
+  # only cache local items.
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  APT_CACHE_DIR: "$CI_PROJECT_DIR/.cache/apt"
+  # Needs to be specified to avoid errors with pip when network is slow
+  PIP_DEFAULT_TIMEOUT: 60
+  # Variables set in the GitLab UI are not passed down to service containers.
+  QUDEV_DOC_PRIVATE_SSH_KEY: $QUDEV_DOC_PRIVATE_SSH_KEY
+
+cache:
+  paths:
+    - .cache/pip
+    - .cache/apt
+
+# This is necessary to be able to copy the doc via SSH
+before_script:
+  # ============================================================================
+  # Python virtual env
+  # ============================================================================
+  - python -m pip install --upgrade pip
+  - pip install -r requirements.txt
+  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/control_software/qcodes.git
+  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
+  # ============================================================================
+  # Configure SSH agent to be able to copy the doc via SSH
+  # ============================================================================
+  - mkdir -p $APT_CACHE_DIR
+  - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )'
+  - eval $(ssh-agent -s)
+  - echo "$QUDEV_DOC_PRIVATE_SSH_KEY" | ssh-add -
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - ssh-keyscan gitlab.ethz.ch/qudev >> ~/.ssh/known_hosts
+  - ssh-keyscan login.phys.ethz.ch >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+
+# Build the documentation, and copy it to the QuDev documentation webshare
+pages:
+  script:
+    - cd docs
+    - make html
+    # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
+    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
+    - ssh wwwqudevdoc@login.phys.ethz.ch "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh wwwqudevdoc@login.phys.ethz.ch "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r ./build/html/* "wwwqudevdoc@login.phys.ethz.ch:public/$DOC_UPLOAD_FOLDER"
+    - echo "Documentation accessible at https://documentation.qudev.phys.ethz.ch/$DOC_UPLOAD_FOLDER/index.html"
+  only:
+    # The documentation will only be built for the listed branches
+    - qudev_master
+    - Proj/*
+  

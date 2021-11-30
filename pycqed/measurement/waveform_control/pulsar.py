@@ -458,7 +458,8 @@ class UHFQCPulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+        chid = self.get(ch + '_id')
+        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
 
 class HDAWG8Pulsar:
@@ -805,7 +806,10 @@ class HDAWG8Pulsar:
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      channels_to_upload='all', channels_to_program='all'):
         if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._program_awg(obj, awg_sequence, waveforms, repeat_pattern)
+            return super()._program_awg(
+                obj, awg_sequence, waveforms, repeat_pattern,
+                channels_to_upload=channels_to_upload,
+                channels_to_program=channels_to_program)
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, obj.name) for chid in chids}
@@ -895,6 +899,15 @@ class HDAWG8Pulsar:
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
                             continue
+                        ch_has_waveforms[ch1id] |= wave[0] is not None
+                        ch_has_waveforms[ch1mid] |= wave[1] is not None
+                        ch_has_waveforms[ch2id] |= wave[2] is not None
+                        ch_has_waveforms[ch2mid] |= wave[3] is not None
+                        if not len(channels_to_upload):
+                            # _program_awg was called only to decide which
+                            # sub-AWGs are active, and the rest of this loop
+                            # can be skipped
+                            continue
                         if use_placeholder_waves:
                             if wave in defined_waves[1].values():
                                 wave_idx_lookup[element][cw] = [
@@ -936,11 +949,11 @@ class HDAWG8Pulsar:
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
 
-                        ch_has_waveforms[ch1id] |= wave[0] is not None
-                        ch_has_waveforms[ch1mid] |= wave[1] is not None
-                        ch_has_waveforms[ch2id] |= wave[2] is not None
-                        ch_has_waveforms[ch2mid] |= wave[3] is not None
-
+                    if not len(channels_to_upload):
+                        # _program_awg was called only to decide which
+                        # sub-AWGs are active, and the rest of this loop
+                        # can be skipped
+                        continue
                     if not internal_mod:
                         if first_element_of_segment:
                             prepend_zeros = self.parameters[
@@ -1115,7 +1128,8 @@ class HDAWG8Pulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set('sigouts_{}_on'.format(int(ch[-1]) - 1), on)
+        chid = self.get(ch + '_id')
+        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
 
 class AWG5014Pulsar:
@@ -1498,7 +1512,18 @@ class AWG5014Pulsar:
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
-        awg.set(f"{self.get(ch + '_id')}_state", on)
+        chid = self.get(ch + '_id')
+        if f"{chid}_state" in awg.parameters:
+            awg.set(f"{chid}_state", on)
+        else:  # it is a marker channel
+            # We cannot switch on the marker channel explicitly. It is on if
+            # the corresponding analog channel is on. Raise a warning if
+            # the state (of the analog channel) is different from the
+            # requested state (of the marker channel).
+            if bool(awg.get(f"{chid[:3]}_state")) != bool(on):
+                log.warning(f'Pulsar: Cannot set the state of a marker '
+                            f'channel. Call sigout_on for the corresponding '
+                            f'analog channel {chid[:3]} instead.')
         return
 
 
@@ -1569,6 +1594,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self.last_elements = None
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
+        self.num_channel_groups = {}
 
         self._awgs_prequeried_state = False
 
@@ -1644,6 +1670,12 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
 
         fail = None
         super()._create_awg_parameters(awg, channel_name_map)
+        # Reconstruct the set of unique channel groups from the
+        # self.channel_groups dictionary, which stores for each channel a list
+        # of all channels in the same group.
+        self.num_channel_groups[awg.name] = len(set(
+            ['---'.join(v) for k, v in self.channel_groups.items()
+             if self.get('{}_awg'.format(k)) == awg.name]))
         # try:
         #     super()._create_awg_parameters(awg, channel_name_map)
         # except AttributeError as e:
@@ -1804,6 +1836,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
+            if not self.use_sequence_cache():
+                raise
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
             self.reset_sequence_cache()
@@ -1840,12 +1874,13 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             # the compilation crashes or gets interrupted.
             self.reset_sequence_cache()
             # Add an empty hash for previously active but now inactive channels
-            # on active AWGs. This is to make sure that the change (switching
-            # them off) is detected correctly below.
+            # in active channel groups. This is to make sure that the change
+            # (switching them off) is detected correctly below.
             channel_hashes.update({
                 k: {} for k, v in sequence_cache['hashes'].items()
                 if k not in channel_hashes and len(v)
-                and self.get(f'{k}_awg') in awg_sequences.keys()})
+                and any([k in self.channel_groups[ch]
+                         for ch in channel_hashes.keys()])})
             # first, we check whether programming the whole AWG is mandatory due
             # to changed AWG settings or due to changed metadata
             awgs_to_program = []
@@ -1938,8 +1973,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                     ch_length[ch] = {
                         elname: {cw: len(waveforms[h]) for cw, h in el.items()}
                         for elname, el in hashes.items()}
-                # Checking whether programming is done only for channels that
-                # are marked to be uploaded but not yet marked to be programmed
+                # Checking whether programming is needed is done only for
+                # channels that are marked to be uploaded but not yet marked
+                # to be programmed.
                 if ch not in channels_to_upload or ch in channels_to_program \
                         or ch_awg in awgs_to_program:
                     continue
@@ -1983,10 +2019,14 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self._hash_to_wavename_table = {}
 
         for awg in awg_sequences.keys():
-            if awg not in awgs_to_program + awgs_with_channels_to_upload:
+            if (awg not in awgs_to_program + awgs_with_channels_to_upload and
+                    self.num_channel_groups[awg] == 1):
                 # The AWG does not need to be re-programmed, but we have to add
                 # it to the set of AWGs with waveforms (which is otherwise
                 # done after programming it).
+                # Note: If num_channel_groups is not 1, _program_awg will be
+                # called with an empty channels_to_upload list to make sure
+                # that the correct sub-AWGs get started.
                 self.awgs_with_waveforms(awg)
                 continue
             log.info(f'Started programming {awg}')

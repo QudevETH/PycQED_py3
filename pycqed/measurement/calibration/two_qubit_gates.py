@@ -716,6 +716,14 @@ class CPhase(CalibBuilder):
         TODO
         :param cz_pulse_name: see CircuitBuilder
         :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
+        :param kw:
+            cal_states_rotations: (dict) Overwrite the default choice of
+                cal_states_rotations written to the meta data. The keys are
+                qubit names, and the values are dictionaries mapping state
+                names to state indices, e.g., {'g': 0, 'e': 1, 'f': 2}. For
+                qubits that are not contained in the dict, the value
+                generated in cphase_block will be used.
+            TODO further kws
     ...
     """
     kw_for_task_keys = ['ref_pi_half', 'num_cz_gates']
@@ -755,6 +763,9 @@ class CPhase(CalibBuilder):
                 self.preprocessed_task_list, self.cphase_block,
                 block_align=['center', 'end', 'center', 'start'], **kw)
 
+            # allow the user to overwrite entries in cal_states_rotations
+            self.cal_states_rotations.update(
+                kw.get('cal_states_rotations', {}))
             # save CPhase-specific metadata
             self.exp_metadata.update({
                 'cz_durations': self.cz_durations,
@@ -907,7 +918,7 @@ class CPhase(CalibBuilder):
                                      qb.int_avg_det.value_names]
                            for qb in self.meas_objs}
         self.analysis = tda.CPhaseLeakageAnalysis(
-            qb_names=self.qb_names,
+            qb_names=self.meas_obj_names,
             options_dict={'TwoD': True, 'plot_all_traces': plot_all_traces,
                           'plot_all_probs': plot_all_probs,
                           'channel_map': channel_map,

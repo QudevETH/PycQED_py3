@@ -486,6 +486,9 @@ class MeasurementAnalysis(object):
                     # only mpl scalar formatters support this feature
                     pass
 
+                plot_kw = {}
+                if 'plot_the_title' not in plot_args and i > 0:
+                    plot_kw['plot_the_title'] = False
                 self.plot_results_vs_sweepparam(x=self.sweep_points,
                                                 y=self.measured_values[i],
                                                 fig=fig, ax=ax,
@@ -493,7 +496,7 @@ class MeasurementAnalysis(object):
                                                 x_unit=self.sweep_unit[0],
                                                 ylabel=self.ylabels[i],
                                                 save=False,
-                                                **plot_args)
+                                                **plot_args, **plot_kw)
                 # fig.suptitle(self.plot_title)
             fig.subplots_adjust(hspace=1.5)
             if show:
@@ -1081,7 +1084,7 @@ class MeasurementAnalysis(object):
                                                                self.value_units)]
 
     def get_best_fit_results(self, peak=False, weighted=False):
-        if len(self.data_file['Analysis']) is 1:
+        if len(self.data_file['Analysis']) == 1:
             return list(self.data_file['Analysis'].values())[0]
         else:
             normalized_chisquares = {}
@@ -2001,7 +2004,7 @@ class Rabi_Analysis(TD_Analysis):
         # we may have 0 cal pts, so writing self.sweep_points[:-self.NoCalPoints]
         # will give an error if self.NoCalPoints==0.
         self.sweep_pts_wo_cal_pts = deepcopy(self.sweep_points)
-        if self.NoCalPoints is not 0:
+        if self.NoCalPoints != 0:
             self.sweep_pts_wo_cal_pts = \
                 self.sweep_pts_wo_cal_pts[:-self.NoCalPoints]
 
