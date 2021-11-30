@@ -154,7 +154,8 @@ to review:
   * 1 bugfix per MR, instead of multiple bugfixes (unless all related).
   * 1 new feature per MR, unless the new features do not make sense individually.
 * Fill in the template on GitLab (see
-[Merge request template](./merge_Request_template.md)).
+[Merge request template](./merge_Request_template.md)). You may remove
+irrelevant sections.
 * Provide background when necessary to facilitate the review, e.g. justify some
 implementation choices, or document the limitations of your implementation.
 * Reference related GitLab merge requests (e.g. `!3`) and issues (e.g. `#7`).
@@ -169,6 +170,7 @@ so that it can be properly tracked and eventually resolved.
 * Issues may be reopenned later if the problem reoccurs or if a bug is
 re-introduced.
 * Fill in the template on GitLab (see [Issue template](./issue_template.md)).
+You may remove irrelevant sections.
 * Add adequate labels to classify issues.
 * You can create a merge request to fix and issue directly from the issue
 description in GitLab (see {numref}`mr_from_issue`).
