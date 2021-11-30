@@ -947,7 +947,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
     @staticmethod
     def fidelity_matrix(prep_states, pred_states, levels=('g', 'e', 'f'),
                         labels=None, plot=False, normalize=True):
-        fm = confusion_matrix(prep_states, pred_states, labels)
+        fm = confusion_matrix(prep_states, pred_states, labels=labels)
         if plot:
             Singleshot_Readout_Analysis_Qutrit.plot_fidelity_matrix(fm,
                                                                     levels)
@@ -976,7 +976,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             fm = fm.astype('float') / fm.sum(axis=1)[:, np.newaxis]
 
         im = ax.imshow(fm, interpolation='nearest', cmap=cmap,
-                       norm=mc.LogNorm(), vmin=5e-3, vmax=1.)
+                       norm=mc.LogNorm(vmin=5e-3, vmax=1.))
         ax.set_title(title)
         if plot_cb:
             cb = fig.colorbar(im)
