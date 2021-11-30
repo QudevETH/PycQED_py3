@@ -57,6 +57,34 @@ The link is too long to fit within 80 characters:
 [Google's Python styleguide](https://google.github.io/styleguide/pyguide.html#s3.16-naming)
 ```
 
+### Avoid magic numbers
+
+A magic number is a value that should be given a symbolic name, but is instead
+used directly in the code, usually in more than one place. This is problematic
+for two reasons:
+* Difficult to understand: understanding what the value represents without a
+name usually requires reading through the code in depth, and sometimes having
+domain specific knowledge.
+* Difficult to maintain: magic numbers are hardcoded values, that need to be
+changed in more than one place. This must usually be done (semi-)manually, and
+can lead to errors if not all occurences are updated.
+
+Do
+```python
+BASE_ADDRESS = 185600
+DELAY_REGISTER_ADDRESS = BASE_ADDRESS + 15
+set_value(DELAY_REGISTER_ADDRESS, 15e-9) # ns
+# ...
+set_value(DELAY_REGISTER_ADDRESS, 0)
+```
+
+Don't
+```python
+set_value(185615, 15e-9)
+# ...
+set_value(185615, 0)
+```
+
 ### Strings
 
 * Use double quotes:
