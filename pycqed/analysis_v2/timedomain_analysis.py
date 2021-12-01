@@ -464,13 +464,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.cal_states_rotations = self.get_param_value(
                 'cal_states_rotations', default_value=cal_states_rots)
         except TypeError as e:
-            # Handles legacy measurements that do not use CalibrationPoints.
+            # Handles measurements that do not use CalibrationPoints.
             # Look for cal_states_dict and cal_states_rotations in metadata
             # or options_dict
-            log.error(e)
-            log.warning("Failed retrieving cal point objects or states. "
-                        "Please update measurement to provide cal point object "
-                        "in metadata. Trying to get them using the old way ...")
+            if cal_points is not None:
+                # This means cal_points were provided by something went wrong
+                # with their extraction
+                log.error(e)
+                log.warning("Failed retrieving cal point objects or states. "
+                            "Please update measurement to provide cal point object "
+                            "in metadata. Trying to get them using the old way ...")
             # Get cal_states_rotations from options_dict or metadata and
             # default to cal_states_rotations above if not found.
             # Also set to the default cal_states_rotations defined above if
