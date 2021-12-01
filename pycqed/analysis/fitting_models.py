@@ -261,8 +261,10 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
 
     r = E_j / Ej_max
     if np.any(r > 1):
+        r_str = '[' + ', '.join([f'{x}' for x in r[r>1]]) + ']'
         log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
-                    f'indices {np.argwhere(r > 1)}.Truncating to 1.')
+                    f'indices {np.argwhere(r > 1)}: {r_str} '
+                    f'Truncating to 1.')
         r[r>1] = 1
     phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
 
