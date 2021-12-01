@@ -2230,6 +2230,7 @@ class QuDev_transmon(Qubit):
                 Q_channel=self.ge_Q_channel(),
             )]])
 
+        exp_metadata = {'qb_names': [self.name], 'rotate': False}
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.acq_weights_type, 'SSB'),
@@ -2242,9 +2243,10 @@ class QuDev_transmon(Qubit):
             MC.set_detector_function(det.IndexDetector(
                 self.int_avg_det_spec, 0))
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
-            MC.run(name='drive_carrier_calibration' + self.msmt_suffix)
+            MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
+                   exp_metadata=exp_metadata)
 
-        a = tda.MixerCarrierAnalysis(qb_names=[self.name])
+        a = tda.MixerCarrierAnalysis()
         analysis_params_dict = a.proc_data_dict['analysis_params_dict']
 
         ch_I_min = analysis_params_dict['V_I']
@@ -2531,6 +2533,7 @@ class QuDev_transmon(Qubit):
                     )])
         sq.pulse_list_list_seq(pulse_list_list)
 
+        exp_metadata = {'qb_names': [self.name], 'rotate': False}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.acq_weights_type, 'SSB'),
@@ -2538,9 +2541,10 @@ class QuDev_transmon(Qubit):
         ):
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det)
-            MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
+            MC.run(name='drive_skewness_calibration' + self.msmt_suffix,
+                   exp_metadata=exp_metadata)
 
-        a = tda.MixerSkewnessAnalysis(qb_names=[self.name])
+        a = tda.MixerSkewnessAnalysis()
         analysis_params_dict = a.proc_data_dict['analysis_params_dict']
 
         _alpha = analysis_params_dict['alpha']
