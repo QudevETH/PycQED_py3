@@ -709,10 +709,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     list(hard_sweep_params.values())[0][
                     'values'])} for qbn in self.qb_names}
         else:
+            hard_sp = self.raw_data_dict['hard_sweep_points']
+            if len(self.data_filter(hard_sp)) != len(hard_sp):
+                log.warning('BEWARE: You have reached a legacy fallback case '
+                            'where the sweep points have been filtered by the '
+                            'data_filter.')
             self.proc_data_dict['sweep_points_dict'] = \
                 {qbn: {'sweep_points': sp1d_filter((self.data_filter(
-                    self.raw_data_dict['hard_sweep_points'])))}
-                    for qbn in self.qb_names}
+                    hard_sp)))} for qbn in self.qb_names}
 
     def create_sweep_points_2D_dict(self):
         """
