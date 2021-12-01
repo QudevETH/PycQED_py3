@@ -1136,11 +1136,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         calibration states.
 
         Creates self.proc_data_dict['projected_data_dict'].
-
-        ! Note: self.data_to_fit is updated to reflect what was done here for
-        each qubit, in particular, whether pca was done or rotation based on
-        calibration states. This cannot be done in self.extract_data without
-        significant code duplication (the if/else statements here).
         """
         # creates self.cal_states_dict_for_rotation
         self.get_cal_states_dict_for_rotation()
