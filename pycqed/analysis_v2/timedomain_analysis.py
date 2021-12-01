@@ -9521,7 +9521,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         hsp = self.raw_data_dict['hard_sweep_points']
         ssp = self.raw_data_dict['soft_sweep_points']
         mdata = self.raw_data_dict['measured_data']
-        LO_dBV = 20*np.log10(list(mdata.values()))
+        LO_dBV = 20*np.log10(list(mdata.values())[0])
 
         VI = hsp
         VQ = ssp
