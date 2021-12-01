@@ -2149,6 +2149,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 len(self.cal_states_dict[qb_name]):
             # the cal points are part of the dataset and we want to indicate
             # them in the plot with their own colour
+            # We need to check both num_cal_points and cal_states dict because
+            # the former counts how many calibration segments were used in the
+            # experiment. So it will be nonzero even if no calibration point
+            # information was provided (reflected by
+            # self.cal_states_dict = {qbn: {} for qbn in self.qb_names})
             yvals = data[:-self.num_cal_points]
             xvals = sweep_points[:-self.num_cal_points]
             # plot cal points
