@@ -520,9 +520,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if isinstance(self.rotation_type, str):
             self.rotation_type = {qbn: self.rotation_type
                                   for qbn in self.qb_names}
-
         for qbn in self.qb_names:
-            if not len(self.cal_states_dict[qbn]):
+            if self.rotation_type[qbn] != 'no_rotation' and \
+                    len(self.cal_states_dict[qbn]) == 0:
                 if 'pca' not in self.rotation_type[qbn].lower():
                     # If no cal states information was provided
                     # (i.e. self.cal_states_dict = {qbn: {} for qbn in
