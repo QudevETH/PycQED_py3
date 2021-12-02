@@ -2155,9 +2155,10 @@ class QuDev_transmon(Qubit):
                 holding the Q channel DC biases. Both in volts. If no meas_grid 
                 is provided a uniform grid is generated using n_meas and limits. 
                 Defaults to None.
-            n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
-                determines the number of measurement points in case meas_grid is
-                not provided. 
+            n_meas (int or tuple, optional): Tuple, list or 1D array of 
+                length 2 that determines the number of measurement points in 
+                case meas_grid is not provided. If an integer is provided the 
+                input will be transformed to a list n_meas = (n_meas, n_meas).
                 n_meas[0] = points in V_I.
                 n_meas[1] = points in V_Q.
                 Defaults to (10, 10).
@@ -2185,14 +2186,16 @@ class QuDev_transmon(Qubit):
         if meas_grid is None:
             if not len(limits) == 4:
                 log.error('Input variable `limits` in function call '
-                        '`calibrate_drive_mixer_carrier_new` needs to be a list '
-                        'or 1D array of length 4.\nFound length '
-                        '{} object instead!'.format(len(limits)))
-            if not len(n_meas) == 2:
+                          '`calibrate_drive_mixer_carrier_model` needs to be a list '
+                          'or 1D array of length 4.\nFound length '
+                          '{} object instead!'.format(len(limits)))
+            if isinstance(n_meas, int):
+                n_meas = (n_meas, n_meas)
+            elif not len(n_meas) == 2:
                 log.error('Input variable `n_meas` in function call '
-                        '`calibrate_drive_mixer_carrier_new` needs to be a list, '
-                        'tuple or 1D array of length 2.\nFound length '
-                        '{} object instead!'.format(len(n_meas)))
+                          '`calibrate_drive_mixer_carrier_model` needs to be a list, '
+                          'tuple or 1D array of length 2.\nFound length '
+                          '{} object instead!'.format(len(n_meas)))
             meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
                                     np.linspace(limits[2], limits[3], n_meas[1]))
             meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
@@ -2479,14 +2482,16 @@ class QuDev_transmon(Qubit):
         if meas_grid is None:
             if not len(limits) == 4:
                 log.error('Input variable `limits` in function call '
-                        '`calibrate_drive_mixer_skewness_new` needs to be a list '
-                        'or 1D array of length 4.\nFound length '
-                        '{} object instead!'.format(len(limits)))
-            if not len(n_meas) == 2:
+                          '`calibrate_drive_mixer_skewness_model` needs to be a list '
+                          'or 1D array of length 4.\nFound length '
+                          '{} object instead!'.format(len(limits)))
+            if isinstance(n_meas, int):
+                n_meas = [n_meas, n_meas]
+            elif not len(n_meas) == 2:
                 log.error('Input variable `n_meas` in function call '
-                        '`calibrate_drive_mixer_skewness_new` needs to be a list, '
-                        'tuple or 1D array of length 2.\nFound length '
-                        '{} object instead!'.format(len(n_meas)))
+                          '`calibrate_drive_mixer_skewness_model` needs to be a list, '
+                          'tuple or 1D array of length 2.\nFound length '
+                          '{} object instead!'.format(len(n_meas)))
             meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
                                     np.linspace(limits[2], limits[3], n_meas[1]))
             meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
