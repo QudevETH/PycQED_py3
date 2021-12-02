@@ -31,7 +31,6 @@
    .. rubric:: {{ _('Classes') }}
 
    .. autosummary::
-      :template: recursive_class.rst
       :toctree:
    {% for item in classes %}
       {{ item }}
@@ -57,7 +56,6 @@
 
 .. autosummary::
    :toctree:
-   :template: recursive_module.rst
    :recursive:
 {% for item in modules %}
    {{ item }}
