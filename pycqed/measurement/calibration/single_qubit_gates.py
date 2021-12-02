@@ -2139,19 +2139,21 @@ class ReparkingRamsey(Ramsey):
             apd = self.analysis.proc_data_dict['analysis_params_dict']
 
             # calculate the voltage change corresponding to qubit
-            voltage_change = apd['reparking_params'][qubit.name]['ss_volt'] - \
-                             fluxline()
+            voltage_change = apd['reparking_params'][qubit.name][
+                                 'new_ss_vals']['ss_volt'] - fluxline()
             print(f"Voltage change: {voltage_change}")
 
             # if max_voltage_change is None, assume no maximum voltage change
             if abs(voltage_change) <= max_voltage_change or \
                                       max_voltage_change is None:
                 # set new fluxline voltage corresponding to qubit
-                new_voltage = apd['reparking_params'][qubit.name]['ss_volt']
+                new_voltage = apd['reparking_params'][qubit.name][
+                    'new_ss_vals']['ss_volt']
                 fluxline(new_voltage)
 
                 # set new qubit frequency
-                new_freq = apd['reparking_params'][qubit.name]['ss_freq']
+                new_freq = apd['reparking_params'][qubit.name][
+                    'new_ss_vals']['ss_freq']
                 qubit.set(f'{task["transition_name_input"]}_freq', new_freq)
 
             else:
@@ -2173,15 +2175,16 @@ class ReparkingRamsey(Ramsey):
 
                 # log that voltage_change exceeded max_voltage_change and print
                 # set values
+                ss_volt = apd['reparking_params'][qubit.name][
+                    'new_ss_vals']['ss_volt']
                 logging.warning(f"{qubit.name}: voltage change exceeds maximum "
                                 "voltage change. Fluxline voltage set to "
                                 f"{new_voltage:4f}V and corresponding qubit "
                                 f"frequency set to {new_freq/1e9:6f}GHz. "
                                 "ReparkingRamsey measurement suggested a "
                                 f"frequency change of {voltage_change} (from "
-                                f"{fluxline()} to "
-                            f"{apd['reparking_params'][qubit.name]['ss_volt']}"
-                                "), while the maximum allowed frequency change "
+                                f"{fluxline()} to {ss_volt}), while the "
+                                f"maximum allowed frequency change "
                                 f"set by the user is {max_voltage_change}.")
 
 
