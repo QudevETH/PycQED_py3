@@ -510,14 +510,15 @@ def get_DD_pulse_list(operation_dict, qb_names, DD_time,
 
 
 def generate_mux_ro_pulse_list(qubit_names, operation_dict, element_name='RO',
-                               ref_point='end', pulse_delay=0.0):
+                               ref_point='end', pulse_delay=None):
     ro_pulses = []
     for j, qb_name in enumerate(qubit_names):
         ro_pulse = deepcopy(operation_dict['RO ' + qb_name])
         ro_pulse['pulse_name'] = '{}_{}'.format(element_name, j)
         ro_pulse['element_name'] = element_name
         if j == 0:
-            ro_pulse['pulse_delay'] = pulse_delay
+            if pulse_delay is not None:
+                ro_pulse['pulse_delay'] = pulse_delay
             ro_pulse['ref_point'] = ref_point
         else:
             ro_pulse['ref_point'] = 'start'

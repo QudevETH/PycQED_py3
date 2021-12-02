@@ -480,6 +480,36 @@ class Sequence:
                 setattr(new_seq, k, deepcopy(v, memo))
         return new_seq
 
+    def __getitem__(self, i):
+        """
+        Return a segment by its name or index, or a list of segments
+        corresponding to a slice.
+        :param i: (str, int, slice, list) Name, index, slice,
+            or list of names/indices identifying the segment(s).
+        :return: segment or list of segments
+        """
+        if isinstance(i, list):
+            return [self[i] for i in i]
+        elif isinstance(i, str):
+            if i not in self.segments:
+                raise KeyError(f'No segment with name "{i}" in the sequence '
+                               f'{self.name}.')
+            return self.segments[i]
+        else:
+            try:
+                return list(self.segments.values())[i]
+            except IndexError:
+                raise IndexError(
+                    f'Segment index {i} out of range. The sequence '
+                    f'{self.name} has {len(self.segments)} segments.')
+
+    def keys(self):
+        """
+        Returns the segments names (keys to access segments via __getitem__).
+        :return: a set-like object providing the keys
+        """
+        return self.segments.keys()
+
     def plot(self, segments=None, show_and_close=True, **segment_plot_kwargs):
         """
         :param segments: list of segment names to plot
