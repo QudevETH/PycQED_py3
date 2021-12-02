@@ -16,6 +16,9 @@ log = logging.getLogger(__name__)
 
 
 class T1FrequencySweep(CalibBuilder):
+
+    default_experiment_name = 'T1_frequency_sweep'
+
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
@@ -52,7 +55,6 @@ class T1FrequencySweep(CalibBuilder):
 
         """
         try:
-            self.experiment_name = 'T1_frequency_sweep'
             if task_list is None:
                 if sweep_points is None or qubits is None:
                     raise ValueError('Please provide either "sweep_points" '
@@ -628,10 +630,10 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                        label=r'delay, $\tau$',
                        dimension=0),
     }
+    default_experiment_name = 'Flux_scope'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = 'Flux_scope'
             super().__init__(task_list, sweep_points=sweep_points, **kw)
             self.autorun(**kw)
         except Exception as x:
@@ -923,11 +925,12 @@ class Cryoscope(CalibBuilder):
                                  'amplitude': -0.5}}
     """
 
+    default_experiment_name = 'Cryoscope'
+
     def __init__(self, task_list, sweep_points=None, estimation_window=None,
                  separation_buffer=50e-9, awg_sample_length=None,
                  sequential=False, **kw):
         try:
-            self.experiment_name = 'Cryoscope'
             for task in task_list:
                 if not isinstance(task['qb'], str):
                     task['qb'] = task['qb'].name
@@ -1256,10 +1259,10 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
                        label=r'flux pulse amplitude',
                        dimension=0),
     }
+    default_experiment_name = 'Flux_amplitude'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = 'Flux_amplitude'
             super().__init__(task_list, sweep_points=sweep_points, **kw)
             self.exp_metadata.update({'rotation_type': 'global_PCA'})
             self.autorun(**kw)
@@ -1355,6 +1358,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
 
     """
     kw_for_task_keys = ['transition_name']
+    default_experiment_name = 'SingleQubiGateCalib'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         try:
@@ -1378,8 +1382,6 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
-            if self.experiment_name is None:
-                self.experiment_name = 'SingleQubiGateCalib'
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.update_experiment_name()
 
@@ -1653,6 +1655,7 @@ class Rabi(SingleQubitGateCalibExperiment):
         'amps': dict(param_name='amplitude', unit='V',
                      label='Pulse Amplitude', dimension=0)
     }
+    default_experiment_name = 'Rabi'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, **kw):
@@ -1661,7 +1664,6 @@ class Rabi(SingleQubitGateCalibExperiment):
             if 'n' not in kw:
                 # add default n to kw before passing to init of parent
                 kw['n'] = 1
-            self.experiment_name = 'Rabi'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amps=amps, **kw)
@@ -1809,6 +1811,7 @@ class Ramsey(SingleQubitGateCalibExperiment):
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0)
     }
+    default_experiment_name = 'Ramsey'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, echo=False, **kw):
@@ -1819,14 +1822,18 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 # init of parent
                 kw['artificial_detuning'] = 0
             self.echo = echo
-            if not hasattr(self, 'experiment_name'):
-                self.experiment_name = 'Echo' if self.echo else 'Ramsey'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              delays=delays, **kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name to Echo if self.echo is True.
+        """
+        self.experiment_name = 'Echo' if self.echo else 'Ramsey'
 
     def preprocess_task(self, task, global_sweep_points, sweep_points=None,
                         **kw):
@@ -1993,6 +2000,8 @@ class ReparkingRamsey(Ramsey):
         'dc_voltage_offsets': dict(param_name='dc_voltage_offsets', unit='V',
                                    label=r'DC voltage offset', dimension=1),
     }
+    default_experiment_name = 'ReparkingRamsey'
+
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, dc_voltages=None, dc_voltage_offsets=None,  **kw):
@@ -2003,7 +2012,6 @@ class ReparkingRamsey(Ramsey):
                 # add default value for fluxline to kw before passing to
                 # init of parent
                 kw['fluxline'] = None
-            self.experiment_name = 'ReparkingRamsey'
             # the parent class enforces a 1D sweep, so here we must explicitly
             # force it to be a 2D sweep
             force_2D_sweep = True
@@ -2185,11 +2193,11 @@ class T1(SingleQubitGateCalibExperiment):
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Readout pulse delay', dimension=0),
     }
+    default_experiment_name = 'T1'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, **kw):
         try:
-            self.experiment_name = 'T1'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              delays=delays, **kw)
@@ -2306,11 +2314,11 @@ class QScale(SingleQubitGateCalibExperiment):
                         label='Pulse Amplitude', dimension=0,
                         values_func=lambda q: np.repeat(q, 3))
     }
+    default_experiment_name = 'Qscale'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  qscales=None, **kw):
         try:
-            self.experiment_name = 'Qscale'
             # the 3 pairs of pulses to be applied for each sweep point
             self.qscale_base_ops = [['X90', 'X180'], ['X90', 'Y180'],
                                     ['X90', 'mY180']]
@@ -2477,20 +2485,28 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
                          values_func=lambda nr_p:
                          np.arange(nr_p + 1)[::2])
     }
+    default_experiment_name = 'Inphase_amp_calib'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  n_pulses=None, **kw):
         try:
             self.use_x90_pulses = kw.get('use_x90_pulses', False)
-            self.experiment_name = f'Inphase_amp_calib_{n_pulses}'
-            if self.use_x90_pulses:
-                self.experiment_name += '_x90_pulses'
+            self.n_pulses = n_pulses
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              n_pulses=n_pulses, **kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name to contain n_pulses and whether two X90
+        pulses are used instead of X180 pulses.
+        """
+        self.experiment_name += f'_{self.n_pulses}'
+        if self.use_x90_pulses:
+            self.experiment_name += '_x90_pulses'
 
     def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
         """
@@ -2591,10 +2607,10 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
                      label=r'drive pulse amplitude',
                      dimension=0),
     }
+    default_experiment_name = 'RabiFrequencySweep'
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
-            self.experiment_name = 'RabiFrequencySweep'
             super().__init__(task_list, sweep_points=sweep_points, **kw)
             self.autorun(**kw)
 
