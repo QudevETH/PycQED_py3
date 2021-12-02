@@ -9611,7 +9611,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
             'clabel': '$V_\\mathrm{LO}$ (dBV)',
-            'title': f'{timestamp}_calibrate_drive_mixer_carrier_'
+            'title': f'{timestamp} calibrate_drive_mixer_carrier_'
                      f'{self.qb_names[0]}'
         }
 
@@ -9659,7 +9659,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ylabel': '$V_\\mathrm{LO}$',
                 'xunit': 'V',
                 'yunit': 'dBV',
-                'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO}}$ '
+                'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO}}$ '
                          f'projected onto offset $V_\\mathrm{{{ch}}}$'
             }
 
@@ -9773,52 +9773,53 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
         timestamp = self.timestamps[0]
 
-        base_plot_name = 'mixer_sideband_suppression'
-        self.plot_dicts['base_contour'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_contourf,
-            'xvals': x,
-            'yvals': y,
-            'zvals': z,
-            'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
-            'ylabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
-            'xunit': '',
-            'yunit': 'deg',
-            'setlabel': 'sideband magnitude',
-            'cmap': 'plasma',
-            'clabel': '$V_\\mathrm{LO-IF}$ (dBV)',
-            'title': f'{timestamp}_calibrate_drive_mixer_skewness_'
-                     f'{self.qb_names[0]}'
-        }
+        if self.do_fitting:
+            base_plot_name = 'mixer_sideband_suppression'
+            self.plot_dicts['base_contour'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_contourf,
+                'xvals': x,
+                'yvals': y,
+                'zvals': z,
+                'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
+                'ylabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
+                'xunit': '',
+                'yunit': 'deg',
+                'setlabel': 'sideband magnitude',
+                'cmap': 'plasma',
+                'clabel': '$V_\\mathrm{LO-IF}$ (dBV)',
+                'title': f'{timestamp} calibrate_drive_mixer_skewness_'
+                        f'{self.qb_names[0]}'
+            }
 
-        self.plot_dicts['base_measurement_points'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': alpha,
-            'yvals': phase,
-            'color': 'white',
-            'marker': '.',
-            'linestyle': 'None',
-            'setlabel': '',
-        }
+            self.plot_dicts['base_measurement_points'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': alpha,
+                'yvals': phase,
+                'color': 'white',
+                'marker': '.',
+                'linestyle': 'None',
+                'setlabel': '',
+            }
 
-        alpha_min = pdict['analysis_params_dict']['alpha']
-        phase_min = pdict['analysis_params_dict']['phase']
-        self.plot_dicts['base_minimum'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': np.array([alpha_min]),
-            'yvals': np.array([phase_min]),
-            'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                        f'$\phi$ ={phase_min:.2f}$^\\circ$',
-            'color': 'red',
-            'marker': 'o',
-            'linestyle': 'None',
-            'do_legend': True,
-            'legend_pos': 'upper right',
-            'legend_title': None,
-            'legend_frameon': True
-        }
+            alpha_min = pdict['analysis_params_dict']['alpha']
+            phase_min = pdict['analysis_params_dict']['phase']
+            self.plot_dicts['base_minimum'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([alpha_min]),
+                'yvals': np.array([phase_min]),
+                'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
+                            f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                'color': 'red',
+                'marker': 'o',
+                'linestyle': 'None',
+                'do_legend': True,
+                'legend_pos': 'upper right',
+                'legend_title': None,
+                'legend_frameon': True
+            }
 
         raw_alpha_plot_name = 'alpha_vs_sb_magn'
         self.plot_dicts['raw_alpha_vs_sb_magn'] = {
@@ -9833,20 +9834,21 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'ylabel': '$V_\\mathrm{LO-IF}$',
             'xunit': '',
             'yunit': 'dBV',
-            'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO-IF}}$ '
+            'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
                      f'projected onto ampl. ratio $\\alpha_\\mathrm{{IQ}}$'
         }
 
-        self.plot_dicts['optimum_in_alpha_vs_sb_magn'] = {
-            'fig_id': raw_alpha_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': np.array([alpha_min, alpha_min]),
-            'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
-                               np.max(pdict['sideband_dBV_amp'])]),
-            'color': 'red',
-            'marker': 'None',
-            'linestyle': '--'
-        }
+        if self.do_fitting:
+            self.plot_dicts['optimum_in_alpha_vs_sb_magn'] = {
+                'fig_id': raw_alpha_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([alpha_min, alpha_min]),
+                'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
+                                np.max(pdict['sideband_dBV_amp'])]),
+                'color': 'red',
+                'marker': 'None',
+                'linestyle': '--'
+            }
 
         raw_phase_plot_name = 'phase_vs_sb_magn'
         self.plot_dicts['raw_phase_vs_sb_magn'] = {
@@ -9861,17 +9863,18 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'ylabel': '$V_\\mathrm{LO-IF}$',
             'xunit': 'deg',
             'yunit': 'dBV',
-            'title': f'({timestamp}_{self.qb_names[0]})\n$V_\\mathrm{{LO-IF}}$ '
+            'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
                      f'projected onto phase offset $\\Delta\\phi_\\mathrm{{IQ}}$'
         }
 
-        self.plot_dicts['optimum_in_phase_vs_sb_magn'] = {
-            'fig_id': raw_phase_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': np.array([phase_min, phase_min]),
-            'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
-                               np.max(pdict['sideband_dBV_amp'])]),
-            'color': 'red',
-            'marker': 'None',
-            'linestyle': '--'
-        }
+        if self.do_fitting:
+            self.plot_dicts['optimum_in_phase_vs_sb_magn'] = {
+                'fig_id': raw_phase_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([phase_min, phase_min]),
+                'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
+                                np.max(pdict['sideband_dBV_amp'])]),
+                'color': 'red',
+                'marker': 'None',
+                'linestyle': '--'
+            }
