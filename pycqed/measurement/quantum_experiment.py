@@ -13,6 +13,8 @@ from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
 from copy import deepcopy
+from collections import OrderedDict as odict
+from pycqed.measurement.sweep_points import SweepPoints
 import logging
 from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
@@ -832,3 +834,21 @@ class QuantumExperiment(CircuitBuilder):
 
     def spawn_waveform_viewer(self, **kwargs):
         self.waveform_viewer = WaveformViewer(self, **kwargs)
+
+    @classmethod
+    def gui_kwargs(cls):
+        return {
+            'kwargs': odict({
+                QuantumExperiment.__name__: {
+                    # kwarg: (fieldtype, default_value),
+                    'label': (str, None),
+                    'sweep_points': (SweepPoints, None),
+                    'upload': (bool, True),
+                    'analyze': (bool, True),
+                    'drive': (['continuous_spec', 'pulsed_spec', 'timedomain'],
+                              'timedomain'),
+                },
+            }),
+            'task_list_fields': odict({}),
+            'sweeping_parameters': odict({}),
+        }

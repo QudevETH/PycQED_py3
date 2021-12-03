@@ -8,6 +8,7 @@ from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.general import temporary_value
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -1740,6 +1741,38 @@ class Rabi(SingleQubitGateCalibExperiment):
                 qubit.name]['piPulse']
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
 
+    @classmethod
+    def gui_kwargs(cls):
+        d = super().gui_kwargs()
+        d['kwargs'].update({
+            Rabi.__name__: {
+                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
+                'update': (bool, False),
+            }
+        })
+        d['task_list_fields'].update({
+            Rabi.__name__: {
+                'qb': ((Qubit, 'single_select'), None),
+                'sweep_points': (SweepPoints, None),
+                'transition_name': ({'ge': '', 'ef': '_ef', 'fh': '_fh', }, 'ge'),
+            }
+        })
+        d['sweeping_parameters'].update({
+            Rabi.__name__: {
+                0: {
+                    'amplitude': 'V',
+                },
+                1: {
+                    'sigma': 's',
+                    'mod_frequency': 'Hz',
+                    'phase': 'deg',
+                    'alpha': '',
+                    'phi_skew': 'deg'
+                },
+            }
+        })
+        return d
+
 
 class Ramsey(SingleQubitGateCalibExperiment):
     """
@@ -1943,6 +1976,39 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+
+    @classmethod
+    def gui_kwargs(cls):
+        d = super().gui_kwargs()
+
+        d['kwargs'].update({
+            Ramsey.__name__: {
+                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
+                'update': (bool, False),
+            }
+        })
+        d['task_list_fields'].update({
+            Ramsey.__name__: {
+                'qb': ((Qubit, 'single_select'), None),
+                'sweep_points': (SweepPoints, None),
+                'transition_name': ({'ge': '', 'ef': '_ef', 'fh': '_fh', }, 'ge'),
+            }
+        })
+        d['sweeping_parameters'].update({
+            Ramsey.__name__: {
+                0: {
+                    'amplitude': 'V',
+                },
+                1: {
+                    'sigma': 's',
+                    'mod_frequency': 'Hz',
+                    'phase': 'deg',
+                    'alpha': '',
+                    'phi_skew': 'deg',
+                },
+            }
+        })
+        return d
 
 
 class ReparkingRamsey(Ramsey):

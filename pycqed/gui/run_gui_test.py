@@ -32,6 +32,7 @@ chev = Chevron(task_list,
 import importlib
 from pycqed.gui import waveform_viewer
 from pycqed.gui import rc_params
+from pycqed.gui import quantum_experiment_gui
 
 #%%
 importlib.reload(rc_params)
@@ -55,3 +56,7 @@ wpqe = waveform_viewer.WaveformViewer(chev,
 
 #%%
 chev.spawn_waveform_viewer()
+
+#%%
+importlib.reload(quantum_experiment_gui)
+QE_gui = quantum_experiment_gui.QuantumExperimentGUI(dev)

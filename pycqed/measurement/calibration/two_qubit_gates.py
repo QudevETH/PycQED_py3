@@ -14,6 +14,7 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
@@ -1566,3 +1567,45 @@ class Chevron(CalibBuilder):
             qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
+
+    @classmethod
+    def gui_kwargs(cls):
+        chevron_pulse_parameters = {
+            'amplitude': 'V',
+            'amplitude2': 'V',
+            'amplitude_offset': 'V',
+            'amplitude_offset2': 'V',
+            'extra_buffer_aux_pulse': 's',
+            'pulse_length': 's',
+            'trans_amplitude': 'V',
+            'trans_amplitude2': 'V',
+            'trans_length': 's',
+            'buffer_length_start': 's',
+            'buffer_length_end': 's',
+            'channel_relative_delay': 's',
+            'gaussian_filter_sigma': 's',
+        }
+        d = super().gui_kwargs()
+        d['kwargs'].update({
+            Chevron.__name__: {
+                'num_cz_gates': (int, 1),
+                'init_state': (CircuitBuilder.STD_INIT, '11')
+            }
+        })
+        d['task_list_fields'].update({
+            Chevron.__name__: {
+                'sweep_points': (SweepPoints, None),
+                'qbc': ((Qubit, 'single_select'), None),
+                'qbt': ((Qubit, 'single_select'), None),
+                'num_cz_gates': (int, None),
+                'init_state': (CircuitBuilder.STD_INIT, None),
+                'max_flux_length': (float, None),
+            }
+        })
+        d['sweeping_parameters'].update({
+            Chevron.__name__: {
+                0: chevron_pulse_parameters,
+                1: chevron_pulse_parameters,
+            }
+        })
+        return d
