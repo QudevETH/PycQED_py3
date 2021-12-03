@@ -6,8 +6,7 @@ import logging
 
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
-import qcodes.instrument_drivers.QDevil.QDevil_QDAC as QDac
-from qcodes.instrument_drivers.QDevil.QDevil_QDAC import Mode
+from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac, Mode
 
 
 class QDacSmooth(QDac):
@@ -119,9 +118,7 @@ class QDacSmooth(QDac):
         if immediate:
             self.channels[chan-1].v(voltage)
         else:
-            self.set_smooth({chan: voltage})
-
-        self.parameters['ch{:02}_v'.format(chan + 1)]._save_val(voltage)
+            self.set_smooth({chan-1: voltage})
 
     def get_voltage(self, chan):
         """Read the output voltage of a channel.
@@ -136,6 +133,9 @@ class QDacSmooth(QDac):
         vals.Ints(1, self.num_chans).validate(chan)
 
         return self.channels[chan-1].v()
+
+    def get_current_fluxline_voltages(self):
+        return {chan+1: self.channels[chan].v() for chan in range(self.num_chans)}
 
     def set_mode(self, mode: str="vhigh_ihigh"):
         if mode == "vhigh_ihigh":
