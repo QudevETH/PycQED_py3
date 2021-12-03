@@ -514,6 +514,11 @@ class QuDev_transmon(Qubit):
         return {'driver': str(self.__class__), 'name': self.name}
 
     def _drive_mixer_calibration_tmp_vals(self):
+        """Convert drive_mixer_calib_settings to temporary values format.
+
+        Returns:
+            A list of tuples to be passed to temporary_value (using *).
+        """
         return [(self.parameters[k], v)
                 for k, v in self.drive_mixer_calib_settings().items()]
 
