@@ -145,7 +145,7 @@ class NGE102B(VisaInstrument):
 
     Example::
 
-        from pycqed.instrument_drivers.physical_instruments.rhode_schwartz_nge102b import NGE102B
+        from pycqed.instrument_drivers.physical_instruments.rohde_schwartz_nge102b import NGE102B
         nge = NGE102B("NGE102B", address="TCPIP::172.23.121.65::INST")
 
         # You can also use 'ch2' instead
