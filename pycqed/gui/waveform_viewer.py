@@ -204,7 +204,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             segment_index (int): Index of the initially displayed segment.
             rc_params (dict): Modify the rc parameters of the matplotlib
                 plotting backend. By default (if rc_params=None is passed), the
-                rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
+                rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded,
                 but they are updated with the parameters passed in the
                 rc_params dictionary
             *args:
