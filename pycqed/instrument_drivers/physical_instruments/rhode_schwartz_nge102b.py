@@ -6,8 +6,8 @@ probably very similar except that it has 3 channels instead of 2.
 
 from functools import partial
 import io
-import numpy as np
 from qcodes import VisaInstrument, InstrumentChannel
+from qcodes.utils.validators import Numbers, Enum
 
 class WrongInstrumentError(Exception):
     """Error raised if the connected VISA instrument is not a R&S NGE100B."""
@@ -35,6 +35,10 @@ class NGE100Channel(InstrumentChannel):
             get_cmd="VOLTage?",
             set_cmd="VOLTage {}",
             get_parser=float,
+            unit="V",
+            vals=Numbers(0, 32.0),
+            docstring="This command defines or queries the voltage value." \
+                      "(adjustable in 10 mV steps)."
         )
 
         self.add_channel_parameter(
@@ -42,25 +46,33 @@ class NGE100Channel(InstrumentChannel):
             get_cmd="CURRent?",
             set_cmd="CURRent {}",
             get_parser=float,
+            unit="A",
+            vals=Numbers(0, 3.0),
+            docstring="This command defines or queries the current value."
         )
 
         self.add_channel_parameter(
             name="output",
             get_cmd="OUTPut?",
             set_cmd="OUTPut {}",
-            get_parser=float,
+            get_parser=int,
+            vals=Enum(0, 1, "OFF", "ON"),
+            docstring="This command defines or queries for output state."
         )
 
         self.add_channel_parameter(
             name="measured_voltage",
             get_cmd="MEASure:VOLTage?",
             get_parser=float,
+            docstring="This command queries the measured voltage value."
         )
 
         self.add_channel_parameter(
             name="measured_current",
             get_cmd="MEASure:CURRent?",
             get_parser=float,
+            unit="A",
+            docstring="This command queries the measured current value."
         )
 
         self.add_channel_parameter(
@@ -68,6 +80,7 @@ class NGE100Channel(InstrumentChannel):
             get_cmd="MEASure:POWer?",
             unit="W",
             get_parser=float,
+            docstring="This command queries the measured power value."
         )
 
     def add_channel_parameter(self, name:str, **kwargs):
@@ -130,19 +143,24 @@ class NGE102B(VisaInstrument):
     * 6.4.1.3
     * 6.6.1
 
-    TODO: Check parsing of strings: output of options is ``"K101,0,0"\n``
+    Example::
 
-    TODO: Make channel instrument! Each channel must always first select the
-    instrument with 
+        from pycqed.instrument_drivers.physical_instruments.rhode_schwartz_nge102b import NGE102B
+        nge = NGE102B("NGE102B", address="TCPIP::172.23.121.65::INST")
+
+        # You can also use 'ch2' instead
+        nge.ch1.voltage(3.0)
+        nge.ch1.current(1.0)
+        nge.ch1.output(1)
     """
 
     NB_CHANNELS = 2
 
 
     def __init__(self, name, address:str=None):
-        """Constructor
-        
+        """
         Arguments:
+            name: Name of the instrument.
             address: IP address of the device, e.g. ``TCPIP::192.1.2.3::INST``.
         """
         super().__init__(name, address=address)
