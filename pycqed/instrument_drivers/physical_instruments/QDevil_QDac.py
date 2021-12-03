@@ -1,9 +1,13 @@
+import logging
+
 import numpy as np
 import time
+import logging
 
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
-from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac
+import qcodes.instrument_drivers.QDevil.QDevil_QDAC as QDac
+from qcodes.instrument_drivers.QDevil.QDevil_QDAC import Mode
 
 
 class QDacSmooth(QDac):
@@ -90,6 +94,50 @@ class QDacSmooth(QDac):
             # time.sleep(self.parameters['smooth_timestep']())
             print_progress(step + 1, N_steps, begintime)
         self._update_cache()
+
+    def set_voltage(self, chan, voltage, immediate=False):
+        """Set the output voltage of a channel.
+
+            Args:
+                chan (int): Channel number of the channel to set the voltage of.
+                voltage (float): The value to set the voltage to.
+        """
+        vals.Ints(1, self.num_chans).validate(chan)
+
+        if immediate:
+            self.channels[chan-1].v(voltage)
+        else:
+            self.set_smooth({chan: voltage})
+
+        self.parameters['ch{:02}_v'.format(chan + 1)]._save_val(voltage)
+
+    def get_voltage(self, chan):
+        """Read the output voltage of a channel.
+
+            Args:
+                chan (int): Channel number of the channel to get the
+                voltage of.
+
+            Returns:
+                The current voltage of channel ``chan`` as a ``float``.
+        """
+        vals.Ints(1, self.num_chans).validate(chan)
+
+        return self.channels[chan-1].v()
+
+    def set_mode(self, mode: str="vhigh_ihigh"):
+        if mode == "vhigh_ihigh":
+            set_mode = Mode.vhigh_ihigh
+        elif mode == "vhigh_ilow":
+            set_mode = Mode.vhigh_ilow
+        elif mode == "vlow_ilow":
+            set_mode = Mode.vlow_ilow
+        else:
+            set_mode = Mode.vhigh_ihigh
+            logging.warning(f"{mode} is not a valid mode. Using the default"
+                            "vhigh_ihigh mode.")
+        for chan in range(self.num_chans):
+            self.channels[chan].mode(set_mode)
 
 
 # channel_map_qdac = {i: f'fluxline{i + 1}' for i in range(6)}
