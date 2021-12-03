@@ -41,7 +41,17 @@ class QDacSmooth(QDac):
                            parameter_class=ManualParameter,
                            vals=vals.Bool(), initial_value=False)
 
-    def set_smooth(self, voltage_dict):
+    def set_smooth(self, voltagedict):
+        """
+        Set the voltages as specified in ``voltagedict` smoothly,
+        by changing the output on each module at a rate
+        ``volt_#_step/smooth_timestep``.
+
+        Args:
+            voltagedict (Dict[float]): A dictionary where keys are module slot
+                numbers or names and values are the desired output voltages.
+        """
+
         def print_progress(index, total, begintime):
             if self.verbose() and total > 3:  # do not print for tiny changes
                 percdone = index / total * 100
@@ -67,9 +77,11 @@ class QDacSmooth(QDac):
 
         v_sweep = {}
         self._update_cache()
-        for ch_number, voltage in voltage_dict.items():  #
-        # generate lists of
-            # V to apply over time
+        # generate lists of V to apply over time
+        for ch_number, voltage in voltagedict.items():
+            if not isinstance(ch_number, int):
+                ch_number = list(self.channel_map.keys())[
+                    list(self.channel_map.values()).index(ch_number)]
             old_voltage = self.channels[ch_number].v()
             if np.abs(voltage - old_voltage) < 1e-10:
                 v_sweep[ch_number] = []
