@@ -1358,7 +1358,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
 
     """
     kw_for_task_keys = ['transition_name']
-    default_experiment_name = 'SingleQubiGateCalib'
+    default_experiment_name = 'SingleQubitGateCalibExperiment'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         try:
@@ -1833,7 +1833,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         """
         Updates self.experiment_name to Echo if self.echo is True.
         """
-        self.experiment_name = 'Echo' if self.echo else 'Ramsey'
+        if self.echo:
+            self.experiment_name.replace('Ramsey', 'Echo')
 
     def preprocess_task(self, task, global_sweep_points, sweep_points=None,
                         **kw):
