@@ -12,6 +12,7 @@ from pycqed.measurement.calibration \
     import single_qubit_gates, two_qubit_gates, calibration_points
 from pycqed.measurement import quantum_experiment
 import numpy as np
+from collections import OrderedDict as odict
 from pycqed.gui.waveform_viewer import add_label_to_widget
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
@@ -194,7 +195,19 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.scroll.adjustSize()
 
     def add_experiment_fields(self):
-        input_field_dict = self.get_selected_experiment().gui_kwargs()["kwargs"]
+        exp = self.get_selected_experiment()
+        input_field_dict = exp.gui_kwargs()["kwargs"]
+        # automatically add global fields for task fields that are listed in
+        # kw_for_task_keys
+        task_list_fields = exp.gui_kwargs()["task_list_fields"]
+        for class_name, kwarg_dict in reversed(task_list_fields.items()):
+            for kwarg, field_information in kwarg_dict.items():
+                if kwarg in getattr(exp, 'kw_for_task_keys', []) and \
+                        kwarg not in input_field_dict.get(class_name, {}):
+                    if class_name not in input_field_dict:
+                        input_field_dict[class_name] = odict({})
+                    input_field_dict[class_name][kwarg] = field_information
+        # create the widgets
         for class_name, kwarg_dict in reversed(input_field_dict.items()):
             class_name_label = QtWidgets.QLabel(f"{class_name} Options")
             class_name_label.setFont(self.boldfont)
