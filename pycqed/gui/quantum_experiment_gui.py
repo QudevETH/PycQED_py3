@@ -143,7 +143,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.cbox_experiment_options.setCurrentIndex(-1)
 
         self.selectbox_qubits = MultiQubitSelectionWidget(
-            [qb.name for qb in self.device.qubits()])
+            [qb.name for qb in self.device.get_qubits()])
 
         self.add_task_form_button = QtWidgets.QPushButton("&Add")
         self.add_task_form_button.setEnabled(False)
@@ -282,12 +282,12 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 widget.insert(str(field_information[1]))
         elif field_information[0] == (Qubit, "multi_select"):
             widget = MultiQubitSelectionWidget(
-                [qb.name for qb in self.device.qubits()])
+                [qb.name for qb in self.device.get_qubits()])
             # TODO: think about implementing default value (same for
             #  SweepPointsWidget)
         elif field_information[0] == (Qubit, "single_select"):
             widget = SingleQubitSelectionWidget(
-                [qb.name for qb in self.device.qubits()])
+                [qb.name for qb in self.device.get_qubits()])
             if field_information[1] is not None:
                 widget.setCurrentText(field_information[1])
         elif isinstance(field_information[0], list):
@@ -750,8 +750,9 @@ class MultiQubitSelectionWidget(CheckableComboBox):
         self.addItems(qubit_list)
 
     def get_selected_qubits_from_device(self, device):
-        return [getattr(device, qubitname) for qubitname in
-                self.currentData()] if self.currentData() != [] else None
+        return device.get_qubits(
+            [qubitname for qubitname in self.currentData()]) if \
+            self.currentData() != [] else None
 
 
 class SweepPointsWidget(QtWidgets.QWidget):
