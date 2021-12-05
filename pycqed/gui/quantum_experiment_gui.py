@@ -156,7 +156,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.general_options_field_container.addRow(
             "Choose Qubits: ", self.selectbox_qubits)
         self.general_options_field_container.addRow(
-            "Add Task Form: ", self.add_task_form_button)
+            "Add Task: ", self.add_task_form_button)
 
         self.tasks_configuration_container = QtWidgets.QGroupBox(
             "Configure Tasks")
@@ -373,9 +373,9 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         if self.experiment.exception is not None:
             # TODO: notify user
             message_box = QtWidgets.QMessageBox(parent=self)
-            message_box.setText("Unable to run experiment")
-            message_box.setDetailedText("Check the output of your python "
-                                        "console to read the error message")
+            message_box.setText("Unable to run experiment. Check the output "
+                                "of your python console to read the error "
+                                "message.")
             message_box.setWindowTitle("Error")
             message_box.setDefaultButton(message_box.Ok)
             message_box.setIcon(message_box.Icon.Warning)
@@ -792,9 +792,10 @@ class SweepPointsWidget(QtWidgets.QWidget):
                 "saved the configuration: \n",
                 repr(sweep_points_configuration_dialog.get_sweep_points_config()["kwargs"])
             )
+            spkw = self.chosen_sweep_points_kwargs['kwargs']
             self.stored_sweep_parameter.setText(
-                f"Parameter: "
-                f"{self.chosen_sweep_points_kwargs['kwargs']['param']}")
+                f"dim {spkw['dimension']}, {spkw['param']}: {spkw['values']}"
+            )
         else:
             print("Configuration was not saved (click ok to save)")
         sweep_points_configuration_dialog.deleteLater()
