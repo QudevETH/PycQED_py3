@@ -1650,6 +1650,7 @@ class Rabi(SingleQubitGateCalibExperiment):
         - amps
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + ['n']
     kw_for_sweep_points = {
         'amps': dict(param_name='amplitude', unit='V',
                      label='Pulse Amplitude', dimension=0)
@@ -1658,7 +1659,6 @@ class Rabi(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, **kw):
         try:
-            self.kw_for_task_keys += ['n']
             if 'n' not in kw:
                 # add default n to kw before passing to init of parent
                 kw['n'] = 1
@@ -1838,6 +1838,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         - delays
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + [
+        'artificial_detuning']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0)
@@ -1846,7 +1848,6 @@ class Ramsey(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, echo=False, **kw):
         try:
-            self.kw_for_task_keys += ['artificial_detuning']
             if 'artificial_detuning' not in kw:
                 # add default artificial_detuning to kw before passing to
                 # init of parent
@@ -2051,6 +2052,7 @@ class ReparkingRamsey(Ramsey):
         - dc_voltage_offsets
     """
 
+    kw_for_task_keys = Ramsey.kw_for_task_keys + ['fluxline']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0),
@@ -2064,7 +2066,6 @@ class ReparkingRamsey(Ramsey):
                  delays=None, dc_voltages=None, dc_voltage_offsets=None,  **kw):
 
         try:
-            self.kw_for_task_keys += ['fluxline']
             if 'fluxline' not in kw:
                 # add default value for fluxline to kw before passing to
                 # init of parent
