@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict as odict
 from copy import copy
 from copy import deepcopy
 from itertools import zip_longest
@@ -562,6 +563,23 @@ class MultiTaskingExperiment(QuantumExperiment):
                     task['sweep_points'].add_sweep_parameter(
                         values=values, **v)
 
+    @classmethod
+    def gui_kwargs(cls):
+        d = super().gui_kwargs()
+        d['kwargs'].update({
+            MultiTaskingExperiment.__name__: odict({
+                'n_cal_points_per_state': (int, 1),
+                'cal_states': (str, None),
+                'ro_qubits': ((Qubit, 'multi_select'), None),
+            })
+        })
+        d['task_list_fields'].update({
+            MultiTaskingExperiment.__name__: odict({
+                'sweep_points': (SweepPoints, None),
+            })
+        })
+        return d
+
 
 class CalibBuilder(MultiTaskingExperiment):
     """
@@ -700,6 +718,16 @@ class CalibBuilder(MultiTaskingExperiment):
         # them if they exist already)
         sweep_points.update(hard_sweep_dict + [{}])
         return sweep_points
+
+    @classmethod
+    def gui_kwargs(cls):
+        d = super().gui_kwargs()
+        d['kwargs'].update({
+            CalibBuilder.__name__: odict({
+                'update': (bool, False),
+            })
+        })
+        return d
 
 
 class CPhase(CalibBuilder):
@@ -1570,42 +1598,40 @@ class Chevron(CalibBuilder):
 
     @classmethod
     def gui_kwargs(cls):
-        chevron_pulse_parameters = {
+        pulse_pars = odict({
+            'pulse_length': 's',
             'amplitude': 'V',
             'amplitude2': 'V',
-            'amplitude_offset': 'V',
-            'amplitude_offset2': 'V',
-            'extra_buffer_aux_pulse': 's',
-            'pulse_length': 's',
             'trans_amplitude': 'V',
             'trans_amplitude2': 'V',
+            'amplitude_offset': 'V',
+            'amplitude_offset2': 'V',
             'trans_length': 's',
             'buffer_length_start': 's',
             'buffer_length_end': 's',
+            'extra_buffer_aux_pulse': 's',
             'channel_relative_delay': 's',
             'gaussian_filter_sigma': 's',
-        }
-        d = super().gui_kwargs()
-        d['kwargs'].update({
-            Chevron.__name__: {
-                'num_cz_gates': (int, 1),
-                'init_state': (CircuitBuilder.STD_INIT, '11')
-            }
         })
+        # move first param to the end for the second sweep dimension
+        first_param = list(pulse_pars.keys())[0]
+        pulse_pars2 = deepcopy(pulse_pars)
+        pulse_pars2.pop(first_param)
+        pulse_pars2[first_param] = pulse_pars[first_param]
+        d = super().gui_kwargs()
         d['task_list_fields'].update({
-            Chevron.__name__: {
-                'sweep_points': (SweepPoints, None),
+            Chevron.__name__: odict({
                 'qbc': ((Qubit, 'single_select'), None),
                 'qbt': ((Qubit, 'single_select'), None),
-                'num_cz_gates': (int, None),
-                'init_state': (CircuitBuilder.STD_INIT, None),
+                'num_cz_gates': (int, 1),
+                'init_state': (CircuitBuilder.STD_INIT, '11'),
                 'max_flux_length': (float, None),
-            }
+            })
         })
         d['sweeping_parameters'].update({
             Chevron.__name__: {
-                0: chevron_pulse_parameters,
-                1: chevron_pulse_parameters,
+                0: pulse_pars,
+                1: pulse_pars2,
             }
         })
         return d

@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict as odict
 from copy import copy, deepcopy
 import traceback
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
@@ -1601,6 +1602,17 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         # To be overloaded by children.
         pass
 
+    @classmethod
+    def gui_kwargs(cls):
+        d = super().gui_kwargs()
+        d['task_list_fields'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({
+                'qb': ((Qubit, 'single_select'), None),
+                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
+            })
+        })
+        return d
+
 
 class Rabi(SingleQubitGateCalibExperiment):
     """
@@ -1744,18 +1756,10 @@ class Rabi(SingleQubitGateCalibExperiment):
     @classmethod
     def gui_kwargs(cls):
         d = super().gui_kwargs()
-        d['kwargs'].update({
-            Rabi.__name__: {
-                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
-                'update': (bool, False),
-            }
-        })
         d['task_list_fields'].update({
-            Rabi.__name__: {
-                'qb': ((Qubit, 'single_select'), None),
-                'sweep_points': (SweepPoints, None),
-                'transition_name': ({'ge': '', 'ef': '_ef', 'fh': '_fh', }, 'ge'),
-            }
+            Rabi.__name__: odict({
+                'n': (int, 1),
+            })
         })
         d['sweeping_parameters'].update({
             Rabi.__name__: {
@@ -1764,10 +1768,6 @@ class Rabi(SingleQubitGateCalibExperiment):
                 },
                 1: {
                     'sigma': 's',
-                    'mod_frequency': 'Hz',
-                    'phase': 'deg',
-                    'alpha': '',
-                    'phi_skew': 'deg'
                 },
             }
         })
@@ -1981,32 +1981,22 @@ class Ramsey(SingleQubitGateCalibExperiment):
     @classmethod
     def gui_kwargs(cls):
         d = super().gui_kwargs()
-
         d['kwargs'].update({
-            Ramsey.__name__: {
-                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
-                'update': (bool, False),
-            }
+            Ramsey.__name__: odict({
+                'echo': (bool, False),
+            })
         })
         d['task_list_fields'].update({
-            Ramsey.__name__: {
-                'qb': ((Qubit, 'single_select'), None),
-                'sweep_points': (SweepPoints, None),
-                'transition_name': ({'ge': '', 'ef': '_ef', 'fh': '_fh', }, 'ge'),
-            }
+            Ramsey.__name__: odict({
+                'artificial_detuning': (float, None),
+            })
         })
         d['sweeping_parameters'].update({
             Ramsey.__name__: {
                 0: {
-                    'amplitude': 'V',
+                    'pulse_delay': 's',
                 },
-                1: {
-                    'sigma': 's',
-                    'mod_frequency': 'Hz',
-                    'phase': 'deg',
-                    'alpha': '',
-                    'phi_skew': 'deg',
-                },
+                1: {},
             }
         })
         return d
