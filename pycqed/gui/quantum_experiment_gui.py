@@ -327,6 +327,10 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             return widget.get_selected_qubits_from_device(self.device)
         elif isinstance(widget, CheckableComboBox):
             return widget.currentData()
+        elif isinstance(widget, QLineEditInt):
+            return int(widget.text()) if widget.text() != "" else None
+        elif isinstance(widget, QLineEditDouble):
+            return float(widget.text()) if widget.text() != "" else None
         elif isinstance(widget, QtWidgets.QLineEdit):
             return widget.text() if widget.text() != "" else None
         elif isinstance(widget, QtWidgets.QCheckBox):
