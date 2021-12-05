@@ -275,7 +275,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
 
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
                  adapt_drive_amp=False, adapt_ro_freq=False,
-                 internal_modulation=True, **kw):
+                 internal_modulation=None, **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -293,7 +293,13 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.qb_offsets = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
-        self.internal_modulation = internal_modulation
+        self.internal_modulation = (True if internal_modulation is None
+                                            and allowed_lo_freqs is not None
+                                    else internal_modulation)
+        if allowed_lo_freqs is None and internal_modulation:
+            log.warning('ParallelLOSweepExperiment: internal_modulation is '
+                        'set to True, but this will be ignored in a pure LO '
+                        'sweep, where no allowed_lo_freqs are set.')
         self.adapt_drive_amp = adapt_drive_amp
         self.adapt_ro_freq = adapt_ro_freq
         self.drive_amp_adaptation = {}
@@ -418,6 +424,12 @@ class ParallelLOSweepExperiment(CalibBuilder):
                             'ParallelLOSweepExperiment with '
                             'internal_modulation=False is currently only '
                             'implemented for a single qubit per LO.'
+                        )
+                    if not kw.get('optimize_mod_freqs', False):
+                        raise NotImplementedError(
+                            'ParallelLOSweepExperiment with '
+                            'internal_modulation=False is currently only '
+                            'implemented for optimize_mod_freqs=True.'
                         )
                     maj_vals = np.array(self.allowed_lo_freqs)
                     func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
@@ -619,11 +631,22 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 name=f'DC Offset {qb.name}',
                 parameter_name=f'Parking freq {qb.name}', unit='Hz')]
         if self.allowed_lo_freqs is None or self.internal_modulation:
+            # The dimension 1 sweep is a parallel sweep of all sweep_functions
+            # created here, and they directly understand the sweep points
+            # stored in self.lo_sweep_points.
             self.sweep_functions = [
                 self.sweep_functions[0], swf.multi_sweep_function(
                     sweep_functions, name=name, parameter_name=name)]
             self.mc_points[1] = self.lo_sweep_points
         else:
+            # IF sweep without internal modulation, i.e., we have to
+            # reprogram the drive AWG for every sequence. Thus, the sweep
+            # in dimension 1 is a parallel sweep of a SegmentSoftSweep and of
+            # all sweep_functions created here. Since the SegmentSoftSweep
+            # requires indices as sweep points, we use an Indexed_Sweep to
+            # translate the indices to the sweep points stored in
+            # self.lo_sweep_points, which are required by the sweep
+            # functions created here.
             self.sweep_functions = [
                 self.sweep_functions[0], swf.multi_sweep_function([
                     awg_swf.SegmentSoftSweep,  # placeholder, see _configure_mc
