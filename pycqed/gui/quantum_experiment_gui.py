@@ -371,6 +371,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         qubits = self.selectbox_qubits.get_selected_qubits_from_device(
             self.device)
         task_list = self.get_task_list()
+        if not len(task_list):
+            task_list = None
         # out = io.StringIO()
         # sys.stdout = out
         # self.experiment_output.setText(out.getvalue())
