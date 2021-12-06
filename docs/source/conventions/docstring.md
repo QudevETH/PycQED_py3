@@ -67,8 +67,12 @@ Most modern IDEs (e.g. VS Code, PyCharm) include plugins or snippets to write
 docstrings faster. Make sure to set your IDE in a way that encourages you to
 write good docstrings.
 
+These tools can inspect your functions to produce stub docstrings with the
+arguments, return type and raised exceptions.
+
 Feel free to try the following plugins:
 * VS Code extension: [Python Docstring Generator](https://marketplace.visualstudio.com/items?itemName=njpwerner.autodocstring)
-This extension can inspect your functions to produce a formatted docstring with
-the arguments, return type and raised exceptions.
-* TODO: Add Similar extension for PyCharm
+* PyCharm: The docstring format can be selected in the settings:
+`Settings > tools > Python Integrated tools > Docstrings`.
+  * Select `Google` as the docstring format.
+  * Tick `Analyze Python code in docstrings`.
