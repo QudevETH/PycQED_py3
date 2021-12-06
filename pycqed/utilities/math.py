@@ -1,5 +1,5 @@
 import numpy as np
-
+import scipy
 
 def normalize(v):
     """
@@ -39,3 +39,34 @@ def factors(n):
     return list(functools.reduce(list.__add__,
                                  ([i, n // i] for i in range(1, int(n ** 0.5) + 1)
                                   if n % i == 0)))
+
+
+def find_intersect_line_ellipse(slope, radius_x, radius_y, theta=0):
+    """
+    Finds the intersection points (x1, y1) and (x2, y2) of a line
+    going through the origin and an ellipse with radius_x, radius_y and angle with x axis theta
+    """
+    x1 = 1 / np.sqrt(
+        (np.cos(theta) - slope * np.sin(theta)) ** 2 / radius_x ** 2 + (
+                    np.sin(theta) + slope * np.cos(theta)) ** 2 / radius_y ** 2)
+    x2 = -x1
+    y1 = slope * x1
+    y2 = slope * x2
+    return np.array([x1, y1]), np.array([x2, y2])
+
+
+def get_ellipse_radii_and_rotation(cov):
+    """
+    Computes radii (from sqrt eigenvalues) and rotation angle:
+    returns radius_x, radius_y, -rotation_angle
+    """
+
+    if np.ndim(cov) == 1 or len(cov.flatten()) == 1:
+        cov = np.diag([cov.flatten()[0]] * 2)
+
+    (eigs, eigv) = scipy.linalg.eigh(cov)
+    theta = np.arctan2(*eigv[:, 0])
+    return np.sqrt(eigs[0]), np.sqrt(eigs[1]), -theta
+
+def slope(p1, p2=(0,0)):
+    return (p2[1] - p1[1] ) / (p2[0] - p1[0])

@@ -754,6 +754,12 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             'classif_kw': kw to pass to the classifier
             see BaseDataAnalysis for more.
         '''
+        msg = "This analysis is deprecated and will fail when the measurement " \
+              " is performed with mqm.measure_ssro. Please use " \
+              "'tda.MultiQutrit_Singleshot_Readout_Analysis' instead. Note that" \
+              " this analysis should still work if the measurement was perf" \
+              "ormed with 'qb.measure_ssro'."
+        log.warning(msg)
         super().__init__(t_start=t_start, t_stop=t_stop,
                          label=label, do_fitting=do_fitting,
                          data_file_path=data_file_path,
@@ -941,7 +947,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
     @staticmethod
     def fidelity_matrix(prep_states, pred_states, levels=('g', 'e', 'f'),
                         labels=None, plot=False, normalize=True):
-        fm = confusion_matrix(prep_states, pred_states, labels)
+        fm = confusion_matrix(prep_states, pred_states, labels=labels)
         if plot:
             Singleshot_Readout_Analysis_Qutrit.plot_fidelity_matrix(fm,
                                                                     levels)
@@ -970,7 +976,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             fm = fm.astype('float') / fm.sum(axis=1)[:, np.newaxis]
 
         im = ax.imshow(fm, interpolation='nearest', cmap=cmap,
-                       norm=mc.LogNorm(), vmin=5e-3, vmax=1.)
+                       norm=mc.LogNorm(vmin=5e-3, vmax=1.))
         ax.set_title(title)
         if plot_cb:
             cb = fig.colorbar(im)
@@ -1153,7 +1159,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return kwargs['fig']
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None):
+    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
         def make_meshgrid(x, y, h=None, margin=None):
             if margin is None:
                 deltax = x.max() - x.min()
@@ -1180,7 +1186,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             fig, ax = plt.subplots(1, figsize=(10, 10))
 
         X0, X1 = X[:, 0], X[:, 1]
-        xx, yy = make_meshgrid(X0, X1)
+        xx, yy = make_meshgrid(X0, X1, h=spacing)
         plot_contours(ax, clf, xx, yy, cmap=cmap, alpha=0.3)
 
     @staticmethod
@@ -1277,6 +1283,11 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return covs
 
     @staticmethod
+    def _get_means(gmm):
+        return gmm.means_
+
+
+    @staticmethod
     def plot_1D_hist(data, y_true=None, plot_fitting=True,
                      **kwargs):
         """
@@ -1306,7 +1317,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                 alpha=kwargs.get('alpha', 0.6))
             if plot_fitting and kwargs.get('means', None) is not None and \
                     kwargs.get('std', None) is not None:
-                means = list(kwargs['means'].values())
+                means = kwargs['means']
                 fit_plot_values = np.linspace(*binr_range, 200)
                 y = stats.norm.pdf(fit_plot_values, means[i],
                                    kwargs['std'][i]).flatten()
@@ -1315,6 +1326,12 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         ax.set_xlabel(kwargs.get("xlabel", 'integration unit 1, $u_1$'))
         ax.set_ylabel('Counts, $n$')
         ax.set_yscale(kwargs.get('scale', "log"))
+        ylim = kwargs.get('ylim',
+                          ax.get_ylim() if kwargs.get('scale', "log") == "linear"
+                          else [0.1] +[ax.get_ylim()[1]])
+        ax.set_ylim(ylim)
+        if kwargs.get('legend', False):
+            ax.legend()
         return fig, ax
 
     def plot(self, **kw):
@@ -1337,7 +1354,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             kwargs.update(dict(title=title))
             if data['X'].shape[1] == 1:
                 if self.classif_method == "gmm":
-                    kwargs['means'] = pdd['analysis_params']['means']
+                    kwargs['means'] = self._get_means(self.clf_)
                     kwargs['std'] = np.sqrt(self._get_covariances(self.clf_))
                 kwargs['colors'] = cmap(np.unique(data['prep_states']))
                 fig, main_ax = self.plot_1D_hist(data['X'],
