@@ -9825,17 +9825,20 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         ssp = self.raw_data_dict['soft_sweep_points']
         mdata = self.raw_data_dict['measured_data']
 
-        alpha = hsp
-        phase = ssp
-
         sideband_I, sideband_Q = list(mdata.values())
 
         if len(hsp) * len(ssp) == len(sideband_I.flatten()):
+            # The arrays hsp and ssp define the edges of a grid of measured 
+            # points. We reshape the arrays such that each data point 
+            # sideband_I/Q[i] corresponds to the sweep point alpha[i], phase[i]
             alpha, phase = np.meshgrid(hsp, ssp)
             alpha = alpha.flatten()
             phase = phase.flatten()
             sideband_I = sideband_I.T.flatten()
             sideband_Q = sideband_Q.T.flatten()
+        else:
+            alpha = hsp
+            phase = ssp
 
         sideband_dBV_amp = 20*np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
 
