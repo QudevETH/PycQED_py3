@@ -1,20 +1,11 @@
 import qcodes as qc
 from qcodes import validators as vals
 from qcodes import Instrument
-from zhinst.hdiq import Hdiq
+import zhinst.hdiq as hdiq
 from collections import OrderedDict
-
-# import logging
-# log = logging.getLogger(__name__)
-
 
 class HDIQ(Instrument):
     """A qcodes instrument for controlling the switches within a ZI HDIQ.
-
-    Args:
-        name: Name of the instrument.
-        n_channels: Number of upconversion channels of the instrument.
-        address: IP address of the instrument.
 
     Attributes:
         name: Name of the instrument.
@@ -22,13 +13,24 @@ class HDIQ(Instrument):
         instrument: Base instrument object instantiated from the ZI driver.
         modes: Possible operation modes of a channel, defining the state of the
             switches routing that channel.
-        {channel}_mode: qcodes parameter for the state of a given channel.
     """
 
-    def __init__(self, name, n_channels, address=None):
+    def __init__(self, name, address, port=None, n_channels=4):
+        """Constructor, initialises the connection with the instrument.
+
+            Args:
+                name: Name of the instrument.
+                address: IP address of the instrument.
+                port: TCP port. If None, will be set to the default of the ZI driver.
+                n_channels: Number of upconversion channels of the instrument.
+        """
         super().__init__(name)
+
+        kw = {}
+        if port is not None:
+            kw['port'] = port
+        self.instrument = hdiq.Hdiq(ip=address, **kw)
         self.n_channels = n_channels
-        self.instrument = Hdiq(ip=address)
         self.modes = OrderedDict({'modulated': self.instrument.set_rf_to_exp,
                                   'calib': self.instrument.set_rf_to_calib,
                                   'spec': self.instrument.set_lo_to_exp})
@@ -49,12 +51,12 @@ class HDIQ(Instrument):
             'timeout',
             vals=vals.Numbers(0, 120),
             get_cmd=lambda: self.instrument.timeout,
-            set_cmd=None,  # seems read-only, check with ZI if needed
+            set_cmd=lambda x: setattr(self.instrument, 'timeout', x),
         )
-        # self.switches = {} #Maybe for compatibility with other switch types?
 
     def set_switch(self, values):
         """Sets multiple switches to the given modes.
+
         This is for now done with multiple hardware accesses
         (seems the only option available in zhinst.hdiq).
 
