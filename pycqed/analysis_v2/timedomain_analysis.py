@@ -9610,6 +9610,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'V',
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
+            'cmap_levels': 100,
             'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBV)',
             'title': f'{timestamp} calibrate_drive_mixer_carrier_'
                      f'{self.qb_names[0]}'
@@ -9787,6 +9788,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'yunit': 'deg',
                 'setlabel': 'sideband magnitude',
                 'cmap': 'plasma',
+                'cmap_levels': 100,
                 'clabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$ (dBV)',
                 'title': f'{timestamp} calibrate_drive_mixer_skewness_'
                         f'{self.qb_names[0]}'
