@@ -1,4 +1,4 @@
-# Git convensions
+# Git conventions
 
 ## Branches
 
