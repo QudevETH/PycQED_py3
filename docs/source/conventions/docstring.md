@@ -20,7 +20,18 @@ def incorrect_docstring():
 
 ### Argument types
 
-No need to indicate the parameter types in the docstring, if you use type hints.
+The arguments type(s) should be included as follows, if the code does not
+contain a corresponding type annotation:
+```python
+def function(x, y, z):
+    """Some function.
+
+    Arguments:
+        x (int): Some parameter.
+        y (str): Other parameter.
+        z (float|List[float]): Third parameter.
+    """
+```
 Always indicate the acceptable types for `*args` or `**kwargs` arguments.
 
 ## Modifying existing docstrings
