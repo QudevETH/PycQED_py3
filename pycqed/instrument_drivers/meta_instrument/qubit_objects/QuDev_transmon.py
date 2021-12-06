@@ -546,9 +546,10 @@ class QuDev_transmon(Qubit):
         elif isinstance(amp_func, str):
             return eval(amp_func)(ge_freq)
         else:
+            i_min, i_max = np.argmin(amp_func[0]), np.argmax(amp_func[0])
             return sp.interpolate.interp1d(
                 amp_func[0], amp_func[1], kind='linear',
-                fill_value=(min(amp_func[1]), max(amp_func[1])),
+                fill_value=(amp_func[1][i_min], amp_func[1][i_max]),
                 bounds_error=False)(ge_freq)
 
     def get_ro_freq_from_ge_freq(self, ge_freq):
