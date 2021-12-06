@@ -2569,11 +2569,6 @@ class QuDev_transmon(Qubit):
                 the unwanted sideband.
             ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
                 The MixerSkewnessAnalysis object.
-
-        Note:
-            When the hack is applied that suppresses bugs of the ZI devices
-            one might need to increase the trigger seperation to values above 
-            25e-5 s.
         """
         if meas_grid is None:
             if not len(limits) == 4:
