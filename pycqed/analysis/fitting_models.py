@@ -1567,19 +1567,19 @@ def TwoErrorFunc_guess(model, delays, data):
 
 
 def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
-    """Analytical model for the max. amplitude of the unwanted SB of an IQ mixer.
+    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
 
     Args:
-        alpha (float): Correction factor that was applied to the amplitude of 
+        alpha (float): Correction factor that is applied to the amplitude of 
             the Q signal.
         phi_skew (float): Phase correction of the Q signal relative to the I 
             signal in degree.
-        g (float, optional): Power ratio between the LO power splitter outputs. 
-            It is defined as power(LO_I)/power(LO_Q).
+        g (float, optional): Amplitude ratio between the LO power splitter 
+            outputs. It is defined as amplitude(LO_I)/amplitude(LO_Q).
             Defaults to 1.0.
         phi (float, optional): Phase between the two ports of the LO power 
-            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). Defaults 
-            to 0 degree.
+            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). 
+            Defaults to 0 degree.
         offset (float, optional): Offset in dBV accounting for losses in the 
             signal chain. Defaults to 0.0 dBV.
 
@@ -1587,8 +1587,8 @@ def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
         float: maximum sideband amplitude for the specified parameters in dBV
 
     Model Schematic:
-        Note: In the schematic phases are shown as radiant quantities while the 
-              function expects phases expressed in degree.
+        Note: In the schematic phases are shown as radiant quantities while 
+              the function expects phases expressed in degree.
          I >------------------------------ I  R ----+
                                             LO      |
                                             |       |
@@ -1608,9 +1608,9 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     """Prepare and return parameters for the model :py:func:'.mixer_imbalance_sideband.'
 
     Args:
-        model (:py:class:'lmfit.model'): The model that the parameter hints will
-            be added to and that is used to generate the parameters using the 
-            :py:meth:'lmfit.model.make_params' method.
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
         **kwargs: Arbitrary keyword arguments that will be passed to 
             :py:meth:'lmfit.model.make_params' when creating the parameters.
 
@@ -1645,17 +1645,17 @@ def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
 
     Important Note:
         As can be seen from the model schematic and the implementation the 
-        pair of arguments li and theta_i as well as lq and theta_q each define a
-        complex number that will be added within the model. Therefore they are 
-        not uniquely defined from the models value and one should prefer to set 
-        one of the two pairs constant when fitting the model to data to prevent 
-        unneccesary overhead in the fitting routine.
+        pair of arguments li and theta_i as well as lq and theta_q each define 
+        a complex number that will be added within the model. Therefore they 
+        are not uniquely defined from the models value and one should prefer 
+        to set one of the two pairs constant when fitting the model to data to 
+        prevent unneccesary overhead in the fitting routine.
     
     Model Schematic:
         Note: We are only interested in the amplitudes of signals that are of 
               LO frequency.
 
-         I >-- +V_I ---------------- I  R --- +V_I ---------------+-----+
+         I >-- +V_I (DC) ----------- I  R --- +V_I ---------------+-----+
                                       LO                          |     |
                                       |                           |     |
         LO >------------\-/-----------+--- li*exp(i*theta_i) -----+     |
@@ -1663,7 +1663,7 @@ def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
                       --/-\-----------+--- -i*lq*exp(i*theta_q) --+     |
                                       |                           |     |
                                       LO                          |     |
-         Q >-- +V_Q ---------------- I  R --- -iV_Q --------------+-----+
+         Q >-- +V_Q (DC) ----------- I  R --- -iV_Q --------------+-----+
     """
     return 20*np.log10(np.abs(vi
                             + li * np.exp(1j*theta_i)
@@ -1676,9 +1676,9 @@ def mixer_lo_leakage_guess(model, **kwargs):
     """Prepare and return parameters  for the model :py:func:'.mixer_lo_leakage'.
 
     Args:
-        model (:py:class:'lmfit.model'): The model that the parameter hints will 
-            be added to and that is used to generate the parameters using the 
-            :py:meth:'lmfit.model.make_params' method.
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
         **kwargs: Arbitrary keyword arguments that will be passed to 
             :py:meth:'lmfit.model.make_params' when creating the parameters.
 
