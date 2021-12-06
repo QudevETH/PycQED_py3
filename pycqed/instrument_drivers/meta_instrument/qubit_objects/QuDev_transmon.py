@@ -2323,7 +2323,8 @@ class QuDev_transmon(Qubit):
                 Q_channel=self.ge_Q_channel(),
             )]])
 
-        exp_metadata = {'qb_names': [self.name], 'rotate': False}
+        exp_metadata = {'qb_names': [self.name], 'rotate': False, 
+                        'cal_points': f"CalibrationPoints([{self.name}], [])"}
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.acq_weights_type, 'SSB'),
@@ -2622,7 +2623,8 @@ class QuDev_transmon(Qubit):
                     )])
         sq.pulse_list_list_seq(pulse_list_list)
 
-        exp_metadata = {'qb_names': [self.name], 'rotate': False}
+        exp_metadata = {'qb_names': [self.name], 'rotate': False, 
+                        'cal_points': f"CalibrationPoints([{self.name}], [])"}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.acq_weights_type, 'SSB'),
