@@ -1702,6 +1702,7 @@ class BaseDataAnalysis(object):
         plot_yvals = pdict['yvals']
         plot_cbar = pdict.get('plotcbar', True)
         plot_cmap = pdict.get('cmap', 'viridis')
+        plot_cmap_levels = pdict.get('cmap_levels', None)
         plot_aspect = pdict.get('aspect', None)
         plot_zrange = pdict.get('zrange', None)
         plot_yrange = pdict.get('yrange', None)
@@ -1769,6 +1770,7 @@ class BaseDataAnalysis(object):
                 out = pfunc(ax=axs,
                             xwidth=xwidth,
                             clim=fig_clim, cmap=plot_cmap,
+                            levels=plot_cmap_levels,
                             xvals=traces['xvals'][tt],
                             yvals=traces['yvals'][tt],
                             zvals=traces['zvals'][tt],
