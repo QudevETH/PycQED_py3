@@ -9610,7 +9610,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'yunit': 'V',
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
-            'clabel': '$V_\\mathrm{LO}$ (dBV)',
+            'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBV)',
             'title': f'{timestamp} calibrate_drive_mixer_carrier_'
                      f'{self.qb_names[0]}'
         }
@@ -9656,7 +9656,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'marker': '.',
                 'linestyle': 'None',
                 'xlabel': f'Offset, $V_\\mathrm{{{ch}}}$',
-                'ylabel': '$V_\\mathrm{LO}$',
+                'ylabel': 'Carrier Leakage $V_\\mathrm{LO}$',
                 'xunit': 'V',
                 'yunit': 'dBV',
                 'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO}}$ '
@@ -9787,7 +9787,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'yunit': 'deg',
                 'setlabel': 'sideband magnitude',
                 'cmap': 'plasma',
-                'clabel': '$V_\\mathrm{LO-IF}$ (dBV)',
+                'clabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$ (dBV)',
                 'title': f'{timestamp} calibrate_drive_mixer_skewness_'
                         f'{self.qb_names[0]}'
             }
@@ -9831,7 +9831,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
-            'ylabel': '$V_\\mathrm{LO-IF}$',
+            'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
             'xunit': '',
             'yunit': 'dBV',
             'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
@@ -9860,7 +9860,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
-            'ylabel': '$V_\\mathrm{LO-IF}$',
+            'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
             'xunit': 'deg',
             'yunit': 'dBV',
             'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
