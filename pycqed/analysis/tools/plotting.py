@@ -362,7 +362,7 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
     return {'fig': ax.figure, 'ax': ax, 'cmap': colormap}
 
 def contourf_plot(xvals, yvals, zvals, ax=None,
-                  cmap='plasma', levels=25, **kw):
+                  cmap='plasma', levels=None, **kw):
     """
     Wrapper for Matplotlib contourf plot
     """
