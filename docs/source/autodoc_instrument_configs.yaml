@@ -1,0 +1,50 @@
+# This file contains dummy parameters to use for instantiating some of the
+# QCodes intruments within the autodoc_instrument Sphinx extension
+
+# These instruments will be ignored by the extension
+_skipped_instruments:
+  - QudevDisplacer # Could not instantiate it...
+  - Agilent_33250A # Needs instrument
+  - NanotecSMI33 # Needs instrument
+  - QudevMechDisplacerMotor # Subclass of NanotecSMI33
+  - RTO1024_scope # Needs instrument
+  - SCPI # Needs instrument
+  - ZI_base_instrument # Abstract class
+  - InstrumentMonitor # Run into weird sphinx bugs
+
+Device:
+  qubits: []
+  connectivity_graph: []
+
+ZI_PQSC:
+  device: "dev10"
+  server: "emulator"
+
+UHFQC:
+  device: "dev2"
+  server: "emulator"
+
+ZI_HDAWG_core:
+  device: "dev8"
+  server: "emulator"
+
+ZI_HDAWG8:
+  device: "dev8"
+  server: "emulator"
+
+PQSC_control:
+  pqsc_instr:
+    _class: "pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_PQSC.ZI_PQSC"
+    _args:
+      name: "pqsc_instr_dummy"
+      device: "dev10041"
+      server: "emulator"
+
+Weinschel_8320:
+  address: ""
+
+virtualRohdeSchwarz_SGS100A:
+  address: ""
+
+MeasurementControl:
+  live_plot_enabled: False # Disable popup plots

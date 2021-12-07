@@ -261,7 +261,7 @@ class CalibrationPoints:
         if n_cal_pts == 0:
             return sweep_points
         try:
-            step = np.abs(sweep_points[-1] - sweep_points[-2])
+            step = sweep_points[-1] - sweep_points[-2]
         except IndexError:
             # This fallback is used to have a step value in the same order
             # of magnitude as the value of the single sweep point

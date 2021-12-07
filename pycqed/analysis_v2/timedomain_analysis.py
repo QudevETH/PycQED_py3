@@ -6257,6 +6257,8 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 'reparking_params'][qbn] = {'ss_freq': fit_res.best_values['f0'],
                                             'ss_volt': fit_res.best_values['V0']}
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
         for qbn in self.qb_names:
@@ -6347,10 +6349,10 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                         f"{fit_res.best_values['f0']/1e9:.6f} GHz " \
                     f"\nPrevious ss frequency: {old_qb_freq/1e9:.6f} GHz " \
                     f"\nSweet spot DC voltage: " \
-                        f"{fit_res.best_values['V0']:.3f} V "
+                        f"{fit_res.best_values['V0']:.6f} V "
                 if qbn in current_voltages:
                     old_voltage = current_voltages[qbn]
-                    textstr += f"\nPrevious DC voltage: {old_voltage:.3f} V"
+                    textstr += f"\nPrevious DC voltage: {old_voltage:.6f} V"
                 self.plot_dicts[f'{base_plot_name}_text'] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,

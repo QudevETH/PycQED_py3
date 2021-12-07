@@ -31,6 +31,10 @@ class QuantumExperiment(CircuitBuilder):
     """
     _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
                         'channel_map', 'meas_objs'}
+    # The following string can be overwritten by child classes to provide a
+    # default value for the kwarg experiment_name. None means that the name
+    # of the first sequences will be used.
+    default_experiment_name = None
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  meas_objs=None, classified=False, MC=None,
@@ -183,7 +187,8 @@ class QuantumExperiment(CircuitBuilder):
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
         self.experiment_name = kw.pop(
-            'experiment_name', getattr(self, 'experiment_name', None))
+            'experiment_name', getattr(self, 'experiment_name',
+                                       self.default_experiment_name))
         self.timestamp = None
         self.analysis = None
 
