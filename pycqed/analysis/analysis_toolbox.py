@@ -108,7 +108,7 @@ def get_last_n_timestamps(n, contains=''):
 def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 return_timestamp=False, return_path=True, raise_exc=True,
                 folder=None, n_matches=None, return_all=False,
-                match_whole_words=None):
+                match_whole_words=None, verbose=False):
     """
         Finds the latest taken data with <contains> in its name.
         Returns the full path of the data directory and/or the timestamp.
@@ -139,6 +139,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 underscores treated as word separators).
                 (default: use the value latest_data_match_whole_words
                 specified in the module)
+            verbose: If True, print results as soon as they are found (bool,
+                default: True)
         Returns: (list of) path and/or timestamps. Return format depends on the
             choice of return_timestamp, return_path, list_timestamps, return_all.
     """
@@ -208,6 +210,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                     measdirs.append(d)
                     paths.append(os.path.join(search_dir, daydir, d))
                     timestamps.append(timestamp)
+                    if verbose:
+                        print(paths[-1])
             if newer_than is not None and timestamp is not None:
                 if not is_older(newer_than, timestamp,
                                 or_equal=or_equal):
@@ -359,7 +363,8 @@ def get_plot_title_from_folder(folder):
     return default_plot_title
 
 
-def compare_instrument_settings_timestamp(timestamp_a, timestamp_b):
+def compare_instrument_settings_timestamp(timestamp_a, timestamp_b,
+                                          folder=None):
     '''
     Takes two analysis objects as input and prints the differences between
     the instrument settings. Currently it only compares settings existing in
@@ -368,10 +373,11 @@ def compare_instrument_settings_timestamp(timestamp_a, timestamp_b):
     '''
 
     h5mode = 'r'
-    h5filepath = measurement_filename(get_folder(timestamp_a))
+    h5filepath = measurement_filename(get_folder(timestamp_a, folder=folder))
     analysis_object_a = h5py.File(h5filepath, h5mode)
     try:
-        h5filepath = measurement_filename(get_folder(timestamp_b))
+        h5filepath = measurement_filename(get_folder(timestamp_b,
+                                                     folder=folder))
         analysis_object_b = h5py.File(h5filepath, h5mode)
         try:
             sets_a = analysis_object_a['Instrument settings']
@@ -566,23 +572,23 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 ######################################################################
 
 def get_folder(timestamp=None, older_than=None, label='',
-               suppress_printing=True, **kw):
+               suppress_printing=True, folder=None, **kw):
     if timestamp is not None:
-        folder = data_from_time(timestamp)
+        folder_ts = data_from_time(timestamp, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s" using timestamp "%s"' % (
-                folder, timestamp))
+                folder_ts, timestamp))
     elif older_than is not None:
-        folder = latest_data(label, older_than=older_than)
+        folder_ts = latest_data(label, older_than=older_than, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s"using older_than "%s"' % (
-                folder, older_than))
+                folder_ts, older_than))
     else:
-        folder = latest_data(label)
+        folder_ts = latest_data(label, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s" using label "%s"' % (
-                folder, label))
-    return folder
+                folder_ts, label))
+    return folder_ts
 
 
 def smooth(x, window_len=11, window='hanning'):

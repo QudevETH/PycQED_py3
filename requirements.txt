@@ -20,6 +20,7 @@ pyqtgraph
 qutip
 # current version of Qcodes seems not to support pyvisa 1.11.x
 pyvisa==1.9.1
+pyserial
 nidaqmx
 pylint
 plotly

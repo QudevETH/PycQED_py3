@@ -242,6 +242,12 @@ class MeasurementControl(Instrument):
                     calls itself recursively.
         '''
 
+        def try_finish():
+            try:
+                self.detector_function.finish()
+            except Exception:
+                pass  # no need to raise an exception if cleanup fails
+
         self.timer = Timer("MeasurementControl")
         # reset properties that are used by get_percdone
         self._last_percdone_value = 0
@@ -314,8 +320,10 @@ class MeasurementControl(Instrument):
                     raise ValueError('Mode "{}" not recognized.'
                                      .format(self.mode))
             except KeyboardFinish as e:
+                try_finish()
                 print(e)
             except KeyboardInterrupt as e:
+                try_finish()
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
@@ -324,6 +332,7 @@ class MeasurementControl(Instrument):
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
+                try_finish()
                 # We store the exception instead of raising it directly.
                 # After creating the results dict and storing end time +
                 # metadata, the exception will be either logged (if an
