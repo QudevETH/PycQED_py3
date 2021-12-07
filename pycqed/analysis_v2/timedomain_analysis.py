@@ -808,11 +808,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         other_cs = [cs for cs in qb_cal_states if cs != storing_keys[qb_name][-1]]
         if len(other_cs) == 0:
             raise ValueError(f'There are no other cal states except for '
-                             f'{storing_keys[qb_name][-1]} from data_to_fit.')
+                             f'{storing_keys[qb_name][-1]} from storing_keys.')
         elif len(other_cs) > 1:
             raise ValueError(f'There is more than one other cal state in '
                              f'addition to {storing_keys[qb_name][-1]} from '
-                             f'data_to_fit. Not clear which one to use.')
+                             f'storing_keys. Not clear which one to use.')
         other_cs = f'p{other_cs[0]}'
 
         meas_res_dict = meas_results_per_qb[qb_name]
@@ -971,11 +971,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         other_cs = [cs for cs in qb_cal_states if cs != storing_keys[qb_name][-1]]
         if len(other_cs) == 0:
             raise ValueError(f'There are no other cal states except for '
-                             f'{storing_keys[qb_name][-1]} from data_to_fit.')
+                             f'{storing_keys[qb_name][-1]} from storing_keys.')
         elif len(other_cs) > 1:
             raise ValueError(f'There is more than one other cal state in '
                              f'addition to {storing_keys[qb_name][-1]} from '
-                             f'data_to_fit. Not clear which one to use.')
+                             f'storing_keys. Not clear which one to use.')
         other_cs = f'p{other_cs[0]}'
 
         meas_res_dict = meas_results_per_qb[qb_name]
