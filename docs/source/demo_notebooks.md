@@ -49,7 +49,7 @@ are calibrated.
 Responsible: [Christoph Hellings](http://qudev.slack.com/team/UQ9A11J15)
 
 
-# Additional Resources to Learn about pycQED
+## Additional Resources to Learn about pycQED
 
 * [pycQED Short User Manual]() (2021, in preparation): 30min read.
 * pycQED documentation located at `Q:/USERS/Stefania/PhD/reports/PycQED_documentation.pdf` (2019): 30min read.
