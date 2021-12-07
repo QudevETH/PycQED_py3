@@ -11,6 +11,7 @@ Welcome to PycQED's documentation!
    :caption: Contents:
 
    writing_documentation
+   demo_notebooks
 
 
 Auto-generated documentation
