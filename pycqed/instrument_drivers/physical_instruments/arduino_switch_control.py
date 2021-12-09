@@ -133,6 +133,7 @@ class ArduinoSwitchControl(Instrument):
             where 'routes' is a list of possible routes between the input
             and the output, represented as instances of
             ArduinoSwitchControlRoute.
+        serial (serial.Serial): serial port to connect to the Arduino
 
     Class Attributes:
         DELAY (float): Waiting period after setting a switch.
