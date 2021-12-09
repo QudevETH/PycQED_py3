@@ -891,7 +891,6 @@ class ArduinoSwitchControl(Instrument):
 
         return routes
 
-
     # - Private methods to set and get switches
     #  ----------------------------------------
 
@@ -1025,8 +1024,9 @@ class ArduinoSwitchControl(Instrument):
         # get route from dictionary
         route = self.routes[inp][out][route_number]
         # set switches
-        for switch, state in route.get_switch_states():
-            self.parameters[f'switch_{switch.label}_mode'](state)
+        self.set_switch({
+            switch.label: state for switch, state in route.get_switch_states()
+        })
 
     def _get_route(self, inp):
         """Core method to get the connected outputs of an input.
@@ -1181,6 +1181,7 @@ class ArduinoSwitchControl(Instrument):
             if key not in config:
                 raise ValueError(f"Config must contain key '{key}")
 
+
 # Classes for the components of the switch box
 # --------------------------------------------
 
@@ -1190,6 +1191,7 @@ class ArduinoSwitchControlObject:
 
     This class mainly exists for code extendability, if needed.
     """
+
     def __init__(self, label):
         self.label = label
 
@@ -1220,6 +1222,7 @@ class ArduinoSwitchControlConnector(ArduinoSwitchControlObject):
 
 
     """
+
     def __init__(self, label, parent_type, connector_type, group=None,
                  switch=None, output_nr=None):
         super().__init__(label)
@@ -1303,6 +1306,7 @@ class ArduinoSwitchControlSwitch(ArduinoSwitchControlObject):
         output (list): list of the output connectors
         mode: Qcodes parameter from the parent SwitchControl to set the switch
     """
+
     def __init__(self, label, id, orientation=0):
         super().__init__(label)
         self.id = id
@@ -1387,6 +1391,7 @@ class ArduinoSwitchControlConnection:
         start (ArduinoSwitchControlConnector): start of the connection
         end (ArduinoSwitchControlConnector): end of the connection
     """
+
     def __init__(self, start, end):
         if not isinstance(start, ArduinoSwitchControlConnector):
             raise TypeError("'start' has to be of type "
@@ -1460,6 +1465,7 @@ class ArduinoSwitchControlRoute:
         input: input of the route (start of first connection in route)
         output: output of the route (end of last connection in route)
     """
+
     def __init__(self, connections):
         inp = connections[0].start
         if not (inp.parent_type == 'box' and inp.connector_type == 'input'):
