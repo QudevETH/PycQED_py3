@@ -743,66 +743,6 @@ class ArduinoSwitchControl(Instrument):
                 sorted_routes[inp_lab][out_lab] = routes
         self.routes = sorted_routes
 
-    def _active_routes(self, return_active_connections=False):
-        """(Legacy) Returns routes that are currently connected.
-
-        Note: This method does NOT read the switches but relies on the
-        internally saved states of the switches. If switches have not been
-        read, or there is some error, this will not represent the routes
-        that are actually connected on the hardware.
-
-        Args:
-            return_active_connections (bool):
-                Whether to return the active connections
-
-        Returns:
-            list: List of the active routes
-                  if return_active_connections: also return a list of
-                  the active connections
-
-        """
-        act_routes = []
-        active_connections = []
-        for inp, inp_routes in self.routes.items():
-            for out, out_routes in inp_routes.items():
-                for route in out_routes:
-                    active = True
-                    for switch, state in route.get_switch_states():
-                        if switch.state != state:
-                            active = False
-                            break
-                    if active:
-                        act_routes.append(route)
-                        for con in route:
-                            if con not in active_connections:
-                                active_connections.append(con)
-        if return_active_connections:
-            return act_routes, active_connections
-        else:
-            return act_routes
-
-    def _switches_from_input(self, inp):
-        """Return all switches, that are reachable from a certain input.
-
-        Args:
-            inp: The input (by label or connector object)
-
-        Returns:
-            list: A list of the switches.
-
-        """
-        inp = self.connector_by_label(inp)
-        if not inp.is_box_input():
-            raise ConnectorError("Argument has to be a box input.")
-        switches = []
-        for routes in self.routes[inp.label].values():
-            for route in routes:
-                for connection in route:
-                    if (connection.start.parent_type == 'switch'
-                            and connection.start.switch not in switches):
-                        switches.append(connection.start.switch)
-        return switches
-
     def _find_routes(self, start_node, previous_nodes=None):
         """Find all routes that start at start_node.
 
@@ -1111,6 +1051,69 @@ class ArduinoSwitchControl(Instrument):
             outputs = [out for out in self.outputs if out in outputs]
             return outputs
 
+    # - Legacy methods, not in use anymore, but might be useful in the future
+    #   ---------------------------------------------------------------------
+
+    def _active_routes(self, return_active_connections=False):
+        """(Legacy) Returns routes that are currently connected.
+
+        Note: This method does NOT read the switches but relies on the
+        internally saved states of the switches. If switches have not been
+        read, or there is some error, this will not represent the routes
+        that are actually connected on the hardware.
+
+        Args:
+            return_active_connections (bool):
+                Whether to return the active connections
+
+        Returns:
+            list: List of the active routes
+                  if return_active_connections: also return a list of
+                  the active connections
+
+        """
+        act_routes = []
+        active_connections = []
+        for inp, inp_routes in self.routes.items():
+            for out, out_routes in inp_routes.items():
+                for route in out_routes:
+                    active = True
+                    for switch, state in route.get_switch_states():
+                        if switch.state != state:
+                            active = False
+                            break
+                    if active:
+                        act_routes.append(route)
+                        for con in route:
+                            if con not in active_connections:
+                                active_connections.append(con)
+        if return_active_connections:
+            return act_routes, active_connections
+        else:
+            return act_routes
+
+    def _switches_from_input(self, inp):
+        """Return all switches, that are reachable from a certain input.
+
+        Args:
+            inp: The input (by label or connector object)
+
+        Returns:
+            list: A list of the switches.
+
+        """
+        inp = self.connector_by_label(inp)
+        if not inp.is_box_input():
+            raise ConnectorError("Argument has to be a box input.")
+        switches = []
+        for routes in self.routes[inp.label].values():
+            for route in routes:
+                for connection in route:
+                    if (connection.start.parent_type == 'switch'
+                            and connection.start.switch not in switches):
+                        switches.append(connection.start.switch)
+        return switches
+
     # Class methods
     # -------------
 
@@ -1167,6 +1170,7 @@ class ArduinoSwitchControl(Instrument):
 
     # Static methods
     # --------------
+
     @staticmethod
     def _check_if_in_config(config, *keys):
         """Checks if dictionary 'config' has keys 'keys'
