@@ -725,9 +725,10 @@ class ArduinoSwitchControl(Instrument):
                 routes = self.routes[inp_lab][out_lab]
                 # If multiple routes between a certain input and output exist,
                 # order the routes by length
-                route_lengths = [len(route) for route in routes]
-                sorted_indices = np.argsort(route_lengths)
-                routes = [routes[i] for i in sorted_indices]
+                if len(routes) > 1:
+                    route_lengths = [len(route) for route in routes]
+                    sorted_indices = np.argsort(route_lengths)
+                    routes = [routes[i] for i in sorted_indices]
                 sorted_routes[inp_lab][out_lab] = routes
         self.routes = sorted_routes
 
