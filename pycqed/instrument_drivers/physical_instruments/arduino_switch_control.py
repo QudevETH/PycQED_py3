@@ -1,23 +1,159 @@
-import serial
 import time
+import serial
 import numpy as np
+from typing import Union, Tuple, List
+from copy import copy, deepcopy
+from collections import OrderedDict
 
 import qcodes as qc
 from qcodes import Instrument
 
-from ipywidgets import widgets, HBox, VBox, Layout
-from IPython.display import display, set_matplotlib_formats, HTML
-
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle
-
-from typing import Union, Tuple, List
-from copy import copy, deepcopy
+from pycqed.instrument_drivers.physical_instruments \
+    .arduino_switch_control_objects import (
+    SwitchError,
+    ConnectorError,
+    RouteError,
+    ArduinoSwitchControlConnector,
+    ArduinoSwitchControlSwitch,
+    ArduinoSwitchControlConnection,
+    ArduinoSwitchControlRoute
+)
 
 
 class ArduinoSwitchControl(Instrument):
-    def __init__(self, name, port, config, start_serial=True):
+    """Class for the RT switch box that uses an Arduino
 
+    This class represents the room-temperature switch box as a Qcodes
+    instrument. The representation of the box is constructed from the inputs
+    and outputs of the box, the switches, and the connections between the
+    switches and to the inputs and outputs. The possible routes between
+    the inputs and outputs are automatically generated. Upon initialization,
+    the configuration must be given as a dictionary to the 'config' argument
+    of the init function. For specifying the switches and connections,
+    see Args.
+
+    Within the configuration dictionary, the input and output connectors can
+    be initialized in the following ways:
+        - As an integer for the number of connectors.
+          The inputs are labeled with 'I1', 'I2',..., the outputs are
+          with 'O1', 'O2',....
+        - A tuple ('X',N), where 'X' is the label and N the number of
+          connectors. The connectors are labeled with X1, X2,....
+        - As a list to group the connectors. The labeling format
+          is 'X.n', where X is the group label and n the connector
+          number in the group. The entries of the list can be:
+            - A tuple ('X',N) where 'X' is the label of the group and
+              N is the number of connectors in the group.
+            - An integer N. Groups without a given label will be
+              labelled with 'I1', 'I2',... for input groups and
+              'O1','O2',... for output groups
+
+    The Qcodes parameters representing switching individual switches follow
+    the naming convention 'switch_X_mode' where 'X' is the label of the
+    switch (int are converted to str). One can set the switch X with
+        self.switch_X_mode(state)
+    and read the state with
+        self.switch_X_mode()
+    Additionally, there exist Qcodes parameters representing the routes from
+    the inputs, following the naming convention 'route_I_mode', where 'I'
+    is the label of the input. One can set the route from input I to
+    output O with
+        self.route_I_mode(O)
+    and check to which output the input I is connected with
+        self.route_I_mode()
+    If the input is not connected to any output, None is returned.
+    Note: Setting and getting the routes accesses multiple switches and
+    therefore takes up to a few seconds.
+    For the protocol that is used to communicate with the Arduino to set and
+    read the switches, check the documentation of the self._set_switch and
+    self._read_switch methods.
+
+    As required for switches in PycQED, there exists a method
+        self.set_switch(values)
+    where 'values' is a dictionary {switch : state} and switch can be
+        - the label of a switch
+        - a string 'switch_X' where X is the label of the switch
+        - the label of an input. 'state' is then the label of the output
+          to connect to
+        - a string 'route_I' where I is the label of an input.
+    Additionally, outside of the requirements of PycQED, there exists a method
+        self.get_switch(*args)
+    where *args contains the labels of switches or inputs (or strings
+    'switch_X' and 'route_I' as above) and it returns a dictionary compatible
+    with the argument 'values' of the self.set_switch method.
+
+    The serial communication is handled gloabally with class methods (see
+    below at the class methods.) For the serial communication of a ceratin
+    instance, the methods self.start_serial, self.end_serial and
+    self.assure_serial are used.
+
+    Args:
+        name (str): Name (for the initialization as a Qcodes Instrument
+        port (str):
+            Name of the serial port
+            (on Windows usually starts with 'COM')
+        config (dict):
+            Dictionary for the configuration of the switch box.
+            Must include:
+                'switches': Specify the switches. Can be:
+                    int <= 20: Specify the number of switches.
+                               The switches are then labeled with integers
+                               1,...,num_switches
+                    list(like): Specify labels for the switches in a list
+                                with length <= 20
+                'inputs': Specify the input connectors.
+                          For format of specifying connectors, see above
+                'outputs': Specify the output connectors.
+                           For format of specifying connectors, see above
+                'connections': A list with the connections between the
+                               switches and to the inputs and outputs of
+                               the box. The elements of the list are tuples
+                               (start,end), where 'start' and 'end' can be:
+                               - The label of an input or output of the box
+                               - The label of a switch for the input of the
+                                 switch
+                               - A tuple (switch-label, state) for the output
+                                 of the switch that corresponds to switch-state
+                                 'state'
+        start_serial (bool):
+            Whether to start the serial communication with the Arduino
+            upon initialization.
+
+    Attributes:
+        port (str): Name of the serial port
+        switches (OrderedDict):
+            Dictionary {'switch label':switch} of the switch labels as keys
+            and instances of ArduinoSwitchControlSwitch as values,
+            representing the switches.
+        inputs (OrderedDict):
+            Dictionary {'input label':input} of the input labels as keys
+            and instances of ArduinoSwitchControlConnectors as values,
+            representing the inputs.
+        input_groups (list): List of the labels for the input groups
+        outputs (OrderedDict):
+            Dictionary {'output label':output} of the input labels as keys
+            and instances of ArduinoSwitchControlConnectors as values,
+            representing the outputs.
+        output_groups (list): List of the labels for the output groups
+        connections (list):
+            List of the connections, represented as instances of
+            ArduinoSwitchControlConnection.
+        routes (OrderedDict):
+            Dictionary of dictionaries
+            {'input label': {'output label':routes}}
+            where 'routes' is a list of possible routes between the input
+            and the output, represented as instances of
+            ArduinoSwitchControlRoute.
+
+    Class Attributes:
+        DELAY (float): Waiting period after setting a switch.
+                       Default: 0.15 s
+        SHORT_DELAY (float): Waiting period after reading the switch.
+                             Default: 0.05 s
+
+    """
+
+    def __init__(self, name, port, config, start_serial=True):
         self._check_if_in_config(config,
                                  'switches', 'inputs', 'outputs',
                                  'connections')
@@ -28,19 +164,19 @@ class ArduinoSwitchControl(Instrument):
 
         # Switch properties
         # -----------------
-        # If switches is int, use as number of switches
-        # and switch_labels = [1,2,...,switches]
 
         switches = config['switches']
         if isinstance(switches, int):
+            # If switches is int, use as number of switches
+            # and switch_labels = [1,2,...,switches]
             if not 0 <= switches <= 20:
                 raise ValueError("Number of switches 'switches' must be"
                                  f"between 0 and 20, not {switches}.")
             self._num_switches = switches
             self.switch_labels = [n for n in range(1, self.num_switches + 1)]
-        # If switches is iterable, use entries as switch labels and length
-        # as number of switches
         else:
+            # If switches is iterable, use entries as switch labels and length
+            # as number of switches
             try:
                 switch_labels = list(switches)
             except TypeError:
@@ -56,29 +192,13 @@ class ArduinoSwitchControl(Instrument):
             self._num_switches = num_switches
             self.switch_labels = switch_labels
 
-        # switch states for convenience
-        self.switch_states = ([(lab, 0) for lab in self.switch_labels] +
-                              [(lab, 1) for lab in self.switch_labels])
-
-        # ids of switches as in the communication to the Arduino
         switch_ids_list = [(n, m) for n in range(5) for m in range(4)]
-        self.switch_ids = {}
-        self.switches = {}
-        self.switch_inputs = []
-        self.switch_outputs = []
-        self.switch_input_labels = []
-        self.switch_output_labels = []
+        self.switch_ids = OrderedDict()
+        self.switches = OrderedDict()
         for id, label in zip(switch_ids_list, self.switch_labels):
-            switch = self.add_switch(label, id,
-                                     return_switch=True)  # return switch
-            # parameter anlegen
-            param_name = f'switch_{label}_mode'
-            # def get_cmd():
-            #     return self._get_switch(switch)
-            #
-            # def set_cmd(x):
-            #     self._set_switch(switch,x)
+            switch = self._add_switch(label, id, return_switch=True)
 
+            param_name = f'switch_{label}_mode'
             self.add_parameter(
                 param_name,
                 label=f'{param_name} of {self.name}',
@@ -107,29 +227,28 @@ class ArduinoSwitchControl(Instrument):
         #           'O1','O2',... for output groups
 
         inputs = config['inputs']
-
-        self.inputs, self.input_groups, self.input_labels = self.create_connectors(
+        self.inputs, self.input_groups = self._create_connectors(
             inputs,
             default_label='I',
             return_groups=True,
             connector_type='input',
-            return_labels=True
+            return_labels=False
         )
 
         outputs = config['outputs']
-
-        self.outputs, self.output_groups, self.output_labels = self.create_connectors(
+        self.outputs, self.output_groups = self._create_connectors(
             outputs,
             default_label='O',
             return_groups=True,
             connector_type='output',
-            return_labels=True
+            return_labels=False
         )
+
         self.num_inputs = len(self.inputs)
         self.num_outputs = len(self.outputs)
 
-        # Connections & Routes
-        # --------------------
+        # Connections
+        # -----------
         # Connections between switches, or between switches and connectors
         # are specified as a list of tuples [(connector1,connector2)],
         # where a connector can be:
@@ -138,26 +257,18 @@ class ArduinoSwitchControl(Instrument):
         #     - a tuple (switch,state) for the output of a switch
         connections = config['connections']
         self.connections = []
-        self.routes = {}
-        self.process_connections(connections)
-
-        # Data from GUI
-        # -------------
-
-        self.gui_widgets = {}
-
-        self.switch_display = {}
-        if 'gui_properties' in config:
-            for key, val in config['gui_properties'].items():
-                if key in ['switch_positions',
-                           'inputs_y',
-                           'outputs_y',
-                           'connector_spacing',
-                           'connector_group_spacing',
-                           'connector_radius',
-                           'connections_mid_y',
-                           'switches_mirrored']:
-                    self.switch_display[key] = val
+        self.routes = OrderedDict()
+        self._process_connections(connections)
+        for inp in self.routes:
+            param_name = f'route_{inp}_mode'
+            self.add_parameter(
+                param_name,
+                label=f'{param_name} of {self.name}',
+                vals=qc.validators.Enum(*self.routes[inp].keys()),
+                get_cmd=lambda i=inp: self._get_route(i),
+                set_cmd=lambda o, i=inp: self._set_route(i, o),
+                docstring=f"possible values: {list(self.routes[inp].keys())}",
+            )
 
         # Start serial communication
         # --------------------------
@@ -167,34 +278,96 @@ class ArduinoSwitchControl(Instrument):
 
     # Magic methods
     # -------------
-    def __del__(self):
-        self.end_serial()
-        self.remove_port(self.port)
-        # close figure
 
-    # class constants
+    def __del__(self):
+        # end serial communication before deleting
+        self.end_serial()
+
+    # Class constants
     # ---------------
 
     SHORT_DELAY = 0.05
     DELAY = 0.15
 
-    LED_ON_COLOR = (0., 1., 0.)
-    LED_OFF_COLOR = (0., 0.4, 0.)
-    CONNECTOR_COLOR = (0.7, 0.7, 0.7)
-    CONNECTOR_COLOR_ACTIVE = (0., 0.9, 0.)
-    CONNECTOR_LINE_COLOR = (0., 0., 0.)
-    CONNECTOR_LINE_COLOR_ACTIVE = (0., 0.4, 0.)
-    CONNECTION_COLOR = (0., 0., 0)
-    CONNECTION_COLOR_ACTIVE = CONNECTOR_COLOR_ACTIVE
-
     # Properties
     # ----------
     @property
     def num_switches(self):
+        """Return number of switches"""
         return self._num_switches
 
     # Instance methods
     # ----------------
+
+    # - Methods for reading and setting the switches
+    #   --------------------------------------------
+
+    def set_switch(self, values: dict):
+        """Set multiple switches by values.
+
+        Args:
+            values (dict):
+                Dictionary of the switch modes to set.
+                For switching single switches: {switch label : state}
+                For routes starting from an input: {input label : output label}
+        """
+        # replace: switch with label
+        # check if switch or box connector, choose right mode
+        # check if switch label or box connector label, choose right mode
+        # check if str and starts with switch_ or route_, choose right mode
+        for label, val in values.items():
+            if isinstance(label, (ArduinoSwitchControlSwitch,
+                                  ArduinoSwitchControlConnector)):
+                label = label.label
+            if label in self.switches:
+                par = self.parameters[f'switch_{label}_mode']
+            elif label in self.inputs:
+                par = self.parameters[f'route_{label}_mode']
+            elif label.startswith('switch_'):
+                if label[7:] not in [str(lab) for lab in self.switches]:
+                    raise SwitchError(f"No switch with label {label[7:]}")
+                par = self.parameters[f'{label}_mode']
+            elif label.startswith('route_'):
+                if label[6:] not in [str(lab) for lab in self.inputs]:
+                    raise ConnectorError(f"No input with label {label[6:]}")
+                if f'{label}_mode' not in self.parameters:
+                    raise RouteError(f"No route starting at input {label[6:]}")
+                par = self.parameters[f'{label}_mode']
+            else:
+                raise Exception(f"parameter label {label} not recognized.")
+
+            par(val)
+
+    def get_switch(self, *labels):
+        if len(labels) == 1 and not isinstance(labels[0], str):
+            try:
+                labels = list(labels[0])
+            except TypeError:
+                pass
+        results = {}
+        for label in labels:
+            if isinstance(label, (ArduinoSwitchControlSwitch,
+                                  ArduinoSwitchControlConnector)):
+                label = label.label
+            if label in self.switches:
+                par = self.parameters[f'switch_{label}_mode']
+            elif label in self.inputs:
+                par = self.parameters[f'route_{label}_mode']
+            elif label.startswith('switch_'):
+                if label[7:] not in [str(lab) for lab in self.switches]:
+                    raise SwitchError(f"No switch with label {label[7:]}")
+                par = self.parameters[f'{label}_mode']
+            elif label.startswith('route_'):
+                if label[6:] not in [str(lab) for lab in self.inputs]:
+                    raise ConnectorError(f"No input with label {label[6:]}")
+                if f'{label}_mode' not in self.parameters:
+                    raise RouteError(f"No route starting at input {label[6:]}")
+                par = self.parameters[f'{label}_mode']
+            else:
+                raise Exception(f"parameter label {label} not recognized.")
+
+            results[label] = par()
+        return results
 
     # - Methods for serial communication
     #   --------------------------------
@@ -202,10 +375,16 @@ class ArduinoSwitchControl(Instrument):
     def start_serial(self, override: bool = True):
         """Start serial communication
 
-        :param override: whether an existing serial communication
-                         should be closed and replaced.
-                         Recommended: True
+        Args:
+            override: whether an existing serial communication should be
+                      closed and replaced. Recommended: True
         """
+        # """Start serial communication
+        #
+        # :param override: whether an existing serial communication
+        #                  should be closed and replaced.
+        #                  Recommended: True
+        # """
         # get possible open serial
         ser = self.get_serial(self.port)
 
@@ -251,511 +430,21 @@ class ArduinoSwitchControl(Instrument):
         if self.serial is None or not self.serial.is_open:
             self.start_serial()
 
-    # - Methods for reading and setting the switches
-    #   --------------------------------------------
-
-    def read_state(self, switch: Union[str, 'ArduinoSwitchControlSwitch'],
-                   refresh_gui: bool = True) -> int:
-        """Reads the state of switch 'switch'
-
-        :param switch: Can be:
-                       str: label of the switches
-                       ArduinoSwitchBoxSwitch: the switch itself
-        :param refresh_gui: bool, whether the the GUI should be updated
-        :return: 0 for state 0, 1 for state 1, -1 means some error
-        """
-        switch = self.switch_by_label(switch)
-        result = switch.mode()
-
-        if refresh_gui:
-            self.refresh_gui()
-        return result
-
-    def set_state(self, switch: Union[str, 'ArduinoSwitchControlSwitch'],
-                  state: int, refresh_gui: bool = True,
-                  verify: bool = False) -> Union[None, bool]:
-        """Sets the state of switch 'switch'
-
-        :param switch: Can be:
-                       str: label of the switches
-                       ArduinoSwitchBoxSwitch: the switch itself
-        :param state:  state to switch to, 0 or 1
-        :param refresh_gui: whether the the GUI should be updated
-        :param verify: If True, the state is read afterwards
-        :return: Only for verify == True. If True, the state read after
-                 switching is as expected.
-        """
-        switch = self.switch_by_label(switch)
-        state = int(state)
-        switch.mode(state)
-        if verify:
-            res = switch.mode()
-
-        if refresh_gui:
-            self.refresh_gui()
-
-        if verify:
-            return state == res
-
-    def set_route(self, in_label: Union[str, 'ArduinoSwitchControlInput'],
-                  out_label: Union[str, 'ArduinoSwitchControlOutput'],
-                  route_number: int = 0,
-                  verify: bool = False) -> Union[None, bool]:
-        """Sets the switches such that input 'in_label' is connected
-        to output 'out_label'.
-
-        :param in_label: Can be:
-                         str: name of the input connector
-                         ArduinoSwitchControlInput: the connector itself
-        :param out_label: Can be:
-                          str: name of the output connector
-                          ArduinoSwitchControlOutput: the connector itself
-        :param route_number: Number of route, if there are multiple, defaults
-                             to 0
-        :param verify: Passes this to the set_state method.
-        :return: Only for verify == True. If True, the state read after
-                 switching the switches is as expected.
-        """
-        in_label = self.get_connector_label(in_label)
-        out_label = self.get_connector_label(out_label)
-        if (in_label not in self.routes
-                or out_label not in self.routes[in_label]):
-            raise ValueError(f"No routes found between "
-                             f"{in_label} and {out_label}.")
-        routes = self.routes[in_label][out_label]
-        num_routes = len(routes)
-        if num_routes == 0:
-            raise ValueError(f"No routes found between "
-                             f"{in_label} and {out_label}.")
-        if route_number >= num_routes:
-            raise ValueError("route_number has to be less than the "
-                             f"number of routes {num_routes}.")
-        route = self.routes[in_label][out_label][route_number]
-        verified = True
-        for switch, state in self.get_switch_states_on_route(route):
-            if verify:
-                res = self.set_state(switch.label, state,
-                                     refresh_gui=False, verify=True)
-                verified = verified and res
-            else:
-                self.set_state(switch.label, state,
-                               refresh_gui=False, verify=False)
-        self.refresh_gui()
-        if verify:
-            return verified
-
-    def read_state_by_switch_id(self, id: Tuple[int, int],
-                                refresh_gui: bool = True) -> int:
-        """Reads the state of switch with id 'id'
-
-        :param id: Id of the switch, tuple (group_id, switch_id)
-        :param refresh_gui: whether the the GUI should be updated
-        :return: 0 for state 0, 1 for state 1, -1 means some error
-        """
-
-        result = self.switch_ids[id].mode()
-
-        if refresh_gui:
-            self.refresh_gui()
-        return result
-
-    def set_state_by_switch_id(self, id: Tuple[int, int], state: int,
-                               refresh_gui: bool = True,
-                               verify: bool = False) -> Union[None, bool]:
-        """Sets the state of with id 'id'
-
-        :param id: Id of the switch, tuple (group_id, switch_id)
-        :param state:  state to switch to, 0 or 1
-        :param refresh_gui: whether the the GUI should be updated
-        :param verify: If True, the state is read afterwards
-        :return: Only for verify == True. If True, the state read after
-                 switching is as expected.
-        """
-        switch = self.switch_ids[id]
-        switch.mode(state)
-        if verify:
-            res = switch.mode()
-
-        if refresh_gui:
-            self.refresh_gui()
-
-        if verify:
-            return state == res
-
-    def active_routes(self, return_active_connections: bool = False) -> Union[
-        List['ArduinoSwitchControlRoute'], Tuple[
-            List['ArduinoSwitchControlRoute'], List[
-                'ArduinoSwitchControlConnection']]]:
-        """ Return the routes between inputs and outputs, that are active with
-        the current switch positions.
-
-        :param return_active_connections: If True, also a list with
-            the connections on active routes is return.
-        :return: If verify:
-                    (list of active routes, list of active connections),
-                 else: list of active routes
-        """
-        act_routes = []
-        active_connections = []
-        for inp, inp_routes in self.routes.items():
-            for out, out_routes in inp_routes.items():
-                for route in out_routes:
-                    active = True
-                    for switch, state in self.get_switch_states_on_route(
-                            route):
-                        if switch.state != state:
-                            active = False
-                            break
-                    if active:
-                        act_routes.append(route)
-                        for con in route:
-                            if con not in active_connections:
-                                active_connections.append(con)
-        if return_active_connections:
-            return act_routes, active_connections
-        else:
-            return act_routes
-
-    # - Methods for the GUI
-    #   -------------------
-
-    def open_gui(self, show_switch_display: bool = False,
-                 **switch_display_options: object):
-        """--ADD DOCUMENTATION--
-
-        :param show_switch_display:
-        :param switch_display_options:
-        """
-        # widgets
-        # -------
-
-        # status
-        status_title = '<b>Status:</b> <br>'
-        if show_switch_display:
-            status = widgets.HTML(value=status_title,
-                                  layout=Layout(width='180px'))
-        else:
-            status = widgets.HTML(value=status_title,
-                                  layout=Layout(width='600px'))
-
-        def update_status(text):
-            status.value = status_title + f'<code>{text}</code>'
-
-        # select switch label and state and buttons for read and set
-        switch_select = widgets.Dropdown(
-            options=self.switch_labels,
-            value=self.switch_labels[0],
-            description='Switch',
-            disabled=False,
-            layout=Layout(width='80%')
-        )
-
-        state_select = widgets.Dropdown(
-            options=[0, 1],
-            value=0,
-            description='State',
-            disabled=False,
-            layout=Layout(width='80%')
-        )
-
-        read_button = widgets.Button(description='Read state',
-                                     layout=Layout(width='80%'))
-        set_button = widgets.Button(description='Set state',
-                                    layout=Layout(width='80%'))
-        set_verify_checkbox = widgets.Checkbox(
-            value=False,
-            description='Verify',
-            disabled=False,
-            indent=True,
-            layout=Layout(width='80%')
-        )
-        title_read_set = widgets.HTML(value='<b>Read and set switch state</b>')
-
-        read_set_box = VBox([title_read_set,
-                             switch_select,
-                             state_select,
-                             set_button,
-                             set_verify_checkbox,
-                             read_button],
-                            layout=Layout(width='180px'))
-
-        # select routes and buttons for set and verify route
-
-        routes_in_options = [x for x in self.input_labels
-                             if x in self.routes.keys()]
-
-        routes_in_select = widgets.Dropdown(options=routes_in_options,
-                                            values=routes_in_options[0],
-                                            description='Input',
-                                            layout=Layout(width='80%')
-                                            )
-        routes_out_init_options = [
-            x for x in self.output_labels
-            if x in self.routes[routes_in_options[0]].keys()
-        ]
-        routes_out_select = widgets.Dropdown(
-            options=routes_out_init_options,
-            description='Output',
-            layout=Layout(width='80%')
-        )
-
-        set_route_button = widgets.Button(description='Set route',
-                                          layout=Layout(width='80%'))
-
-        set_route_verify_checkbox = widgets.Checkbox(
-            value=False,
-            description='Verify',
-            disabled=False,
-            indent=True,
-            layout=Layout(width='80%')
-        )
-
-        title_route = widgets.HTML(value='<b>Connect input to output</b>')
-
-        routes_box = VBox([title_route,
-                           routes_in_select,
-                           routes_out_select,
-                           set_route_button,
-                           set_route_verify_checkbox],
-                          layout=Layout(width='180px'))
-
-        # Show active routes
-
-        right_arrow = '&#8594;'
-
-        active_route_displays = {i: widgets.HTML(value=i)
-                                 for i in routes_in_options}
-
-        update_act_routes_button = widgets.Button(description='Update',
-                                                  layout=Layout(width='80%'))
-
-        title_active_routes = widgets.HTML(value='<b>Active routes</b>')
-
-        act_routes_box = VBox(
-            [title_active_routes]
-            + [active_route_displays[x] for x in routes_in_options]
-            + [update_act_routes_button],
-            layout=Layout(width='180px')
-        )
-
-        self.gui_widgets.update({
-            'status_title': status_title,
-            'status': status,
-            'switch_select': switch_select,
-            'state_select': state_select,
-            'read_button': read_button,
-            'set_button': set_button,
-            'title_read_set': title_read_set,
-            'read_set_box': read_set_box,
-            'routes_in_select': routes_in_select,
-            'routes_out_select': routes_out_select,
-            'set_route_button': set_route_button,
-            'title_route': title_route,
-            'active_route_displays': active_route_displays,
-            'update_act_routes_button': update_act_routes_button,
-            'title_active_routes': title_active_routes,
-            'routes_in_options': routes_in_options
-        })
-
-        # interaction methods
-
-        def read_button_click(btn):
-            result = self.read_state(switch_select.value,
-                                     refresh_gui=False)
-            if result == 2:
-                update_status('State not readable, check connection.')
-            elif result in [0, 1]:
-                update_status(
-                    f'State of switch {switch_select.value} is {result}.')
-                state_select.value = int(result)
-            else:
-                update_status(f'Unexpected return: {result}')
-            self.refresh_gui()
-
-        def set_button_click(btn):
-            if set_verify_checkbox.value:
-                verified = self.set_state(switch_select.value,
-                                          state_select.value,
-                                          refresh_gui=False,
-                                          verify=True)
-                if verified:
-                    update_status(
-                        f'Setting switch {switch_select.value} '
-                        f'to state {state_select.value} successful.')
-                else:
-                    update_status(
-                        f'ATTENTION: Setting switch {switch_select.value} '
-                        f'to state {state_select.value} NOT successful.')
-            else:
-                self.set_state(switch_select.value,
-                               state_select.value,
-                               refresh_gui=False,
-                               verify=False)
-                update_status(
-                    f'Set switch {switch_select.value} to state {state_select.value}.')
-            self.refresh_gui()
-
-        def set_route_button_click(btn):
-            if set_route_verify_checkbox.value:
-                verified = self.set_route(routes_in_select.value,
-                                          routes_out_select.value, verify=True)
-                if verified:
-                    update_status(
-                        f'Setting route {routes_in_select.value} to '
-                        f'{routes_out_select.value} successful.')
-                else:
-                    update_status(
-                        f'ATTENTION: Setting route {routes_in_select.value}'
-                        f' to {routes_out_select.value} NOT successful.')
-            else:
-                self.set_route(routes_in_select.value, routes_out_select.value,
-                               verify=False)
-                update_status(
-                    f'Set route {routes_in_select.value} to '
-                    f'{routes_out_select.value}.')
-            self.refresh_gui()
-
-        def routes_observe_input(change):
-            routes_out_select.options = [
-                x for x in self.output_labels
-                if x in self.routes[change.new].keys()
-            ]
-
-        def click_update_act_routes_button(btn):
-            self.refresh_gui()
-
-        read_button.on_click(read_button_click)
-        set_button.on_click(set_button_click)
-        set_route_button.on_click(set_route_button_click)
-        routes_in_select.observe(routes_observe_input, names='value')
-        update_act_routes_button.on_click(click_update_act_routes_button)
-
-        if show_switch_display:
-            if 'width' in switch_display_options:
-                width = switch_display_options['width']
-            else:
-                width = 600
-                switch_display_options['width'] = width
-
-            if 'height' in switch_display_options:
-                height = switch_display_options['height']
-            else:
-                height = 600
-                switch_display_options['height'] = height
-
-            self.switch_display.update(switch_display_options)
-
-            switch_display_output = widgets.Output(
-                layout=Layout(width=f'{width + 20}px')
-            )
-
-            dpi = 100
-            figure_width = width / dpi
-            figure_height = height / dpi
-
-            with switch_display_output:
-                fig, ax = plt.subplots(
-                    figsize=(figure_width, figure_height))
-                plt.show()
-
-            fig.canvas.toolbar_visible = False
-            fig.canvas.footer_visible = False
-            fig.canvas.header_visible = False
-            fig.canvas.resizable = False
-
-            self.switch_display.update({
-                'output': switch_display_output,
-                'fig': fig,
-                'width': figure_width,
-                'height': figure_height,
-                'ax': ax,
-            })
-
-            ax.set_position((0, 0, 1, 1))
-            ax.set_xlim(0, 100)
-            ax.set_ylim(0, 100)
-
-            # ax.set_xticks(list(range(0, 100, 10)))
-            # ax.set_yticks(list(range(0, 100, 10)))
-            # plt.grid()
-
-            # draw switches
-            self._gui_draw_switches()
-
-            # draw connectors
-            self._gui_draw_input_connectors()
-            self._gui_draw_output_connectors()
-
-            # draw connections
-            self._gui_draw_all_connections()
-
-            # Display
-            # -------
-
-            left_column = VBox([read_set_box, routes_box,
-                                act_routes_box, status],
-                               layout=Layout(width='190px'))
-
-            full_box = HBox([left_column, switch_display_output])
-
-        else:
-            top_row_box = HBox([read_set_box, routes_box, act_routes_box])
-            full_box = VBox([top_row_box, status])
-
-        self.refresh_gui()
-        display(full_box)
-
-    def refresh_gui(self):
-        """Refreshes the graphical user interface
-
-        """
-        self._refresh_gui_active_routes()
-        if 'fig' in self.switch_display:
-            self._gui_switch_set_all_LEDs()
-            self._gui_draw_active_routes()
-
-    # - Methods for getting the states saved by the box
-    #   -----------------------------------------------
-
-    def get_saved_output_by_switch_id(self, id: Tuple[int, int]) -> int:
-        """Returns the saved state of the switch with id 'id'.
-
-        :param id: id of the switch
-        :return: state of the switch (0 or 1, or -1 for an error)
-        """
-        return self.switch_ids[id].state
-
-    def get_saved_output_by_switch_label(self, switch_label: str) -> int:
-        """Returns the saved state of the switch with label 'switch_label'.
-
-        :param switch_label: label of the switch
-        :return: state of the switch (0 or 1, or -1 for an error)
-        """
-        return self.switches[switch_label].state
-
-    def get_output_checked_by_switch_id(self, id: Tuple[int, int]) -> bool:
-        """Returns whether the saved state of the switch with is checked.
-
-        :param id: id of the switch
-        :return: whether the state of the switch is checked
-        """
-        return self.switch_ids[id].state_checked
-
-    def get_output_checked_by_switch_label(self, switch_label: str) -> int:
-        """Returns whether the saved state of the switch with is checked.
-
-        :param switch_label: label of the switch
-        :return: whether the state of the switch is checked
-                """
-        return self.switches[switch_label].state_checked
+    # - Method for opening the GUI
+    #   --------------------------
+
+    def open_gui(self):
+        raise NotImplementedError("The GUI has yet to be implemented. "
+                                  "Coming soon!")
 
     # - Helper functions for initializing and running the box
     #   -----------------------------------------------------
 
     def switch_by_label(self, label: Union[
-        str, 'ArduinoSwitchControlSwitch']) -> 'ArduinoSwitchControlSwitch':
+        str, 'ArduinoSwitchControlSwitch']
+                        ) -> 'ArduinoSwitchControlSwitch':
         """Return the switch with label 'label'.
-        
+
         If label is already a switch, it just returns the switch
 
         :param label: Can be:
@@ -768,58 +457,64 @@ class ArduinoSwitchControl(Instrument):
         elif label in self.switches:
             return self.switches[label]
         else:
-            raise Exception(f"No switch with label '{label}' found.")
+            raise SwitchError(f"No switch with label '{label}' found.")
 
-    def connector_by_label(self, label: Union[
-        str, 'ArduinoSwitchControlConnector', 'ArduinoSwitchControlSwitchConnector']) -> \
-    Union[
-        'ArduinoSwitchControlConnector', 'ArduinoSwitchControlSwitchConnector']:
-        """Return the connector or switch-connector with label 'connector'.
-
-        If label is already a connector, it just returns the connector
-
-        :param label: Can be:
-                      str: label of the connector
-                      ArduinoSwitchControlConnector,
-                      ArduinoSwitchControlSwitchConnector: the connector itself
-        :return: the connector
-        """
-        if label in self.input_labels:
-            return self.inputs[label]
-        elif label in self.output_labels:
-            return self.outputs[label]
-        elif label in self.switch_input_labels:
-            return self.switches[label].input
-        elif label in self.switch_output_labels:
-            return self.switches[label[0]].output[label[1]]
-        elif isinstance(label, (
-                ArduinoSwitchControlConnector,
-                ArduinoSwitchControlSwitchConnector)):
+    def connector_by_label(self, label):
+        if isinstance(label, ArduinoSwitchControlConnector):
             return label
+        elif label in self.inputs:
+            return self.inputs[label]
+        elif label in self.outputs:
+            return self.outputs[label]
+        elif label in self.switches:
+            return self.switches[label].input
         else:
-            raise Exception(f"Label {label} not recognised.")
+            try:
+                label = tuple(label)
+            except TypeError:
+                raise ConnectorError(f"No connector {label} found.")
+            if label[0] not in self.switches or (
+                    label[1] != 0 and label[1] != 1):
+                raise ConnectorError(f"No connector {label} found.")
+            return self.switches[label[0]].output[int(label[1])]
 
-    def get_connector_label(self, connector: Union[
-        'ArduinoSwitchControlConnector', str]) -> str:
-        """Gets the label of a connector.
+    def _add_switch(self, label, id, orientation=0, return_switch=True):
+        switch = ArduinoSwitchControlSwitch(label, id,
+                                            orientation=orientation)
+        self.switch_ids[id] = switch
+        self.switches[label] = switch
 
-        If 'connector' is already a label, it just returns the label.
+        if return_switch:
+            return switch
 
-        :param connector: Can be:
-                          ArduinoSwitchControlConnector: the connector
-                          str: the label of a connector
-        :return: the label of the connector
-        """
-        if isinstance(connector, ArduinoSwitchControlConnector):
-            return connector.label
-        elif connector in self.input_labels or connector in self.output_labels:
-            return connector
+    def _add_connection(self, con):
+        start = self.connector_by_label(con[0])
+        end = self.connector_by_label(con[1])
+        if start.parent_type == 'box' and end.parent_type == 'box':
+            if start.connector_type == end.connector_type:
+                raise ConnectorError(f"Connection {con} connects "
+                                     f"input to input or output to output.")
+            elif (start.connector_type == 'output'
+                  or end.connector_type == 'input'):
+                start, end = end, start
+        elif start.parent_type == 'switch' and end.parent_type == 'switch':
+            if start.switch == end.switch:
+                raise ConnectorError(f"Connection {con} connects "
+                                     f"a switch to itself.")
+        connection = ArduinoSwitchControlConnection(start, end)
+
+        self.connections.append(connection)
+
+    def _add_route(self, connections):
+        route = ArduinoSwitchControlRoute(connections)
+        if route.input.label not in self.routes:
+            self.routes[route.input.label] = {route.output.label: [route]}
+        elif route.output.label not in self.routes[route.input.label]:
+            self.routes[route.input.label][route.output.label] = [route]
         else:
-            raise TypeError(f"Connector must be instance "
-                            f"of ArduinoSwitchControl.")
+            self.routes[route.input.label][route.output.label].append(route)
 
-    def create_connectors(self, connectors, connector_type=None,
-                          default_label='C',
+    def _create_connectors(self, connectors, connector_type, default_label='C',
                           return_groups=False, in_group=False,
                           return_labels=False):
         if isinstance(connectors, int):
@@ -828,24 +523,16 @@ class ArduinoSwitchControl(Instrument):
                                  "be positive.")
             if in_group:
                 label_string = default_label + '.'
+                group = default_label
             else:
                 label_string = default_label
+                group = None
             labels = [label_string + str(n) for n in range(1, connectors + 1)]
-            if connector_type == 'input':
-                connectors_dict = {
-                    label: ArduinoSwitchControlInput(label,
-                                                     group=default_label)
-                    for label in labels}
-            elif connector_type == 'output':
-                connectors_dict = {
-                    label: ArduinoSwitchControlOutput(label,
-                                                      group=default_label)
-                    for label in labels}
-            else:
-                connectors_dict = {
-                    label: ArduinoSwitchControlConnector(label,
-                                                         group=default_label)
-                    for label in labels}
+
+            connectors_dict = OrderedDict([
+                (label, ArduinoSwitchControlConnector(
+                    label, 'box', connector_type, group=group
+                )) for label in labels])
             if return_groups and return_labels:
                 return connectors_dict, [default_label], labels
             elif return_groups:
@@ -862,7 +549,7 @@ class ArduinoSwitchControl(Instrument):
                                 "Check documentation.")
             if (len(connectors) == 2 and isinstance(connectors[0], str)
                     and isinstance(connectors[1], int)):
-                connectors_dict, labels = self.create_connectors(
+                connectors_dict, labels = self._create_connectors(
                     connectors[1],
                     connector_type=connector_type,
                     default_label=connectors[0],
@@ -879,7 +566,7 @@ class ArduinoSwitchControl(Instrument):
                 else:
                     return connectors_dict
             else:
-                connectors_dict = {}
+                connectors_dict = OrderedDict()
                 groups = []
                 labels = []
                 for n, group in enumerate(connectors):
@@ -888,7 +575,7 @@ class ArduinoSwitchControl(Instrument):
                     else:
                         group = (group[0], group[1])
                     groups.append(group[0])
-                    con_dict, labs = self.create_connectors(
+                    con_dict, labs = self._create_connectors(
                         group, connector_type=connector_type,
                         return_groups=False, in_group=True,
                         return_labels=True
@@ -904,100 +591,82 @@ class ArduinoSwitchControl(Instrument):
                 else:
                     return connectors_dict
 
-    def add_switch(self, label, id, return_switch=True):
-        switch = ArduinoSwitchControlSwitch(label, id)
-        self.switch_ids[id] = switch
-        self.switches[label] = switch
-        self.switch_inputs.append(switch.input)
-        self.switch_outputs.append(switch.output[0])
-        self.switch_outputs.append(switch.output[1])
-        self.switch_input_labels.append(switch.label)
-        self.switch_output_labels.append((switch.label, 0))
-        self.switch_output_labels.append((switch.label, 1))
-        if return_switch:
-            return switch
-
-    def add_connection_to_properties(self, con):
-        if isinstance(con.start, ArduinoSwitchControlConnector):
-            con.start.connections.append(con)
-        elif isinstance(con.start, ArduinoSwitchControlSwitchConnector):
-            con.start.connections.append(con)
-            con.start.switch.connections.append(con)
-        else:
-            raise TypeError("con.start not recognized")
-        if isinstance(con.end, ArduinoSwitchControlConnector):
-            con.end.connections.append(con)
-        elif isinstance(con.end, ArduinoSwitchControlSwitchConnector):
-            con.end.connections.append(con)
-            con.end.switch.connections.append(con)
-        else:
-            raise TypeError("con.start not recognized")
-        self.connections.append(con)
-
-    def add_connection(self, con):
-        start = self.connector_by_label(con[0])
-        end = self.connector_by_label(con[1])
-        if (isinstance(start, ArduinoSwitchControlInput)
-                and isinstance(end, ArduinoSwitchControlInput)):
-            raise Exception(f"Connection {con} connects"
-                            f" input to input.")
-        elif (isinstance(start, ArduinoSwitchControlOutput)
-              and isinstance(end, ArduinoSwitchControlOutput)):
-            raise Exception(f"Connection {con} connects"
-                            f" input to input.")
-        elif (isinstance(start, ArduinoSwitchControlOutput) or
-              isinstance(end, ArduinoSwitchControlInput)):
-            start, end = end, start
-        elif (isinstance(start, ArduinoSwitchControlSwitchConnector)
-              and isinstance(end, ArduinoSwitchControlSwitchConnector)):
-            if start.switch == end.switch:
-                raise Exception(f"Switch {start.switch} connects to itself.")
-
-        connection = ArduinoSwitchControlConnection(start, end)
-
-        self.add_connection_to_properties(connection)
-
-    def add_route(self, route):
-        inp = route[0].start
-        if not isinstance(inp, ArduinoSwitchControlInput):
-            raise ValueError(f"First connection in route has to start "
-                             f"with an input, not {type(inp)}.")
-        out = route[-1].end
-        if not isinstance(out, ArduinoSwitchControlOutput):
-            raise ValueError(f"Last connection in route has to end "
-                             f"with an output, not {type(out)}.")
-        route_obj = ArduinoSwitchControlRoute(inp, out, route)
-
-        if inp.label not in self.routes:
-            self.routes[inp.label] = {out.label: [route_obj]}
-        elif out.label not in self.routes[inp.label]:
-            self.routes[inp.label][out.label] = [route_obj]
-        else:
-            self.routes[inp.label][out.label].append(route_obj)
-
-        # add route to other objects
-
-    def process_connections(self, connections):
+    def _process_connections(self, connections):
 
         for con in connections:
-            self.add_connection(con)
+            self._add_connection(con)
 
         switch_orientations = [0] * self.num_switches
+        routes = {}
         for inp_lab, inp in self.inputs.items():
             routes_inp = self._find_routes(inp)
+            routes_inp_dict = {}
             for route in routes_inp:
-                self.add_route(route)
-            # out = route_i[-1][1]
-            #             if inp in routes:
-            #                 if out in routes[inp]:
-            #                     routes[inp][out] += [route_i]
-            #                 else:
-            #                     routes[inp][out] = [route_i]
-            #             else:
-            #                 routes[inp] = {out: [route_i]}
+                self._add_route(route)
+        self._sort_routes()
 
-    def switch_index(self, switch_label):
-        return self.switch_labels.index(switch_label)
+    def _sort_routes(self):
+        sorted_routes = OrderedDict()
+        for inp_lab, inp in self.inputs.items():
+            if inp_lab not in self.routes:
+                continue
+            sorted_routes[inp_lab] = OrderedDict()
+            for out_lab, out in self.outputs.items():
+                if out_lab not in self.routes[inp_lab]:
+                    continue
+                routes = self.routes[inp_lab][out_lab]
+                route_lengths = [len(route) for route in routes]
+                sorted_indices = np.argsort(route_lengths)
+                routes = [routes[i] for i in sorted_indices]
+                sorted_routes[inp_lab][out_lab] = routes
+        self.routes = sorted_routes
+
+    def _active_routes(self, return_active_connections=False):
+        """Returns routes that are currently connected.
+
+        Note: This method does NOT read the switches but relies on the
+        internally saved states of the switches. If switches have not been
+        read, or there is some error, this will not represent the routes
+        that are actually connected on the hardware.
+
+        Args:
+            return_active_connections (bool):
+
+        Returns:
+
+        """
+        act_routes = []
+        active_connections = []
+        for inp, inp_routes in self.routes.items():
+            for out, out_routes in inp_routes.items():
+                for route in out_routes:
+                    active = True
+                    for switch, state in route.get_switch_states():
+                        if switch.state != state:
+                            active = False
+                            break
+                    if active:
+                        act_routes.append(route)
+                        for con in route:
+                            if con not in active_connections:
+                                active_connections.append(con)
+        if return_active_connections:
+            return act_routes, active_connections
+        else:
+            return act_routes
+
+    def _switches_from_input(self, inp):
+        inp = self.connector_by_label(inp)
+        if not inp.is_box_input():
+            raise ConnectorError("Argument has to be a box input.")
+        switches = []
+        for routes in self.routes[inp.label].values():
+            for route in routes:
+                for connection in route:
+                    if (connection.start.parent_type == 'switch'
+                            and connection.start.switch not in switches):
+                        switches.append(connection.start.switch)
+        return switches
 
     def _find_routes(self, start_node, previous_nodes=None):
         if previous_nodes is None:
@@ -1008,12 +677,12 @@ class ArduinoSwitchControl(Instrument):
             if start_node == con.end:
                 con.flip()
             if start_node == con.start:
-                if isinstance(con.end, ArduinoSwitchControlOutput):
+                if con.end.is_box_output():
                     routes.append([con])
-                elif isinstance(con.end, ArduinoSwitchControlInput):
+                elif con.end.is_box_input():
                     raise Exception("Route in connections detected, "
                                     "that ends at an input.")
-                elif isinstance(con.end, ArduinoSwitchControlSwitchOutput):
+                elif con.end.is_switch_output():
                     # check if there is conflict with previous nodes
                     if con.end.switch in previous_nodes:
                         raise Exception("Loop detected in connections at"
@@ -1023,8 +692,7 @@ class ArduinoSwitchControl(Instrument):
                         raise Exception("Conflicting switch orientation "
                                         f"for switch {con.end.switch}")
                     con.end.switch.orientation = -1
-                    if isinstance(con.start,
-                                  ArduinoSwitchControlSwitchConnector):
+                    if con.start.parent_type == 'switch':
                         previous_nodes.append(con.start.switch)
                     else:
                         previous_nodes.append(con.start)
@@ -1035,7 +703,7 @@ class ArduinoSwitchControl(Instrument):
                     for route in next_step:
                         routes.append([con] + route)
 
-                elif isinstance(con.end, ArduinoSwitchControlSwitchInput):
+                elif con.end.is_switch_input():
                     if con.end.switch in previous_nodes:
                         raise Exception("Loop detected in connections at"
                                         f"switch {con.end.switch}.")
@@ -1043,8 +711,7 @@ class ArduinoSwitchControl(Instrument):
                         raise Exception("Conflicting switch orientation "
                                         f"for switch {con.end.switch}")
                     con.end.switch.orientation = 1
-                    if isinstance(con.start,
-                                  ArduinoSwitchControlSwitchConnector):
+                    if con.start.parent_type == 'switch':
                         previous_nodes.append(con.start.switch)
                     else:
                         previous_nodes.append(con.start)
@@ -1065,26 +732,21 @@ class ArduinoSwitchControl(Instrument):
 
                 else:
                     raise TypeError(f"Node {con.end} not recognised")
+
         return routes
 
-    def get_route_start_end_pair_labels(self, sort_outputs=False):
-        routes_start_end = []
-        for inp, inp_routes in self.routes.items():
-            if sort_outputs:
-                routes_start_end.append(
-                    (inp, list(inp_routes)))
-            else:
-                routes_start_end += [(inp, out)
-                                     for out in inp_routes]
-        return routes_start_end
+    def _check_if_in_config(self, config: dict, *keys: str) -> None:
+        """Checks if dictionary 'config' has keys 'keys'
 
-    def _check_if_in_config(self, config, *keys):
+        :param config: configuration dictionary
+        :param keys: keys to be checked
+        """
         for key in keys:
             if key not in config:
                 raise ValueError(f"Config must contain key '{key}")
 
     # - Private methods to set and get switches
-    #   ---------------------------------------
+    #  ----------------------------------------
 
     def _get_switch(self, switch):
         """Core method for reading the state of a switch.
@@ -1123,14 +785,11 @@ class ArduinoSwitchControl(Instrument):
         time.sleep(self.SHORT_DELAY)
         result = self.serial.readline().decode().rstrip()
         time.sleep(self.SHORT_DELAY)
-        switch.leds = (int(result[0]), int(result[1]))
-        switch.state_checked = True
-        if result == '10':
-            return 0
-        elif result == '01':
-            return 1
-        else:
-            return -1
+        switch.indicators = (int(result[0]), int(result[1]))
+        if switch.state is None:
+            raise SwitchError("Reading the state was unsuccessful: Indicators "
+                              f"of the switch show {switch.indicators}.")
+        return switch.state
 
     def _set_switch(self, switch, state):
         """Core method for reading the state of a switch.
@@ -1162,412 +821,99 @@ class ArduinoSwitchControl(Instrument):
         input_string = str(id[0]) + str(id[1]) + str(state)
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.DELAY)
-        if state == 0:
-            switch.leds = (1, 0)
-        elif state == 1:
-            switch.leds = (0, 1)
-        switch.state_checked = False
+        try:
+            self._get_switch(switch)
+        except SwitchError:
+            raise SwitchError("Reading switch after switching was "
+                              "unsuccessful: Indicators of the switch show "
+                              f"{switch.indicators}.")
+        if switch.state != state:
+            raise SwitchError("Setting the switch was unsuccessful. The "
+                              f"switch should be in state {state}, but "
+                              f"the indicators show state {switch.state}.")
 
-    # - Helper functions for the GUI
-    #   ----------------------------
+    def _set_route(self, inp, out, route_number=0):
+        if inp not in self.inputs:
+            inp = inp.label
+        if out not in self.outputs:
+            out = out.label
+        if (inp not in self.routes
+                or out not in self.routes[inp]):
+            raise RouteError(f"No routes found between "
+                             f"{inp} and {out}.")
+        routes = self.routes[inp][out]
+        num_routes = len(routes)
+        if num_routes == 0:
+            raise RouteError(f"No routes found between "
+                             f"{inp} and {out}.")
+        if route_number >= num_routes:
+            raise RouteError("route_number has to be less than the "
+                             f"number of routes {num_routes}.")
+        route = self.routes[inp][out][route_number]
+        for switch, state in route.get_switch_states():
+            self.parameters[f'switch_{switch.label}_mode'](state)
 
-    def _refresh_gui_active_routes(self):
-        active_routes = self.active_routes(return_active_connections=False)
-        if 'active_route_displays' not in self.gui_widgets:
-            return
-
-        for inp in self.input_labels:
-            self.gui_widgets['active_route_displays'][inp].value = inp
-
-        for route in active_routes:
-            inp = route.start.label
-            value = inp + '  &#8594;  ' + route.end.label
-            self.gui_widgets['active_route_displays'][inp].value = value
-
-    def _gui_draw_switches(self):
-        if 'switch_positions' not in self.switch_display:
-            raise Exception("The switch positions must be specified "
-                            "in the options for the graph to work.")
-        switch_positions = self.switch_display['switch_positions']
-
-        if 'switches_mirrored' not in self.switch_display:
-            self.switch_display['switches_mirrored'] = {
-                s: False for s in self.switch_labels
-            }
-
-        switches_mirrored = self.switch_display['switches_mirrored']
-
-        switch_positions = self.switch_display['switch_positions']
-
-        for (lab, switch), pos, mirror in zip(self.switches.items(),
-                                              switch_positions,
-                                              switches_mirrored):
-            self._gui_draw_switch(switch, pos,
-                                  mirror=mirror)
-
-    def _gui_draw_switch(self, switch, position, mirror=False,
-                         width=5.3, height=8):
-        fig = self.switch_display['fig']
-        ax = self.switch_display['ax']
-        x, y = position
-
-        x0 = x - width / 2
-        x1 = x + width / 2
-        y0 = y - height / 2
-        y1 = y + height / 2
-
-        switch.gui_properties.update({
-            'position': position,
-            'x': x,
-            'y': y,
-            'mirror': mirror,
-            'width': width,
-            'x0': x0,
-            'x1': x1,
-            'y0': y0,
-            'y1': y1,
-            'fig': fig,
-            'ax': ax
-        })
-
-        switch.gui_properties['body'] = ax.add_patch(
-            Rectangle((x0, y0), width, height,
-                      edgecolor=(0, 0, 0),
-                      facecolor=(0.9, 0.9, 0.9),
-                      fill=True,
-                      lw=1.5)
-        )
-
-        led_radius = width / 8
-        switch.gui_properties['led_radius'] = led_radius
-
-        led_x_disp = width * (1 / 4)
-        led_y_disp = height * 6 / 16
-
-        led0_x = x - led_x_disp
-        led1_x = x + led_x_disp
-
-        if mirror:
-            led0_x, led1_x = led1_x, led0_x
-
-        if switch.orientation == -1:
-            led0_y = y + led_y_disp
-            led1_y = y + led_y_disp
-            out_y = y1
-            in_y = y0
-        else:
-            led0_y = y - led_y_disp
-            led1_y = y - led_y_disp
-            out_y = y0
-            in_y = y1
-
-        led0_pos = (led0_x, led0_y)
-        led1_pos = (led1_x, led1_y)
-
-        switch.gui_properties.update({
-            'led0_pos': led0_pos,
-            'led0_x': led0_x,
-            'led0_y': led0_y,
-            'led1_pos': led1_pos,
-            'led1_x': led1_x,
-            'led1_y': led1_y,
-            'led_radius': led_radius,
-            'out0_pos': (led0_x, out_y),
-            'out1_pos': (led1_x, out_y),
-            'in_pos': (x, in_y),
-        })
-
-        switch.gui_properties['led0'] = ax.add_patch(
-            Circle(led0_pos, led_radius,
-                   edgecolor=(0., 0., 0.),
-                   facecolor=self.LED_ON_COLOR,
-                   fill=True,
-                   lw=1))
-        switch.gui_properties['led1'] = ax.add_patch(
-            Circle(led1_pos, led_radius,
-                   edgecolor=(0., 0., 0,),
-                   facecolor=self.LED_ON_COLOR,
-                   fill=True,
-                   lw=1))
-
-        switch.gui_properties['led0_label'] = ax.text(
-            led0_x, led0_y + 1.2 * led_radius, '0',
-            ha='center', va='bottom', size=width * 1.5
-        )
-
-        switch.gui_properties['led1_label'] = ax.text(
-            led1_x, led1_y + 1.2 * led_radius, '1',
-            ha='center', va='bottom', size=width * 1.5
-        )
-
-        label_y_disp = -height * 3 / 32
-        if switch.orientation == -1:
-            label_y_disp *= -1
-            va = 'top'
-        va = 'bottom'
-        switch.gui_properties['label_y_disp'] = label_y_disp
-
-        switch.gui_properties['label'] = ax.text(x, y + label_y_disp,
-                                                 switch.label, ha='center',
-                                                 va=va, size=3 * width)
-
-        self._gui_switch_set_LEDs(switch)
-
-    def _gui_switch_set_LEDs(self, switch):
-        if switch in self.switches:
-            switch = self.switches[switch]
-        state0, state1 = switch.leds
-        gui_properties = switch.gui_properties
-        if ('led0' not in switch.gui_properties
-                or 'led1' not in switch.gui_properties):
-            return
-        if state0 is None:
-            gui_properties['led0'].set_facecolor((1, 1, 1, 0))
-        elif state0 == 1:
-            gui_properties['led0'].set_facecolor(self.LED_ON_COLOR)
-        elif state0 == 0:
-            gui_properties['led0'].set_facecolor(self.LED_OFF_COLOR)
-        else:
-            gui_properties['led0'].set_facecolor((1, 1, 1, 0))
-        if state0 is None:
-            gui_properties['led1'].set_facecolor((1, 1, 1, 0))
-        elif state1 == 1:
-            gui_properties['led1'].set_facecolor(self.LED_ON_COLOR)
-        elif state1 == 0:
-            gui_properties['led1'].set_facecolor(self.LED_OFF_COLOR)
-        else:
-            gui_properties['led1'].set_facecolor((1, 1, 1, 0))
-
-    def _gui_switch_set_all_LEDs(self):
-        for switch in self.switches:
-            self._gui_switch_set_LEDs(switch)
-
-    def _gui_connector_x_positions(self, group_num_connectors):
-        if 'connector_spacing' in self.switch_display:
-            connector_spacing = self.switch_display['connector_spacing']
-        else:
-            connector_spacing = 5
-        if 'connector_group_spacing' in self.switch_display:
-            connector_group_spacing = self.switch_display[
-                'connector_group_spacing']
-        else:
-            connector_group_spacing = 10
-
-        num_groups = len(group_num_connectors)
-        num_connectors = sum(group_num_connectors)
-        total_length = (num_groups - 1) * (
-                connector_group_spacing - connector_spacing) + (
-                               num_connectors - 1) * connector_spacing
-        start_pos = 50 - total_length / 2
-        x_positions = []
-        group_x_positions = []
-        for k, num_cons in enumerate(group_num_connectors):
-            for n in range(num_cons):
-                if len(x_positions) == 0:
-                    x_positions.append(start_pos)
-                    group_x_positions.append(start_pos)
+    def _get_route(self, inp):
+        inp = self.connector_by_label(inp)
+        inp_routes = []
+        max_length = 0
+        for routes in self.routes[inp.label].values():
+            for route in routes:
+                inp_routes.append(route)
+                if len(route) > max_length:
+                    max_length = len(route)
+        outputs = []
+        routes = inp_routes
+        measured_switch_states = {}
+        for k in range(max_length):
+            routes_left = []
+            if len(routes) == 0:
+                break
+            for route in routes:
+                if route[k].start.is_switch_output():
+                    if route[k].start.switch.label in measured_switch_states:
+                        state = measured_switch_states[
+                            route[k].start.switch.label]
+                    else:
+                        state = route[k].start.switch.mode()
+                        measured_switch_states[
+                            route[k].start.switch.label] = state
+                    if route[k].start.output_nr != state:
+                        continue
+                if route[k].end.is_box_output():
+                    outputs.append(route[k].end.label)
                     continue
-                if n == 0:
-                    x_positions.append(
-                        x_positions[-1] + connector_group_spacing)
-                    group_x_positions.append(x_positions[-1])
-                else:
-                    x_positions.append(
-                        x_positions[-1] + connector_spacing)
+                elif route[k].end.is_switch_output():
+                    if route[k].end.switch.label in measured_switch_states:
+                        state = measured_switch_states[
+                            route[k].end.switch.label]
+                    else:
+                        state = route[k].end.switch.mode()
+                        measured_switch_states[
+                            route[k].end.switch.label] = state
+                    if route[k].end.output_nr != state:
+                        continue
+                routes_left.append(route)
+            routes = routes_left
 
-        return x_positions, group_x_positions
-
-    def _gui_draw_input_connectors(self):
-        if 'inputs_y' in self.switch_display:
-            inputs_y = self.switch_display['inputs_y']
+        if len(outputs) == 0:
+            return None
+        elif len(outputs) == 1:
+            return outputs[0]
         else:
-            inputs_y = 92
-
-        num_groups = len(self.input_groups)
-        num_connectors = len(self.input_labels)
-        connectors_by_group = []
-        group_num_connectors = []
-        for group_label in self.input_groups:
-            group_cons = []
-            for inp in self.input_labels:
-                if inp.startswith(group_label):
-                    group_cons.append(self.inputs[inp])
-            connectors_by_group.append(group_cons)
-            group_num_connectors.append(len(group_cons))
-        x_positions, group_x_positions = self._gui_connector_x_positions(
-            group_num_connectors)
-        for n, (inp, x) in enumerate(zip(self.input_labels, x_positions)):
-            con = self.inputs[inp]
-            self._gui_draw_connector(con, (x, inputs_y))
-        radius = self.inputs[self.input_labels[0]].gui_properties['radius']
-        ax = self.switch_display['ax']
-        input_group_labels = []
-        for lab, x in zip(self.input_groups, group_x_positions):
-            input_group_labels.append(ax.text(
-                x, inputs_y + 3 * radius, lab,
-                ha='center', va='bottom', size=12))
-
-    def _gui_draw_output_connectors(self):
-        if 'outputs_y' in self.switch_display:
-            outputs_y = self.switch_display['outputs_y']
-        else:
-            outputs_y = 2
-
-        num_groups = len(self.output_groups)
-        num_connectors = len(self.output_labels)
-        connectors_by_group = []
-        group_num_connectors = []
-        for group_label in self.output_groups:
-            group_cons = []
-            for out in self.output_labels:
-                if out.startswith(group_label):
-                    group_cons.append(self.outputs[out])
-            connectors_by_group.append(group_cons)
-            group_num_connectors.append(len(group_cons))
-        x_positions, group_x_positions = self._gui_connector_x_positions(
-            group_num_connectors)
-        for inp, x in zip(self.output_labels, x_positions):
-            con = self.outputs[inp]
-            self._gui_draw_connector(con, (x, outputs_y))
-        radius = self.outputs[self.output_labels[0]].gui_properties['radius']
-        ax = self.switch_display['ax']
-        output_group_labels = []
-        for lab, x in zip(self.output_groups, group_x_positions):
-            output_group_labels.append(ax.text(
-                x, outputs_y - 3 * radius, lab,
-                ha='center', va='top', size=12))
-
-    def _gui_draw_connector(self, connector, position, radius=2):
-        if 'connector_radius' in self.switch_display:
-            radius = self.switch_display['connector_radius']
-        gui_properties = connector.gui_properties
-        gui_properties.update({
-            'position': position,
-            'radius': radius
-        })
-        ax = self.switch_display['ax']
-        gui_properties['body'] = ax.add_patch(
-            Circle(position,
-                   radius,
-                   edgecolor=self.CONNECTOR_LINE_COLOR,
-                   facecolor=self.CONNECTOR_COLOR,
-                   fill=True,
-                   lw=1.5)
-        )
-
-        if isinstance(connector, ArduinoSwitchControlInput):
-            label_y_pos = position[1] + 1.2 * radius
-            va = 'bottom'
-        else:
-            label_y_pos = position[1] - 1.3 * radius
-            va = 'top'
-
-        if connector.group is not None:
-            label = connector.label.split('.')[-1]
-        else:
-            label = connector.label
-
-        gui_properties['label'] = ax.text(position[0],
-                                          label_y_pos,
-                                          label,
-                                          ha='center', va=va,
-                                          size=10)
-        gui_properties['label_y_pos'] = label_y_pos
-
-    def _gui_draw_connection(self, connection, mid_y=None):
-        ax = self.switch_display['ax']
-        if isinstance(connection.start, ArduinoSwitchControlConnector):
-            gui_properties_start = connection.start.gui_properties
-            start_x, start_y = gui_properties_start['position']
-        elif isinstance(connection.start, ArduinoSwitchControlSwitchConnector):
-            gui_properties_start = connection.start.switch.gui_properties
-            if isinstance(connection.start, ArduinoSwitchControlSwitchInput):
-                start_x, start_y = gui_properties_start['in_pos']
-            elif isinstance(connection.start,
-                            ArduinoSwitchControlSwitchOutput):
-                state = connection.start.state
-                start_x, start_y = gui_properties_start[f'out{state}_pos']
-        else:
-            raise Exception
-        if isinstance(connection.end, ArduinoSwitchControlConnector):
-            gui_properties_end = connection.end.gui_properties
-            end_x, end_y = gui_properties_end['position']
-        elif isinstance(connection.end, ArduinoSwitchControlSwitchConnector):
-            gui_properties_end = connection.end.switch.gui_properties
-            if isinstance(connection.end, ArduinoSwitchControlSwitchInput):
-                end_x, end_y = gui_properties_end['in_pos']
-            elif isinstance(connection.end, ArduinoSwitchControlSwitchOutput):
-                state = connection.end.state
-                end_x, end_y = gui_properties_end[f'out{state}_pos']
-        else:
-            raise Exception
-
-        if mid_y is None:
-            mid_y = (start_y + end_y) / 2
-
-        x_vals = [start_x] * 2 + [end_x] * 2
-        y_vals = [start_y] + [mid_y] * 2 + [end_y]
-
-        connection.gui_properties['line'], = ax.plot(x_vals, y_vals,
-                                                     ls='solid', lw=1,
-                                                     color=(0., 0., 0.))
-
-    def _gui_draw_all_connections(self):
-        if 'connections_mid_y' in self.switch_display:
-            connections_mid_y = self.switch_display['connections_mid_y']
-        else:
-            connections_mid_y = {}
-            # have format (,), entries connector label,
-            # switch label or (switch label,state)
-        for con in self.connections:
-            con_label = con.get_label()
-            if con_label[::-1] in connections_mid_y:
-                mid_y = connections_mid_y[con_label[::-1]]
-            elif con_label in connections_mid_y:
-                mid_y = connections_mid_y[con_label]
-            else:
-                mid_y = None
-            self._gui_draw_connection(con, mid_y)
-
-    def _gui_draw_active_routes(self):
-        active_routes, active_connections = self.active_routes(
-            return_active_connections=True
-        )
-        for inp in self.inputs.values():
-            inp.gui_properties['body'].set_facecolor(self.CONNECTOR_COLOR)
-            inp.gui_properties['body'].set_edgecolor(self.CONNECTOR_LINE_COLOR)
-        for out in self.outputs.values():
-            out.gui_properties['body'].set_facecolor(self.CONNECTOR_COLOR)
-            out.gui_properties['body'].set_edgecolor(self.CONNECTOR_LINE_COLOR)
-        for con in self.connections:
-            line = con.gui_properties['line']
-            if con in active_connections:
-                line.set_color(self.CONNECTION_COLOR_ACTIVE)
-                line.set_linewidth(1.5)
-                if isinstance(con.start, ArduinoSwitchControlConnector):
-                    con.start.gui_properties['body'].set_facecolor(
-                        self.CONNECTOR_COLOR_ACTIVE)
-                    con.start.gui_properties['body'].set_edgecolor(
-                        self.CONNECTOR_LINE_COLOR_ACTIVE)
-                if isinstance(con.end, ArduinoSwitchControlConnector):
-                    con.end.gui_properties['body'].set_facecolor(
-                        self.CONNECTOR_COLOR_ACTIVE)
-                    con.end.gui_properties['body'].set_edgecolor(
-                        self.CONNECTOR_LINE_COLOR_ACTIVE)
-            else:
-                line.set_color((0., 0., 0.))
-                line.set_linewidth(1.)
+            outputs = [out for out in self.outputs if out in outputs]
+            return outputs
 
     # Class methods
     # -------------
 
     # - Methods to handle serial ports
-    #   ----------------------------
+    #   ------------------------------
 
     _open_ports = {}
 
     @classmethod
-    def open_ports(cls) -> dict:
+    def get_ports(cls) -> dict:
         """ Returns dictionary of (possibly) open serial ports
 
         :return: copy of _open_ports
@@ -1607,226 +953,3 @@ class ArduinoSwitchControl(Instrument):
 
     # Static methods
     # --------------
-
-    @staticmethod
-    def get_switch_states_on_route(route):
-        switches_states = []
-        for connection in route.connections:
-            if isinstance(connection.start, ArduinoSwitchControlSwitchOutput):
-                switches_states.append((connection.start.switch,
-                                        connection.start.state))
-            if isinstance(connection.end, ArduinoSwitchControlSwitchOutput):
-                switches_states.append((connection.end.switch,
-                                        connection.end.state))
-        return switches_states
-
-
-# Classes for components of switch box
-# -----------------------------------
-
-class ArduinoSwitchControlObject:
-    def __init__(self, label):
-        self.label = label
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlObject {self.label}"
-
-    def __str__(self):
-        return self.label
-
-
-class ArduinoSwitchControlConnector(ArduinoSwitchControlObject):
-    def __init__(self, label, group=None):
-        super().__init__(label)
-        self.group = group
-        self.connections = []
-        self.gui_properties = {}
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlConnector {self.label}"
-
-
-class ArduinoSwitchControlInput(ArduinoSwitchControlConnector):
-    def __init__(self, label, group=None):
-        super().__init__(label, group)
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlInput {self.label}"
-
-
-class ArduinoSwitchControlOutput(ArduinoSwitchControlConnector):
-    def __init__(self, label, group=None):
-        super().__init__(label, group)
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlOutput {self.label}"
-
-
-class ArduinoSwitchControlSwitch(ArduinoSwitchControlObject):
-    def __init__(self, label, id, state=None):
-        super().__init__(label)
-        self.id = id
-        self.connections = []
-        self.plot_position = None
-        self.routes = {}
-
-        self.orientation = 0
-
-        self.input = ArduinoSwitchControlSwitchInput(self)
-        self.output = [ArduinoSwitchControlSwitchOutput(self, 0),
-                       ArduinoSwitchControlSwitchOutput(self, 1)]
-        self.state = state  # check if state None,0,1
-
-        self.state_checked = False
-        self.mode = None
-
-        self.gui_properties = {}
-
-    def __repr__(self):
-        return (f"ArduinoSwitchControlSwitch {self.label} with "
-                f"id {self.id}")
-
-    def __str__(self):
-        return str(self.label)
-
-    @property
-    def state(self):
-        return self._state
-
-    @state.setter
-    def state(self, state):
-        if state is None:
-            self._leds = (None, None)
-        elif state == 0:
-            self._leds = (1, 0)
-        elif state == 1:
-            self._leds = (0, 1)
-        elif state == 2:
-            self._leds = (1, 1)
-        else:
-            raise ValueError("State not understood.")
-        self._state = state
-
-    @property
-    def leds(self):
-        return self._leds
-
-    @leds.setter
-    def leds(self, leds):
-        if (*leds,) == (None, None):
-            self._state = None
-        elif (*leds,) == (1, 0):
-            self._state = 0
-        elif (*leds,) == (0, 1):
-            self._state = 1
-        elif (*leds,) in [(0, 0), (1, 1)]:
-            self._state = 2
-        else:
-            raise ValueError("LED state not understood.")
-        self._leds = leds
-
-
-class ArduinoSwitchControlSwitchConnector:
-    def __init__(self, switch):
-        self.switch = switch
-        self.connections = []
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlSwitchConnector at switch {self.switch.label}"
-
-
-class ArduinoSwitchControlSwitchInput(ArduinoSwitchControlSwitchConnector):
-    def __init__(self, switch):
-        super().__init__(switch)
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlSwitchInput at switch {self.switch.label}."
-
-    def __str__(self):
-        return f"{self.switch.label}"
-
-
-class ArduinoSwitchControlSwitchOutput(ArduinoSwitchControlSwitchConnector):
-    def __init__(self, switch, state):
-        super().__init__(switch)
-        self.state = state
-
-    def __repr__(self):
-        return f"ArduinoSwitchControlSwitchOutput at switch {self.switch.label}:{self.state}."
-
-    def __str__(self):
-        return f"({self.switch.label},{self.state})"
-
-
-class ArduinoSwitchControlConnection:
-    def __init__(self, start, end):
-        self.start = start
-        self.end = end
-        self.gui_properties = {}
-
-    def __repr__(self):
-        return (f"ArduinoSwitchControlConnection from {self.start} to "
-                f"{self.end}")
-
-    def __eq__(self, con):
-        try:
-            if self.start == con.end and self.end == con.start:
-                return True
-            elif self.start == con.start and self.end == con.end:
-                return True
-            else:
-                return False
-        except AttributeError:
-            return False
-
-    def flip(self):
-        self.start, self.end = self.end, self.start
-
-    def get_label(self):
-        if isinstance(self.start, ArduinoSwitchControlConnector):
-            start_label = self.start.label
-        elif isinstance(self.start, ArduinoSwitchControlSwitchInput):
-            start_label = self.start.switch.label
-        elif isinstance(self.start, ArduinoSwitchControlSwitchOutput):
-            start_label = (self.start.switch.label, self.start.state)
-        else:
-            raise Exception
-        if isinstance(self.end, ArduinoSwitchControlConnector):
-            end_label = self.end.label
-        elif isinstance(self.end, ArduinoSwitchControlSwitchInput):
-            end_label = self.end.switch.label
-        elif isinstance(self.end, ArduinoSwitchControlSwitchOutput):
-            end_label = (self.end.switch.label, self.end.state)
-        else:
-            raise Exception
-        return start_label, end_label
-
-
-class ArduinoSwitchControlRoute:
-    def __init__(self, start, end, connections):
-        self.start = start
-        self.end = end
-        self.connections = connections
-
-    def __repr__(self):
-        return (f"ArduinoSwitchControlRoute from {self.start} to "
-                f"{self.end}")
-
-    def __len__(self):
-        return len(self.connections)
-
-    def __iter__(self):
-        self._iter = 0
-        return self
-
-    def __next__(self):
-        if self._iter >= len(self.connections):
-            raise StopIteration
-        self._iter += 1
-        return self.connections[self._iter - 1]
-
-    def __getitem__(self, i):
-        return self.connections[i]
-
-    def __contains__(self, con):
-        return con in self.connections
