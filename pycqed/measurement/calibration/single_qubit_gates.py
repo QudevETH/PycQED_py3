@@ -1605,6 +1605,9 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
     @classmethod
     def gui_kwargs(cls):
         d = super().gui_kwargs()
+        d['kwargs'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({})
+            })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
                 'qb': ((Qubit, 'single_select'), None),
