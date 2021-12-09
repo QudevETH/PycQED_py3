@@ -701,12 +701,19 @@ class ArduinoSwitchControl(Instrument):
             self._add_connection(con)
 
         for inp_lab, inp in self.inputs.items():
+            # use self._find_routes() to find routes from input inp
             routes_inp = self._find_routes(inp)
+            # create routes
             for route in routes_inp:
                 self._add_route(route)
+        # sort the routes dictionary
         self._sort_routes()
 
     def _sort_routes(self):
+        """Sorts the self.routes dictionary
+
+        Sorting is done to match the order of self.inputs and self.outputs
+        """
         sorted_routes = OrderedDict()
         for inp_lab, inp in self.inputs.items():
             if inp_lab not in self.routes:
@@ -716,6 +723,8 @@ class ArduinoSwitchControl(Instrument):
                 if out_lab not in self.routes[inp_lab]:
                     continue
                 routes = self.routes[inp_lab][out_lab]
+                # If multiple routes between a certain input and output exist,
+                # order the routes by length
                 route_lengths = [len(route) for route in routes]
                 sorted_indices = np.argsort(route_lengths)
                 routes = [routes[i] for i in sorted_indices]
