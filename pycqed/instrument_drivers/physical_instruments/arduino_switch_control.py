@@ -700,11 +700,8 @@ class ArduinoSwitchControl(Instrument):
         for con in connections:
             self._add_connection(con)
 
-        switch_orientations = [0] * self.num_switches
-        routes = {}
         for inp_lab, inp in self.inputs.items():
             routes_inp = self._find_routes(inp)
-            routes_inp_dict = {}
             for route in routes_inp:
                 self._add_route(route)
         self._sort_routes()
