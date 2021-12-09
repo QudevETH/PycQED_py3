@@ -733,7 +733,7 @@ class ArduinoSwitchControl(Instrument):
         self.routes = sorted_routes
 
     def _active_routes(self, return_active_connections=False):
-        """Returns routes that are currently connected.
+        """(Legacy) Returns routes that are currently connected.
 
         Note: This method does NOT read the switches but relies on the
         internally saved states of the switches. If switches have not been
@@ -742,8 +742,12 @@ class ArduinoSwitchControl(Instrument):
 
         Args:
             return_active_connections (bool):
+                Whether to return the active connections
 
         Returns:
+            list: List of the active routes
+                  if return_active_connections: also return a list of
+                  the active connections
 
         """
         act_routes = []
@@ -767,6 +771,15 @@ class ArduinoSwitchControl(Instrument):
             return act_routes
 
     def _switches_from_input(self, inp):
+        """Return all switches, that are reachable from a certain input.
+
+        Args:
+            inp: The input (by label or connector object)
+
+        Returns:
+            list: A list of the switches.
+
+        """
         inp = self.connector_by_label(inp)
         if not inp.is_box_input():
             raise ConnectorError("Argument has to be a box input.")
@@ -780,6 +793,19 @@ class ArduinoSwitchControl(Instrument):
         return switches
 
     def _find_routes(self, start_node, previous_nodes=None):
+        """Find all routes that start at start_node.
+
+        Finds the routes recursively. start_node may be a box input or
+        a switch.
+
+        Args:
+            start_node: box input or switch
+            previous_nodes: List of previous nodes, for when the function
+                            calls itself.
+
+        Returns:
+            The routes starting at start_node.
+        """
         if previous_nodes is None:
             previous_nodes = []
 
@@ -788,6 +814,8 @@ class ArduinoSwitchControl(Instrument):
             if start_node == con.end:
                 con.flip()
             if start_node == con.start:
+                # if the connection ends in a box output,
+                # add the connection (as a route of length 1)
                 if con.end.is_box_output():
                     routes.append([con])
                 elif con.end.is_box_input():
@@ -802,7 +830,10 @@ class ArduinoSwitchControl(Instrument):
                     if con.end.switch.orientation == 1:
                         raise Exception("Conflicting switch orientation "
                                         f"for switch {con.end.switch}")
+                    # Set orientation of the switch
                     con.end.switch.orientation = -1
+                    # Add the node to the previous nodes and call the method
+                    # for the next node
                     if con.start.parent_type == 'switch':
                         previous_nodes.append(con.start.switch)
                     else:
@@ -811,9 +842,10 @@ class ArduinoSwitchControl(Instrument):
                         con.end.switch.input,
                         previous_nodes=previous_nodes
                     )
+                    # Merge the current connection with the resulting routes
                     for route in next_step:
                         routes.append([con] + route)
-
+                # proceed the analogously for a switch input
                 elif con.end.is_switch_input():
                     if con.end.switch in previous_nodes:
                         raise Exception("Loop detected in connections at"
@@ -826,6 +858,8 @@ class ArduinoSwitchControl(Instrument):
                         previous_nodes.append(con.start.switch)
                     else:
                         previous_nodes.append(con.start)
+
+                    # continue with both outputs
                     next_step0 = self._find_routes(
                         con.end.switch.output[0],
                         previous_nodes=previous_nodes
@@ -846,11 +880,14 @@ class ArduinoSwitchControl(Instrument):
 
         return routes
 
-    def _check_if_in_config(self, config: dict, *keys: str) -> None:
+    def _check_if_in_config(self, config, *keys):
         """Checks if dictionary 'config' has keys 'keys'
 
-        :param config: configuration dictionary
-        :param keys: keys to be checked
+        For info on the dictionary, see class documentation.
+
+        Args:
+            config (dict): configuration dictionary
+            *keys (str): keys to check
         """
         for key in keys:
             if key not in config:
@@ -862,7 +899,7 @@ class ArduinoSwitchControl(Instrument):
     def _get_switch(self, switch):
         """Core method for reading the state of a switch.
 
-        NOTICE: This method is used to define the QCodes parameters
+        NOTE: This method is used to define the QCodes parameters
         of this Instrument. Not intended to be used on its own.
         Use 'self.read_state(switch)' instead!
 
@@ -882,21 +919,29 @@ class ArduinoSwitchControl(Instrument):
 
         The method is used to define the Qcodes parameters of this Instrument.
 
-        :param switch: Switch of which the state should be read.
-                       Possible types:
-                           str: switch label
-                           ArduinoSwitchBoxSwitch: the switch itself.
-        :return: obtained switch state 0 or 1; -1 for indicators 00 or 11.
+        Args:
+            switch: Switch of which the state should be read.
+                    Possible types:
+                        int or str: switch label
+                        ArduinoSwitchBoxSwitch: the switch itself.
+
+        Returns:
+            int: obtained switch state 0 or 1; -1 for indicators 00 or 11.
         """
         switch = self.switch_by_label(switch)
         id = self.switches[switch.label].id
+        # make sure that the serial port is open
         self.assure_serial()
+        # create command for the arduino and send it
         input_string = 'r' + str(id[0]) + str(id[1])
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.SHORT_DELAY)
+        # retrieve result
         result = self.serial.readline().decode().rstrip()
         time.sleep(self.SHORT_DELAY)
+        # store the indicators to the switch
         switch.indicators = (int(result[0]), int(result[1]))
+        # raise error if the indicators show an error
         if switch.state is None:
             raise SwitchError("Reading the state was unsuccessful: Indicators "
                               f"of the switch show {switch.indicators}.")
@@ -905,9 +950,9 @@ class ArduinoSwitchControl(Instrument):
     def _set_switch(self, switch, state):
         """Core method for reading the state of a switch.
 
-        NOTICE: This method is used to define the QCodes parameters
+        NOTE: This method is used to define the QCodes parameters
         of this Instrument. Not intended to be used on its own.
-        Use 'self.set_state(switch,state)' instead!
+        Use 'self.set_switch({switch:state})' instead!
 
         Sends a serial command to the Arduino to set the state of
         the switch 'switch'. A set command to the Arduino consists of
@@ -921,29 +966,45 @@ class ArduinoSwitchControl(Instrument):
 
         The method is used to define the Qcodes parameters of this Instrument.
 
-        :param switch: Switch of which the state should be read.
-                       Possible types:
-                           str: switch label
-                           ArduinoSwitchBoxSwitch: the switch itself.
+        Args:
+            switch: Switch of which the state should be set.
+                    Possible types:
+                        int or str: switch label
+                        ArduinoSwitchBoxSwitch: the switch itself.
         """
         switch = self.switch_by_label(switch)
         id = self.switches[switch.label].id
+        # make sure that the serial port is open
         self.assure_serial()
+        # create command for the arduino and send it
         input_string = str(id[0]) + str(id[1]) + str(state)
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.DELAY)
+        # read switch after setting it, to confirm switching
         try:
             self._get_switch(switch)
         except SwitchError:
             raise SwitchError("Reading switch after switching was "
                               "unsuccessful: Indicators of the switch show "
                               f"{switch.indicators}.")
+        # raise error, if the switching was not successful
         if switch.state != state:
             raise SwitchError("Setting the switch was unsuccessful. The "
                               f"switch should be in state {state}, but "
                               f"the indicators show state {switch.state}.")
 
     def _set_route(self, inp, out, route_number=0):
+        """Core method to set a route from an input to an output.
+
+        NOTE: This method is used to define the QCodes parameters
+        of this Instrument. Not intended to be used on its own.
+        Use 'self.set_switch({inp:out})' instead!
+
+        Args:
+            inp: Input connector or its label.
+            out: Output connector or its label.
+            route_number: Index of route (if multiple routes exist)
+        """
         if inp not in self.inputs:
             inp = inp.label
         if out not in self.outputs:
@@ -952,48 +1013,80 @@ class ArduinoSwitchControl(Instrument):
                 or out not in self.routes[inp]):
             raise RouteError(f"No routes found between "
                              f"{inp} and {out}.")
+        # get possible routes corresponding to inp and out
         routes = self.routes[inp][out]
         num_routes = len(routes)
+        # raise exeptions if needed
         if num_routes == 0:
             raise RouteError(f"No routes found between "
                              f"{inp} and {out}.")
         if route_number >= num_routes:
             raise RouteError("route_number has to be less than the "
                              f"number of routes {num_routes}.")
+        # get route from dictionary
         route = self.routes[inp][out][route_number]
+        # set switches
         for switch, state in route.get_switch_states():
             self.parameters[f'switch_{switch.label}_mode'](state)
 
     def _get_route(self, inp):
+        """Core method to get the connected outputs of an input.
+
+        NOTE: This method is used to define the QCodes parameters
+        of this Instrument. Not intended to be used on its own.
+        Use 'self.get_switch(inp)' instead!
+
+        Args:
+            inp: Input connector or its label.
+
+        Returns:
+            str: The output label
+            If multiple connected outputs exist, a list of the labels
+            is returned (Should generally not be the case).
+        """
         inp = self.connector_by_label(inp)
         inp_routes = []
+        # get the routes starting at the input and the maximum route length
         max_length = 0
         for routes in self.routes[inp.label].values():
             for route in routes:
                 inp_routes.append(route)
                 if len(route) > max_length:
                     max_length = len(route)
-        outputs = []
+
+        # to find the outputs, the switches on possible routes are
+        # successively measured. Routes that do not fit the measured switch
+        # states are eliminated, such that following switches do not have
+        # to be read.
+        outputs = []  # list for the outputs
         routes = inp_routes
-        measured_switch_states = {}
+        measured_switch_states = {}  # store already measured switches
         for k in range(max_length):
-            routes_left = []
+            routes_left = []  # list to store remaining routes
             if len(routes) == 0:
                 break
             for route in routes:
+                # action only required if start or end of the
+                # connection route[k] is a switch output
                 if route[k].start.is_switch_output():
+                    # check if the switch is already measured
                     if route[k].start.switch.label in measured_switch_states:
                         state = measured_switch_states[
                             route[k].start.switch.label]
                     else:
+                        # measure switch and store result
                         state = route[k].start.switch.mode()
                         measured_switch_states[
                             route[k].start.switch.label] = state
+                    # got to next route (such that this one is not added to
+                    # the remaining routes)
                     if route[k].start.output_nr != state:
                         continue
+                # if a output is reached, add it to outputs
                 if route[k].end.is_box_output():
                     outputs.append(route[k].end.label)
                     continue
+                # continue analogously to above
                 elif route[k].end.is_switch_output():
                     if route[k].end.switch.label in measured_switch_states:
                         state = measured_switch_states[
@@ -1004,9 +1097,13 @@ class ArduinoSwitchControl(Instrument):
                             route[k].end.switch.label] = state
                     if route[k].end.output_nr != state:
                         continue
+                # the route has not been eliminated,
+                # add it to the remaining routes
                 routes_left.append(route)
+            # set routes to routes_left before starting the next iteration
             routes = routes_left
 
+        # returns
         if len(outputs) == 0:
             return None
         elif len(outputs) == 1:
@@ -1024,31 +1121,33 @@ class ArduinoSwitchControl(Instrument):
     _open_ports = {}
 
     @classmethod
-    def get_ports(cls) -> dict:
+    def get_ports(cls):
         """ Returns dictionary of (possibly) open serial ports
 
-        :return: copy of _open_ports
-        :rtype: dict
+        Returns:
+            dict: copy of _open_ports
         """
         return cls._open_ports.copy()
 
     @classmethod
-    def add_port(cls, port: str, ser: serial.Serial):
+    def add_port(cls, port, ser):
         """Add port so _open_ports
 
-        :param port: port of USB connection to Arduino, like 'COM5'
-        :param ser: serial.Serial of the serial connection
+        Args:
+            port (str): port of USB connection to Arduino, like 'COM5'
+            ser (serial.Serial): serial connection
         """
         cls._open_ports[port] = ser
 
     @classmethod
-    def get_serial(cls, port: str) -> serial.Serial:
+    def get_serial(cls, port):
         """Get serial.Serial object by port
 
-        :param port: label of port
+        Args:
+            port(str): label of port
 
-        :return: serial.Serial object of port
-        :rtype: serial.Serial
+        Returns:
+            serial.Serial: serial instance of the port
         """
         if port in cls._open_ports:
             return cls._open_ports[port]
@@ -1057,6 +1156,11 @@ class ArduinoSwitchControl(Instrument):
 
     @classmethod
     def remove_port(cls, port):
+        """Remove a port from cls._open_ports
+
+        Args:
+            port (str): label of the port
+        """
         if port in cls._open_ports:
             if cls._open_ports[port].is_open:
                 cls._open_ports[port].close()
@@ -1066,7 +1170,15 @@ class ArduinoSwitchControl(Instrument):
     # --------------
 
 
+# Classes for the components of the switch box
+# --------------------------------------------
+
+
 class ArduinoSwitchControlObject:
+    """Base class for switches and connectors
+
+    This class mainly exists for code extendability, if needed.
+    """
     def __init__(self, label):
         self.label = label
 
@@ -1075,6 +1187,28 @@ class ArduinoSwitchControlObject:
 
 
 class ArduinoSwitchControlConnector(ArduinoSwitchControlObject):
+    """Class for connectors of the switch box
+
+    Args:
+        label: label of the connector
+        parent_type: 'box' or 'switch'
+        connector_type: 'input' or 'output'
+        group: group, the connector belongs to (for box connectors)
+        switch: switch, the connector belongs to (for switch connectors)
+        output_nr: number corresponding to the state of the switch
+                   (for switch outputs)
+
+    Attributes:
+        label: label of the connector
+        parent_type (str): 'box' or 'switch'
+        connector_type (str): 'input' or 'output'
+
+        group: only for box connectors
+        switch: only for switch connectors
+        output_nr: only for switch outputs, 0 or 1
+
+
+    """
     def __init__(self, label, parent_type, connector_type, group=None,
                  switch=None, output_nr=None):
         super().__init__(label)
@@ -1137,6 +1271,27 @@ class ArduinoSwitchControlConnector(ArduinoSwitchControlObject):
 
 
 class ArduinoSwitchControlSwitch(ArduinoSwitchControlObject):
+    """Class for the switches
+
+    Args:
+        label (int or str): label of the switch
+        id (tuple): id of the switch on the PCB,
+                    of format (group_id,switch_id)
+        orientation (int): orientation of the switch in the routes between the
+                           inputs and outputs. Can be:
+                             1: the input of the switch points in the
+                                direction of the inputs of the box.
+                             -1: the input of the switch points in the
+                                 direction of the outputs of the box.
+                             0: the orientation of the switch is undetermined.
+
+    Attributes:
+        id (tuple): id of the switch on the PCB,
+                    of format (group_id,switch_id)
+        input (ArduinoSwitchControlConnector): input connector
+        output (list): list of the output connectors
+        mode: Qcodes parameter from the parent SwitchControl to set the switch
+    """
     def __init__(self, label, id, orientation=0):
         super().__init__(label)
         self.id = id
@@ -1181,6 +1336,12 @@ class ArduinoSwitchControlSwitch(ArduinoSwitchControlObject):
 
     @property
     def indicators(self):
+        """Indicators of the switches
+
+        Stored indicator states from reading the switch.
+        (1,0) corresponds to state 0, (0,1) corresponds to state 1
+        (0,0) and (1,1) signal an error with the switches or the PCB
+        """
         return self._indicators
 
     @indicators.setter
@@ -1204,10 +1365,17 @@ class ArduinoSwitchControlSwitch(ArduinoSwitchControlObject):
 
     @property
     def state(self):
+        """State of the switch corresponding to the indicators"""
         return self._state
 
 
 class ArduinoSwitchControlConnection:
+    """Class for connections between connectors
+
+    Args:
+        start (ArduinoSwitchControlConnector): start of the connection
+        end (ArduinoSwitchControlConnector): end of the connection
+    """
     def __init__(self, start, end):
         if not isinstance(start, ArduinoSwitchControlConnector):
             raise TypeError("'start' has to be of type "
@@ -1265,10 +1433,22 @@ class ArduinoSwitchControlConnection:
                f"({self.start.label},{self.end.label})"
 
     def flip(self):
+        """Flip start and end"""
         self._start, self._end = self._end, self._start
 
 
 class ArduinoSwitchControlRoute:
+    """Class for routes
+
+    Args:
+        connections (list): List of instances of ArduinoSwitchControlConnector
+                            defining the route
+
+    Attributes:
+        connections (list): connections defining the route
+        input: input of the route (start of first connection in route)
+        output: output of the route (end of last connection in route)
+    """
     def __init__(self, connections):
         inp = connections[0].start
         if not (inp.parent_type == 'box' and inp.connector_type == 'input'):
@@ -1279,6 +1459,8 @@ class ArduinoSwitchControlRoute:
         self.input = inp
         self.output = out
         self.connections = connections
+
+    # magic methods to make route iterable
 
     def __len__(self):
         return len(self.connections)
@@ -1304,6 +1486,11 @@ class ArduinoSwitchControlRoute:
                f" to {self.output.label}"
 
     def get_switch_states(self):
+        """Get states of switches that connect the route
+
+        Returns:
+            list: List of tuples (switch,state)
+        """
         switches_states = []
         for connection in self.connections:
             if connection.start.is_switch_output():
