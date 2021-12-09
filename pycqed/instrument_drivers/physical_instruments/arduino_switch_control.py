@@ -236,8 +236,8 @@ class ArduinoSwitchControl(Instrument):
             return_labels=False
         )
 
-        self.num_inputs = len(self.inputs)
-        self.num_outputs = len(self.outputs)
+        self._num_inputs = len(self.inputs)
+        self._num_outputs = len(self.outputs)
 
         # Connections
         # -----------
@@ -287,8 +287,18 @@ class ArduinoSwitchControl(Instrument):
     # ----------
     @property
     def num_switches(self):
-        """Return number of switches"""
+        """Number of switches"""
         return self._num_switches
+
+    @property
+    def num_inputs(self):
+        """Number of inputs"""
+        return self._num_inputs
+
+    @property
+    def num_outputs(self):
+        """Number of outputs"""
+        return self._num_outputs
 
     # Instance methods
     # ----------------
