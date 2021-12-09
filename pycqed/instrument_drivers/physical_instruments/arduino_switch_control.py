@@ -891,18 +891,6 @@ class ArduinoSwitchControl(Instrument):
 
         return routes
 
-    def _check_if_in_config(self, config, *keys):
-        """Checks if dictionary 'config' has keys 'keys'
-
-        For info on the dictionary, see class documentation.
-
-        Args:
-            config (dict): configuration dictionary
-            *keys (str): keys to check
-        """
-        for key in keys:
-            if key not in config:
-                raise ValueError(f"Config must contain key '{key}")
 
     # - Private methods to set and get switches
     #  ----------------------------------------
@@ -1179,7 +1167,19 @@ class ArduinoSwitchControl(Instrument):
 
     # Static methods
     # --------------
+    @staticmethod
+    def _check_if_in_config(config, *keys):
+        """Checks if dictionary 'config' has keys 'keys'
 
+        For info on the dictionary, see class documentation.
+
+        Args:
+            config (dict): configuration dictionary
+            *keys (str): keys to check
+        """
+        for key in keys:
+            if key not in config:
+                raise ValueError(f"Config must contain key '{key}")
 
 # Classes for the components of the switch box
 # --------------------------------------------
