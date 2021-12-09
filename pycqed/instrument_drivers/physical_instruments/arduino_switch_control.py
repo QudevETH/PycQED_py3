@@ -341,7 +341,7 @@ class ArduinoSwitchControl(Instrument):
                     raise RouteError(f"No route starting at input {label[6:]}")
                 par = self.parameters[f'{label}_mode']
             else:
-                raise Exception(f"parameter label {label} not recognized.")
+                raise ValueError(f"parameter label {label} not recognized.")
 
             # apply selected parameter for switching
             par(val)
