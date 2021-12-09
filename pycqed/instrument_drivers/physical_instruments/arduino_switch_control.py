@@ -9,7 +9,6 @@ import qcodes as qc
 from qcodes import Instrument
 
 
-
 class ArduinoSwitchControl(Instrument):
     """Class for the RT switch box that uses an Arduino
 
@@ -178,16 +177,18 @@ class ArduinoSwitchControl(Instrument):
             if num_switches > 20:
                 num_switches = 20
                 switch_labels = switch_labels[:20]
-                # Issue warning, that switch labels are cut off after 20?
             self._num_switches = num_switches
             self.switch_labels = switch_labels
 
+        # switch ids (group_id, switch_id) 0n PCB
         switch_ids_list = [(n, m) for n in range(5) for m in range(4)]
+
+        # create switches
         self.switch_ids = OrderedDict()
         self.switches = OrderedDict()
         for id, label in zip(switch_ids_list, self.switch_labels):
             switch = self._add_switch(label, id, return_switch=True)
-
+            # create Qcodes parameter
             param_name = f'switch_{label}_mode'
             self.add_parameter(
                 param_name,
@@ -197,6 +198,7 @@ class ArduinoSwitchControl(Instrument):
                 set_cmd=lambda x, s=label: self._set_switch(s, x),
                 docstring="possible values: 0, 1",
             )
+            # add parameter as attribute to switch
             switch.mode = self.parameters[param_name]
 
         # Inputs and outputs
@@ -248,7 +250,9 @@ class ArduinoSwitchControl(Instrument):
         connections = config['connections']
         self.connections = []
         self.routes = OrderedDict()
+        # find routes from inputs to outputs
         self._process_connections(connections)
+        # add routes as Qcodes parameters
         for inp in self.routes:
             param_name = f'route_{inp}_mode'
             self.add_parameter(
@@ -276,8 +280,8 @@ class ArduinoSwitchControl(Instrument):
     # Class constants
     # ---------------
 
-    SHORT_DELAY = 0.05
-    DELAY = 0.15
+    SHORT_DELAY = 0.05  # after reading a switch
+    DELAY = 0.15  # after setting a switch
 
     # Properties
     # ----------
@@ -292,7 +296,7 @@ class ArduinoSwitchControl(Instrument):
     # - Methods for reading and setting the switches
     #   --------------------------------------------
 
-    def set_switch(self, values: dict):
+    def set_switch(self, values):
         """Set multiple switches by values.
 
         Args:
@@ -300,19 +304,21 @@ class ArduinoSwitchControl(Instrument):
                 Dictionary of the switch modes to set.
                 For switching single switches: {switch label : state}
                 For routes starting from an input: {input label : output label}
+                Instead of the switch label and input label, the parameter
+                can be used (without the _mode)
         """
-        # replace: switch with label
-        # check if switch or box connector, choose right mode
-        # check if switch label or box connector label, choose right mode
-        # check if str and starts with switch_ or route_, choose right mode
         for label, val in values.items():
+            # if label is not a label, get the according label
             if isinstance(label, (ArduinoSwitchControlSwitch,
                                   ArduinoSwitchControlConnector)):
                 label = label.label
+            # if switch label, get the parameter to switch the switch
             if label in self.switches:
                 par = self.parameters[f'switch_{label}_mode']
+            # if input label, get the parameter to set a route from this input
             elif label in self.inputs:
                 par = self.parameters[f'route_{label}_mode']
+            # if parameter name, get the right parameter
             elif label.startswith('switch_'):
                 if label[7:] not in [str(lab) for lab in self.switches]:
                     raise SwitchError(f"No switch with label {label[7:]}")
@@ -326,9 +332,23 @@ class ArduinoSwitchControl(Instrument):
             else:
                 raise Exception(f"parameter label {label} not recognized.")
 
+            # apply selected parameter for switching
             par(val)
 
     def get_switch(self, *labels):
+        """Get the states of multiple switches
+
+        Args:
+            *labels: Can be:
+                The label of a switch to get the state of the switch
+                The label of an input, to get the output it is connected to
+                The according parameters (without _mode)
+
+        Returns:
+            dict:
+                The results of reading the switches in a dictionary
+                compatible with self.set_switch()
+        """
         if len(labels) == 1 and not isinstance(labels[0], str):
             try:
                 labels = list(labels[0])
@@ -362,20 +382,13 @@ class ArduinoSwitchControl(Instrument):
     # - Methods for serial communication
     #   --------------------------------
 
-    def start_serial(self, override: bool = True):
+    def start_serial(self, override=True):
         """Start serial communication
 
         Args:
-            override: whether an existing serial communication should be
+            override (bool): whether an existing serial communication should be
                       closed and replaced. Recommended: True
         """
-        # """Start serial communication
-        #
-        # :param override: whether an existing serial communication
-        #                  should be closed and replaced.
-        #                  Recommended: True
-        # """
-        # get possible open serial
         ser = self.get_serial(self.port)
 
         if ser is None or override:
@@ -430,17 +443,18 @@ class ArduinoSwitchControl(Instrument):
     # - Helper functions for initializing and running the box
     #   -----------------------------------------------------
 
-    def switch_by_label(self, label: Union[
-        str, 'ArduinoSwitchControlSwitch']
-                        ) -> 'ArduinoSwitchControlSwitch':
+    def switch_by_label(self, label):
         """Return the switch with label 'label'.
 
         If label is already a switch, it just returns the switch
 
-        :param label: Can be:
-                      str: label of the switch
-                      ArduinoSwitchControlSwitch: the switch itself
-        :return: the switch
+        Args:
+            label: Can be:
+                   int or str: label of the switch
+                   ArduinoSwitchControlSwitch: the switch itself
+
+        Returns:
+            ArduinoSwitchControlSwitch: the switch
         """
         if isinstance(label, ArduinoSwitchControlSwitch):
             return label
@@ -450,14 +464,33 @@ class ArduinoSwitchControl(Instrument):
             raise SwitchError(f"No switch with label '{label}' found.")
 
     def connector_by_label(self, label):
+        """Return the connector with label 'label'.
+
+        If label is already a connector, it just returns the connector
+
+        Args:
+            label: Can be:
+                   - The label of an input or output of the box
+                   - The label of a switch for the input of the switch
+                   - A tuple (switch, state) for the corresponding output of
+                     the switch
+
+        Returns:
+            ArduinoSwitchControlConnector: the connector
+        """
+        # return label, if it is already a connector
         if isinstance(label, ArduinoSwitchControlConnector):
             return label
+        # if the label is an input, return the input
         elif label in self.inputs:
             return self.inputs[label]
+        # if the label is an output, return the output
         elif label in self.outputs:
             return self.outputs[label]
+        # if the label is an switch label, return the input of the switch
         elif label in self.switches:
             return self.switches[label].input
+        # handle the tuple (switch,state) for an output of the switch
         else:
             try:
                 label = tuple(label)
@@ -469,6 +502,26 @@ class ArduinoSwitchControl(Instrument):
             return self.switches[label[0]].output[int(label[1])]
 
     def _add_switch(self, label, id, orientation=0, return_switch=True):
+        """Creates a switch and adds it to the relevant dictionaries.
+
+        Args:
+            label (int or str): label of the switch
+            id (tuple): id of the switch on the PCB,
+                        of form (group_id,switch_id)
+            orientation: orientation of the switch in the routes between the
+                         inputs and outputs. Can be:
+                             1: the input of the switch points in the
+                                direction of the inputs of the box.
+                             -1: the input of the switch points in the
+                                 direction of the outputs of the box.
+                             0: the orientation of the switch is undetermined.
+            return_switch: Whether the switch is returned by the method
+
+        Returns:
+            ArduinoSwitchControlSwitch: The created switch.
+                If return_switch == False, there are no returns.
+
+        """
         switch = ArduinoSwitchControlSwitch(label, id,
                                             orientation=orientation)
         self.switch_ids[id] = switch
@@ -478,24 +531,51 @@ class ArduinoSwitchControl(Instrument):
             return switch
 
     def _add_connection(self, con):
+        """Creates a connection.
+
+        Connections can be created between two connectors.
+
+        Args:
+            con (tuple):
+                A tuple (start,end), where start and end can be:
+                - An instance of ArduinoSwitchControlConnector
+                - The label of an input or output of the box
+                - The label of a switch for the input of the switch
+                - A tuple (switch, state) for the output of the switch
+        """
+        # get connectors by the above specified labels
         start = self.connector_by_label(con[0])
         end = self.connector_by_label(con[1])
         if start.parent_type == 'box' and end.parent_type == 'box':
+            # make sure, that not two inputs or two outputs are connected
             if start.connector_type == end.connector_type:
                 raise ConnectorError(f"Connection {con} connects "
                                      f"input to input or output to output.")
+            # make sure, that inputs are always first
+            # and outputs are always second
             elif (start.connector_type == 'output'
                   or end.connector_type == 'input'):
                 start, end = end, start
+        # make sure, that a switch does not connect to itself
         elif start.parent_type == 'switch' and end.parent_type == 'switch':
             if start.switch == end.switch:
                 raise ConnectorError(f"Connection {con} connects "
                                      f"a switch to itself.")
+
+        # create connection
         connection = ArduinoSwitchControlConnection(start, end)
 
+        # add connection to attributes
         self.connections.append(connection)
 
     def _add_route(self, connections):
+        """Create a route and add it to the routes dictionary
+
+        Args:
+            connections (list):
+                A list of ArduinoSwitchControlConnection objects, that
+                specify the route from an input to an output of the box.
+        """
         route = ArduinoSwitchControlRoute(connections)
         if route.input.label not in self.routes:
             self.routes[route.input.label] = {route.output.label: [route]}
@@ -505,8 +585,36 @@ class ArduinoSwitchControl(Instrument):
             self.routes[route.input.label][route.output.label].append(route)
 
     def _create_connectors(self, connectors, connector_type, default_label='C',
-                          return_groups=False, in_group=False,
-                          return_labels=False):
+                           return_groups=False, in_group=False,
+                           return_labels=False):
+        """Creates connectors from the configuration (see class documentation)
+
+        Args:
+            connectors: Configuration of the connectors. Can be:
+                - int: Number of connectors. The connectors will be labeled
+                       {default_label}{number} (e. g. C1, C2, ...)
+                - tuple: Specify the label and number of connectors with
+                         (label,number of connectors). The labels will be
+                         {label}{number} (e. g. for label=A: A1, A2, ...)
+                - list of the tuples above, to create groups. The group label
+                  and the connector number are separated with a dot.
+                  e. g. [(A,2),(B,3)] results in A.1, A.2, B.1, B.2, B.3
+            connector_type (str): Has to be 'input' or 'output'.
+            default_label: Label that is used as a default.
+            return_groups (bool): Whether the labels of the groups should be
+                                  returned as well.
+            in_group (bool): Whether this method is called to for an
+                             individual group. Needed to handle the recursion
+                             of the method.
+            return_labels: Whether the labels of the connectors should be
+                           returned a swell.
+
+        Returns:
+            OrderedDict: Dictionary with the connectors.
+                if return_groups, the group labels also get returned
+                if return_labels, the connector labels also get returned
+
+        """
         if isinstance(connectors, int):
             if connectors < 0:
                 raise ValueError("Number of connectors 'connectors' must"
@@ -582,7 +690,13 @@ class ArduinoSwitchControl(Instrument):
                     return connectors_dict
 
     def _process_connections(self, connections):
+        """Creates the connections and finds the routes.
 
+        Args:
+            connections: List of connections, as specified for the
+                configuration in the documentation of the class.
+        """
+        # create connection
         for con in connections:
             self._add_connection(con)
 
@@ -943,7 +1057,6 @@ class ArduinoSwitchControl(Instrument):
 
     # Static methods
     # --------------
-
 
 
 class ArduinoSwitchControlObject:
