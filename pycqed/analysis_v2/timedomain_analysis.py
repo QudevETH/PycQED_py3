@@ -9649,21 +9649,29 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         hsp = self.raw_data_dict['hard_sweep_points']
         ssp = self.raw_data_dict['soft_sweep_points']
         mdata = self.raw_data_dict['measured_data']
-        LO_dBV = 20*np.log10(list(mdata.values())[0])
+
+        # Conversion from V_peak -> V_RMS
+        V_RMS = list(mdata.values())[0]/np.sqrt(2)
+        # Conversion to P (dBm):
+        #   P = V_RMS^2 / 50 Ohms
+        #   P (dBm) = 10 * log10(P / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2 / 50 Ohms / 1 mW)
+        #   P (dBm) = 20 * log10(V_RMS) - 10 * log10(50 Ohms * 1 mW)
+        LO_dBm = 20*np.log10(V_RMS) - 10 * np.log10(50 * 1e-3)
 
         VI = hsp
         VQ = ssp
 
-        if len(hsp) * len(ssp) == len(LO_dBV.flatten()):
+        if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
             VI, VQ = np.meshgrid(hsp, ssp)
             VI = VI.flatten()
             VQ = VQ.flatten()
-            LO_dBV = LO_dBV.T.flatten()
+            LO_dBm = LO_dBm.T.flatten()
 
         self.proc_data_dict['V_I'] = VI
         self.proc_data_dict['V_Q'] = VQ
-        self.proc_data_dict['LO_leakage'] = LO_dBV
-        self.proc_data_dict['data_to_fit'] = LO_dBV
+        self.proc_data_dict['LO_leakage'] = LO_dBm
+        self.proc_data_dict['data_to_fit'] = LO_dBm
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -9739,7 +9747,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             'setlabel': 'lo leakage magnitude',
             'cmap': 'plasma',
             'cmap_levels': 100,
-            'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBV)',
+            'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBm)',
             'title': f'{timestamp} calibrate_drive_mixer_carrier_'
                      f'{self.qb_names[0]}'
         }
@@ -9920,7 +9928,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'setlabel': 'sideband magnitude',
                 'cmap': 'plasma',
                 'cmap_levels': 100,
-                'clabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$ (dBV)',
+                'clabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$ (dBm)',
                 'title': f'{timestamp} calibrate_drive_mixer_skewness_'
                         f'{self.qb_names[0]}'
             }
