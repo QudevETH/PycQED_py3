@@ -27,7 +27,7 @@ class Detector_Function(object):
         self.set_kw()
         self.value_names = ['val A', 'val B']
         self.value_units = ['arb. units', 'arb. units']
-        # to be used by MC.get_percdone()
+        # to be used by MC.get_percdone() and the IntegratingAveragingPollDetector
         self.acq_data_len_scaling = 1
         self.timer = Timer(self.name)
         # The following properties are not implemented in all detector
@@ -814,7 +814,7 @@ class MultiPollDetector(PollDetector):
         # can only correlate corresponding probabilities on all channels;
         # it cannot correlate selected channels
         q = data_processed.shape[0] // nr_states  # nr of qubits
-        # creates array with nr_sweep_points x nr_shots columns and
+        # creates array with nr_sweep_points columns and
         # nr_qubits rows, where all entries are 0, 1, or 2. The entry in each
         # column is the state of the respective qubit, 0=g, 1=e, 2=f.
         qb_states_list = [np.argmax(
@@ -827,7 +827,8 @@ class MultiPollDetector(PollDetector):
         # if one qubit is in g or f but the other in e ---> correlator = 1
         corr_data = np.sum(np.array(qb_states_list) % 2, axis=0) % 2
         if self.averaged:
-            corr_data = np.reshape(corr_data, (d0.nr_shots, d0.nr_sweep_points))
+            corr_data = np.reshape(corr_data,
+                                   (d0.nr_shots, d0.nr_sweep_points/d0.nr_shots))
             corr_data = np.mean(corr_data, axis=0)
         corr_data = np.reshape(corr_data, (1, corr_data.size))
 
@@ -1037,7 +1038,6 @@ class IntegratingAveragingPollDetector(PollDetector):
     def prepare(self, sweep_points=None):
         if self.AWG is not None:
             self.AWG.stop()
-
         # Determine the number of sweep points and set them
         if sweep_points is None or self.single_int_avg:
             # this case will be used when it is a soft detector
@@ -1070,12 +1070,12 @@ class IntegratingAveragingPollDetector(PollDetector):
             assert self.nr_sweep_points % self.acq_data_len_scaling == 0
             self.nr_sweep_points = (self.nr_sweep_points //
                                     self.acq_data_len_scaling)
-
+        self.nr_sweep_points *= self.nr_shots
         # Note that self.nr_shots is 1 in this class, but might be different
         # in child classes.
         self.acq_dev.acquisition_initialize(
             channels=self.channels,
-            n_results=self.nr_shots * self.nr_sweep_points,
+            n_results=self.nr_sweep_points,
             acquisition_length=self.integration_length,
             averages=self.nr_averages,
             loop_cnt=int(self.nr_shots * self.nr_averages),
@@ -1350,7 +1350,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             self.value_units = [self.value_units[0]] * len(self.value_names)
 
         if self.get_values_function_kwargs.get('averaged', True):
-            self.acq_data_len_scaling = 1  # to be used in MC
+            self.acq_data_len_scaling = 1
             # The following value is only used for correct progress
             # calculation in poll_data.
             self.progress_scaling = self.nr_shots
@@ -1419,13 +1419,14 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return data_processed.T
 
     def classify_shots(self, data, classifier_params_list, nr_states):
-        classified_data = np.zeros((self.nr_sweep_points*self.nr_shots,
+        classified_data = np.zeros((self.nr_sweep_points,
                                     nr_states*len(self.channel_str_mobj)))
         k = len(self.channels) // self.n_meas_objs
         for i in range(len(self.channel_str_mobj)):
             # classify each shot into (pg, pe, pf)
             # clf_data will have shape
-            # (nr_shots * self.nr_sweep_points, nr_states)
+            # (self.nr_sweep_points, nr_states)
+            # where len(nr_sweep_points) = len(mc_sweep_points) * nr_shots
             mobj_data = data[:, k*i: k*i+k]
             clf_data = a_tools.predict_gm_proba_from_clf(
                 mobj_data, classifier_params_list[i])
@@ -1451,10 +1452,12 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return thresholded_data
 
     def average_shots(self, data):
-        # reshape into (nr_shots, nr_sweep_points, nr_data_columns) then
-        # average over nr_shots
+        # reshape into
+        # (nr_shots, nr_sweep_points//self.nr_shots, nr_data_columns)
+        # then average over nr_shots
         averaged_data = np.reshape(
-            data, (self.nr_shots, self.nr_sweep_points, data.shape[-1]))
+            data, (self.nr_shots, self.nr_sweep_points//self.nr_shots,
+                   data.shape[-1]))
         # average over shots
         averaged_data = np.mean(averaged_data, axis=0)
 
