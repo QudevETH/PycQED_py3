@@ -334,13 +334,18 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
 
         for qbn in qb_names:
             uhf = eval(instr_settings[qbn].attrs['instr_acq'])
+            acq_unit = eval(instr_settings[qbn].attrs.get('acq_unit', 'None'))
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
             if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
+            if acq_unit is None:
+                vn_string = uhf+'_'+ro_type
+            else:
+                vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
             channel_map[qbn] = [vn for vn in value_names for nr in qbchs
-                                if uhf+'_'+ro_type+nr in vn]
+                                if vn_string+nr in vn]
 
         all_values_empty = np.all([len(v) == 0 for v in channel_map.values()])
         if len(channel_map) == 0 or all_values_empty:
