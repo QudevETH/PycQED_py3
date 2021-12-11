@@ -1,5 +1,3 @@
-import logging
-
 import numpy as np
 import time
 import logging
@@ -151,6 +149,11 @@ class QDacSmooth(QDac):
         for chan in range(self.num_chans):
             self.channels[chan].mode(set_mode)
 
+    def _update_cache(self, *args, **kwargs):
+        super()._update_cache(*args, **kwargs)
+        # the default value {} in the following line prevents a crash in __init__
+        for ch_number, ch_name in getattr(self, 'channel_map', {}).items():
+            self.parameters[f"volt_{ch_name}"].get()
 
 # channel_map_qdac = {i: f'fluxline{i + 1}' for i in range(6)}
 # qdac = QDacSmooth('qdac', 'COM3', channel_map_qdac)
