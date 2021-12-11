@@ -625,8 +625,6 @@ class PollDetector(Hard_Detector):
                 if not all(gotem[acq_dev.name]):
                     time.sleep(0.01)
                     dataset[acq_dev.name] = acq_dev.poll(0.01)
-            log.debug(repr(data))
-            log.debug(repr(dataset))
             for acq_dev_name in dataset.keys():
                 n_sp = self.det_from_acq_dev[acq_dev_name].nr_sweep_points
                 for n, p in enumerate(acq_paths[acq_dev_name]):
