@@ -2627,11 +2627,33 @@ class QuDev_transmon(Qubit):
                         'cal_points': f"CalibrationPoints([{self.name}], [])"}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
+            (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             *self._drive_mixer_calibration_tmp_vals()
         ):
             self.prepare(drive='timedomain', switch='calib')
+
+            # Check commensurability of LO frequencies with trigger sep.
+            ro_lo = self.instr_ro_lo.get_instr()
+            dr_lo = self.instr_ge_lo.get_instr()
+            ro_lo_freq = ro_lo.frequency()
+            dr_lo_freq = dr_lo.frequency()
+            # Frequency of the LO phases is given by the LOs beat frequency.
+            beat_freq = 0.5*(dr_lo_freq - ro_lo_freq)
+            #         = 0.5*(ge_mod_freq + ro_mod_freq) in our case
+            beats_per_trigger = beat_freq * trigger_sep
+            if not beats_per_trigger.is_integer():
+                beats_per_trigger = int(beats_per_trigger + 0.5)
+                ro_mod_freq = 2 * beats_per_trigger/trigger_sep \
+                              - self.ge_mod_freq()
+                log.warning('Difference of RO LO and drive LO frequency '
+                            'resulting from the chosen modulation frequencies '
+                            'is not an integer multiple of the trigger '
+                            'seperation. To ensure commensurability the RO ' 'modulation frequency will temporarily be set '
+                            'to {} Hz.'.format(self.ro_mod_freq()))
+                self.prepare(drive='timedomain', switch='calib')
+
             MC.set_detector_function(self.int_avg_det)
             MC.run(name='drive_skewness_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
