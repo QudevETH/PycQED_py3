@@ -4,11 +4,13 @@ The only driver currently tested is that of the NGE102B. The NGE103B probably
 also works as it has 3 channels instead of 2.
 """
 
+
 from abc import ABC, abstractproperty
 from functools import partial
 import io
 from qcodes import VisaInstrument, InstrumentChannel
 from qcodes.utils.validators import Numbers, Enum
+
 
 class WrongInstrumentError(Exception):
     """Error raised if the connected VISA instrument is not a R&S NGE100B."""
@@ -89,11 +91,11 @@ class NGE100Channel(InstrumentChannel):
         )
 
     def _get_channel_parameter(self, visa_cmd:str):
-        self.parent._select_channel(self.channel)
+        self.parent.select_channel(self.channel)
         return self.ask_raw(visa_cmd)
 
     def _set_channel_parameter(self, visa_cmd:str, value):
-        self.parent._select_channel(self.channel)
+        self.parent.select_channel(self.channel)
         return self.write_raw(visa_cmd.format(value))
 
 class NGE100Base(VisaInstrument, ABC):
@@ -177,9 +179,13 @@ class NGE100Base(VisaInstrument, ABC):
         )
         return io.BytesIO(screenshot)
 
-    def _select_channel(self, channel:int):
+    def select_channel(self, channel:int):
         """Select an instrument channel, necessary prior to reading/setting
-        any channel specific parameter."""
+        any channel specific parameter.
+        
+        No need to call this method directly, it is internally called by
+        :class:`NGE100Channel`.
+        """
 
         if not (1 <= channel <= self.nb_channels):
             raise ValueError(f"Invalid channel '{channel}'")
