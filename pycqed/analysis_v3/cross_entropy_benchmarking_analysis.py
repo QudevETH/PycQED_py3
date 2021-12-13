@@ -1169,11 +1169,11 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 if show:
                     plt.show()
                 else:
-                    plt.close('all')
+                    plt.close(fig)
 
         return return_dict
     except Exception:
-        plt.close('all')
+        plt.close(fig)
         traceback.print_exc()
         return
 
@@ -1226,6 +1226,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
             if proba_exp_all is None:
                 proba_exp_all = data_dict[mobjn][data_key]
                 xeb_proba_found = False
+            print('xeb_proba_found', xeb_proba_found)
 
             plot_mod.get_default_plot_params(figure_width=figure_width,
                                              figure_height=figure_height)
@@ -1239,9 +1240,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                 else:
                     ax = axs
 
-                print('xeb_proba_found', xeb_proba_found)
                 if not xeb_proba_found:
-                    print('in not xeb_proba_found')
                     if isinstance(proba_exp_all, dict):
                         # 1 qb case
                         proba_exp = proba_exp_all['pe']
@@ -1321,10 +1320,10 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
             if show:
                 plt.show()
             else:
-                plt.close('all')
+                plt.close(fig)
         return return_dict
     except Exception:
-        plt.close('all')
+        plt.close(fig)
         traceback.print_exc()
         return
 
@@ -1433,11 +1432,11 @@ def calculate_optimal_nr_cycles(data_dict, idx0=0, joint_processing=False,
                 if show:
                     plt.show()
                 else:
-                    plt.close('all')
+                    plt.close(fig)
 
         return nrc_opt_all
     except Exception:
-        plt.close('all')
+        plt.close(fig)
         traceback.print_exc()
         return
 
@@ -1517,9 +1516,9 @@ def plot_ctrl_errors(data_dict, unitary_label, data_dict_cepc=None,
         if show:
             plt.show()
         else:
-            plt.close('all')
+            plt.close(fig)
     except Exception:
-        plt.close('all')
+        plt.close(fig)
         traceback.print_exc()
         return
 
@@ -1590,9 +1589,9 @@ def plot_opt_res(data_dict, param_labels, savefig=True, fmts=None,
         if show:
             plt.show()
         else:
-            plt.close('all')
+            plt.close(fig)
     except Exception:
-        plt.close('all')
+        plt.close(fig)
         traceback.print_exc()
         return
 
