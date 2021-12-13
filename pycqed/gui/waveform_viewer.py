@@ -5,20 +5,17 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import matplotlib.pyplot as plt
 from pycqed.measurement.waveform_control.pulsar import Pulsar
-from pycqed.gui.rc_params import gui_rc_params
+from pycqed.gui.rc_params import GUI_RC_PARAMS
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
 from matplotlib.backend_bases import _Mode
 from pycqed.gui import pulsar_shadow
 from matplotlib.backend_tools import cursors
-
 import multiprocessing as mp
 from copy import deepcopy
-import warnings
-import matplotlib.cbook
-warnings.filterwarnings('ignore', category=matplotlib.cbook.mplDeprecation)
 from itertools import chain, combinations
 from enum import Enum
-
+import logging
+log = logging.getLogger(__name__)
 
 def powerset(iterable):
     """powerset([1,2,3]) --> (), (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
@@ -47,13 +44,14 @@ class WaveformViewer:
         Initialization of the WaveformViewer object. As we can only pass pickle-able variables to the child process,
         shadow objects that have the relevant properties of the QCoDeS instruments are created and passed
         instead.
+
         Args:
             quantum_experiment (QuantumExperiment): the experiment for which the waveforms should be plotted
             sequence_index (int): index of initially displayed sequence, default is 0
             segment_index (int): index of initially displayed segment, default is 0
             rc_params (dict): modify the rc parameters of the matplotlib plotting backend. By default (if rc_params=None
-            is passed) the rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded, but they are updated by the
-            parameters passed in the rc_params dictionary
+                is passed) the rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded, but they are updated by
+                the parameters passed in the rc_params dictionary
             new_process (bool): if true the QApplication hosting the GUI will be spawned in a separate process
             **kwargs: are passed as plotting kwargs to the segment plotting method
 
@@ -62,9 +60,10 @@ class WaveformViewer:
             mp.set_start_method('spawn')
         except RuntimeError:
             if mp.get_start_method() != 'spawn':
-                warnings.warn('Child process should be spawned')
+                log.warning('Child process should be spawned')
         if QtWidgets.__package__ not in ['PySide2']:
-            warnings.warn('This GUI is optimized to run with the PySide2 Qt binding')
+            log.warning('This GUI is optimized to run with the PySide2 Qt '
+                     'binding')
         qubit_channel_maps = []
         for qset in powerset(quantum_experiment.qubits):
             if len(qset) != 0:
@@ -92,16 +91,16 @@ class WaveformViewer:
 
     def start_qapp(self, sequences, qubit_channel_maps, experiment_name, **kwargs):
         if not QtWidgets.QApplication.instance():
-            self.app = QtWidgets.QApplication(sys.argv)
+            app = QtWidgets.QApplication(sys.argv)
         else:
-            self.app = QtWidgets.QApplication.instance()
+            app = QtWidgets.QApplication.instance()
         w = WaveformViewerMainWindow(sequences, qubit_channel_maps, experiment_name, **kwargs)
-        self.app.exec_()
+        app.exec_()
 
 
-def add_label_to_widget(widget, labeltext):
-    layout = QtWidgets.QHBoxLayout()
-    label = QtWidgets.QLabel(labeltext)
+def add_label_to_widget(widget, labeltext, parent=None):
+    layout = QtWidgets.QHBoxLayout(parent=parent)
+    label = QtWidgets.QLabel(labeltext, parent=parent)
     label.setAlignment(QtCore.Qt.AlignCenter)
     layout.addWidget(label)
     layout.addWidget(widget)
@@ -119,7 +118,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         self.experiment_name = experiment_name
         self.current_sequence_index = sequence_index
         self.current_segment_index = segment_index
-        self.rc_params = deepcopy(gui_rc_params)
+        self.rc_params = deepcopy(GUI_RC_PARAMS)
         if rc_params is not None:
             self.rc_params.update(rc_params)
         self._toolbar_memory = _Mode.NONE
@@ -144,6 +143,8 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         self.selectbox_qubits.default_display_text = 'Select...'
         self.selectbox_qubits.addItems(list(self.qubit_list))
 
+        self.get_current_segment().resolve_segment()
+        self.get_current_segment().gen_elements_on_awg()
         self.instrument_list = set(self.get_current_segment().elements_on_awg)
         self.selectbox_instruments = CheckableComboBox()
         self.selectbox_instruments.default_display_text = 'Select...'
@@ -369,6 +370,9 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         if event.key() == QtCore.Qt.Key_Control:
             self.toggle_selection_button.setChecked(True)
             event.accept()
+        elif event.key() == QtCore.Qt.Key_W and event.modifiers() == QtCore.Qt.ControlModifier:
+            self.close()
+            event.accept()
 
     def keyReleaseEvent(self, event):
         if event.key() == QtCore.Qt.Key_Control:
@@ -398,6 +402,7 @@ class PulseInformationWindow(QtWidgets.QWidget):
             self._data = deepcopy(pass_information)
             self.set_table()
         self.show()
+        self.activateWindow()
 
     def set_table(self):
         while self.table.rowCount() > 0:
@@ -414,3 +419,8 @@ class PulseInformationWindow(QtWidgets.QWidget):
                 col2 = QtWidgets.QTableWidgetItem(repr(pulse_dict[key]))
                 self.table.setItem(i*len(pulse_dict)+j, 0, col1)
                 self.table.setItem(i*len(pulse_dict)+j, 1, col2)
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_W and event.modifiers() == QtCore.Qt.ControlModifier:
+            self.close()
+            event.accept()

@@ -186,9 +186,11 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         # if hierarchy of classes is out of order in gui, most likely it's
         # because there's a keyword in kw_for_task_keys that corresponds to
         # a keyword argument of a parent class of the selected experiment which
-        # is not registered in exp.gui_kwargs()['kwargs']. In this case an
-        # empty dictionary can be added to gui_kwargs()['kwargs'] in the
-        # gui_kwargs method of the parent class
+        # is not registered in exp.gui_kwargs()['kwargs']. In this case the
+        # order can be restored by adding an empty dictionary to the
+        # gui_kwargs()['kwargs'] dictionary in the gui_kwargs classmethod of
+        # the parent class, i.e. adding the parent class name as key and an
+        # empty dictionary as value to the gui_kwargs()['kwargs'] dictionary.
         task_list_fields = exp.gui_kwargs()["task_list_fields"]
         for class_name, kwarg_dict in reversed(task_list_fields.items()):
             for kwarg, field_information in kwarg_dict.items():
