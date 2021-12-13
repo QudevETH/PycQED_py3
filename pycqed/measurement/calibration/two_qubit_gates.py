@@ -564,8 +564,8 @@ class MultiTaskingExperiment(QuantumExperiment):
                         values=values, **v)
 
     @classmethod
-    def gui_kwargs(cls):
-        d = super().gui_kwargs()
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
         d['kwargs'].update({
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
@@ -720,8 +720,8 @@ class CalibBuilder(MultiTaskingExperiment):
         return sweep_points
 
     @classmethod
-    def gui_kwargs(cls):
-        d = super().gui_kwargs()
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
         d['kwargs'].update({
             CalibBuilder.__name__: odict({
                 'update': (bool, False),
@@ -1597,7 +1597,7 @@ class Chevron(CalibBuilder):
         return self.analysis
 
     @classmethod
-    def gui_kwargs(cls):
+    def gui_kwargs(cls, device):
         pulse_pars = odict({
             'pulse_length': 's',
             'amplitude': 'V',
@@ -1618,7 +1618,7 @@ class Chevron(CalibBuilder):
         pulse_pars2 = deepcopy(pulse_pars)
         pulse_pars2.pop(first_param)
         pulse_pars2[first_param] = pulse_pars[first_param]
-        d = super().gui_kwargs()
+        d = super().gui_kwargs(device)
         d['task_list_fields'].update({
             Chevron.__name__: odict({
                 'qbc': ((Qubit, 'single_select'), None),

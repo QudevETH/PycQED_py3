@@ -836,7 +836,7 @@ class QuantumExperiment(CircuitBuilder):
         self.waveform_viewer = WaveformViewer(self, **kwargs)
 
     @classmethod
-    def gui_kwargs(cls):
+    def gui_kwargs(cls, device):
         return {
             'kwargs': odict({
                 QuantumExperiment.__name__: {
@@ -848,6 +848,8 @@ class QuantumExperiment(CircuitBuilder):
                     'analyze': (bool, True),
                     'delegate_plotting': (bool, False),
                     'compression_seg_lim': (int, None),
+                    'cz_pulse_name': (set(device.two_qb_gates()),
+                                      device.two_qb_gates()[0])
                 },
             }),
             'task_list_fields': odict({}),

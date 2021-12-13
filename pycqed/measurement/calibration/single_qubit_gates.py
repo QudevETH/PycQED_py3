@@ -1603,8 +1603,8 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         pass
 
     @classmethod
-    def gui_kwargs(cls):
-        d = super().gui_kwargs()
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
         d['kwargs'].update({
             SingleQubitGateCalibExperiment.__name__: odict({})
             })
@@ -1757,8 +1757,8 @@ class Rabi(SingleQubitGateCalibExperiment):
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
 
     @classmethod
-    def gui_kwargs(cls):
-        d = super().gui_kwargs()
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
         d['task_list_fields'].update({
             Rabi.__name__: odict({
                 'n': (int, 1),
@@ -1982,8 +1982,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
 
     @classmethod
-    def gui_kwargs(cls):
-        d = super().gui_kwargs()
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
         d['kwargs'].update({
             Ramsey.__name__: odict({
                 'echo': (bool, False),

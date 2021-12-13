@@ -98,7 +98,6 @@ class QuantumExperimentGUI:
         app.exec_()
 
 
-
 class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
     def __init__(self, device, experiments, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -179,7 +178,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
 
     def add_experiment_fields(self):
         exp = self.get_selected_experiment()
-        input_field_dict = exp.gui_kwargs()["kwargs"]
+        input_field_dict = exp.gui_kwargs(self.device)["kwargs"]
         # automatically add global fields for task fields that are listed in
         # kw_for_task_keys
         # 
@@ -191,7 +190,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         # gui_kwargs()['kwargs'] dictionary in the gui_kwargs classmethod of
         # the parent class, i.e. adding the parent class name as key and an
         # empty dictionary as value to the gui_kwargs()['kwargs'] dictionary.
-        task_list_fields = exp.gui_kwargs()["task_list_fields"]
+        task_list_fields = exp.gui_kwargs(self.device)["task_list_fields"]
         for class_name, kwarg_dict in reversed(task_list_fields.items()):
             for kwarg, field_information in kwarg_dict.items():
                 if kwarg in getattr(exp, 'kw_for_task_keys', []) and \
@@ -217,7 +216,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
 
     def add_task_form(self):
         self.tasks_configuration_container.show()
-        experiment_kwargs = self.get_selected_experiment().gui_kwargs()
+        experiment_kwargs = self.get_selected_experiment().gui_kwargs(
+            self.device)
         self.tasks_configuration_container.layout().addWidget(
             TaskForm(parent=self, experiment_kwargs=experiment_kwargs))
 
@@ -249,8 +249,12 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 (Qubit, "single_select") -> SingleQubitSelectionWidget (allows
                 selection of a single qubit associated to the device object)
                 instance of list -> QComboBox (creates a single selection
-                dropdown menu) composed of the elements from the list,
-                returns the displayed value when experiment is run
+                dropdown menu composed of the elements from the list,
+                returns the displayed value when experiment is run)
+                instance of set -> QComboBox with QLineEdit (creates a
+                single selection dropdown menu composed of the elements
+                from the set while also allowing custom text input by user,
+                returns the displayed value when experiment is run)
                 instance of dict -> QComboBox (creates a single selection
                 dropdown list that displays the keys of the dictionary and
                 returns the values of the dictionary when experiment is run)
@@ -265,7 +269,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         Returns:
             An instance of the specified widget type
         """
-        experiment_kwargs = self.get_selected_experiment().gui_kwargs()
+        experiment_kwargs = self.get_selected_experiment().gui_kwargs(
+            self.device)
         if field_information[0] is str:
             widget = QtWidgets.QLineEdit()
             if field_information[1] is not None:
@@ -298,6 +303,15 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 widget.setCurrentText(field_information[1])
         elif isinstance(field_information[0], list):
             widget = QtWidgets.QComboBox()
+            widget.addItems(field_information[0])
+            if field_information[1] is not None:
+                widget.setCurrentText(field_information[1])
+            else:
+                widget.setCurrentIndex(-1)
+        elif isinstance(field_information[0], set):
+            widget = QtWidgets.QComboBox()
+            widget.setEditable(True)
+            widget.setInsertPolicy(widget.NoInsert)
             widget.addItems(field_information[0])
             if field_information[1] is not None:
                 widget.setCurrentText(field_information[1])
