@@ -9682,9 +9682,13 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
 
         mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, 
                                            independent_vars=['vi', 'vq'])
-        minimum = VI[np.argmin(data)]+ 1j*VQ[np.argmin(data)]
+        # Use two lowest values in measurements to choose
+        # initial model parameters.
+        VI_two_lowest = VI[np.argpartition(data, 2)][0:2]
+        VQ_two_lowest = VQ[np.argpartition(data, 2)][0:2]
+        minimum = - np.mean(VI_two_lowest) + 1j * np.mean(VQ_two_lowest)
         li_guess = np.abs(minimum)
-        theta_i_guess = - np.pi - cmath.phase(minimum)
+        theta_i_guess = cmath.phase(minimum)
         guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod, 
                                                      li=li_guess, 
                                                      theta_i=theta_i_guess)
@@ -9714,72 +9718,72 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         V_I = self.proc_data_dict['V_I']
         V_Q = self.proc_data_dict['V_Q']
 
-        # interpolate data for plot
-        # define grid with limits based on measurement points and make it 10 % 
-        # larger in both axes
-        size_offset_vi = 0.05*(np.max(V_I)-np.min(V_I))
-        size_offset_vq = 0.05*(np.max(V_Q)-np.min(V_Q))
-        vi = np.linspace(np.min(V_I) - size_offset_vi, 
-                         np.max(V_I) + size_offset_vi, 250)
-        vq = np.linspace(np.min(V_Q) - size_offset_vq, 
-                         np.max(V_Q) + size_offset_vq, 250)
-        V_I_plot, V_Q_plot = np.meshgrid(vi, vq)
-
-        fit_dict = self.fit_dicts['mixer_lo_leakage']
-        fit_res = fit_dict['fit_res']
-        best_values = fit_res.best_values
-        model_func = fit_dict['model'].func
-        z = model_func(V_I_plot, V_Q_plot, **best_values)
-
         timestamp = self.timestamps[0]
 
-        base_plot_name = 'mixer_lo_leakage'
-        self.plot_dicts['base_contour'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_contourf,
-            'xvals': V_I_plot,
-            'yvals': V_Q_plot,
-            'zvals': z,
-            'xlabel': 'Offset, $V_\\mathrm{I}$',
-            'ylabel': 'Offset, $V_\\mathrm{Q}$',
-            'xunit': 'V',
-            'yunit': 'V',
-            'setlabel': 'lo leakage magnitude',
-            'cmap': 'plasma',
-            'cmap_levels': 100,
-            'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBm)',
-            'title': f'{timestamp} calibrate_drive_mixer_carrier_'
-                     f'{self.qb_names[0]}'
-        }
+        if self.do_fitting:
+            # interpolate data for plot
+            # define grid with limits based on measurement points and make it 10 %
+            # larger in both axes
+            size_offset_vi = 0.05 * (np.max(V_I) - np.min(V_I))
+            size_offset_vq = 0.05 * (np.max(V_Q) - np.min(V_Q))
+            vi = np.linspace(np.min(V_I) - size_offset_vi,
+                             np.max(V_I) + size_offset_vi, 250)
+            vq = np.linspace(np.min(V_Q) - size_offset_vq,
+                             np.max(V_Q) + size_offset_vq, 250)
+            V_I_plot, V_Q_plot = np.meshgrid(vi, vq)
+            fit_dict = self.fit_dicts['mixer_lo_leakage']
+            fit_res = fit_dict['fit_res']
+            best_values = fit_res.best_values
+            model_func = fit_dict['model'].func
+            z = model_func(V_I_plot, V_Q_plot, **best_values)
 
-        self.plot_dicts['base_measurement_points'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': V_I,
-            'yvals': V_Q,
-            'color': 'white',
-            'marker': '.',
-            'linestyle': 'None',
-            'setlabel': ''
-        }
+            base_plot_name = 'mixer_lo_leakage'
+            self.plot_dicts['base_contour'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_contourf,
+                'xvals': V_I_plot,
+                'yvals': V_Q_plot,
+                'zvals': z,
+                'xlabel': 'Offset, $V_\\mathrm{I}$',
+                'ylabel': 'Offset, $V_\\mathrm{Q}$',
+                'xunit': 'V',
+                'yunit': 'V',
+                'setlabel': 'lo leakage magnitude',
+                'cmap': 'plasma',
+                'cmap_levels': 100,
+                'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBm)',
+                'title': f'{timestamp} calibrate_drive_mixer_carrier_'
+                         f'{self.qb_names[0]}'
+            }
 
-        V_I_opt = self.proc_data_dict['analysis_params_dict']['V_I']
-        V_Q_opt = self.proc_data_dict['analysis_params_dict']['V_Q']
-        self.plot_dicts['base_minimum'] = {
-            'fig_id': base_plot_name,
-            'plotfn': self.plot_line,
-            'xvals': np.array([V_I_opt]),
-            'yvals': np.array([V_Q_opt]),
-            'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
-                        '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
-            'color': 'red',
-            'marker': 'o',
-            'linestyle': 'None',
-            'do_legend': True,
-            'legend_pos': 'upper right',
-            'legend_title': None,
-            'legend_frameon': True
-        }
+            self.plot_dicts['base_measurement_points'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': V_I,
+                'yvals': V_Q,
+                'color': 'white',
+                'marker': '.',
+                'linestyle': 'None',
+                'setlabel': ''
+            }
+
+            V_I_opt = self.proc_data_dict['analysis_params_dict']['V_I']
+            V_Q_opt = self.proc_data_dict['analysis_params_dict']['V_Q']
+            self.plot_dicts['base_minimum'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([V_I_opt]),
+                'yvals': np.array([V_Q_opt]),
+                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
+                            '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
+                'color': 'red',
+                'marker': 'o',
+                'linestyle': 'None',
+                'do_legend': True,
+                'legend_pos': 'upper right',
+                'legend_title': None,
+                'legend_frameon': True
+            }
 
         for ch in ['I', 'Q']:
             plot_name = f'V_{ch}_vs_LO_magn'
@@ -9795,23 +9799,24 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'xlabel': f'Offset, $V_\\mathrm{{{ch}}}$',
                 'ylabel': 'Carrier Leakage $V_\\mathrm{LO}$',
                 'xunit': 'V',
-                'yunit': 'dBV',
+                'yunit': 'dBm',
                 'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO}}$ '
                          f'projected onto offset $V_\\mathrm{{{ch}}}$'
             }
 
-            optimum =self.proc_data_dict['analysis_params_dict']['V_'+ch]
-            y_min = np.min(leakage)
-            y_max = np.max(leakage)
-            self.plot_dicts[f'optimum_V_{ch}_vs_LO_magn'] = {
-                'fig_id': plot_name,
-                'plotfn': self.plot_line,
-                'xvals': np.array([optimum, optimum]),
-                'yvals': np.array([y_min, y_max]),
-                'color': 'red',
-                'marker': 'None',
-                'linestyle': '--'
-            }
+            if self.do_fitting:
+                optimum =self.proc_data_dict['analysis_params_dict']['V_'+ch]
+                y_min = np.min(leakage)
+                y_max = np.max(leakage)
+                self.plot_dicts[f'optimum_V_{ch}_vs_LO_magn'] = {
+                    'fig_id': plot_name,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([optimum, optimum]),
+                    'yvals': np.array([y_min, y_max]),
+                    'color': 'red',
+                    'marker': 'None',
+                    'linestyle': '--'
+                }
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9865,8 +9870,12 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             fit_mods.mixer_imbalance_sideband, 
             independent_vars=['alpha', 'phi_skew']
             )
-        g_guess = self.proc_data_dict['alpha'][np.argmin(data)]
-        phi_guess = -self.proc_data_dict['phase'][np.argmin(data)]
+        # Use two lowest values in measurements to choose
+        # initial model parameters.
+        alpha_two_lowest = self.proc_data_dict['alpha'][np.argpartition(data, 2)][0:2]
+        phi_two_lowest = self.proc_data_dict['phase'][np.argpartition(data, 2)][0:2]
+        g_guess = np.mean(alpha_two_lowest)
+        phi_guess = - np.mean(phi_two_lowest)
         guess_pars = fit_mods.mixer_imbalance_sideband_guess(
             mixer_imbalance_sideband_mod,
             g=g_guess,
@@ -9905,15 +9914,15 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                          np.max(phase) + size_offset_phase, 250)
         x, y = np.meshgrid(xi, yi)
 
-        fit_dict = self.fit_dicts['mixer_imbalance_sideband']
-        fit_res = fit_dict['fit_res']
-        best_values = fit_res.best_values
-        model_func = fit_dict['model'].func
-        z = model_func(x, y, **best_values)
-
         timestamp = self.timestamps[0]
 
         if self.do_fitting:
+            fit_dict = self.fit_dicts['mixer_imbalance_sideband']
+            fit_res = fit_dict['fit_res']
+            best_values = fit_res.best_values
+            model_func = fit_dict['model'].func
+            z = model_func(x, y, **best_values)
+
             base_plot_name = 'mixer_sideband_suppression'
             self.plot_dicts['base_contour'] = {
                 'fig_id': base_plot_name,

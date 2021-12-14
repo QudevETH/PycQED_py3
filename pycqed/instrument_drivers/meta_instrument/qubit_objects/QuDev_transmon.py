@@ -2224,7 +2224,7 @@ class QuDev_transmon(Qubit):
             no_improv_break=no_improv_break, upload=upload, plot=plot)
 
     def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
-                                            limits=(-0.15, 0.15, -0.15, 0.15),
+                                            limits=(-0.1, 0.1, -0.1, 0.1),
                                             n_meas=(10, 10), meas_grid=None,
                                             upload=True):
         """Method for calibrating the lo leakage of the drive IQ Mixer
@@ -2256,24 +2256,19 @@ class QuDev_transmon(Qubit):
                 n_meas[1] = points in V_Q.
                 Defaults to (10, 10).
             trigger_sep (float, optional): Seperation time in s between trigger
-                signals. Also see note below! Defaults to 5e-6 s.
+                signals. Defaults to 5e-6 s.
             limits (tuple, optional): Tuple, list or 1D array of length 4 
                 holding the limits of the measurement grid in case 
                 meas_grid is not provided. Ordered as follows
-                (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
-                Units: (None, None, deg, deg)
-                Defaults to (0.9, 1.1, -10, 10).
+                (min bias I, max bias I, min bias Q, max bias Q)
+                Units: Volts
+                Defaults to (-0.1, 0.1, -0.1, 0.1).
 
         Returns:
             V_I (float): DC bias on I channel that minimizes LO leakage.
             V_Q (float): DC bias on Q channel that minimizes LO leakage.
             ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
                 The MixerCarrierAnalysis object.
-
-        Note:
-            When the hack is applied that suppresses bugs of the ZI devices
-            one might need to increase the trigger seperation to values above 
-            25e-5 s.
         """
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
@@ -2324,7 +2319,7 @@ class QuDev_transmon(Qubit):
             )]])
 
         exp_metadata = {'qb_names': [self.name], 'rotate': False, 
-                        'cal_points': f"CalibrationPoints([{self.name}], [])"}
+                        'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.acq_weights_type, 'SSB'),
@@ -2348,12 +2343,12 @@ class QuDev_transmon(Qubit):
         if(ch_I_min < limits[0] or ch_I_min > limits[1]):
             log.warning('Optimum for DC bias voltage I channel is outside '
                         'the measured range and no settings will be updated. '
-                        'Best V_I according to fitting: {:.2f} mV'.format(ch_I_min*1e-3))
+                        'Best V_I according to fitting: {:.2f} mV'.format(ch_I_min*1e3))
             update = False
         if(ch_Q_min < limits[2] or ch_Q_min > limits[3]):
             log.warning('Optimum for DC bias voltage Q channel is outside '
                         'the measured range and no settings will be updated. '
-                        'Best V_Q according to fitting: {:.2f} mV'.format(ch_Q_min*1e-3))
+                        'Best V_Q according to fitting: {:.2f} mV'.format(ch_Q_min*1e3))
             update = False
 
         if update:
@@ -2523,7 +2518,8 @@ class QuDev_transmon(Qubit):
 
     def calibrate_drive_mixer_skewness_model(
             self, update=True, meas_grid=None, n_meas=(10, 10),
-            amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -10, 10), **kwargs):
+            amplitude=0.1, trigger_sep=5e-6, limits=(0.9, 1.1, -20, 20),
+            force_ro_mod_freq=False, **kwargs):
         """Method for calibrating the sideband suppression of the drive IQ Mixer
 
         The two settings that are used to calibrate the suppression of the 
@@ -2555,13 +2551,17 @@ class QuDev_transmon(Qubit):
             amplitude (float, optional): Amplitude of the IF signal in V applied
                 to the mixer during the measurement. Defaults to 0.1 V.
             trigger_sep (float, optional): Seperation time in s between trigger
-                signals. Also see note below! Defaults to 5e-6 s.
+                signals. Defaults to 5e-6 s.
             limits (tuple, optional): Tuple, list or 1D array of length 4 
                 holding the limits of the measurement grid in case 
                 meas_grid is not provided. Ordered as follows
                 (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
                 Units: (None, None, deg, deg)
-                Defaults to (0.9, 1.1, -10, 10).
+                Defaults to (0.9, 1.1, -20, 20).
+            force_ro_mod_freq (bool, optional): Whether to force the current
+                ro_mod_freq setting even though it results in non
+                commensurable LO frequencies for the specified trigger_sep.
+                Defaults to false.
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
@@ -2596,35 +2596,9 @@ class QuDev_transmon(Qubit):
 
         MC = self.instr_mc.get_instr()
 
-        s1 = swf.Hard_Sweep()
-        s1.name = 'Amplitude ratio hardware sweep'
-        s1.parameter_name = r'Amplitude ratio, $\alpha$'
-        s1.unit = ''
-        s2 = swf.Hard_Sweep()
-        s2.name = 'Phase skew hardware sweep'
-        s2.parameter_name = r'Phase skew, $\phi$'
-        s2.unit = 'deg'
-        MC.set_sweep_functions([s1, s2])
-        MC.set_sweep_points(meas_grid.T)
+        exp_metadata = {'qb_names': [self.name], 'rotate': False,
+                        'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
 
-        pulse_list_list = []
-        for alpha, phi_skew in meas_grid.T:
-            pulse_list_list.append([self.get_acq_pars(), dict(
-                        pulse_type='GaussFilteredCosIQPulse',
-                        pulse_length=self.acq_length(),
-                        ref_point='start',
-                        amplitude=amplitude,
-                        I_channel=self.ge_I_channel(),
-                        Q_channel=self.ge_Q_channel(),
-                        mod_frequency=self.ge_mod_freq(),
-                        phase_lock=False,
-                        alpha=alpha,
-                        phi_skew=phi_skew,
-                    )])
-        sq.pulse_list_list_seq(pulse_list_list)
-
-        exp_metadata = {'qb_names': [self.name], 'rotate': False, 
-                        'cal_points': f"CalibrationPoints([{self.name}], [])"}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset
@@ -2632,6 +2606,22 @@ class QuDev_transmon(Qubit):
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
             *self._drive_mixer_calibration_tmp_vals()
         ):
+            pulse_list_list = []
+            for alpha, phi_skew in meas_grid.T:
+                pulse_list_list.append([self.get_acq_pars(), dict(
+                            pulse_type='GaussFilteredCosIQPulse',
+                            pulse_length=self.acq_length(),
+                            ref_point='start',
+                            amplitude=amplitude,
+                            I_channel=self.ge_I_channel(),
+                            Q_channel=self.ge_Q_channel(),
+                            mod_frequency=self.ge_mod_freq(),
+                            phase_lock=False,
+                            alpha=alpha,
+                            phi_skew=phi_skew,
+                        )])
+            seq = sq.pulse_list_list_seq(pulse_list_list)
+
             self.prepare(drive='timedomain', switch='calib')
 
             # Check commensurability of LO frequencies with trigger sep.
@@ -2642,18 +2632,32 @@ class QuDev_transmon(Qubit):
             # Frequency of the LO phases is given by the LOs beat frequency.
             beat_freq = 0.5*(dr_lo_freq - ro_lo_freq)
             #         = 0.5*(ge_mod_freq + ro_mod_freq) in our case
-            beats_per_trigger = beat_freq * trigger_sep
+            beats_per_trigger = np.round(beat_freq * trigger_sep,
+                                         int(np.floor(np.log10(1/trigger_sep)))+2)
             if not beats_per_trigger.is_integer():
-                beats_per_trigger = int(beats_per_trigger + 0.5)
-                ro_mod_freq = 2 * beats_per_trigger/trigger_sep \
-                              - self.ge_mod_freq()
                 log.warning('Difference of RO LO and drive LO frequency '
                             'resulting from the chosen modulation frequencies '
                             'is not an integer multiple of the trigger '
-                            'seperation. To ensure commensurability the RO ' 'modulation frequency will temporarily be set '
-                            'to {} Hz.'.format(self.ro_mod_freq()))
-                self.prepare(drive='timedomain', switch='calib')
+                            'seperation.')
+                if not force_ro_mod_freq:
+                    beats_per_trigger = int(beats_per_trigger + 0.5)
+                    self.ro_mod_freq(2 * beats_per_trigger/trigger_sep \
+                                     - self.ge_mod_freq())
+                    log.warning('To ensure commensurability the RO ' 
+                                'modulation frequency will temporarily be set '
+                                'to {} Hz.'.format(self.ro_mod_freq()))
+                    self.prepare(drive='timedomain', switch='calib')
 
+            s1 = awg_swf.SegmentHardSweep(sequence=seq,
+                                          parameter_name=r'Amplitude ratio, $\alpha$',
+                                          unit='')
+            s1.name = 'Amplitude ratio hardware sweep'
+            s2 = awg_swf.SegmentHardSweep(sequence=seq,
+                                          parameter_name=r'Phase skew, $\phi$',
+                                          unit='deg')
+            s2.name = 'Phase skew hardware sweep'
+            MC.set_sweep_functions([s1, s2])
+            MC.set_sweep_points(meas_grid.T)
             MC.set_detector_function(self.int_avg_det)
             MC.run(name='drive_skewness_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
