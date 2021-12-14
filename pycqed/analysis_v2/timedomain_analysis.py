@@ -9721,9 +9721,9 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         timestamp = self.timestamps[0]
 
         if self.do_fitting:
-            # interpolate data for plot
-            # define grid with limits based on measurement points and make it 10 %
-            # larger in both axes
+            # interpolate data for plot,
+            # define grid with limits based on measurement 
+            # points and make it 10 % larger in both axes
             size_offset_vi = 0.05 * (np.max(V_I) - np.min(V_I))
             size_offset_vq = 0.05 * (np.max(V_Q) - np.min(V_Q))
             vi = np.linspace(np.min(V_I) - size_offset_vi,
@@ -9852,15 +9852,25 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         else:
             alpha = hsp
             phase = ssp
-
-        sideband_dBV_amp = 20*np.log10(np.sqrt(sideband_I**2 + sideband_Q**2))
+        
+        # Conversion from V_peak -> V_RMS 
+        #   V_RMS = sqrt(V_peak_I^2 + V_peak_Q^2)/sqrt(2)
+        # Conversion to P (dBm):
+        #   P = V_RMS^2 / 50 Ohms
+        #   P (dBm) = 10 * log10(P / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2 / 50 Ohms / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2) - 10 * log10(50 Ohms * 1 mW)
+        #   P (dBm) = 10 * log10(V_peak_I^2 + V_peak_Q^2) 
+        #             - 10 * log10(2 * 50 Ohms * 1 mW)
+        sideband_dBm_amp = 10 * np.log10(sideband_I**2 + sideband_Q**2)
+                           - 10 * np.log10(2 * 50 * 1e-3)
 
         self.proc_data_dict['alpha'] = alpha
         self.proc_data_dict['phase'] = phase
         self.proc_data_dict['sideband_I'] = sideband_I
         self.proc_data_dict['sideband_Q'] = sideband_Q
-        self.proc_data_dict['sideband_dBV_amp'] = sideband_dBV_amp
-        self.proc_data_dict['data_to_fit'] = sideband_dBV_amp
+        self.proc_data_dict['sideband_dBm_amp'] = sideband_dBm_amp
+        self.proc_data_dict['data_to_fit'] = sideband_dBm_amp
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -9904,19 +9914,19 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         alpha = pdict['alpha']
         phase = pdict['phase']
 
-        # define grid with limits based on measurement points and make it 10 % 
-        # larger in both axes
-        size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
-        size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
-        xi = np.linspace(np.min(alpha) - size_offset_alpha, 
-                         np.max(alpha) + size_offset_alpha, 250)
-        yi = np.linspace(np.min(phase) - size_offset_phase, 
-                         np.max(phase) + size_offset_phase, 250)
-        x, y = np.meshgrid(xi, yi)
-
         timestamp = self.timestamps[0]
 
         if self.do_fitting:
+            # define grid with limits based on measurement points 
+            # and make it 10 % larger in both axes
+            size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
+            size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
+            xi = np.linspace(np.min(alpha) - size_offset_alpha, 
+                            np.max(alpha) + size_offset_alpha, 250)
+            yi = np.linspace(np.min(phase) - size_offset_phase, 
+                            np.max(phase) + size_offset_phase, 250)
+            x, y = np.meshgrid(xi, yi)
+
             fit_dict = self.fit_dicts['mixer_imbalance_sideband']
             fit_res = fit_dict['fit_res']
             best_values = fit_res.best_values
@@ -9976,14 +9986,14 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'fig_id': raw_alpha_plot_name,
             'plotfn': self.plot_line,
             'xvals': alpha,
-            'yvals': pdict['sideband_dBV_amp'],
+            'yvals': pdict['sideband_dBm_amp'],
             'color': 'blue',
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
             'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
             'xunit': '',
-            'yunit': 'dBV',
+            'yunit': 'dBm',
             'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
                      f'projected onto ampl. ratio $\\alpha_\\mathrm{{IQ}}$'
         }
@@ -9993,8 +10003,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fig_id': raw_alpha_plot_name,
                 'plotfn': self.plot_line,
                 'xvals': np.array([alpha_min, alpha_min]),
-                'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
-                                np.max(pdict['sideband_dBV_amp'])]),
+                'yvals': np.array([np.min(pdict['sideband_dBm_amp']),
+                                np.max(pdict['sideband_dBm_amp'])]),
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--'
@@ -10005,14 +10015,14 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             'fig_id': raw_phase_plot_name,
             'plotfn': self.plot_line,
             'xvals': phase,
-            'yvals': pdict['sideband_dBV_amp'],
+            'yvals': pdict['sideband_dBm_amp'],
             'color': 'blue',
             'marker': '.',
             'linestyle': 'None',
             'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
             'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
             'xunit': 'deg',
-            'yunit': 'dBV',
+            'yunit': 'dBm',
             'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
                      f'projected onto phase offset $\\Delta\\phi_\\mathrm{{IQ}}$'
         }
@@ -10022,8 +10032,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fig_id': raw_phase_plot_name,
                 'plotfn': self.plot_line,
                 'xvals': np.array([phase_min, phase_min]),
-                'yvals': np.array([np.min(pdict['sideband_dBV_amp']),
-                                np.max(pdict['sideband_dBV_amp'])]),
+                'yvals': np.array([np.min(pdict['sideband_dBm_amp']),
+                                np.max(pdict['sideband_dBm_amp'])]),
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--'
