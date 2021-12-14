@@ -9862,7 +9862,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         #   P (dBm) = 10 * log10(V_RMS^2) - 10 * log10(50 Ohms * 1 mW)
         #   P (dBm) = 10 * log10(V_peak_I^2 + V_peak_Q^2) 
         #             - 10 * log10(2 * 50 Ohms * 1 mW)
-        sideband_dBm_amp = 10 * np.log10(sideband_I**2 + sideband_Q**2)
+        sideband_dBm_amp = 10 * np.log10(sideband_I**2 + sideband_Q**2) \
                            - 10 * np.log10(2 * 50 * 1e-3)
 
         self.proc_data_dict['alpha'] = alpha
