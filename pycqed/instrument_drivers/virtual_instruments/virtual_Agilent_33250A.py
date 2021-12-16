@@ -4,12 +4,13 @@ from qcodes.utils.validators import Numbers, Enum, MultiType
 
 log = logging.getLogger(__name__)
 
-class Virtual_Agilent_33250A(Instrument):
+class Virtual_Agilent_33250A(Instrument):  
     """
-    This is the driver code for the virtual Agilent 33250A AWG.
+    Driver code for virtual Agilent 33250A trigger.
 
-    Status: Not tested
+    Status: tested on virtual BF1
 
+    Based on Agilent_33250A class
     Only most commonly used commands of the device integrated at this stage.
     """
     def __init__(self, name, address=None, **kwargs):
@@ -93,6 +94,9 @@ class Virtual_Agilent_33250A(Instrument):
         self.connect_message()
     
     def reset(self):
+        """
+        pass
+        """
         pass
 
     def start(self, **kw):
@@ -105,5 +109,8 @@ class Virtual_Agilent_33250A(Instrument):
         pass
     
     def stop(self):
+        """
+        pass
+        """
         pass
     
