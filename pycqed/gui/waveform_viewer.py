@@ -65,56 +65,114 @@ class WaveformViewer:
             plotting method
 
         """
+        if QtWidgets.__package__ not in ['PySide2']:
+            log.warning('This GUI is optimized to run with the PySide2 Qt '
+                        'binding')
+        self.experiment_name = quantum_experiment.experiment_name
+        self.qubit_channel_maps = []
+        # get all qubit objects corresponding to the qubit names returned by
+        # quantum_experiment.get_qubits[1]
+        qubits = quantum_experiment.dev.get_qubits(
+            quantum_experiment.get_qubits()[1])
+        for qset in powerset(qubits):
+            if len(qset) != 0:
+                channel_map = {}
+                [channel_map.update(qb.get_channel_map()) for qb in qset]
+                self.qubit_channel_maps.append(channel_map)
+        self.sequences = deepcopy(quantum_experiment.sequences)
+        self.pass_kwargs = {}
+        self.pass_kwargs.update(kwargs)
+        self.pass_kwargs.update({
+            'sequence_index': sequence_index,
+            'segment_index': segment_index,
+            'rc_params': rc_params if rc_params is not None else {}
+        })
+        self.new_process = new_process
+        if self.new_process:
+            self._prepare_new_process()
+            self.main_window = None
+        else:
+            self._prepare_main_window()
+            self.p_shadow = None
+        self.spawn_waveform_viewer()
+
+    def _prepare_main_window(self):
+        self.main_window = WaveformViewerMainWindow(
+            self.sequences, self.qubit_channel_maps,
+            self.experiment_name, **self.pass_kwargs
+        )
+
+    def _prepare_new_process(self):
         try:
             mp.set_start_method('spawn')
         except RuntimeError:
             if mp.get_start_method() != 'spawn':
                 log.warning('Child process should be spawned')
-        if QtWidgets.__package__ not in ['PySide2']:
-            log.warning('This GUI is optimized to run with the PySide2 Qt '
-                     'binding')
-        qubit_channel_maps = []
-        for qset in powerset(quantum_experiment.qubits):
-            if len(qset) != 0:
-                channel_map = {}
-                [channel_map.update(qb.get_channel_map()) for qb in qset]
-                qubit_channel_maps.append(channel_map)
-        sequences = deepcopy(quantum_experiment.sequences)
-        pass_kwargs = deepcopy(kwargs)
-        pass_kwargs.update({'sequence_index': sequence_index,
-                            'segment_index': segment_index,
-                            'rc_params': rc_params})
+        # pulsar object can't be pickled (and thus can't be passed to
+        # new process), pass PulsarShadow object instead
+        self.p_shadow = pulsar_shadow.PulsarShadow(Pulsar.get_instance())
+        for seq in self.sequences:
+            seq.pulsar = self.p_shadow
+            for seg in seq.segments.values():
+                seg.pulsar = self.p_shadow
 
-        if new_process:
-            # pulsar object can't be pickled (and thus can't be passed to
-            # new process), pass PulsarShadow object instead
-            p_shadow = pulsar_shadow.PulsarShadow(Pulsar.get_instance())
-            for seq in sequences:
-                seq.pulsar = p_shadow
-                for segname, seg in seq.segments.items():
-                    seg.pulsar = p_shadow
-            self.process = mp.Process(
-                name='pycqed_gui',
-                target=self.start_qapp,
-                args=(sequences, qubit_channel_maps,
-                      quantum_experiment.experiment_name),
-                kwargs=pass_kwargs
+    def _update_kwargs(self, rc_params, **kwargs):
+        if rc_params is not None:
+            if self.main_window is not None:
+                self.main_window.rc_params.update(rc_params)
+            self.pass_kwargs['rc_params'].update(rc_params)
+        if kwargs:
+            if self.main_window is not None:
+                self.main_window.plot_kwargs = deepcopy(kwargs)
+            self.pass_kwargs.update(kwargs)
+        if any([kwargs, rc_params is not None]) \
+                and self.main_window is not None:
+            self.main_window.on_change()
+
+    def spawn_waveform_viewer(self, rc_params=None, new_process=None,
+                              **kwargs):
+        if new_process is not None:
+            self.new_process = new_process
+        self._update_kwargs(rc_params=rc_params, **kwargs)
+        if self.new_process:
+            if self.p_shadow is None:
+                self._prepare_new_process()
+            process = mp.Process(
+                name='pycqed_waveform_viewer',
+                target=start_qapp_in_new_process,
+                args=(self.sequences, self.qubit_channel_maps,
+                      self.experiment_name, self.pass_kwargs),
             )
-            self.process.daemon = False
-            self.process.start()
+            process.daemon = False
+            process.start()
         else:
-            self.start_qapp(sequences, qubit_channel_maps,
-                            quantum_experiment.experiment_name, **pass_kwargs)
+            if self.main_window is None:
+                self._prepare_main_window()
+            self._start_qapp()
 
-    def start_qapp(self, sequences, qubit_channel_maps, experiment_name,
-                   **kwargs):
+    def _start_qapp(self):
         if not QtWidgets.QApplication.instance():
             app = QtWidgets.QApplication(sys.argv)
         else:
             app = QtWidgets.QApplication.instance()
-        w = WaveformViewerMainWindow(sequences, qubit_channel_maps,
-                                     experiment_name, **kwargs)
+        self.main_window.showMaximized()
+        QtWidgets.QApplication.processEvents()
+        self.main_window.trigger_resize_event()
         app.exec_()
+
+
+def start_qapp_in_new_process(sequences, qubit_channel_maps,
+                               experiment_name, pass_kwargs):
+    if not QtWidgets.QApplication.instance():
+        app = QtWidgets.QApplication(sys.argv)
+    else:
+        app = QtWidgets.QApplication.instance()
+    main_window = WaveformViewerMainWindow(
+        sequences, qubit_channel_maps,
+        experiment_name, **pass_kwargs
+    )
+    main_window.showMaximized()
+    app.exec_()
 
 
 def add_label_to_widget(widget, labeltext, parent=None):
@@ -127,7 +185,7 @@ def add_label_to_widget(widget, labeltext, parent=None):
     return layout
 
 
-class WaveformViewerMainWindow(QtWidgets.QMainWindow):
+class WaveformViewerMainWindow(QtWidgets.QWidget):
 
     def __init__(self, sequences, qubit_channel_maps, experiment_name,
                  sequence_index=0, segment_index=0,  rc_params=None,
@@ -144,11 +202,9 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
             self.rc_params.update(rc_params)
         self._toolbar_memory = _Mode.NONE
 
-        self.frame = QtWidgets.QWidget()
-        self.setCentralWidget(self.frame)
-        self.frame.setLayout(QtWidgets.QVBoxLayout())
-        self.frame.layout().setContentsMargins(0, 5, 0, 5)
-        self.frame.layout().setSpacing(0)
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setContentsMargins(0, 5, 0, 5)
+        self.layout().setSpacing(0)
 
         self.cbox_sequence_indices = QtWidgets.QComboBox()
         self.cbox_sequence_indices.addItems(
@@ -190,7 +246,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
             PLOT_OPTIONS.SHAREX.value)).setCheckState(QtCore.Qt.Checked)
 
         if kwargs:
-            self.plot_kwargs = deepcopy(kwargs)
+            self.plot_kwargs = kwargs
         else:
             self.plot_kwargs = None
         self.gui_kwargs = {
@@ -201,11 +257,11 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         fig, axes = self.get_experiment_plot()
         self.view = FigureCanvasQTAgg(fig)
         self.view.draw()
-        self.scroll = QtWidgets.QScrollArea(self.frame)
+        self.scroll = QtWidgets.QScrollArea(self)
         self.scroll.setWidget(self.view)
         self.scroll.setWidgetResizable(True)
         self.view.setMinimumSize(800, 400)
-        self.toolbar = NavigationToolbar2QT(self.view, self.frame)
+        self.toolbar = NavigationToolbar2QT(self.view, self)
 
         self.toggle_selection_button = QtWidgets.QPushButton('&Select Waveform')
         self.toggle_selection_button.setCheckable(True)
@@ -226,7 +282,28 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
             lambda: self.on_change(caller_id='qubits_change'))
         self.selectbox_instruments.model().dataChanged.connect(self.on_change)
 
-        self.showMaximized()
+    def set_layout(self):
+        input_widgets = [add_label_to_widget(self.cbox_sequence_indices,
+                                             'Sequence: '),
+                         add_label_to_widget(self.cbox_segment_indices,
+                                             'Segment: '),
+                         add_label_to_widget(self.selectbox_qubits,
+                                             'Qubits: '),
+                         add_label_to_widget(self.selectbox_instruments,
+                                             'Instruments: '),
+                         add_label_to_widget(self.plot_options,
+                                             'Plot Options: '),
+                         ]
+
+        input_layout = QtWidgets.QHBoxLayout()
+        for input_widget in input_widgets:
+            input_layout.addLayout(input_widget)
+        input_layout.addWidget(self.toggle_selection_button)
+        input_layout.setSpacing(50)
+
+        self.layout().addWidget(self.toolbar)
+        self.layout().addWidget(self.scroll)
+        self.layout().addLayout(input_layout)
 
     def on_toolbar_selection(self):
         if self.toggle_selection_button.isChecked():
@@ -288,7 +365,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         self.toggle_selection_button.setChecked(False)
 
     def on_change(self, caller_id=None):
-        QtWidgets.QApplication.instance().setOverrideCursor(
+        QtWidgets.QApplication.setOverrideCursor(
             QtGui.QCursor(QtCore.Qt.WaitCursor))
         self.current_segment_index = self.cbox_segment_indices.currentIndex()
         self.current_sequence_index = self.cbox_sequence_indices.currentIndex()
@@ -309,7 +386,7 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
 
         self.setWindowTitle(self.get_window_title_string())
         self.trigger_resize_event()
-        QtWidgets.QApplication.instance().restoreOverrideCursor()
+        QtWidgets.QApplication.restoreOverrideCursor()
 
     def reload_segment_keys(self):
         self.cbox_segment_indices.blockSignals(True)
@@ -361,29 +438,6 @@ class WaveformViewerMainWindow(QtWidgets.QMainWindow):
         self.toolbar._pan_info = None
         self.toolbar._zoom_info = None
         self.toolbar.update()
-
-    def set_layout(self):
-        input_widgets = [add_label_to_widget(self.cbox_sequence_indices,
-                                             'Sequence: '),
-                         add_label_to_widget(self.cbox_segment_indices,
-                                             'Segment: '),
-                         add_label_to_widget(self.selectbox_qubits,
-                                             'Qubits: '),
-                         add_label_to_widget(self.selectbox_instruments,
-                                             'Instruments: '),
-                         add_label_to_widget(self.plot_options,
-                                             'Plot Options: '),
-                         ]
-
-        input_layout = QtWidgets.QHBoxLayout()
-        for input_widget in input_widgets:
-            input_layout.addLayout(input_widget)
-        input_layout.addWidget(self.toggle_selection_button)
-        input_layout.setSpacing(50)
-
-        self.frame.layout().addWidget(self.toolbar)
-        self.frame.layout().addWidget(self.scroll)
-        self.frame.layout().addLayout(input_layout)
 
     def get_window_title_string(self):
         return self.experiment_name
@@ -472,7 +526,7 @@ class PulseInformationWindow(QtWidgets.QWidget):
 
     def display_window(self, pass_information=None):
         if pass_information is not None:
-            self._data = deepcopy(pass_information)
+            self._data = pass_information
             self.set_table()
         self.show()
         self.activateWindow()

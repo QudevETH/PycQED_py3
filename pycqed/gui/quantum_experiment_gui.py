@@ -72,33 +72,34 @@ class QuantumExperimentGUI:
         """
         self.device = device
         self.experiments = []
-        self.spawn_gui(**kwargs)
+        self.main_window = QuantumExperimentGUIMainWindow(
+            self.device, self.experiments, **kwargs
+        )
+        self.main_window.setStyleSheet("""
+                QPushButton {
+                    min-width:75px;
+                    max-width:100px;
+                    min-height:20px;
+                    border:1px solid black;
+                    border-radius:5px;
+                }
+                QGroupBox {
+                    font-weight: bold;
+                }
+                """)
+        self.spawn_gui()
 
-    def spawn_gui(self, **kwargs):
-        QuantumExperimentGUI._instance = self
+    def spawn_gui(self):
         if not QtWidgets.QApplication.instance():
             app = QtWidgets.QApplication(sys.argv)
         else:
             app = QtWidgets.QApplication.instance()
-        w = QuantumExperimentGUIMainWindow(self.device, self.experiments,
-                                           **kwargs)
-        w.setStyleSheet("""
-        QPushButton {
-            min-width:75px;
-            max-width:100px;
-            min-height:20px;
-            border:1px solid black;
-            border-radius:5px;
-        }
-        QGroupBox {
-            font-weight: bold;
-        }
-        """)
-        w.showMaximized()
+
+        self.main_window.showMaximized()
         app.exec_()
 
 
-class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
+class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
     def __init__(self, device, experiments, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle("Quantum Experiment GUI")
@@ -108,13 +109,14 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.boldfont = QtGui.QFont()
         self.boldfont.setBold(True)
 
-        QtWidgets.QApplication.instance().restoreOverrideCursor()
+        # TODO: delete once it has become redundant in waveform viewer
+        QtWidgets.QApplication.restoreOverrideCursor()
 
-        self.scroll = QtWidgets.QScrollArea()
-        self.setCentralWidget(self.scroll)
+        # container for general options (experiment class dropdown, add tasks
+        # button, qubit selection dropdown)
         self.mainWidget = QtWidgets.QWidget()
-        self.scroll.setLayout(QtWidgets.QVBoxLayout())
-        self.scroll.layout().addWidget(self.mainWidget)
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().addWidget(self.mainWidget)
         self.mainWidget.setLayout(QtWidgets.QVBoxLayout())
 
         self.cbox_experiment_options = QtWidgets.QComboBox()
@@ -122,14 +124,12 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             [member.value.__name__ for member in ExperimentTypes])
         self.cbox_experiment_options.setCurrentIndex(-1)
 
+        self.add_task_form_button = QtWidgets.QPushButton("&Add")
+        self.add_task_form_button.setEnabled(False)
+
         self.selectbox_qubits = MultiQubitSelectionWidget(
             [qb.name for qb in self.device.get_qubits()])
 
-        self.add_task_form_button = QtWidgets.QPushButton("&Add")
-        self.add_task_form_button.setEnabled(False)
-        self.add_task_form_button.clicked.connect(self.add_task_form)
-
-        self.experiment_widget_container = QtWidgets.QFormLayout()
         self.general_options_field_container = QtWidgets.QFormLayout()
         self.general_options_field_container.addRow(
             "Choose Experiment: ", self.cbox_experiment_options)
@@ -139,32 +139,62 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.general_options_field_container.addRow(
             "Choose Qubits: ", self.selectbox_qubits)
 
+        # container for configuring the task list
         self.tasks_configuration_container = QtWidgets.QGroupBox(
             "Configure Tasks")
         self.tasks_configuration_container.setLayout(QtWidgets.QHBoxLayout())
         self.tasks_configuration_container.hide()
 
+        # container for the experiment dependent configuration options
+        self.experiment_widget_container = QtWidgets.QFormLayout()
+
+        # run experiment button and spinning wheel
         self.run_experiment_pushbutton = QtWidgets.QPushButton(
             "&Run Experiment")
-        self.run_experiment_pushbutton.clicked.connect(self.run_experiment)
-        self.run_experiment_pushbutton.hide()
+        self.run_waiting_label = QtWidgets.QLabel()
+        self.run_waiting_animation = QtGui.QMovie(
+            "pycqed/gui/assets/spinner_animation.gif")
+        self.run_waiting_animation.setScaledSize(QtCore.QSize(40, 40))
+        self.run_waiting_label.setMovie(self.run_waiting_animation)
+        self.run_waiting_label.hide()
+        self.run_experiment_container = QtWidgets.QWidget()
+        self.run_experiment_container.setLayout(QtWidgets.QHBoxLayout())
+        self.run_experiment_container.layout().addWidget(
+            self.run_experiment_pushbutton, QtCore.Qt.AlignLeft)
+        self.run_experiment_container.layout().addWidget(
+            self.run_waiting_label, QtCore.Qt.AlignLeft)
+        self.run_experiment_container.layout().addStretch()
+        self.run_experiment_container.hide()
 
+        # message box
         self.message_textedit = ScrollLabelFixedLineHeight(number_of_lines=6)
 
-        self.main_vbox_elements = [
-            self.general_options_field_container,
-            self.experiment_widget_container,
-        ]
-        [self.mainWidget.layout().addLayout(element) 
-         for element in self.main_vbox_elements]
+        self.set_layout()
+        self.connect_widgets()
 
-        self.mainWidget.layout().insertWidget(
-            1, self.tasks_configuration_container)
-        self.mainWidget.layout().addWidget(self.run_experiment_pushbutton)
-        self.mainWidget.layout().addWidget(self.message_textedit)
-
+    def connect_widgets(self):
         self.cbox_experiment_options.currentIndexChanged.connect(
             self.handle_experiment_choice)
+        self.add_task_form_button.clicked.connect(self.add_task_form)
+        self.run_experiment_pushbutton.clicked.connect(self.run_experiment)
+
+    def set_layout(self):
+        main_vbox_elements = [
+            (self.general_options_field_container, 'layout'),
+            (None, 'stretch'),
+            (self.tasks_configuration_container, 'widget'),
+            (self.experiment_widget_container, 'layout'),
+            (None, 'stretch'),
+            (self.run_experiment_container, 'widget'),
+            (self.message_textedit, 'widget')
+        ]
+        for element, type in main_vbox_elements:
+            if type == 'widget':
+                self.mainWidget.layout().addWidget(element)
+            elif type == 'layout':
+                self.mainWidget.layout().addLayout(element)
+            elif type == 'stretch':
+                self.mainWidget.layout().addStretch()
 
     def handle_experiment_choice(self):
         self.add_task_form_button.setEnabled(True)
@@ -172,9 +202,6 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         clear_layout(self.tasks_configuration_container.layout())
         self.tasks_configuration_container.hide()
         self.add_experiment_fields()
-        # TODO: dynamic sizing of window does not yet work
-        self.mainWidget.adjustSize()
-        self.scroll.adjustSize()
 
     def add_experiment_fields(self):
         exp = self.get_selected_experiment()
@@ -206,7 +233,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 self.experiment_widget_container.addRow(class_name_label)
             for kwarg, field_information in kwarg_dict.items():
                 self.add_widget_to_experiment_section(kwarg, field_information)
-        self.run_experiment_pushbutton.show()
+        self.run_experiment_container.show()
 
     def add_widget_to_experiment_section(self, kwarg, field_information):
         widget = self.create_field_from_field_information(field_information)
@@ -372,6 +399,9 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             return None
 
     def run_experiment(self):
+        self.run_experiment_pushbutton.setEnabled(False)
+        self.run_waiting_animation.start()
+        self.run_waiting_label.show()
         experiment = self.get_selected_experiment()
         experiment_settings_kwargs = self.get_QFormLayout_settings(
             self.experiment_widget_container)
@@ -380,25 +410,35 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         task_list = self.get_task_list()
         if not len(task_list):
             task_list = None
-        argument_string = (f"Arguments:\n"
-                           f"  task list:\n"
-                           f"  {task_list}\n"
-                           f"  experiment settings:\n"
-                           f"  {experiment_settings_kwargs}\n"
-                           f"  qubits:\n"
-                           f"  {qubits}")
         self.message_textedit.clear_and_set_text(
-            "Running Experiment...\n"
-            "\n"
-            f"{argument_string}"
+            "Running Experiment..."
             )
-        QtWidgets.QApplication.instance().setOverrideCursor(
-            QtGui.QCursor(QtCore.Qt.WaitCursor))
-        experiment = experiment(task_list=task_list,
-                                     qubits=qubits,
-                                     dev=self.device,
-                                     **experiment_settings_kwargs)
-        QtWidgets.QApplication.instance().restoreOverrideCursor()
+        # performing the experiment in a separate thread has the advantage
+        # of making the gui main window responsive while the experiment is
+        # being performed
+        self.run_experiment_thread = QtCore.QThread()
+        self.run_experiment_worker = RunExperimentWorker(
+            experiment, task_list, qubits, self.device,
+            experiment_settings_kwargs
+        )
+        self.run_experiment_worker.moveToThread(self.run_experiment_thread)
+
+        self.run_experiment_worker.finished_experiment.connect(
+            self.handle_experiment_result)
+        self.run_experiment_thread.started.connect(
+            self.run_experiment_worker.run_experiment)
+        self.run_experiment_worker.finished_experiment.connect(
+            self.run_experiment_thread.quit)
+        self.run_experiment_worker.finished_experiment.connect(
+            self.run_experiment_worker.deleteLater)
+        self.run_experiment_thread.finished.connect(
+            self.run_experiment_thread.deleteLater)
+        self.run_experiment_thread.start()
+
+    @QtCore.Slot(object, str)
+    def handle_experiment_result(self, experiment, argument_string):
+        self.run_waiting_animation.stop()
+        self.run_waiting_label.hide()
         if experiment.exception is not None:
             self.message_textedit.clear_and_set_text(
                 "Experiment could not be performed"
@@ -419,6 +459,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 "\n"
                 f"{argument_string}")
             self.experiments.append(experiment)
+        self.run_experiment_pushbutton.setEnabled(True)
 
     def get_QFormLayout_settings(self, QFormLayoutInstance):
         settings_dict = {}
@@ -449,6 +490,36 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             event.accept()
 
 
+class RunExperimentWorker(QtCore.QObject):
+    finished_experiment = QtCore.Signal(object, str)
+
+    def __init__(self, experiment, task_list, qubits, dev,
+                 experiment_settings_kwargs):
+        super().__init__()
+        self.experiment = experiment
+        self.task_list = task_list
+        self.qubits = qubits
+        self.dev = dev
+        self.experiment_settings_kwargs = experiment_settings_kwargs
+        self.return_experiment = None
+        self.argument_string = (f"Arguments:\n"
+                                f"  task list:\n"
+                                f"    {task_list}\n"
+                                f"  experiment settings:\n"
+                                f"    {experiment_settings_kwargs}\n"
+                                f"  qubits:\n"
+                                f"    {qubits}")
+
+    def run_experiment(self):
+        self.return_experiment = self.experiment(
+            task_list=self.task_list,
+            qubits=self.qubits,
+            dev=self.dev,
+            **self.experiment_settings_kwargs)
+        self.finished_experiment.emit(self.return_experiment,
+                                      self.argument_string)
+
+
 class SweepPointsDialog(QtWidgets.QDialog):
     def __init__(self, sweep_parameters, parent, gui=None):
         super().__init__(parent=parent)
@@ -473,6 +544,7 @@ class SweepPointsDialog(QtWidgets.QDialog):
         self.layout().addWidget(self.add_sweep_points_button)
         self.sweep_points_list = []
         self.add_sweep_points_button.clicked.connect(self.add_sweep_points)
+        self.add_sweep_points()
         self.layout().addWidget(self.buttonBox)
         self.resize(self.minimumSizeHint())
 

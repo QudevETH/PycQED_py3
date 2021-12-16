@@ -833,7 +833,10 @@ class QuantumExperiment(CircuitBuilder):
         return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
 
     def spawn_waveform_viewer(self, **kwargs):
-        self.waveform_viewer = WaveformViewer(self, **kwargs)
+        if self.waveform_viewer is None:
+            self.waveform_viewer = WaveformViewer(self, **kwargs)
+        else:
+            self.waveform_viewer.spawn_waveform_viewer()
 
     @classmethod
     def gui_kwargs(cls, device):
