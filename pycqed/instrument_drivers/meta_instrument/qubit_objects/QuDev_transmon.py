@@ -2308,15 +2308,6 @@ class QuDev_transmon(Qubit):
             self.ge_Q_channel())]
         MC.set_sweep_functions([chI_par, chQ_par])
         MC.set_sweep_points(meas_grid.T)
-        if upload:
-            sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
-                pulse_type='GaussFilteredCosIQPulse',
-                pulse_length=self.acq_length(),
-                ref_point='start',
-                amplitude=0,
-                I_channel=self.ge_I_channel(),
-                Q_channel=self.ge_Q_channel(),
-            )]])
 
         exp_metadata = {'qb_names': [self.name], 'rotate': False, 
                         'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
@@ -2328,6 +2319,16 @@ class QuDev_transmon(Qubit):
                 (chQ_par, chQ_par()),  # for automatic reset after the sweep
                 *self._drive_mixer_calibration_tmp_vals()
         ):
+            if upload:
+                sq.pulse_list_list_seq([[self.get_acq_pars(), dict(
+                    pulse_type='GaussFilteredCosIQPulse',
+                    pulse_length=self.acq_length(),
+                    ref_point='start',
+                    amplitude=0,
+                    I_channel=self.ge_I_channel(),
+                    Q_channel=self.ge_Q_channel(),
+                )]])
+
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det_spec)
             self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
