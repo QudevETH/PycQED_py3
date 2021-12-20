@@ -197,7 +197,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.general_options_field_container.layout().addRow(
             "Choose Qubits: ", self.selectbox_qubits)
         self.general_options_field_container.setSizePolicy(
-            QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Preferred)
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         self.header_container.layout().addWidget(
             self.general_options_field_container)
         self.header_container.layout().addWidget(
