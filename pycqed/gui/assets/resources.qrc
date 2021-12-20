@@ -1,7 +1,0 @@
-<!DOCTYPE RCC>
-<RCC version="1.0">
-    <qresource prefix="img">
-        <file alias="qudev_logo.png">qudev_logo.png</file>
-        <file alias="spinner_animation.gif">spinner_animation.gif</file>
-    </qresource>
-</RCC>
