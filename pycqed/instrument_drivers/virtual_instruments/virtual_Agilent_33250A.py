@@ -7,9 +7,6 @@ log = logging.getLogger(__name__)
 class Virtual_Agilent_33250A(Instrument):  
     """
     Driver code for virtual Agilent 33250A trigger.
-
-    Status: tested on virtual BF1
-
     Based on Agilent_33250A class
     Only most commonly used commands of the device integrated at this stage.
     """
@@ -101,16 +98,11 @@ class Virtual_Agilent_33250A(Instrument):
 
     def start(self, **kw):
         """
-        pass for virtual instrument
-
         :param kw: currently ignored, added for compatibilty with other
             instruments that accept kwargs in start().
         """
-        pass
+        self.output('ON')
     
     def stop(self):
-        """
-        pass
-        """
-        pass
+        self.output('OFF')
     
