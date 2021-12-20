@@ -3,6 +3,7 @@ import matplotlib
 from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
 from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.gui.rc_params import GUI_RC_PARAMS
@@ -68,6 +69,10 @@ class WaveformViewer:
         if QtWidgets.__package__ not in ['PySide2']:
             log.warning('This GUI is optimized to run with the PySide2 Qt '
                         'binding')
+        if not QtWidgets.QApplication.instance():
+            self.app = QtWidgets.QApplication(sys.argv)
+        else:
+            self.app = QtWidgets.QApplication.instance()
         self.experiment_name = quantum_experiment.experiment_name
         self.qubit_channel_maps = []
         # get all qubit objects corresponding to the qubit names returned by
@@ -151,14 +156,11 @@ class WaveformViewer:
             self._start_qapp()
 
     def _start_qapp(self):
-        if not QtWidgets.QApplication.instance():
-            app = QtWidgets.QApplication(sys.argv)
-        else:
-            app = QtWidgets.QApplication.instance()
         self.main_window.showMaximized()
+        self.main_window.activateWindow()
         QtWidgets.QApplication.processEvents()
         self.main_window.trigger_resize_event()
-        app.exec_()
+        self.app.exec_()
 
 
 def start_qapp_in_new_process(sequences, qubit_channel_maps,
@@ -175,9 +177,9 @@ def start_qapp_in_new_process(sequences, qubit_channel_maps,
     app.exec_()
 
 
-def add_label_to_widget(widget, labeltext, parent=None):
-    layout = QtWidgets.QHBoxLayout(parent=parent)
-    label = QtWidgets.QLabel(labeltext, parent=parent)
+def add_label_to_widget(widget, labeltext):
+    layout = QtWidgets.QHBoxLayout()
+    label = QtWidgets.QLabel(labeltext)
     label.setAlignment(QtCore.Qt.AlignCenter)
     layout.addWidget(label)
     layout.addWidget(widget)
@@ -254,7 +256,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
             'figtitle_kwargs': {'y': 0.98},
         }
 
-        fig, axes = self.get_experiment_plot()
+        fig, axes = self.get_init_experiment_plot()
         self.view = FigureCanvasQTAgg(fig)
         self.view.draw()
         self.scroll = QtWidgets.QScrollArea(self)
@@ -267,6 +269,8 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         self.toggle_selection_button.setCheckable(True)
         self.toggle_selection_button.toggled.connect(self.on_toggle_selection)
         self.cid_bpe = self.view.mpl_connect('pick_event', self.on_pick)
+
+        self.input_layout_widget = QtWidgets.QWidget()
 
         self.set_layout()
         self.setWindowTitle(self.get_window_title_string())
@@ -295,15 +299,16 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
                                              'Plot Options: '),
                          ]
 
-        input_layout = QtWidgets.QHBoxLayout()
+        self.input_layout_widget.setLayout(QtWidgets.QHBoxLayout())
         for input_widget in input_widgets:
-            input_layout.addLayout(input_widget)
-        input_layout.addWidget(self.toggle_selection_button)
-        input_layout.setSpacing(50)
+            self.input_layout_widget.layout().addLayout(input_widget)
+        self.input_layout_widget.layout().addWidget(
+            self.toggle_selection_button)
+        self.input_layout_widget.layout().setSpacing(50)
 
         self.layout().addWidget(self.toolbar)
         self.layout().addWidget(self.scroll)
-        self.layout().addLayout(input_layout)
+        self.layout().addWidget(self.input_layout_widget)
 
     def on_toolbar_selection(self):
         if self.toggle_selection_button.isChecked():
@@ -329,7 +334,8 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         self.toolbar._update_buttons_checked()
 
     def on_pick(self, event):
-        if not self.toggle_selection_button.isChecked():
+        if not (self.toggle_selection_button.isChecked() and
+                event.mouseevent.button == MouseButton.LEFT):
             return
         t = event.mouseevent.xdata/1e6
         plist = [p for p in self.get_current_segment().resolved_pulses]
@@ -365,8 +371,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         self.toggle_selection_button.setChecked(False)
 
     def on_change(self, caller_id=None):
-        QtWidgets.QApplication.setOverrideCursor(
-            QtGui.QCursor(QtCore.Qt.WaitCursor))
+        self.input_layout_widget.setEnabled(False)
         self.current_segment_index = self.cbox_segment_indices.currentIndex()
         self.current_sequence_index = self.cbox_sequence_indices.currentIndex()
         if caller_id == 'sequence_change':
@@ -374,9 +379,11 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
             self.reload_instrument_keys()
         if caller_id == 'segment_change' or caller_id == 'qubits_change':
             self.reload_instrument_keys()
+        self.get_experiment_plot()
 
+    @QtCore.Slot(object, object)
+    def set_experiment_plot(self, fig, axes):
         oldfig = self.view.figure
-        fig, axes = self.get_experiment_plot()
         self.view.figure = fig
         fig.set_canvas(self.view)
         plt.close(oldfig)
@@ -386,7 +393,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
 
         self.setWindowTitle(self.get_window_title_string())
         self.trigger_resize_event()
-        QtWidgets.QApplication.restoreOverrideCursor()
+        self.input_layout_widget.setEnabled(True)
 
     def reload_segment_keys(self):
         self.cbox_segment_indices.blockSignals(True)
@@ -449,30 +456,52 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         self.resize(self.width() + 1, self.height())
         self.resize(size)
 
-    def get_experiment_plot(self, **kwargs):
+    def get_init_experiment_plot(self):
+        channel_map, instruments = self.prepare_experiment_plot()
+        with plt.rc_context(self.rc_params):
+            fig, axes = self.get_current_segment().plot(
+                channel_map=channel_map,
+                instruments=instruments,
+                **self.gui_kwargs
+            )
+            add_picker_to_line_artists(axes)
+            return fig, axes
+
+    def get_experiment_plot(self):
+        channel_map, instruments = self.prepare_experiment_plot()
+
+        self.get_plots_thread = QtCore.QThread()
+        self.get_plots_worker = GetExperimentPlotWorker(
+            current_segment=self.get_current_segment(),
+            channel_map=channel_map, instruments=instruments,
+            gui_kwargs=self.gui_kwargs, rc_params=self.rc_params
+        )
+        self.get_plots_worker.moveToThread(self.get_plots_thread)
+
+        self.get_plots_worker.finished_plots.connect(
+            self.set_experiment_plot)
+        self.get_plots_thread.started.connect(
+            self.get_plots_worker.get_experiment_plot)
+        self.get_plots_worker.finished_plots.connect(
+            self.get_plots_thread.quit)
+        self.get_plots_worker.finished_plots.connect(
+            self.get_plots_worker.deleteLater)
+        self.get_plots_thread.finished.connect(
+            self.get_plots_thread.deleteLater)
+        self.get_plots_thread.start()
+
+    def prepare_experiment_plot(self):
         self.gui_kwargs.update({
             'normalized_amplitudes': self.is_checked(PLOT_OPTIONS.NORMALIZED),
             'sharex': self.is_checked(PLOT_OPTIONS.SHAREX),
             'demodulate': self.is_checked(PLOT_OPTIONS.DEMODULATE),
             'plot_kwargs': self.plot_kwargs,
         })
-        with plt.rc_context(self.rc_params):
-
-            instruments = set(self.selectbox_instruments.currentData())
-            if not instruments:
-                instruments = None
-            channel_map = self.get_active_channel_map()
-            fig, axes = self.get_current_segment().plot(
-                channel_map=channel_map,
-                instruments=instruments,
-                **self.gui_kwargs,
-                **kwargs
-            )
-            for ax in axes:
-                for ch in ax[0].get_children():
-                    if isinstance(ch, matplotlib.lines.Line2D):
-                        ch.set_picker(3)
-            return fig, axes
+        instruments = set(self.selectbox_instruments.currentData())
+        if not instruments:
+            instruments = None
+        channel_map = self.get_active_channel_map()
+        return channel_map, instruments
 
     def get_current_segment(self):
         return self.sequences[self.current_sequence_index][
@@ -505,6 +534,37 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         if event.key() == QtCore.Qt.Key_Control:
             self.toggle_selection_button.setChecked(False)
             event.accept()
+
+
+class GetExperimentPlotWorker(QtCore.QObject):
+    finished_plots = QtCore.Signal(object, object)
+
+    def __init__(self, current_segment, channel_map, instruments,
+                 gui_kwargs, rc_params):
+        super().__init__()
+        self.current_segment = current_segment
+        self.channel_map = channel_map
+        self.instruments = instruments
+        self.gui_kwargs = gui_kwargs
+        self.rc_params = rc_params
+
+    def get_experiment_plot(self):
+        with plt.rc_context(self.rc_params):
+            fig, axes = self.current_segment.plot(
+                channel_map=self.channel_map,
+                instruments=self.instruments,
+                **self.gui_kwargs
+            )
+            add_picker_to_line_artists(axes)
+            self.finished_plots.emit(fig, axes)
+
+
+def add_picker_to_line_artists(axes):
+    for ax in axes:
+        for ch in ax[0].get_children():
+            if isinstance(ch, matplotlib.lines.Line2D):
+                ch.set_picker(True)
+                ch.set_pickradius(3)
 
 
 class PulseInformationWindow(QtWidgets.QWidget):

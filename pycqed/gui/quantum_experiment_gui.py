@@ -70,8 +70,15 @@ class QuantumExperimentGUI:
             device:
             **kwargs:
         """
+        if QtWidgets.__package__ not in ['PySide2']:
+            log.warning('This GUI is optimized to run with the PySide2 Qt '
+                        'binding')
         self.device = device
         self.experiments = []
+        if not QtWidgets.QApplication.instance():
+            self.app = QtWidgets.QApplication(sys.argv)
+        else:
+            self.app = QtWidgets.QApplication.instance()
         self.main_window = QuantumExperimentGUIMainWindow(
             self.device, self.experiments, **kwargs
         )
@@ -80,8 +87,7 @@ class QuantumExperimentGUI:
                     min-width:75px;
                     max-width:100px;
                     min-height:20px;
-                    border:1px solid black;
-                    border-radius:5px;
+                    max-height:20px;
                 }
                 QGroupBox {
                     font-weight: bold;
@@ -90,13 +96,8 @@ class QuantumExperimentGUI:
         self.spawn_gui()
 
     def spawn_gui(self):
-        if not QtWidgets.QApplication.instance():
-            app = QtWidgets.QApplication(sys.argv)
-        else:
-            app = QtWidgets.QApplication.instance()
-
         self.main_window.showMaximized()
-        app.exec_()
+        self.app.exec_()
 
 
 class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
@@ -108,9 +109,6 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
 
         self.boldfont = QtGui.QFont()
         self.boldfont.setBold(True)
-
-        # TODO: delete once it has become redundant in waveform viewer
-        QtWidgets.QApplication.restoreOverrideCursor()
 
         # container for general options (experiment class dropdown, add tasks
         # button, qubit selection dropdown)
@@ -130,14 +128,16 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.selectbox_qubits = MultiQubitSelectionWidget(
             [qb.name for qb in self.device.get_qubits()])
 
-        self.general_options_field_container = QtWidgets.QFormLayout()
-        self.general_options_field_container.addRow(
-            "Choose Experiment: ", self.cbox_experiment_options)
-        self.general_options_field_container.addRow(
-            "Add Task: ", self.add_task_form_button)
-        self.general_options_field_container.addRow(QtWidgets.QLabel("OR"))
-        self.general_options_field_container.addRow(
-            "Choose Qubits: ", self.selectbox_qubits)
+        self.logo_pixmap = QtGui.QPixmap("pycqed/gui/assets/qudev_logo.png")
+
+        self.logo_label = QtWidgets.QLabel()
+        self.logo_label.setPixmap(self.logo_pixmap)
+
+        self.header_container = QtWidgets.QWidget()
+        self.header_container.setLayout(QtWidgets.QHBoxLayout())
+
+        self.general_options_field_container = QtWidgets.QWidget()
+        self.general_options_field_container.setLayout(QtWidgets.QFormLayout())
 
         # container for configuring the task list
         self.tasks_configuration_container = QtWidgets.QGroupBox(
@@ -151,20 +151,27 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         # run experiment button and spinning wheel
         self.run_experiment_pushbutton = QtWidgets.QPushButton(
             "&Run Experiment")
+        self.run_experiment_pushbutton.hide()
         self.run_waiting_label = QtWidgets.QLabel()
         self.run_waiting_animation = QtGui.QMovie(
             "pycqed/gui/assets/spinner_animation.gif")
         self.run_waiting_animation.setScaledSize(QtCore.QSize(40, 40))
         self.run_waiting_label.setMovie(self.run_waiting_animation)
         self.run_waiting_label.hide()
-        self.run_experiment_container = QtWidgets.QWidget()
-        self.run_experiment_container.setLayout(QtWidgets.QHBoxLayout())
-        self.run_experiment_container.layout().addWidget(
-            self.run_experiment_pushbutton, QtCore.Qt.AlignLeft)
-        self.run_experiment_container.layout().addWidget(
-            self.run_waiting_label, QtCore.Qt.AlignLeft)
-        self.run_experiment_container.layout().addStretch()
-        self.run_experiment_container.hide()
+
+        # button to spawn WaveformViewer for the performed experiments
+        self.performed_experiments_cbox = QtWidgets.QComboBox()
+        self.performed_experiments_cbox.setSizePolicy(
+            QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed
+        )
+        self.performed_experiments_cbox.hide()
+        self.spawn_waveform_viewer_button = QtWidgets.QPushButton(
+            "&View Waveforms")
+        self.spawn_waveform_viewer_button.hide()
+
+        # container for actions below the experiment configuration widgets
+        self.footer_actions_container = QtWidgets.QWidget()
+        self.footer_actions_container.hide()
 
         # message box
         self.message_textedit = ScrollLabelFixedLineHeight(number_of_lines=6)
@@ -177,15 +184,44 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             self.handle_experiment_choice)
         self.add_task_form_button.clicked.connect(self.add_task_form)
         self.run_experiment_pushbutton.clicked.connect(self.run_experiment)
+        self.spawn_waveform_viewer_button.clicked.connect(
+            self.spawn_waveform_viewer)
 
     def set_layout(self):
+        self.general_options_field_container.layout().addRow(
+            "Choose Experiment: ", self.cbox_experiment_options)
+        self.general_options_field_container.layout().addRow(
+            "Add Task: ", self.add_task_form_button)
+        self.general_options_field_container.layout().addRow(
+            QtWidgets.QLabel("OR"))
+        self.general_options_field_container.layout().addRow(
+            "Choose Qubits: ", self.selectbox_qubits)
+        self.general_options_field_container.setSizePolicy(
+            QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Preferred)
+        self.header_container.layout().addWidget(
+            self.general_options_field_container)
+        self.header_container.layout().addWidget(
+            self.logo_label)
+
+        self.footer_actions_container.setLayout(QtWidgets.QHBoxLayout())
+        self.footer_actions_container.layout().addWidget(
+            self.run_experiment_pushbutton)
+        self.footer_actions_container.layout().addWidget(
+            self.run_waiting_label)
+        self.footer_actions_container.layout().addStretch()
+        self.footer_actions_container.layout().addWidget(
+            self.performed_experiments_cbox)
+        self.footer_actions_container.layout().addWidget(
+            self.spawn_waveform_viewer_button)
+
+        # main vertical layout
         main_vbox_elements = [
-            (self.general_options_field_container, 'layout'),
+            (self.header_container, 'widget'),
             (None, 'stretch'),
             (self.tasks_configuration_container, 'widget'),
             (self.experiment_widget_container, 'layout'),
             (None, 'stretch'),
-            (self.run_experiment_container, 'widget'),
+            (self.footer_actions_container, 'widget'),
             (self.message_textedit, 'widget')
         ]
         for element, type in main_vbox_elements:
@@ -233,7 +269,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
                 self.experiment_widget_container.addRow(class_name_label)
             for kwarg, field_information in kwarg_dict.items():
                 self.add_widget_to_experiment_section(kwarg, field_information)
-        self.run_experiment_container.show()
+        self.footer_actions_container.show()
+        self.run_experiment_pushbutton.show()
 
     def add_widget_to_experiment_section(self, kwarg, field_information):
         widget = self.create_field_from_field_information(field_information)
@@ -459,6 +496,10 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
                 "\n"
                 f"{argument_string}")
             self.experiments.append(experiment)
+            self.performed_experiments_cbox.addItem(
+                f"{experiment.label} ({experiment.timestamp})")
+            self.performed_experiments_cbox.show()
+            self.spawn_waveform_viewer_button.show()
         self.run_experiment_pushbutton.setEnabled(True)
 
     def get_QFormLayout_settings(self, QFormLayoutInstance):
@@ -482,6 +523,14 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
                 TaskForm):
             task_list.append(self.get_QFormLayout_settings(task_form.layout()))
         return task_list
+
+    def spawn_waveform_viewer(self):
+        self.spawn_waveform_viewer_button.setEnabled(False)
+        experiment_index = self.performed_experiments_cbox.currentIndex()
+        self.experiments[experiment_index].spawn_waveform_viewer(
+            new_process=False)
+        self.spawn_waveform_viewer_button.setEnabled(True)
+        pass
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_W \
@@ -527,7 +576,6 @@ class SweepPointsDialog(QtWidgets.QDialog):
         self.parent = parent
         self.gui = gui
 
-        # self.resize(300, 200)
         self.setSizeGripEnabled(True)
         self.setWindowTitle("Configure Sweep Points")
         self.setLayout(QtWidgets.QVBoxLayout())
@@ -544,8 +592,8 @@ class SweepPointsDialog(QtWidgets.QDialog):
         self.layout().addWidget(self.add_sweep_points_button)
         self.sweep_points_list = []
         self.add_sweep_points_button.clicked.connect(self.add_sweep_points)
-        self.add_sweep_points()
         self.layout().addWidget(self.buttonBox)
+        self.add_sweep_points()
         self.resize(self.minimumSizeHint())
 
     def add_sweep_points(self):

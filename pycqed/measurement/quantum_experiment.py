@@ -836,7 +836,7 @@ class QuantumExperiment(CircuitBuilder):
         if self.waveform_viewer is None:
             self.waveform_viewer = WaveformViewer(self, **kwargs)
         else:
-            self.waveform_viewer.spawn_waveform_viewer()
+            self.waveform_viewer.spawn_waveform_viewer(**kwargs)
 
     @classmethod
     def gui_kwargs(cls, device):

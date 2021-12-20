@@ -110,6 +110,11 @@ class ScrollLabelFixedLineHeight(QtWidgets.QScrollArea):
         #  manually
         self.setMaximumHeight((font_metrics.lineSpacing()+3)*number_of_lines)
         lay.addWidget(self.label)
+        self.label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.label.setCursor(QtGui.QCursor(QtCore.Qt.IBeamCursor))
+        self.setStyleSheet("""
+        background-color: white;
+        """)
 
     def clear_and_set_text(self, text):
         self.label.clear()
