@@ -1619,6 +1619,7 @@ class Chevron(CalibBuilder):
         pulse_pars2.pop(first_param)
         pulse_pars2[first_param] = pulse_pars[first_param]
         d = super().gui_kwargs(device)
+        d['kwargs'][MultiTaskingExperiment.__name__]['cal_states'] = (str, 'gef')
         d['task_list_fields'].update({
             Chevron.__name__: odict({
                 'qbc': ((Qubit, 'single_select'), None),
