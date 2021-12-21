@@ -5974,6 +5974,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             artificial_detuning_dict = OrderedDict(
                 [(qbn, self.options_dict['artificial_detuning'])
              for qbn in self.qb_names])
+        elif 'preprocessed_task_list' in self.metadata:
+            pptl = self.metadata['preprocessed_task_list']
+            artificial_detuning_dict = OrderedDict([
+                (t['qb'], t['artificial_detuning']) for t in pptl
+            ])
         elif 'artificial_detuning_dict' in self.metadata:
             artificial_detuning_dict = self.metadata[
                 'artificial_detuning_dict']
