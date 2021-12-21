@@ -61,10 +61,10 @@ class ArduinoSwitchControl(Instrument):
         self.set_switch(values)
     where 'values' is a dictionary {switch : state} and switch can be
         - the label of a switch
-        - a string 'switch_X' where X is the label of the switch
+        - equivalently a string 'switch_X' where X is the label of the switch
         - the label of an input. 'state' is then the label of the output
           to connect to
-        - a string 'route_I' where I is the label of an input.
+        - equivalently a string 'route_I' where I is the label of an input.
     Additionally, outside of the requirements of PycQED, there exists a method
         self.get_switch(*args)
     where *args contains the labels of switches or inputs (or strings
