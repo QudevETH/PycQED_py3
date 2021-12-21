@@ -1145,7 +1145,7 @@ class ArduinoSwitchControl(Instrument):
 
     @classmethod
     def add_port(cls, port, ser):
-        """Add port so _open_ports
+        """Add port to _open_ports
 
         Args:
             port (str): port of USB connection to Arduino, like 'COM5'
