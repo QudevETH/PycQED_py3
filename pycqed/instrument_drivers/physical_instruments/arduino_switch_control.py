@@ -96,12 +96,13 @@ class ArduinoSwitchControl(Instrument):
         config (dict):
             Dictionary for the configuration of the switch box.
             Must include:
-                'switches': Specify the switches. Can be:
-                    int <= 20: Specify the number of switches.
-                               The switches are then labeled with integers
-                               1,...,num_switches
-                    list(like): Specify labels for the switches in a list
-                                with length <= 20
+                'switches': Specify the switches. The PCB in the switch box
+                    allows up to 20 switches. Can be:
+                    - int <= 20: Specify the number of switches.
+                                 The switches are then labeled with integers
+                                 1,...,num_switches
+                    - list(like): Specify labels for the switches in a list
+                                  with length <= 20
                 'inputs': Specify the input connectors.
                           For format of specifying connectors, see above
                 'outputs': Specify the output connectors.
