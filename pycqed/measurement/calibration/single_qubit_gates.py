@@ -2312,6 +2312,19 @@ class T1(SingleQubitGateCalibExperiment):
                 qubit.name]['T1']
             qubit.set(f'T1{task["transition_name"]}', T1)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            T1.__name__: {
+                0: {
+                    'pulse_delay': 's',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class QScale(SingleQubitGateCalibExperiment):
     """
@@ -2481,6 +2494,19 @@ class QScale(SingleQubitGateCalibExperiment):
             qscale = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['qscale']
             qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QScale.__name__: {
+                0: {
+                    'motzoi': 'V',
+                },
+                1: {},
+            }
+        })
+        return d
 
 
 class InPhaseAmpCalib(SingleQubitGateCalibExperiment):

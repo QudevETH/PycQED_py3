@@ -1,7 +1,7 @@
 import sys
 from pycqed.gui.qt_widgets.qt_field_widgets import *
-from pycqed.measurement.calibration.two_qubit_gates import Chevron
-from pycqed.measurement.calibration.single_qubit_gates import Rabi, Ramsey
+from pycqed.measurement.calibration import two_qubit_gates
+from pycqed.measurement.calibration import single_qubit_gates
 import numpy as np
 from collections import OrderedDict as odict
 from pycqed.gui.waveform_viewer import add_label_to_widget
@@ -31,9 +31,11 @@ def convert_field_value_to_string(value):
 
 
 class ExperimentTypes(Enum):
-    RABI = Rabi
-    RAMSEY = Ramsey
-    CHEVRON = Chevron
+    RABI = single_qubit_gates.Rabi
+    RAMSEY = single_qubit_gates.Ramsey
+    QSCALE = single_qubit_gates.QScale
+    T1 = single_qubit_gates.T1
+    CHEVRON = two_qubit_gates.Chevron
 
 
 class SweepPointsValueSelectionTypes(Enum):
