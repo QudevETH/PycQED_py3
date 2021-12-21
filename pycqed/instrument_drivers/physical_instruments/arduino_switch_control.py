@@ -71,8 +71,8 @@ class ArduinoSwitchControl(Instrument):
     'switch_X' and 'route_I' as above) and it returns a dictionary compatible
     with the argument 'values' of the self.set_switch method.
 
-    The serial communication is handled gloabally with class methods (see
-    below at the class methods.) For the serial communication of a ceratin
+    The serial communication is handled globally with class methods (see
+    below at the class methods.) For the serial communication of a certain
     instance, the methods self.start_serial, self.end_serial and
     self.assure_serial are used.
 
