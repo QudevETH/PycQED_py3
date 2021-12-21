@@ -59,6 +59,7 @@ class Device(Instrument):
         qubits = [qb if not isinstance(qb, str) else self.find_instrument(qb) for qb in qubits]
         connectivity_graph = [[qb1 if isinstance(qb1, str) else qb1.name,
                                qb2 if isinstance(qb2, str) else qb2.name] for [qb1, qb2] in connectivity_graph]
+        self._two_qb_gates = []
 
         for qb in qubits:
             setattr(self, qb.name, qb)
@@ -99,10 +100,9 @@ class Device(Instrument):
                            docstring='a list of operations on the device, without single QB operations.',
                            get_cmd=self._get_operations)
         self.add_parameter('two_qb_gates',
-                           vals=vals.Lists(),
-                           initial_value=[],
                            docstring='stores all two qubit gate names',
-                           parameter_class=ManualParameter)
+                           get_cmd=lambda s=self: copy(s._two_qb_gates)
+                           )
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -478,7 +478,7 @@ class Device(Instrument):
         """
 
         # add gate to list of two qubit gates
-        self.set('two_qb_gates', self.get('two_qb_gates') + [gate_name])
+        self._two_qb_gates.append(gate_name)
 
         # find pulse module
         pulse_func = bpl.get_pulse_class(pulse_type)
