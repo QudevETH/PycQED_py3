@@ -226,21 +226,6 @@ class ArduinoSwitchControl(Instrument):
 
         # Inputs and outputs
         # ------------------
-        # The inputs and outputs can be specified in the following ways
-        #     - As an integer for the number of connectors.
-        #       The inputs are labeled with 'I1', 'I2',..., the outputs are
-        #       with 'O1', 'O2',....
-        #     - A tuple ('X',N), where 'X' is the label and N the number of
-        #       connectors. The connectors are labeled with X1, X2,....
-        #     - As a list to group inputs and outputs. The labeling format
-        #       is 'X.n', where X is the group label and n the connector
-        #       number in the group. The entries of the list can be:
-        #         - A tuple ('X',N) where 'X' is the label of the group and
-        #           N is the number of connectors in the group.
-        #         - An integer N. Groups without a given label will be
-        #           labelled with 'I1', 'I2',... for input groups and
-        #           'O1','O2',... for output groups
-
         inputs = config['inputs']
         self.inputs, self.input_groups = self._create_connectors(
             inputs,
@@ -264,12 +249,6 @@ class ArduinoSwitchControl(Instrument):
 
         # Connections
         # -----------
-        # Connections between switches, or between switches and connectors
-        # are specified as a list of tuples [(connector1,connector2)],
-        # where a connector can be:
-        #     - the label of an input or output
-        #     - the label of a switch for the input of the switch
-        #     - a tuple (switch,state) for the output of a switch
         connections = config['connections']
         self.connections = []
         self.routes = OrderedDict()
