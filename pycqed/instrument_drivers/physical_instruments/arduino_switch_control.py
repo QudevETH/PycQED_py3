@@ -110,13 +110,22 @@ class ArduinoSwitchControl(Instrument):
                 'connections': A list with the connections between the
                                switches and to the inputs and outputs of
                                the box. The elements of the list are tuples
-                               (start,end), where 'start' and 'end' can be:
-                               - The label of an input or output of the box
-                               - The label of a switch for the input of the
-                                 switch
-                               - A tuple (switch-label, state) for the output
-                                 of the switch that corresponds to switch-state
-                                 'state'
+                               (start,end), where 'start' and 'end' must be
+                               one of the following:
+                               - For an input or output of the switch box,
+                                 use the label of the input or output.
+                                 e. g. use 'I1' for input I1
+                               - For the input of a switch, use the label of
+                                 the switch.
+                                 e. g. use 1 for switch 1
+                               - For the output of a switch, use a tuple
+                                 (switch-label, state), where 'switch-label'
+                                 is the label of the switch, and 'state' is the
+                                 state of the switch, that corresponds to the
+                                 output.
+                                 e. g. for the output of switch 2, that is
+                                 active, when the switch is in state 0, use
+                                 the tuple (2,0)
         start_serial (bool):
             Whether to start the serial communication with the Arduino
             upon initialization.
