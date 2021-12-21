@@ -1461,6 +1461,9 @@ class Chevron(CalibBuilder):
 
             # Preprocess sweep points and tasks before creating the sequences
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            # Chevron takes care of the init state inside the task, so we
+            # have to make sure that we do not pass init_state to parallel_sweep.
+            kw.pop('init_state', None)
             # the block alignments are for: prepended pulses, initial
             # rotations, flux pulse
             self.sequences, self.mc_points = self.parallel_sweep(
