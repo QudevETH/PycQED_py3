@@ -181,9 +181,9 @@ class ArduinoSwitchControl(Instrument):
         if isinstance(switches, int):
             # If switches is int, use as number of switches
             # and switch_labels = [1,2,...,switches]
-            if not 0 <= switches <= 20:
+            if not 0 <= switches <= self.MAX_SWITCHES:
                 raise ValueError("Number of switches 'switches' must be"
-                                 f"between 0 and 20, not {switches}.")
+                                 f"between 0 and {self.MAX_SWITCHES}, not {switches}.")
             self._num_switches = switches
             self.switch_labels = [n for n in range(1, self.num_switches + 1)]
         else:
@@ -195,11 +195,11 @@ class ArduinoSwitchControl(Instrument):
                 raise TypeError("Type of 'switches' must be a positive"
                                 "integer for the number of switches, or a"
                                 "list for the switch labels. The maximum"
-                                "number of switches is 20.")
+                                f"number of switches is {self.MAX_SWITCHES}.")
             num_switches = len(switch_labels)
-            if num_switches > 20:
-                num_switches = 20
-                switch_labels = switch_labels[:20]
+            if num_switches > self.MAX_SWITCHES:
+                num_switches = self.MAX_SWITCHES
+                switch_labels = switch_labels[:self.MAX_SWITCHES]
             self._num_switches = num_switches
             self.switch_labels = switch_labels
 
@@ -303,6 +303,7 @@ class ArduinoSwitchControl(Instrument):
     # Class constants
     # ---------------
 
+    MAX_SWITCHES = 20
     SHORT_DELAY = 0.05  # after reading a switch
     DELAY = 0.15  # after setting a switch
 
