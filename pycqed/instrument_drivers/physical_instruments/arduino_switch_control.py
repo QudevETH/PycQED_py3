@@ -77,6 +77,17 @@ class ArduinoSwitchControl(Instrument):
     instance, the methods self.start_serial, self.end_serial and
     self.assure_serial are used.
 
+    The switches in the switch box are controlled by an Arduino and a printed
+    circuit board (PCB). The Arduino is connected to the PC via USB and to the
+    PCB via two signal wires for I2C-communication and a ground wire. On the
+    PCB, 5 input/output-expanders, which can be addressed with I2C, can
+    control 4 switches each, giving a maximum amount of 20 switches. The
+    Arduino selects the switches by the number of the I/O-expander (0,1,2,3,4)
+    (here, usually referred to as group_id) and the number of the switch for
+    this I/O-expander (0,1,2,3) (here usually switch_id).
+    Using self.switch_ids[(group_id,switch_id)] returns the instance of
+    ArduinoSwitchControlSwitch that represents the switch with this id.
+
     Args:
         name (str): Name (for the initialization as a Qcodes Instrument
         port (str):
