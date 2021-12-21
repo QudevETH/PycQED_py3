@@ -65,11 +65,12 @@ class ArduinoSwitchControl(Instrument):
         - the label of an input. 'state' is then the label of the output
           to connect to
         - equivalently a string 'route_I' where I is the label of an input.
-    Additionally, outside of the requirements of PycQED, there exists a method
+    Additionally, there exists a method
         self.get_switch(*args)
     where *args contains the labels of switches or inputs (or strings
     'switch_X' and 'route_I' as above) and it returns a dictionary compatible
-    with the argument 'values' of the self.set_switch method.
+    with the argument 'values' of the self.set_switch method. This method is
+    not standard in PycQED.
 
     The serial communication is handled globally with class methods (see
     below at the class methods.) For the serial communication of a certain
