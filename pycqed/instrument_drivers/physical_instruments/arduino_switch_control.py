@@ -318,7 +318,12 @@ class ArduinoSwitchControl(Instrument):
                 For switching single switches: {switch label : state}
                 For routes starting from an input: {input label : output label}
                 Instead of the switch label and input label, the parameter
-                can be used (without the _mode)
+                can be used (without the _mode),
+                e. g. switch 2 can be addressed with 2 or 'switch_2',
+                the route starting at input 'I1' can be addressed with 'I1' or
+                'route_I1'.
+                Read the documentation of this class for more details on
+                the Qcodes parameters of the class.
         """
         for label, val in values.items():
             # if label is not a label, get the according label
@@ -353,9 +358,14 @@ class ArduinoSwitchControl(Instrument):
 
         Args:
             *labels: Can be:
-                The label of a switch to get the state of the switch
-                The label of an input, to get the output it is connected to
-                The according parameters (without _mode)
+                - The label of a switch to get the state of the switch
+                - The label of an input, to get the output it is connected to
+                - The according parameters (without _mode)
+                  e. g. switch 2 can be addressed with 2 or 'switch_2',
+                  the route starting at input 'I1' can be addressed with 'I1' or
+                  'route_I1'.
+                  Read the documentation of this class for more details on
+                  the Qcodes parameters of the class.
 
         Returns:
             dict:
