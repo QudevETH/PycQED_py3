@@ -530,7 +530,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.spawn_waveform_viewer_button.setEnabled(False)
         experiment_index = self.performed_experiments_cbox.currentIndex()
         self.experiments[experiment_index].spawn_waveform_viewer(
-            new_process=False)
+            new_process=False, active_qapp=True)
         self.spawn_waveform_viewer_button.setEnabled(True)
         pass
 

@@ -41,7 +41,8 @@ class WaveformViewer:
 
     """
     def __init__(self, quantum_experiment, sequence_index=0,
-                 segment_index=0, rc_params=None, new_process=True, **kwargs):
+                 segment_index=0, rc_params=None, new_process=True,
+                 active_qapp=False, **kwargs):
         """
         Initialization of the WaveformViewer object. As we can only pass
         pickle-able variables to the child process, shadow objects that have
@@ -62,6 +63,9 @@ class WaveformViewer:
             dictionary
             new_process (bool): if True the QApplication hosting the GUI
             will be spawned in a separate process
+            active_qapp (bool): if True, the exec method to start the qt
+            event loop won't be called. Useful if a window should be spawned
+            from a running qt application
             **kwargs: are passed as plotting kwargs to the segment
             plotting method
 
@@ -99,7 +103,7 @@ class WaveformViewer:
         else:
             self._prepare_main_window()
             self.p_shadow = None
-        self.spawn_waveform_viewer()
+        self.spawn_waveform_viewer(active_qapp=active_qapp)
 
     def _prepare_main_window(self):
         self.main_window = WaveformViewerMainWindow(
@@ -135,7 +139,7 @@ class WaveformViewer:
             self.main_window.on_change()
 
     def spawn_waveform_viewer(self, rc_params=None, new_process=None,
-                              **kwargs):
+                              active_qapp=False, **kwargs):
         if new_process is not None:
             self.new_process = new_process
         self._update_kwargs(rc_params=rc_params, **kwargs)
@@ -153,14 +157,15 @@ class WaveformViewer:
         else:
             if self.main_window is None:
                 self._prepare_main_window()
-            self._start_qapp()
+            self._start_qapp(active_qapp=active_qapp)
 
-    def _start_qapp(self):
+    def _start_qapp(self, active_qapp=False):
         self.main_window.showMaximized()
         self.main_window.activateWindow()
         QtWidgets.QApplication.processEvents()
         self.main_window.trigger_resize_event()
-        self.app.exec_()
+        if not active_qapp:
+            self.app.exec_()
 
 
 def start_qapp_in_new_process(sequences, qubit_channel_maps,
