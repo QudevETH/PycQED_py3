@@ -142,7 +142,7 @@ class ArduinoSwitchControl(Instrument):
             representing the inputs.
         input_groups (list): List of the labels for the input groups
         outputs (OrderedDict):
-            Dictionary {'output label':output} of the input labels as keys
+            Dictionary {'output label':output} of the output labels as keys
             and instances of ArduinoSwitchControlConnectors as values,
             representing the outputs.
         output_groups (list): List of the labels for the output groups
