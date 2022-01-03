@@ -37,6 +37,12 @@ class Segment:
     trigger_pulse_start_buffer = 25e-9
 
     def __init__(self, name, pulse_pars_list=[], **kw):
+        """
+        Initiate instance of Segment class.
+        :param name: Name of segment
+        :param pulse_pars_list: list of pulse parameters in the form
+            of dictionaries
+        """
         self.name = name
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
@@ -74,7 +80,9 @@ class Segment:
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
 
-        self.resolve_overlapping_elements = kw.pop('resolve_overlapping_elements', ps.resolve_overlapping_elements())
+        self.resolve_overlapping_elements = \
+            kw.pop('resolve_overlapping_elements',
+                   self.pulsar.resolve_overlapping_elements())
 
     def add(self, pulse_pars):
         """
@@ -778,7 +786,8 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self, allow_overlap=False, tol=1e-12, track_and_ignore=False):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12,
+                      track_and_ignore=False):
         """
         Tests for all AWGs if any of their elements overlap.
 
@@ -786,6 +795,9 @@ class Segment:
             an execption is raised in case of overlapping elements.
             Otherwise, only a warning is shown (useful for plotting while
             debugging overlaps).
+        :param track_and_ignore: flag that allows the code to continue
+            in case an overlap is detected. The code keeps track of these
+            elements by adding them to self.overlapping_elements
         """
 
         self.gen_elements_on_awg()
@@ -819,24 +831,29 @@ class Segment:
                 if (el_prev_end - el_new_start) > tol :
                     if track_and_ignore:
                         # add set of two overlapping elements to list
-                        self.overlapping_elements.append({prev_el, el_list[i + 1][2]})
+                        self.overlapping_elements.append({prev_el,
+                                                          el_list[i + 1][2]})
                     else:
-	                    print(el_prev_end, el_new_start)
-	                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
-	                    f'{el_list[i + 1][2]} (' \
-	                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
-	                          f'on {awg}'
-	                    if allow_overlap:
-	                        log.warning(msg)
-	                    else:
-	                        raise ValueError(msg)
+                        print(el_prev_end, el_new_start)
+                        msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) ' \
+                              f'and {el_list[i + 1][2]} (' \
+                              f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                              f'on {awg}'
+                        if allow_overlap:
+                            log.warning(msg)
+                        else:
+                            raise ValueError(msg)
 
     def resolve_overlap(self):
         """
-        Routine to resolve overlapping elements. Will be exectued if corresponding pulsar parameter is true. This code
-        first goes through the list of overlapping elements that are pairwise overlapping and clusters them into lists
-        of overlapping elements, where two different lists of overlapping elements have no overlapping elements with
-        one another. At the end the code combines all elements of each list into a new element.
+        Routine to resolve overlapping elements. Will be exectued if
+        corresponding pulsar parameter is true. This code
+        first goes through the list of overlapping elements that are
+        pairwise overlapping and clusters them into lists
+        of overlapping elements, where two different lists of overlapping
+        elements have no overlapping elements with
+        one another. At the end the code combines all elements of each
+        list into a new element.
         """
 
         self.gen_elements_on_awg()
@@ -851,22 +868,30 @@ class Segment:
 
         new_cluster = True
         for i in range(len(overlapping_elements) - 1):
-            # check for all sets added to joint_overlapping_elements whether the next set of elements from
-            # overlapping_elements shares an element name. If so, then add this element to the entry in
+            # check for all sets added to joint_overlapping_elements
+            # whether the next set of elements from
+            # overlapping_elements shares an element name. If so,
+            # then add this element to the entry in
             # joint_overlapping_elements
             for j in range(len(joint_overlapping_elements)):
-                if len(joint_overlapping_elements[j] & overlapping_elements[i + 1]) != 0:
-                    joint_overlapping_elements[j] = joint_overlapping_elements[j] | overlapping_elements[i + 1]
+                if len(joint_overlapping_elements[j] & \
+                       overlapping_elements[i + 1]) != 0:
+                    joint_overlapping_elements[j] = \
+                        joint_overlapping_elements[j] | \
+                        overlapping_elements[i + 1]
                     new_cluster = False
 
-            # if the new element from overlapping_elements overlaps with none of the previously added elements in
-            # joint_overlapping_elements (i.e. if new_cluster=True) add it as a new cluster.
+            # if the new element from overlapping_elements overlaps
+            # with none of the previously added elements in
+            # joint_overlapping_elements (i.e. if new_cluster=True)
+            # add it as a new cluster.
             if new_cluster:
                 joint_overlapping_elements.append(overlapping_elements[i + 1])
             new_cluster = True
 
         for i in range(len(joint_overlapping_elements)):
-            self._combine_elements(joint_overlapping_elements[i], 'overlapping_el_{}_{}'.format(i, self.name))
+            self._combine_elements(joint_overlapping_elements[i],
+                                   'overlapping_el_{}_{}'.format(i, self.name))
 
 
     def _combine_elements(self, elements, combined_el_name):
@@ -1009,8 +1034,9 @@ class Segment:
             t_start = min(pulse.algorithm_time(), t_start)
             t_end = max(pulse.algorithm_time() + pulse.length, t_end)
 
-        if t_start==float('inf') or t_end == -float('inf'):
-            log.log(0, 'Asked to find start of element {element} on AWG {awg}, but element not on AWG.')
+        if t_start == float('inf') or t_end == -float('inf'):
+            log.debug(f'Asked to find start of element {element} on AWG '
+                      f'{awg}, but element not on AWG.')
             return
         # make sure that element start is a multiple of element
         # start granularity
