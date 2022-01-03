@@ -718,12 +718,19 @@ class Segment:
 
                 if el_prev_end > el_new_start:
                     if track_and_ignore:
+                        # add set of two overlapping elements to list
                         self.overlapping_elements.append({prev_el, el_list[i + 1][2]})
                     else:
                         raise ValueError('{} and {} overlap on {}'.format(
                             prev_el, el_list[i + 1][2], awg))
 
     def resolve_overlap(self):
+        """
+        Routine to resolve overlapping elements. Will be exectued if corresponding pulsar parameter is true. This code
+        first goes through the list of overlapping elements that are pairwise overlapping and clusters them into lists
+        of overlapping elements, where two different lists of overlapping elements have no overlapping elements with
+        one another. At the end the code combines all elements of each list into a new element.
+        """
 
         self.gen_elements_on_awg()
         self._test_overlap(track_and_ignore=True)
@@ -732,19 +739,24 @@ class Segment:
         if len(overlapping_elements)==0:
             return
 
-        # cluster overlapping elements
+        # add first two overlapping elements to list
         joint_overlapping_elements = [overlapping_elements[0]]
 
-        new_overlap = True
+        new_cluster = True
         for i in range(len(overlapping_elements) - 1):
+            # check for all sets added to joint_overlapping_elements whether the next set of elements from
+            # overlapping_elements shares an element name. If so, then add this element to the entry in
+            # joint_overlapping_elements
             for j in range(len(joint_overlapping_elements)):
                 if len(joint_overlapping_elements[j] & overlapping_elements[i + 1]) != 0:
                     joint_overlapping_elements[j] = joint_overlapping_elements[j] | overlapping_elements[i + 1]
-                    new_overlap = False
+                    new_cluster = False
 
-            if new_overlap:
+            # if the new element from overlapping_elements overlaps with none of the previously added elements in
+            # joint_overlapping_elements (i.e. if new_cluster=True) add it as a new cluster.
+            if new_cluster:
                 joint_overlapping_elements.append(overlapping_elements[i + 1])
-            new_overlap = True
+            new_cluster = True
 
         for i in range(len(joint_overlapping_elements)):
             self._combine_elements(joint_overlapping_elements[i], 'overlapping_el_{}_{}'.format(i, self.name))
@@ -753,7 +765,8 @@ class Segment:
     def _combine_elements(self, elements, combined_el_name):
         """
         Routine to properly combine elements in the segment.
-        :param elements: list or set of elements in the segment
+        :param elements: list or set of elements in the segment to be combined
+        :param combined_el_name: name of the combined element
         :return:
         """
 
