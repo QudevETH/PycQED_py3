@@ -3,6 +3,7 @@ File containing the BaseDataAnalyis class.
 """
 from inspect import signature
 import os
+import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -12,11 +13,13 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.general import NumpyJsonEncoder
+from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
+    write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
-    set_axis_label, flex_colormesh_plot_vs_xy, flex_color_plot_vs_x)
+    set_axis_label, flex_colormesh_plot_vs_xy,
+    flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -31,7 +34,6 @@ import traceback
 import logging
 log = logging.getLogger(__name__)
 log.addHandler(logging.StreamHandler())
-
 
 class BaseDataAnalysis(object):
     """
@@ -204,6 +206,12 @@ class BaseDataAnalysis(object):
             if type(self.auto_keys) is str:
                 self.auto_keys = [self.auto_keys]
 
+            # Warning message to be used in self._raise_warning.
+            # Children will append to this variable.
+            self._warning_message = ''
+            # Whether self.raise_warning should save a warning image.
+            self._raise_warning_image = False
+
         except Exception as e:
             if self.raise_exceptions:
                 raise e
@@ -234,12 +242,53 @@ class BaseDataAnalysis(object):
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
                         'close_figs', False))
+            self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
                 raise e
             else:
                 log.error("Unhandled error during analysis!")
                 log.error(traceback.format_exc())
+
+    def _raise_warning(self):
+        """
+        If delegate_plotting is False:
+
+        - calls raise_warning_image if self._raise_warning_image is True.
+        A warning image will be saved in the folder corresponding to the last
+        timestamp in self.timestamps.
+        - calls write_warning_message_to_text_file if warning_message (see
+        params below) + self._warning_message is not an empty string.
+        A text file with warning_message will be created in the folder
+        corresponding to the last timestamp in self.timestamps. If text file
+        already exists, the warning message will be append to it.
+
+        Params that can be passed in the options_dict:
+        :param warning_message: string with the message to be written into the
+            text file. self.warning_message will be appended to this
+        :param warning_textfile_name: string with name of the file without
+            extension.
+        """
+        if self.check_plotting_delegation():
+            # Do not execute this function if plotting is delegated to the
+            # AnalysisDaemon, in order to avoid that the warning image and
+            # text file are generated twice.
+            return
+
+        destination_path = a_tools.get_folder(self.timestamps[-1])
+        warning_message = self.get_param_value('warning_message')
+        warning_textfile_name = self.get_param_value('warning_textfile_name')
+
+        if self._raise_warning_image:
+            raise_warning_image(destination_path)
+
+        if warning_message is None:
+            warning_message = ''
+        warning_message += self._warning_message
+        if len(warning_message):
+            write_warning_message_to_text_file(destination_path,
+                                               warning_message,
+                                               warning_textfile_name)
 
     def create_job(self, *args, **kwargs):
         """
@@ -289,6 +338,8 @@ class BaseDataAnalysis(object):
         Returns:
 
         """
+        if a_tools.ignore_delegate_plotting:
+            return False
         if self.get_param_value("delegate_plotting", False):
             if len(self.timestamps) == 1:
                 f = self.raw_data_dict['folder']
@@ -313,11 +364,11 @@ class BaseDataAnalysis(object):
         '''
         s = group.attrs[param_name]
         # converts byte type to string because of h5py datasaving
-        if type(s) == bytes:
+        if isinstance(s, bytes):
             s = s.decode('utf-8')
         # If it is an array of value decodes individual entries
-        if type(s) == np.ndarray:
-            s = [s.decode('utf-8') for s in s]
+        if isinstance(s, np.ndarray) or isinstance(s, list):
+            s = [s.decode('utf-8') if isinstance(s, bytes) else s for s in s]
         try:
             return eval(s)
         except Exception:
@@ -394,6 +445,11 @@ class BaseDataAnalysis(object):
                                 raw_data_dict_ts[save_par] = \
                                     self.get_hdf_datafile_param_value(
                                         data_file[group_name], par_name)
+                            elif par_name in list(data_file[group_name].keys()) or\
+                                    (par_name == "Timers" and group_name == "Timers"):
+                                raw_data_dict_ts[save_par] = \
+                                    read_dict_from_hdf5({}, data_file[
+                                        group_name])
                     else:
                         group_name = '/'.join(file_par.split('.')[:-1])
                         par_name = file_par.split('.')[-1]
@@ -410,6 +466,10 @@ class BaseDataAnalysis(object):
                             len(raw_data_dict_ts[save_par]) == 1:
                         raw_data_dict_ts[save_par] = \
                             raw_data_dict_ts[save_par][0]
+                for par_name in raw_data_dict_ts:
+                    if par_name in numeric_params:
+                        raw_data_dict_ts[par_name] = \
+                            np.double(raw_data_dict_ts[par_name])
             except Exception as e:
                 data_file.close()
                 raise e
@@ -417,14 +477,12 @@ class BaseDataAnalysis(object):
 
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
-        for par_name in raw_data_dict:
-            if par_name in self.numeric_params:
-                raw_data_dict[par_name] = np.double(raw_data_dict[par_name])
         return raw_data_dict
 
     @staticmethod
     def add_measured_data(raw_data_dict, compression_factor=1,
-                          sweep_points=None, cal_points=None, prep_params=None):
+                          sweep_points=None, cal_points=None,
+                          prep_params=None, soft_sweep_mask=None):
         """
         Formats measured data based on the raw data dictionary and the
         soft and hard sweep points.
@@ -454,6 +512,8 @@ class BaseDataAnalysis(object):
         Returns: raw_data_dict with the key measured_data updated.
 
         """
+        n_shots = 1
+        TwoD = False
         if 'measured_data' in raw_data_dict and \
                 'value_names' in raw_data_dict:
             measured_data = raw_data_dict.pop('measured_data')
@@ -470,23 +530,39 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
+            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # point.
+            tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
+                TwoD = True
                 hsp = np.unique(mc_points[0])
                 ssp, counts = np.unique(mc_points[1:], return_counts=True)
-                if counts[0] != len(hsp):
+                if (len(hsp) * len(ssp)) > len(mc_points[0]):
+                    tuple_measurement = True
+                    hsp = mc_points[0]
+                    ssp = mc_points[1]
+                elif counts[0] > len(hsp):
                     # ssro data
-                    hsp = np.tile(hsp, counts[0] // len(hsp))
+                    n_shots = counts[0] // len(hsp)
+                    hsp = np.tile(hsp, n_shots)
                 # if needed, decompress the data (assumes hsp and ssp are indices)
                 if compression_factor != 1:
-                    hsp = hsp[:int(len(hsp) / compression_factor)]
-                    ssp = np.arange(len(ssp) * compression_factor)
+                    if not tuple_measurement:
+                        hsp = hsp[:int(len(hsp) / compression_factor)]
+                        ssp = np.arange(len(ssp) * compression_factor)
+                    else:
+                        log.warning(f"Tuple measurement does not support "
+                                    f"compression_factor and it will be ignored.")
+                    
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
                 # deal with hybrid measurements
                 sp = SweepPoints(sweep_points)
-                if mc_points.shape[0] == 1 and len(sp) > 1:
+                if mc_points.shape[0] == 1 and (len(sp) > 1 and
+                                                'dummy' not in list(sp[1])[0]):
                     hybrid_measurement = True
                     if prep_params is None:
                         prep_params = dict()
@@ -510,6 +586,7 @@ class BaseDataAnalysis(object):
                 raise ValueError('Shape mismatch between data and ro channels.')
             for i, ro_ch in enumerate(value_names):
                 if 'soft_sweep_points' in raw_data_dict:
+                    TwoD = True
                     hsl = len(raw_data_dict['hard_sweep_points'])
                     ssl = len(raw_data_dict['soft_sweep_points'])
                     if hybrid_measurement:
@@ -531,12 +608,35 @@ class BaseDataAnalysis(object):
                                                      (num_cal_segments, ssl))
                             measured_data = np.concatenate([measured_data,
                                                             cal_pts_arr])
+                    elif compression_factor != 1 and n_shots != 1:
+                        tmp_data = np.zeros_like(data[i])
+                        meas_hsl = hsl * compression_factor
+                        for i_seq in range(ssl // compression_factor):
+                            data_seq = data[i][
+                                i_seq * meas_hsl:(i_seq+1) * meas_hsl]
+                            data_seq = np.reshape(
+                                [list(np.reshape(
+                                    data_seq, [n_shots * compression_factor,
+                                               hsl // n_shots]))[
+                                 i::compression_factor]
+                                 for i in range(compression_factor)],
+                                [meas_hsl])
+                            tmp_data[i_seq * meas_hsl
+                                    :(i_seq + 1) * meas_hsl] = data_seq
+                        measured_data = np.reshape(tmp_data, (ssl, hsl)).T
+                    elif tuple_measurement:
+                        measured_data = np.reshape(data[i], (hsl)).T
                     else:
                         measured_data = np.reshape(data[i], (ssl, hsl)).T
+                    if soft_sweep_mask is not None:
+                        measured_data = measured_data[:, soft_sweep_mask]
                 else:
                     measured_data = data[i]
                 raw_data_dict['measured_data'][ro_ch] = measured_data
-        return raw_data_dict
+        if soft_sweep_mask is not None:
+            raw_data_dict['soft_sweep_points'] = raw_data_dict[
+                'soft_sweep_points'][soft_sweep_mask]
+        return raw_data_dict, TwoD
 
     def extract_data(self):
         """
@@ -580,25 +680,42 @@ class BaseDataAnalysis(object):
                     'cal_points'))
             except TypeError:
                 cp = CalibrationPoints([], [])
-            self.raw_data_dict = self.add_measured_data(
+            self.raw_data_dict, TwoD = self.add_measured_data(
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
                 cp, self.get_param_value('preparation_params',
-                                         default_value=dict()))
+                                         default_value=dict()),
+                soft_sweep_mask=self.get_param_value(
+                    'soft_sweep_mask', None))
+
+            if 'TwoD' not in self.options_dict:
+                self.options_dict['TwoD'] = TwoD
         else:
             temp_dict_list = []
+            twod_list = []
             self.metadata = [rd['exp_metadata'] for
                              rd in self.raw_data_dict]
 
             for i, rd_dict in enumerate(self.raw_data_dict):
                 if len(rd_dict['exp_metadata']) == 0:
                     self.metadata[i] = {}
-                temp_dict_list.append(
-                    self.add_measured_data(
-                        rd_dict,
-                        self.get_param_value('compression_factor', 1, i)))
+                rdd, TwoD = self.add_measured_data(
+                    rd_dict,
+                    self.get_param_value('compression_factor', 1, i),
+                    soft_sweep_mask=self.get_param_value(
+                        'soft_sweep_mask', None)
+                )
+                temp_dict_list.append(rdd,)
+                twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
+            if 'TwoD' not in self.options_dict:
+                if not all(twod_list):
+                    log.info('Not all measurements have the same '
+                             'number of sweep dimensions. TwoD flag '
+                             'will remain unset.')
+                else:
+                    self.options_dict['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -661,15 +778,42 @@ class BaseDataAnalysis(object):
             if self.presentation_mode:
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
                 self.figs[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
+                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
-                self.figs[key].savefig(savename, bbox_inches='tight', fmt='svg')
+                self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
             else:
                 savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
                 self.figs[key].savefig(savename, bbox_inches='tight',
-                                       fmt=fmt, dpi=dpi)
-            if close_figs:
-                plt.close(self.figs[key])
+                                       format=fmt, dpi=dpi)
+        if close_figs:
+            self.close_figs(key_list)
+
+    def close_figs(self, key_list='auto'):
+        """Closes specified figures.
+
+        Furthermore, removes all closed figures and axes from `self.figs` and
+        `self.axs` dictionaries.
+
+        Args:
+            key_list: list of figure keys to close or 'auto', in which case
+                all figures are closed.
+        """
+        if key_list == 'auto' or key_list is None:
+            key_list = self.figs.keys()
+        axes_to_pop = []
+        for key in list(key_list):
+            axes_to_pop.extend(self.figs[key].axes)
+        axes_keys_to_pop = []
+        for ax_key, ax in self.axs.items():
+            for ax_to_pop in axes_to_pop:
+                if ax is ax_to_pop:
+                    axes_keys_to_pop.append(ax_key)
+                    break
+        for ax_key in axes_keys_to_pop:
+            self.axs.pop(ax_key)
+        for key in list(key_list):
+            plt.close(self.figs[key])
+            self.figs.pop(key)
 
     def save_data(self, savedir: str = None, savebase: str = None,
                   tag_tstamp: bool = True,
@@ -959,7 +1103,7 @@ class BaseDataAnalysis(object):
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list is 'auto':
+        if key_list == 'auto':
             key_list = self.auto_keys
         if key_list is None:
             key_list = self.plot_dicts.keys()
@@ -970,7 +1114,8 @@ class BaseDataAnalysis(object):
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
-            pdict['no_label'] = no_label
+            if 'no_label' not in pdict:
+                pdict['no_label'] = no_label
             # Use the key of the plot_dict if no ax_id is specified
             pdict['fig_id'] = pdict.get('fig_id', key)
             pdict['ax_id'] = pdict.get('ax_id', None)
@@ -1376,10 +1521,13 @@ class BaseDataAnalysis(object):
             legend_pos = pdict.get('legend_pos', 'best')
             legend_frameon = pdict.get('legend_frameon', False)
             legend_bbox_to_anchor = pdict.get('legend_bbox_to_anchor', None)
+            legend_fontsize= pdict.get('legend_fontsize', None)
+            # print('legend', legend_fontsize)
             axs.legend(title=legend_title,
                        loc=legend_pos,
                        ncol=legend_ncol,
                        bbox_to_anchor=legend_bbox_to_anchor,
+                       fontsize=legend_fontsize,
                        frameon=legend_frameon)
 
         if plot_xlabel is not None:
@@ -1492,6 +1640,15 @@ class BaseDataAnalysis(object):
 
         self.plot_color2D(flex_color_plot_vs_x, pdict, axs)
 
+    def plot_contourf(self, pdict, axs):
+        """
+        This wraps contourf_plot which excepts data of shape
+            x -> 2D array
+            y -> 2D array
+            z -> 2D array (same shape as x and y)
+        """
+        self.plot_color2D(contourf_plot, pdict, axs)
+
     def plot_color2D_grid_idx(self, pfunc, pdict, axs, idx):
         pfunc(pdict, np.ravel(axs)[idx])
 
@@ -1545,6 +1702,7 @@ class BaseDataAnalysis(object):
         plot_yvals = pdict['yvals']
         plot_cbar = pdict.get('plotcbar', True)
         plot_cmap = pdict.get('cmap', 'viridis')
+        plot_cmap_levels = pdict.get('cmap_levels', None)
         plot_aspect = pdict.get('aspect', None)
         plot_zrange = pdict.get('zrange', None)
         plot_yrange = pdict.get('yrange', None)
@@ -1556,8 +1714,11 @@ class BaseDataAnalysis(object):
         plot_ytick_loc = pdict.get('ytick_loc', None)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
+        plot_nolabel_units = pdict.get('no_label_units', False)
         plot_normalize = pdict.get('normalize', False)
         plot_logzscale = pdict.get('logzscale', False)
+        plot_logxscale = pdict.get('logxscale', False)
+        plot_logyscale = pdict.get('logyscale', False)
         plot_origin = pdict.get('origin', 'lower')
 
         if plot_logzscale:
@@ -1609,11 +1770,17 @@ class BaseDataAnalysis(object):
                 out = pfunc(ax=axs,
                             xwidth=xwidth,
                             clim=fig_clim, cmap=plot_cmap,
+                            levels=plot_cmap_levels,
                             xvals=traces['xvals'][tt],
                             yvals=traces['yvals'][tt],
                             zvals=traces['zvals'][tt],
                             transpose=plot_transpose,
                             normalize=plot_normalize)
+
+        if plot_logxscale:
+            axs.set_xscale('log')
+        if plot_logyscale:
+            axs.set_yscale('log')
 
         if plot_xrange is None:
             if plot_xwidth is not None:
@@ -1670,10 +1837,20 @@ class BaseDataAnalysis(object):
 
         if not plot_nolabel:
             self.label_color2D(pdict, axs)
+        if plot_nolabel_units:
+            axs.set_xlabel(pdict['xlabel'])
+            axs.set_ylabel(pdict['ylabel'])
 
         axs.cmap = out['cmap']
         if plot_cbar:
-            self.plot_colorbar(axs=axs, pdict=pdict)
+            no_label = plot_nolabel
+            if plot_nolabel and plot_nolabel_units:
+                no_label = False
+            self.plot_colorbar(axs=axs, pdict=pdict,
+                               no_label=no_label,
+                               cax=pdict.get('cax', None),
+                               orientation=pdict.get('orientation',
+                                                     'vertical'))
 
     def label_color2D(self, pdict, axs):
         plot_transpose = pdict.get('transpose', False)
@@ -1697,7 +1874,7 @@ class BaseDataAnalysis(object):
             # axs.set_title(plot_title)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
-                      orientation='vertical'):
+                      orientation='vertical', no_label=None):
         if key is not None:
             pdict = self.plot_dicts[key]
             axs = self.axs[key]
@@ -1707,24 +1884,30 @@ class BaseDataAnalysis(object):
                     'pdict and axs must be specified'
                     ' when no key is specified.')
         plot_nolabel = pdict.get('no_label', False)
+        if no_label is not None:
+            plot_nolabel = no_label
+
         plot_clabel = pdict.get('clabel', None)
         plot_cbarwidth = pdict.get('cbarwidth', '10%')
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        if not isinstance(axs, Axes3D):
+            cmap = axs.cmap
+        else:
+            cmap = pdict.get('colormap')
         if cax is None:
             if not isinstance(axs, Axes3D):
                 axs.ax_divider = make_axes_locatable(axs)
                 axs.cax = axs.ax_divider.append_axes(
-                    'right', size=plot_cbarwidth, pad=plot_cbarpad)
-                cmap = axs.cmap
+                    'right' if orientation == 'vertical' else 'top',
+                    size=plot_cbarwidth, pad=plot_cbarpad)
             else:
                 plot_cbarwidth = str_to_float(plot_cbarwidth)
                 plot_cbarpad = str_to_float(plot_cbarpad)
                 axs.cax, _ = mpl.colorbar.make_axes(
                     axs, shrink=1 - plot_cbarwidth - plot_cbarpad, pad=plot_cbarpad,
                     orientation=orientation)
-                cmap = pdict.get('colormap')
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
@@ -1738,6 +1921,9 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
+        if orientation == 'horizontal':
+            axs.cax.xaxis.set_label_position("top")
+            axs.cax.xaxis.tick_top()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1787,18 +1973,28 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
-
+        color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
         if box_props == 'fancy':
             box_props = self.fancy_box_props
 
-        # pfunc is expected to be ax.text
-        pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
-              transform=axs.transAxes,
-              verticalalignment=verticalalignment,
-              horizontalalignment=horizontalalignment,
-              bbox=box_props)
+        if isinstance(color, (list, tuple)):
+            assert isinstance(plot_text_string, (list, tuple))
+            assert len(color) == len(plot_text_string)
+            orientation = pdict.get('orientation', 'vertical')
+            rainbow_text(x=plot_xpos, y=plot_ypos,
+                         strings=plot_text_string, colors=color,
+                         ax=axs, orientation=orientation,
+                         verticalalignment=verticalalignment,
+                         horizontalalignment=horizontalalignment)
+        else:
+            # pfunc is expected to be ax.text
+            pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
+                  transform=axs.transAxes,
+                  verticalalignment=verticalalignment,
+                  horizontalalignment=horizontalalignment,
+                  bbox=box_props)
 
     def plot_vlines(self, pdict, axs):
         """
@@ -1943,6 +2139,40 @@ class BaseDataAnalysis(object):
                     except:
                         pass
             axs.axvline(x=x, **d)
+
+    def clock(self, awg=None, channel=None, pulsar=None):
+        """
+        Returns the clock frequency of an AWG from the instrument settings,
+        or tries to determine it based on the instrument type if it is not
+        stored in the settings.
+        :param awg: (str) AWG name (can be None if channel and pulsar are
+            provided instead)
+        :param channel: (str) channel name (is ignored if awg is given)
+        :param pulsar: (str) name of the pulsar object (only needed if
+            channel is given instead of awg)
+        :return: clock frequency
+        """
+        if awg is None:
+            assert pulsar is not None and channel is not None, \
+                'If awg is not provided, channel and pulsar must be provided.'
+            pulsar_dd = self.get_data_from_timestamp_list({
+                'awg': f'Instrument settings.{pulsar}.{channel}_awg'})
+            awg = pulsar_dd['awg']
+
+        awg_dd = self.get_data_from_timestamp_list({
+            'clock_freq': f'Instrument settings.{awg}.clock_freq',
+            'IDN': f'Instrument settings.{awg}.IDN'})
+        if awg_dd['clock_freq']:
+            return awg_dd['clock_freq']
+        model = awg_dd['IDN'].get('model', None)
+        if model == 'HDAWG8':
+            return 2.4e9
+        elif model == 'UHFQA':
+            return 1.8e9
+        elif model == 'AWG5014C':
+            return 1.2e9
+        else:
+            raise NotImplementedError(f"Unknown AWG type: {model}.")
 
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):

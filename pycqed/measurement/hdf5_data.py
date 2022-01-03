@@ -197,7 +197,8 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 # Lists of a single type, are stored as an hdf5 dset
                 if (all(isinstance(x, elt_type) for x in item) and
                         not isinstance(item[0], dict) and
-                        not isinstance(item, tuple)):
+                        not isinstance(item, tuple) and
+                        not isinstance(item[0], list)):
                     if isinstance(item[0], (int, float,
                                             np.int32, np.int64)):
                         try:
@@ -297,7 +298,8 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
                 # lists of strings needs some special care, see also
                 # the writing part in the writing function above.
                 list_of_str = [x[0] for x in item[()]]
-                data_dict[key] = list_of_str
+                data_dict[key] = [x.decode('utf-8') if isinstance(x, bytes)
+                                  else x for x in list_of_str]
 
             else:
                 data_dict[key] = list(item[()])

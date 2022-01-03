@@ -5,6 +5,11 @@ import lmfit
 import itertools
 import logging
 
+from pycqed.simulations import transmon
+from pycqed.utilities.timer import Timer
+
+log = logging.getLogger(__name__)
+
 
 #################################
 #   Fitting Functions Library   #
@@ -96,8 +101,8 @@ def TwinLorentzFunc(f, A_gf_over_2, A, f0_gf_over_2, f0,
 
 
 def Qubit_dac_to_freq(dac_voltage, f_max,
-                      dac_sweet_spot, V_per_phi0=None,
-                      dac_flux_coefficient=None,
+                      dac_sweet_spot=None, V_per_phi0=None, phi_park=None,
+                      dac_flux_coefficient=None, E_c=0,
                       asymmetry=0.5):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
@@ -112,15 +117,22 @@ def Qubit_dac_to_freq(dac_voltage, f_max,
 
     # using E_c as fit parameter is numerically not stable (changing E_c does only
     # slightly change the function. Set E_c to zero
-    E_c = 0
 
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
 
     if dac_flux_coefficient is not None:
-        logging.warning('"dac_flux_coefficient" deprecated. Please use the '
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
                         'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
 
     qubit_freq = (f_max + E_c) * (
             asymmetry ** 2 + (1 - asymmetry ** 2) *
@@ -128,6 +140,156 @@ def Qubit_dac_to_freq(dac_voltage, f_max,
                    (dac_voltage - dac_sweet_spot)) ** 2) ** 0.25 - E_c
     return qubit_freq
 
+def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None
+                              ):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    dac_voltage (V)
+    Ejmax (Hz): Maximum Ej of qubit
+    Ec (Hz): charging energy of the qubit
+    d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux
+    '''
+    if np.ndim(dac_voltage) == 0:
+        dac_voltage = np.array([dac_voltage])
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                    'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
+    Ej = 2 * np.pi * Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    E_c = 2 * np.pi * E_c
+    freqs = []
+    for ej in Ej:
+        freqs.append((transmon.transmon_levels(E_c, ej) / (2 * np.pi))[0])
+    qubit_freq = np.array(freqs)
+    return qubit_freq
+
+def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None, dim_charge=31,
+                              ):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    dac_voltage (V)
+    Ejmax (Hz): Maximum Ej of qubit
+    Ec (Hz): charging energy of the qubit
+    d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
+    phi_park
+    '''
+    return_float = False
+    if np.ndim(dac_voltage) == 0:
+        dac_voltage = np.array([dac_voltage])
+        return_float = True
+
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                    'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
+    Ej =  Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    with Timer('fitmod.loop', verbose=False):
+        freqs = [(transmon.transmon_resonator_levels(E_c,
+                                                     ej,
+                                                     fr,
+                                                     coupling,
+                                                     states=[(1, 0), (2, 0)],
+                                                     dim_charge=dim_charge
+                                                         ))[0]
+                 for ej in Ej]
+    qubit_freq = np.array(freqs)
+    return qubit_freq[0] if return_float else qubit_freq
+
+def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
+                              dac_sweet_spot=0.0, V_per_phi0=None,
+                              dac_flux_coefficient=None,
+                              phi_park=None,
+                      branch='smallest'):
+    '''
+    The cosine Arc model for uncalibrated flux for asymmetric qubit.
+    This function implements the inverse of "Qubit_dac_to_freq"
+
+    frequency (Hz)
+    Ej_max (Hz): Maximum josephson energy
+    E_c (Hz): charging energy of the qubit
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
+    asym (dimensionless asymmetry param) = abs((EJ1-EJ2)/(EJ1+EJ2))
+    couping (Hz): coupling to resonator
+    fr (Hz): frequency of resonator
+    dac_sweet_spot (V): voltage at which the sweet-spot is found
+    branch (enum: 'positive' 'negative' or "smallest")
+    '''
+    if V_per_phi0 is None and dac_flux_coefficient is None:
+        raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
+
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
+
+    return_float = False
+    if np.ndim(frequency) == 0:
+        frequency = [frequency]
+        return_float = True
+    E_j = [transmon.transmon_resonator_ej_anh_frg_chi(
+            f, ec=E_c, frb=fr, gb=coupling)[0]
+            for f in frequency]
+    E_j = np.array(E_j)
+
+    r = E_j / Ej_max
+    if np.any(r > 1):
+        log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
+                    f'indices {np.argwhere(r > 1)}.Truncating to 1.')
+        r[r>1] = 1
+    phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
+
+    if dac_flux_coefficient is not None:
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
+                        'physically meaningful "V_per_phi0" instead.')
+        V_per_phi0 = np.pi / dac_flux_coefficient
+
+    dac_voltage_pos = phi * V_per_phi0 / np.pi + dac_sweet_spot
+    dac_voltage_neg = -phi * V_per_phi0 / np.pi + dac_sweet_spot
+    if branch == 'positive':
+        dac_voltage = dac_voltage_pos
+    elif branch == 'negative':
+        dac_voltage = dac_voltage_neg
+    elif branch == 'smallest':
+        if np.ndim(phi) != 0:
+            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
+            idxs0 = np.argmin(np.abs(dac_voltage), 0)
+            idxs1 = np.arange(len(dac_voltage_pos))
+            dac_voltage = dac_voltage[idxs0, idxs1]
+        else:
+            dac_voltage = dac_voltage_pos \
+                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
+                else dac_voltage_neg
+    else:
+        raise ValueError('branch {} not recognized'.format(branch))
+
+    return dac_voltage[0] if return_float else dac_voltage
 
 def Resonator_dac_to_freq(dac_voltage, f_max_qubit, f_0_res,
                           E_c, dac_sweet_spot,
@@ -165,8 +327,9 @@ def Qubit_dac_to_detun(dac_voltage, f_max, E_c, dac_sweet_spot, V_per_phi0,
 
 
 def Qubit_freq_to_dac(frequency, f_max,
-                      dac_sweet_spot, V_per_phi0=None,
-                      dac_flux_coefficient=None, asymmetry=0,
+                      dac_sweet_spot=None, V_per_phi0=None,
+                      dac_flux_coefficient=None, asymmetry=0, E_c=0,
+                      phi_park=None,
                       branch='smallest'):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
@@ -182,10 +345,14 @@ def Qubit_freq_to_dac(frequency, f_max,
     '''
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
+    if dac_sweet_spot is None and phi_park is None:
+        raise ValueError('Please specify "phi_park".')
+    elif dac_sweet_spot is not None and phi_park is not None:
+        raise ValueError('"phi_park" and "dac_sweet_spot" cannot '
+                         'be used simultaneously.')
 
-    # using E_c as fit parameter is numerically not stable (changing E_c does only
-    # slightly change the function. Set E_c to zero
-    E_c = 0
+    if phi_park is not None:
+        dac_sweet_spot = phi_park * V_per_phi0
 
     # asymm_term = (asymmetry**2 + (1-asymmetry**2))
     # dac_term = np.arccos(((frequency+E_c)/((f_max+E_c) * asymm_term))**2)
@@ -195,7 +362,7 @@ def Qubit_freq_to_dac(frequency, f_max,
         (1 - asymmetry ** 2)))
 
     if dac_flux_coefficient is not None:
-        logging.warning('"dac_flux_coefficient" deprecated. Please use the '
+        log.warning('"dac_flux_coefficient" deprecated. Please use the '
                         'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
 
@@ -237,7 +404,7 @@ def Qubit_dac_sensitivity(dac_voltage, f_max: float, E_c: float,
 
 def QubitFreqDac(dac_voltage, f_max, E_c,
                  dac_sweet_spot, dac_flux_coefficient, asymmetry=0):
-    logging.warning('deprecated, replace QubitFreqDac with Qubit_dac_to_freq')
+    log.warning('deprecated, replace QubitFreqDac with Qubit_dac_to_freq')
     return Qubit_dac_to_freq(dac_voltage, f_max, E_c,
                              dac_sweet_spot, dac_flux_coefficient, asymmetry)
 
@@ -778,7 +945,7 @@ def fit_hanger_with_pf(model, data, simultan=False):
         fit_out.params['omega_ro'].value *= 1e9
 
     if fit_out.chisqr > tol:
-            logging.warning('The fit did not converge properly: chi^2 = '
+            log.warning('The fit did not converge properly: chi^2 = '
                             ''+str(fit_out.chisqr))
 
     #Unpack simultan fits
@@ -942,20 +1109,99 @@ def Resonator_dac_arch_guess(model, freq, dac_voltage, f_max_qubit: float = None
     return params
 
 
-def Qubit_dac_arch_guess(model, data, dac_voltage):
+def Qubit_dac_arch_guess(model, data, dac_voltage, fixed_params=None):
     f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
     f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
     V_per_phi0 = abs(2*(dac_ss-dac_lss))
     d = (f_min)**2/(f_max)**2
-    model.set_param_hint('f_max', value=f_max, min=0)
-    model.set_param_hint('dac_sweet_spot', value=dac_ss, min=-3, max=3)
-    model.set_param_hint('V_per_phi0', value=V_per_phi0, min=0)
-    model.set_param_hint('asymmetry', value=d, min=0, max=1)
 
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('f_max', value=fixed_params.get('f_max', f_max),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
     params = model.make_params()
     return params
 
+def Qubit_dac_arch_guess_precise(model, data, dac_voltage, fixed_params=None):
+    f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
+    f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
+    V_per_phi0 = abs(2*(dac_ss-dac_lss))
+    d = (f_min)**2/(f_max)**2
 
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('Ej_max', value=fixed_params.get('Ej_max'),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
+    params = model.make_params()
+    return params
+
+def Qubit_dac_arch_guess_res(model, data, dac_voltage, fixed_params=None):
+    f_max, dac_ss = np.max(data), dac_voltage[np.argmax(data)]
+    f_min, dac_lss = np.min(data), dac_voltage[np.argmin(data)]
+    V_per_phi0 = abs(2*(dac_ss-dac_lss))
+    d = (f_min)**2/(f_max)**2
+
+    if fixed_params is None:
+        fixed_params = {"E_c": 0}
+
+    model.set_param_hint('Ej_max', value=fixed_params.get('Ej_max'),
+                         min=0, vary=not 'f_max' in fixed_params)
+
+    model.set_param_hint('V_per_phi0', value=fixed_params.get('V_per_phi0', V_per_phi0),
+                         min=0, vary=not 'V_per_phi0' in fixed_params)
+    model.set_param_hint('asymmetry', value=fixed_params.get('asymmetry', d),
+                         min=0, max=1, vary=not 'asymmetry' in fixed_params)
+    model.set_param_hint('E_c', value=fixed_params.get('E_c', 0),
+                         vary=not 'E_c' in fixed_params)
+    model.set_param_hint('coupling', value=fixed_params.get('coupling', 100e6),
+                         vary=not 'coupling' in fixed_params)
+    model.set_param_hint('fr', value=fixed_params.get('fr', 7e9),
+                         vary=not 'fr' in fixed_params)
+    if "phi_park" in fixed_params:
+        model.set_param_hint('phi_park', value=fixed_params['phi_park'],
+                             vary=False)
+    # dac_sweet_spot should be eligible for fitting only if phi_park is not fixed.
+    # We cannot specify both in the model as they refer to the same physical quantity.
+    # Note that current config does not allow to fit phi_park
+    else:
+        model.set_param_hint('dac_sweet_spot', value=fixed_params.get('dac_sweet_spot', dac_ss),
+                             min=-3, max=3, vary=not 'dac_sweet_spot' in fixed_params)
+    params = model.make_params()
+    return params
 def idle_err_rate_guess(model, data, N):
     '''
     Assumes exponential decay in estimating the parameters
@@ -1231,11 +1477,43 @@ def sum_int(x,y):
     return np.cumsum(y[:-1]*(x[1:]-x[:-1]))
 
 
-def Gaussian(freq,sigma,mu,ampl,offset):
+def DoubleGaussian(freq, sigma, mu, ampl, sigma0, mu0, ampl0, offset):
+    '''
+    Double Gaussian function
+    '''
+    return ampl/(sigma*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu)/sigma)**2) + \
+           ampl0/(sigma0*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu0)/sigma0)**2) + \
+           offset
+
+
+def Gaussian(freq, sigma, mu, ampl, offset):
     '''
     Gaussian function
     '''
     return ampl/(sigma*np.sqrt(2*np.pi))*np.exp(-0.5*((freq - mu)/sigma)**2) + offset
+
+
+def Gaussian_guess(model, data, freq, **kwargs):
+    """
+    Tip: to use this assign this guess function as a method to a model use:
+    model.guess = Gaussian_guess.__get__(
+        model, model.__class__)
+    """
+
+    mu_guess = freq[np.argmax(data)]
+    offs_guess = np.median(data)
+    p = (data - offs_guess)**2
+    p /= p.sum()
+    sigma_guess = np.sqrt(((freq - mu_guess)**2 * p).sum())/10
+    amp_guess = max(data - offs_guess)*sigma_guess*np.sqrt(2*np.pi)
+    params = model.make_params(sigma=sigma_guess,
+                               mu=mu_guess,
+                               ampl=amp_guess,
+                               offset=offs_guess)
+    params['mu'].min = np.min(freq)
+    params['mu'].max = np.max(freq)
+
+    return params
 
 
 def half_feed_line_S12_J_func(omega, J, kappaPF, gammaPF, gammaRR, omegaPF, omegaRR, phi, A , B, alpha):
@@ -1286,6 +1564,141 @@ def TwoErrorFunc_guess(model, delays, data):
                                sigma=sigma_guess,
                                offset = offset_guess)
     return params
+
+
+def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
+    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
+
+    Args:
+        alpha (float): Correction factor that is applied to the amplitude of 
+            the Q signal.
+        phi_skew (float): Phase correction of the Q signal relative to the I 
+            signal in degree.
+        g (float, optional): Amplitude ratio between the LO power splitter 
+            outputs. It is defined as amplitude(LO_I)/amplitude(LO_Q).
+            Defaults to 1.0.
+        phi (float, optional): Phase between the two ports of the LO power 
+            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). 
+            Defaults to 0 degree.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+
+    Returns:
+        float: maximum sideband amplitude for the specified parameters in dBV
+
+    Model Schematic:
+        Note: In the schematic phases are shown as radiant quantities while 
+              the function expects phases expressed in degree.
+         I >------------------------------ I  R ----+
+                                            LO      |
+                                            |       |
+        LO >------\-/-----------------------+       |
+                   X  (90° power splitter)          +----> RF
+                --/-\--- 1/g*exp(i*phi) ----+       |
+                                            |       |
+                                            LO      |
+         Q >--- alpha*exp(i*phi_skew) ---- I  R ----+
+    """
+    return 20*np.log10(np.abs(1 - alpha/g 
+                                  * np.exp(-1j*np.deg2rad(phi + phi_skew)))
+                       ) + offset
+
+
+def mixer_imbalance_sideband_guess(model, **kwargs):
+    """Prepare and return parameters for the model :py:func:'.mixer_imbalance_sideband.'
+
+    Args:
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
+
+    Returns:
+        :py:class:'lmfit.parameters': Parameters
+    """
+    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('phi', value=0, min=-180, max=180)
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
+    return model.make_params(**kwargs)
+
+
+def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
+    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
+
+    Args:
+        vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
+        vq (:obj:'float'): DC bias voltage applied on the Q input of the mixer.
+        li (float, optional): Amplitude of the LO leakage of the I port mixer. 
+            Also see note below. Defaults to 0.0.
+        lq (float, optional): Amplitude of the LO leakage of the Q port mixer. 
+            Also see note below. Defaults to 0.0.
+        theta_i (int, optional): Phase in radiant of the LO leakage of the I 
+            port mixer. Also see note below. Defaults to 0.0 rad.
+        theta_q (int, optional): Phase in radiant of the LO leakage of the Q 
+            port mixer. Also see note below. Defaults to 0.0 rad.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+
+    Returns:
+        :obj:'float': maximum amplitude of the LO leakage for given parameters
+
+    Important Note:
+        As can be seen from the model schematic and the implementation the 
+        pair of arguments li and theta_i as well as lq and theta_q each define 
+        a complex number that will be added within the model. Therefore they 
+        are not uniquely defined from the models value and one should prefer 
+        to set one of the two pairs constant when fitting the model to data to 
+        prevent unneccesary overhead in the fitting routine.
+    
+    Model Schematic:
+        Note: We are only interested in the amplitudes of signals that are of 
+              LO frequency.
+
+         I >-- +V_I (DC) ----------- I  R --- +V_I ---------------+-----+
+                                      LO                          |     |
+                                      |                           |     |
+        LO >------------\-/-----------+--- li*exp(i*theta_i) -----+     |
+                         X                                              +--> RF
+                      --/-\-----------+--- -i*lq*exp(i*theta_q) --+     |
+                                      |                           |     |
+                                      LO                          |     |
+         Q >-- +V_Q (DC) ----------- I  R --- -iV_Q --------------+-----+
+    """
+    return 20*np.log10(np.abs(vi
+                            + li * np.exp(1j*theta_i)
+                            - 1j * vq
+                            - 1j * lq * np.exp(1j*theta_q)
+                            )) + offset
+
+
+def mixer_lo_leakage_guess(model, **kwargs):
+    """Prepare and return parameters  for the model :py:func:'.mixer_lo_leakage'.
+
+    Args:
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
+
+    Returns:
+        :py:class:'lmfit.parameters': Parameters
+
+    Note:
+        The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
+        descibed in the documentation of :py:func:'.mixer_lo_leakage'.
+    """
+    pi_half = np.pi/2
+    model.set_param_hint('li', value=0.0, min=0, max=1)
+    model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
+    model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
+    model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
+                         max=pi_half, vary=False
+                         )
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
+    return model.make_params(**kwargs)
+
 
 #################################
 #     User defined Models       #
