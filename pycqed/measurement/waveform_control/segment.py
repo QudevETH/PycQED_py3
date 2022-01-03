@@ -51,7 +51,7 @@ class Segment:
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
 
-        self.resolve_overlapping_elements = kw.pop('resolve_overlapping_elements', False)
+        self.resolve_overlapping_elements = kw.pop('resolve_overlapping_elements', ps.resolve_overlapping_elements())
 
     def add(self, pulse_pars):
         """

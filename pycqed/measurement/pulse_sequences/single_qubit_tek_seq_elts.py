@@ -892,10 +892,10 @@ def over_under_rotation_seq(qb_name, nr_pi_pulses_array, operation_dict,
 # Helper functions
 
 def pulse_list_list_seq(pulse_list_list, name='pulse_list_list_sequence',
-                        upload=True, resolve_overlap=False):
+                        upload=True):
     seq = sequence.Sequence(name)
     for i, pulse_list in enumerate(pulse_list_list):
-        seq.add(segment.Segment('segment_{}'.format(i), pulse_list, resolve_overlap=resolve_overlap))
+        seq.add(segment.Segment('segment_{}'.format(i), pulse_list))
     if upload:
         ps.Pulsar.get_instance().program_awgs(seq)
     return seq
