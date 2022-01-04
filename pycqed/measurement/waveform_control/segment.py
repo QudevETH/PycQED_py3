@@ -39,9 +39,16 @@ class Segment:
     def __init__(self, name, pulse_pars_list=[], **kw):
         """
         Initiate instance of Segment class.
-        :param name: Name of segment
-        :param pulse_pars_list: list of pulse parameters in the form
-            of dictionaries
+
+        Args:
+            name: Name of segment
+            pulse_pars_list: list of pulse parameters in the form
+                of dictionaries
+            kw (dict): Keyword arguments:
+
+                * ``resolve_overlapping_elements``: flag that, if true, lets the
+                  segment automatically resolve overlapping elements by combining
+                  them in a single element.
         """
         self.name = name
         self.pulsar = ps.Pulsar.get_instance()
@@ -609,7 +616,7 @@ class Segment:
         For each element:
             For each AWG the element is played on, this method:
                 * adds the element to the elements_on_AWG dictionary
-                * instatiates a trigger pulse on the triggering channel of the
+                * instantiates a trigger pulse on the triggering channel of the
                   AWG, placed in a suitable element on the triggering AWG,
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
