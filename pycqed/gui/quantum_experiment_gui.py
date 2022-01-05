@@ -1,10 +1,11 @@
 import sys
+import types
 from pycqed.gui.qt_widgets.qt_field_widgets import *
+from pycqed.gui import gui_utilities as g_utils
 from pycqed.measurement.calibration import two_qubit_gates
 from pycqed.measurement.calibration import single_qubit_gates
 import numpy as np
 from collections import OrderedDict as odict
-from pycqed.gui.waveform_viewer import add_label_to_widget
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
@@ -12,22 +13,10 @@ from pycqed.measurement.sweep_points import SweepPoints
 from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
 import logging
 from enum import Enum
+from pycqed.analysis import analysis_toolbox as a_tools
+import traceback
 
 log = logging.getLogger(__name__)
-
-
-def convert_string_to_number_if_possible(s):
-    try:
-        return int(s)
-    except ValueError:
-        try:
-            return float(s)
-        except ValueError:
-            return s
-
-
-def convert_field_value_to_string(value):
-    return str(value) if value is not None else ""
 
 
 class ExperimentTypes(Enum):
@@ -38,29 +27,9 @@ class ExperimentTypes(Enum):
     CHEVRON = two_qubit_gates.Chevron
 
 
-class SweepPointsValueSelectionTypes(Enum):
-    LINSPACE = "np.linspace"
-    ARANGE = "np.arange"
-    LIST = "list"
-
-
 def get_members_by_experiment_class_name(experiment_class_name):
     return [ExperimentType for ExperimentType in ExperimentTypes 
             if ExperimentType.value.__name__ == experiment_class_name]
-
-
-def clear_layout(layout):
-    while layout.count():
-        child = layout.takeAt(0)
-        if child.widget():
-            child.widget().deleteLater()
-        elif child.layout():
-            clear_layout(child.layout())
-
-
-def clear_QFormLayout(QFormLayout):
-    while QFormLayout.rowCount():
-        QFormLayout.removeRow(0)
 
 
 class QuantumExperimentGUI:
@@ -85,12 +54,6 @@ class QuantumExperimentGUI:
             self.device, self.experiments, **kwargs
         )
         self.main_window.setStyleSheet("""
-                QPushButton {
-                    min-width:75px;
-                    max-width:100px;
-                    min-height:20px;
-                    max-height:20px;
-                }
                 QGroupBox {
                     font-weight: bold;
                 }
@@ -98,11 +61,27 @@ class QuantumExperimentGUI:
         self.spawn_gui()
 
     def spawn_gui(self):
-        self.main_window.showMaximized()
+        self.main_window.show()
         self.app.exec_()
 
 
-class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
+class autoAdjustWidthScrollcontentWidget(QtWidgets.QWidget):
+    def __init__(self, main_window, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.main_window = main_window
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        screen_width = QtWidgets.QApplication.desktop().availableGeometry(
+            self).width()
+        if self.width() > screen_width:
+            self.main_window.resize(screen_width, self.main_window.height())
+        else:
+            self.main_window.resize(self.width(), self.main_window.height())
+
+
+
+class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
     def __init__(self, device, experiments, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle("Quantum Experiment GUI")
@@ -114,9 +93,10 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
 
         # container for general options (experiment class dropdown, add tasks
         # button, qubit selection dropdown)
-        self.mainWidget = QtWidgets.QWidget()
-        self.setLayout(QtWidgets.QVBoxLayout())
-        self.layout().addWidget(self.mainWidget)
+        self.scroll = QtWidgets.QScrollArea()
+        self.setCentralWidget(self.scroll)
+        self.mainWidget = autoAdjustWidthScrollcontentWidget(self)
+        self.scroll.setWidget(self.mainWidget)
         self.mainWidget.setLayout(QtWidgets.QVBoxLayout())
 
         self.cbox_experiment_options = QtWidgets.QComboBox()
@@ -125,6 +105,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.cbox_experiment_options.setCurrentIndex(-1)
 
         self.add_task_form_button = QtWidgets.QPushButton("&Add")
+        self.add_task_form_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.add_task_form_button.setEnabled(False)
 
         self.selectbox_qubits = MultiQubitSelectionWidget(
@@ -141,6 +123,21 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.general_options_field_container = QtWidgets.QWidget()
         self.general_options_field_container.setLayout(QtWidgets.QFormLayout())
 
+        # container for general qubit settings
+        self.qubit_settings_container = QtWidgets.QGroupBox("Qubit Settings")
+        self.qubit_settings_container.setLayout(QtWidgets.QVBoxLayout())
+        self.qubit_pulse_period = ConfigureDialogWidget(
+            gui=self, dialog_widget=PulsePeriodDialog,
+            on_ok_method="update_pulse_period",
+            cancel_message="No pulse_period configured\n",
+            on_cancel_reset_method="reset_value_lineedit"
+        )
+        self.qubit_acq_averages = ConfigureDialogWidget(
+            gui=self, dialog_widget=AcqAvgDialog,
+            on_ok_method="update_acq_avg_for_selected_qubit",
+            cancel_message="No acq_averages configured\n",
+            on_cancel_reset_method="show_current_value")
+
         # container for configuring the task list
         self.tasks_configuration_container = QtWidgets.QGroupBox(
             "Configure Tasks")
@@ -148,12 +145,14 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.tasks_configuration_container.hide()
 
         # container for the experiment dependent configuration options
-        self.experiment_widget_container = QtWidgets.QFormLayout()
+        self.experiment_configuration_container = QtWidgets.QFormLayout()
 
         # run experiment button and spinning wheel
-        self.run_experiment_pushbutton = QtWidgets.QPushButton(
-            "&Run Experiment")
-        self.run_experiment_pushbutton.hide()
+        self.create_experiment_pushbutton = QtWidgets.QPushButton(
+            "&Create Experiment")
+        self.create_experiment_pushbutton.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.create_experiment_pushbutton.hide()
         self.run_waiting_label = QtWidgets.QLabel()
         self.run_waiting_animation = QtGui.QMovie(
             "pycqed/gui/assets/spinner_animation.gif")
@@ -161,7 +160,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.run_waiting_label.setMovie(self.run_waiting_animation)
         self.run_waiting_label.hide()
 
-        # button to spawn WaveformViewer for the performed experiments
+        # actions for the performed experiments
         self.performed_experiments_cbox = QtWidgets.QComboBox()
         self.performed_experiments_cbox.setSizePolicy(
             QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed
@@ -169,11 +168,33 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.performed_experiments_cbox.hide()
         self.spawn_waveform_viewer_button = QtWidgets.QPushButton(
             "&View Waveforms")
+        self.spawn_waveform_viewer_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.run_measurement_button = QtWidgets.QPushButton(
+            "&Run Measurement")
+        self.run_measurement_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.run_analysis_button = QtWidgets.QPushButton(
+            "&Run Analysis")
+        self.run_analysis_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.update_metadata_button = QtWidgets.QPushButton(
+            "&Update Metadata")
+        self.update_metadata_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.open_in_explorer_button = QtWidgets.QPushButton(
+            "&Open in Explorer")
+        self.open_in_explorer_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.spawn_waveform_viewer_button.hide()
+        self.run_measurement_button.hide()
+        self.run_analysis_button.hide()
+        self.update_metadata_button.hide()
+        self.open_in_explorer_button.hide()
 
         # container for actions below the experiment configuration widgets
-        self.footer_actions_container = QtWidgets.QWidget()
-        self.footer_actions_container.hide()
+        self.experiment_actions_container = QtWidgets.QGroupBox("Actions")
+        self.experiment_actions_container.hide()
 
         # message box
         self.message_textedit = ScrollLabelFixedLineHeight(number_of_lines=6)
@@ -185,9 +206,25 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
         self.cbox_experiment_options.currentIndexChanged.connect(
             self.handle_experiment_choice)
         self.add_task_form_button.clicked.connect(self.add_task_form)
-        self.run_experiment_pushbutton.clicked.connect(self.run_experiment)
+        self.create_experiment_pushbutton.clicked.connect(
+            self.create_experiment)
+        self.performed_experiments_cbox.currentIndexChanged.connect(
+            self.handle_experiment_action_buttons)
         self.spawn_waveform_viewer_button.clicked.connect(
-            self.spawn_waveform_viewer)
+            lambda: self.perform_experiment_action("spawn_waveform_viewer")
+        )
+        self.run_measurement_button.clicked.connect(
+            lambda: self.perform_experiment_action("run_measurement")
+        )
+        self.run_analysis_button.clicked.connect(
+            lambda: self.perform_experiment_action("run_analysis")
+        )
+        self.update_metadata_button.clicked.connect(
+            lambda: self.perform_experiment_action("update_metadata")
+        )
+        self.open_in_explorer_button.clicked.connect(
+            lambda: self.perform_experiment_action("open_in_explorer")
+        )
 
     def set_layout(self):
         self.general_options_field_container.layout().addRow(
@@ -200,30 +237,54 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             "Choose Qubits: ", self.selectbox_qubits)
         self.general_options_field_container.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
+        self.qubit_settings_container.layout().addLayout(
+            g_utils.add_label_to_widget(
+                self.qubit_pulse_period, "pulse_period: "))
+        self.qubit_settings_container.layout().addLayout(
+            g_utils.add_label_to_widget(
+                self.qubit_acq_averages, "acq_averages: "))
+        self.qubit_settings_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
         self.header_container.layout().addWidget(
             self.general_options_field_container)
         self.header_container.layout().addWidget(
+            self.qubit_settings_container)
+        self.header_container.layout().addWidget(
             self.logo_label)
 
-        self.footer_actions_container.setLayout(QtWidgets.QHBoxLayout())
-        self.footer_actions_container.layout().addWidget(
-            self.run_experiment_pushbutton)
-        self.footer_actions_container.layout().addWidget(
-            self.run_waiting_label)
-        self.footer_actions_container.layout().addStretch()
-        self.footer_actions_container.layout().addWidget(
+        self.experiment_actions_container.setLayout(QtWidgets.QVBoxLayout())
+        self.experiment_actions_container.layout().addWidget(
+            self.create_experiment_pushbutton)
+        self.experiment_actions_container.layout().addStretch()
+        self.experiment_actions_container.layout().addWidget(
             self.performed_experiments_cbox)
-        self.footer_actions_container.layout().addWidget(
+        self.experiment_actions_container.layout().addWidget(
             self.spawn_waveform_viewer_button)
+        self.experiment_actions_container.layout().addWidget(
+            self.run_measurement_button)
+        self.experiment_actions_container.layout().addWidget(
+            self.run_analysis_button)
+        self.experiment_actions_container.layout().addWidget(
+            self.update_metadata_button)
+        self.experiment_actions_container.layout().addWidget(
+            self.open_in_explorer_button)
+        self.experiment_actions_container.layout().addStretch()
+        self.experiment_actions_container.layout().addWidget(
+            self.run_waiting_label)
+
+        lower_container = QtWidgets.QHBoxLayout()
+        lower_container.addLayout(self.experiment_configuration_container)
+        lower_container.addWidget(self.experiment_actions_container)
 
         # main vertical layout
         main_vbox_elements = [
             (self.header_container, 'widget'),
             (None, 'stretch'),
             (self.tasks_configuration_container, 'widget'),
-            (self.experiment_widget_container, 'layout'),
+            (lower_container, 'layout'),
             (None, 'stretch'),
-            (self.footer_actions_container, 'widget'),
             (self.message_textedit, 'widget')
         ]
         for element, type in main_vbox_elements:
@@ -234,10 +295,15 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             elif type == 'stretch':
                 self.mainWidget.layout().addStretch()
 
+        screens = QtWidgets.QApplication.instance().screens()
+        min_screen_height = min([screen.size().height() for screen in screens])
+        self.resize(self.width(), min_screen_height)
+        self.scroll.setWidgetResizable(True)
+
     def handle_experiment_choice(self):
         self.add_task_form_button.setEnabled(True)
-        clear_QFormLayout(self.experiment_widget_container)
-        clear_layout(self.tasks_configuration_container.layout())
+        g_utils.clear_QFormLayout(self.experiment_configuration_container)
+        g_utils.clear_layout(self.tasks_configuration_container.layout())
         self.tasks_configuration_container.hide()
         self.add_experiment_fields()
 
@@ -268,17 +334,24 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             class_name_label = QtWidgets.QLabel(f"{class_name} Options")
             class_name_label.setFont(self.boldfont)
             if len(kwarg_dict):
-                self.experiment_widget_container.addRow(class_name_label)
+                self.experiment_configuration_container.addRow(class_name_label)
             for kwarg, field_information in kwarg_dict.items():
                 self.add_widget_to_experiment_section(kwarg, field_information)
-        self.footer_actions_container.show()
-        self.run_experiment_pushbutton.show()
+        self.experiment_actions_container.show()
+        self.create_experiment_pushbutton.show()
+
+    def show_experiment_action_buttons(self):
+        self.spawn_waveform_viewer_button.show()
+        self.run_measurement_button.show()
+        self.run_analysis_button.show()
+        self.update_metadata_button.show()
+        self.open_in_explorer_button.show()
 
     def add_widget_to_experiment_section(self, kwarg, field_information):
         widget = self.create_field_from_field_information(field_information)
         if widget is None:
             return
-        self.experiment_widget_container.addRow(kwarg, widget)
+        self.experiment_configuration_container.addRow(kwarg, widget)
 
     def add_task_form(self):
         self.tasks_configuration_container.show()
@@ -437,72 +510,96 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
                 f"of type {type(widget)}")
             return None
 
-    def run_experiment(self):
-        self.run_experiment_pushbutton.setEnabled(False)
+    def create_experiment(self):
+        self.create_experiment_pushbutton.setEnabled(False)
         self.run_waiting_animation.start()
         self.run_waiting_label.show()
         experiment = self.get_selected_experiment()
-        experiment_settings_kwargs = self.get_QFormLayout_settings(
-            self.experiment_widget_container)
-        qubits = self.selectbox_qubits.get_selected_qubits_from_device(
-            self.device)
-        task_list = self.get_task_list()
+        # The creation of a SweepPoints instance while trying to retrieve
+        # the argument values for the instantiation of the quantum experiment
+        # might raise an error if the sweep points configuration by the user
+        # was faulty.
+        # If not handled, the GUI will be stuck in create_experiment mode.
+        try:
+            experiment_settings_kwargs = self.get_QFormLayout_settings(
+                self.experiment_configuration_container)
+            qubits = self.selectbox_qubits.get_selected_qubits_from_device(
+                self.device)
+            task_list = self.get_task_list()
+        except Exception as exception:
+            pass_exception = types.SimpleNamespace()
+            pass_exception.exception = exception
+            self.handle_experiment_result(
+                pass_exception, "Unable to set the experiment arguments.\n"
+            )
+            return
+
         if not len(task_list):
             task_list = None
+        argument_string = (f"Arguments:\n"
+                                f"  task list:\n"
+                                f"    {task_list}\n"
+                                f"  experiment settings:\n"
+                                f"    {experiment_settings_kwargs}\n"
+                                f"  qubits:\n"
+                                f"    {qubits}")
         self.message_textedit.clear_and_set_text(
-            "Running Experiment..."
+            "Creating Experiment...\n"
+            "\n"
+            f"{argument_string}"
             )
         # performing the experiment in a separate thread has the advantage
         # of making the gui main window responsive while the experiment is
         # being performed
-        self.run_experiment_thread = QtCore.QThread()
-        self.run_experiment_worker = RunExperimentWorker(
-            experiment, task_list, qubits, self.device,
-            experiment_settings_kwargs
+        self.create_experiment_thread = g_utils.ThreadAndWorker(
+            worker_class=CreateExperimentWorker,
+            worker_method="create_experiment",
+            signal_finished="finished_experiment",
+            slot_finished=self.handle_experiment_result,
+            args=[experiment, task_list, qubits, self.device,
+                  experiment_settings_kwargs]
         )
-        self.run_experiment_worker.moveToThread(self.run_experiment_thread)
-
-        self.run_experiment_worker.finished_experiment.connect(
-            self.handle_experiment_result)
-        self.run_experiment_thread.started.connect(
-            self.run_experiment_worker.run_experiment)
-        self.run_experiment_worker.finished_experiment.connect(
-            self.run_experiment_thread.quit)
-        self.run_experiment_worker.finished_experiment.connect(
-            self.run_experiment_worker.deleteLater)
-        self.run_experiment_thread.finished.connect(
-            self.run_experiment_thread.deleteLater)
-        self.run_experiment_thread.start()
 
     @QtCore.Slot(object, str)
     def handle_experiment_result(self, experiment, argument_string):
         self.run_waiting_animation.stop()
         self.run_waiting_label.hide()
+        added_experiment = False
         if experiment.exception is not None:
-            self.message_textedit.clear_and_set_text(
-                "Experiment could not be performed"
-                "\n"
-                f"{argument_string}")
+            self.handle_exception(
+                experiment.exception,
+                pre_error_message="Experiment could not be created:\n",
+                post_error_message=f"\n{argument_string}")
             message_box = QtWidgets.QMessageBox(parent=self)
-            message_box.setText("Unable to run experiment. Check the output "
-                                "of your python console to read the error "
-                                "message.")
+            message_box.setText("Unable to create experiment. Check the "
+                                "message box or the output of your python "
+                                "console to read the error message.")
             message_box.setWindowTitle("Error")
             message_box.setDefaultButton(message_box.Ok)
             message_box.setIcon(message_box.Icon.Warning)
+            if hasattr(experiment, 'waveform_viewer'):
+                self.experiments.append(experiment)
+                experiment.guess_label()
+                self.performed_experiments_cbox.insertItem(
+                    0, f"{experiment.label} (failed)", False)
+                added_experiment = True
             message_box.exec_()
 
         else:
             self.message_textedit.clear_and_set_text(
-                "Successfully ran the experiment!\n"
+                "Successfully created the experiment!\n"
                 "\n"
                 f"{argument_string}")
+            experiment.guess_label()
             self.experiments.append(experiment)
-            self.performed_experiments_cbox.addItem(
-                f"{experiment.label} ({experiment.timestamp})")
+            self.performed_experiments_cbox.insertItem(
+                0, f"{experiment.label} ({experiment.timestamp})", True)
+            added_experiment = True
+        if added_experiment:
+            self.performed_experiments_cbox.setCurrentIndex(0)
             self.performed_experiments_cbox.show()
-            self.spawn_waveform_viewer_button.show()
-        self.run_experiment_pushbutton.setEnabled(True)
+            self.show_experiment_action_buttons()
+        self.create_experiment_pushbutton.setEnabled(True)
 
     def get_QFormLayout_settings(self, QFormLayoutInstance):
         settings_dict = {}
@@ -526,13 +623,126 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             task_list.append(self.get_QFormLayout_settings(task_form.layout()))
         return task_list
 
-    def spawn_waveform_viewer(self):
-        self.spawn_waveform_viewer_button.setEnabled(False)
-        experiment_index = self.performed_experiments_cbox.currentIndex()
-        self.experiments[experiment_index].spawn_waveform_viewer(
-            new_process=False, active_qapp=True)
-        self.spawn_waveform_viewer_button.setEnabled(True)
-        pass
+    def get_selected_performed_experiment_index(self):
+        list_index = self.performed_experiments_cbox.currentIndex()
+        list_length = self.performed_experiments_cbox.count()
+        return list_length - list_index - 1
+
+    def perform_experiment_action(self, action):
+        experiment_index = self.get_selected_performed_experiment_index()
+        experiment = self.experiments[experiment_index]
+        try:
+            if action == "run_measurement":
+                self.run_waiting_animation.start()
+                self.run_waiting_label.show()
+                self.set_enabled_buttons_experiment_methods(False)
+                self.message_textedit.clear_and_set_text(
+                    "Running measurement..."
+                )
+                self.run_measurement_thread = g_utils.ThreadAndWorker(
+                    worker_class=RunMeasurementWorker,
+                    worker_method="run_measurement",
+                    signal_finished="finished_measurement",
+                    slot_finished=self.handle_experiment_actions,
+                    args=[experiment]
+                )
+            elif action == "run_analysis":
+                self.run_waiting_animation.start()
+                self.run_waiting_label.show()
+                self.set_enabled_buttons_experiment_methods(False)
+                self.message_textedit.clear_and_set_text(
+                    "Running analysis..."
+                )
+                self.run_analysis_thread = g_utils.ThreadAndWorker(
+                    worker_class=RunAnalysisWorker,
+                    worker_method="run_analysis",
+                    signal_finished="finished_analysis",
+                    slot_finished=self.handle_experiment_actions,
+                    args=[experiment],
+                    exception_slot=self.handle_analysis_exception
+                )
+            elif action == "update_metadata":
+                self.run_waiting_animation.start()
+                self.run_waiting_label.show()
+                self.set_enabled_buttons_experiment_methods(False)
+                self.message_textedit.clear_and_set_text(
+                    "Updating metadata..."
+                )
+                self.update_metadata_thread = g_utils.ThreadAndWorker(
+                    worker_class=UpdateMetadataWorker,
+                    worker_method="update_metadata",
+                    signal_finished="finished_update",
+                    slot_finished=self.handle_experiment_actions,
+                    args=[experiment]
+                )
+            elif action == "spawn_waveform_viewer":
+                self.spawn_waveform_viewer_button.setEnabled(False)
+                experiment.spawn_waveform_viewer(
+                    new_process=False, active_qapp=True)
+                self.spawn_waveform_viewer_button.setEnabled(True)
+            elif action == "open_in_explorer":
+                filepath = a_tools.get_folder(
+                    experiment.timestamp)
+                g_utils.open_file_in_explorer(filepath)
+        except Exception as exception:
+            self.handle_exception(
+                exception=exception,
+                pre_error_message=f"Action {action} could not be performed:\n")
+            self.set_enabled_buttons_experiment_methods(True)
+
+    @QtCore.Slot(object)
+    def handle_analysis_exception(self, exception):
+        pre_error_message = "Could not perform analysis\n"
+        self.handle_exception(
+            exception,
+            pre_error_message=pre_error_message,
+            post_error_message="")
+        self.run_waiting_animation.stop()
+        self.run_waiting_label.hide()
+        self.set_enabled_buttons_experiment_methods(True)
+
+    def handle_exception(self, exception, pre_error_message="",
+                         post_error_message=""):
+        traceback.print_exc()
+        self.message_textedit.clear_and_set_text(
+            pre_error_message +
+            f"{type(exception).__name__}: {str(exception)}\n"
+            + post_error_message)
+
+    @QtCore.Slot(str)
+    def handle_experiment_actions(self, action):
+        message = None
+        if action == "run_measurement":
+            message = "Successfully ran the measurement!\n"
+        elif action == "run_analysis":
+            message = "Successfully ran the analysis!\n"
+        elif action == "update_metadata":
+            message = "Successfully updated the metadata!\n"
+        if message is not None:
+            self.message_textedit.clear_and_set_text(message)
+        self.run_waiting_animation.stop()
+        self.run_waiting_label.hide()
+        self.set_enabled_buttons_experiment_methods(True)
+
+    def handle_experiment_action_buttons(self):
+        # index of experiment in performed experiments dropdown list
+        dropdown_experiment_index = \
+            self.performed_experiments_cbox.currentIndex()
+        # index of experiment in self.experiments
+        experiment_index = self.get_selected_performed_experiment_index()
+        if self.performed_experiments_cbox.itemData(dropdown_experiment_index):
+            self.set_enabled_buttons_experiment_methods(True)
+        else:
+            self.set_enabled_buttons_experiment_methods(False)
+        if hasattr(self.experiments[experiment_index], 'timestamp'):
+            self.open_in_explorer_button.setEnabled(True)
+        else:
+            self.open_in_explorer_button.setEnabled(False)
+
+    def set_enabled_buttons_experiment_methods(self, enabled=True):
+        self.run_measurement_button.setEnabled(enabled)
+        self.run_analysis_button.setEnabled(enabled)
+        self.update_metadata_button.setEnabled(enabled)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_W \
@@ -541,7 +751,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QScrollArea):
             event.accept()
 
 
-class RunExperimentWorker(QtCore.QObject):
+class CreateExperimentWorker(QtCore.QObject):
     finished_experiment = QtCore.Signal(object, str)
 
     def __init__(self, experiment, task_list, qubits, dev,
@@ -552,7 +762,6 @@ class RunExperimentWorker(QtCore.QObject):
         self.qubits = qubits
         self.dev = dev
         self.experiment_settings_kwargs = experiment_settings_kwargs
-        self.return_experiment = None
         self.argument_string = (f"Arguments:\n"
                                 f"  task list:\n"
                                 f"    {task_list}\n"
@@ -561,14 +770,65 @@ class RunExperimentWorker(QtCore.QObject):
                                 f"  qubits:\n"
                                 f"    {qubits}")
 
-    def run_experiment(self):
-        self.return_experiment = self.experiment(
-            task_list=self.task_list,
-            qubits=self.qubits,
-            dev=self.dev,
-            **self.experiment_settings_kwargs)
-        self.finished_experiment.emit(self.return_experiment,
-                                      self.argument_string)
+    def create_experiment(self):
+        try:
+            return_experiment = self.experiment(
+                task_list=self.task_list,
+                qubits=self.qubits,
+                dev=self.dev,
+                **self.experiment_settings_kwargs)
+        except Exception as exception:
+            return_experiment = types.SimpleNamespace()
+            return_experiment.exception = exception
+        self.finished_experiment.emit(return_experiment, self.argument_string)
+
+
+class RunMeasurementWorker(QtCore.QObject):
+    finished_measurement = QtCore.Signal(str)
+
+    def __init__(self, experiment):
+        super().__init__()
+        self.experiment = experiment
+
+    def run_measurement(self):
+        self.experiment.run_measurement()
+        self.finished_measurement.emit("run_measurement")
+
+
+class RunAnalysisWorker(QtCore.QObject):
+    finished_analysis = QtCore.Signal(str)
+    exception = QtCore.Signal(object)
+
+    def __init__(self, experiment):
+        super().__init__()
+        self.experiment = experiment
+
+    def run_analysis(self):
+        try:
+            self.experiment.run_analysis(
+                analysis_kwargs={"raise_exceptions": True})
+        except Exception as exception:
+            self.exception.emit(exception)
+            return
+        self.finished_analysis.emit("run_analysis")
+
+
+class UpdateMetadataWorker(QtCore.QObject):
+    finished_update = QtCore.Signal(str)
+
+    def __init__(self, experiment):
+        super().__init__()
+        self.experiment = experiment
+
+    def update_metadata(self):
+        self.experiment.update_metadata()
+        self.finished_update.emit("update_metadata")
+
+
+class SweepPointsValueSelectionTypes(Enum):
+    LINSPACE = "np.linspace"
+    ARANGE = "np.arange"
+    LIST = "list"
 
 
 class SweepPointsDialog(QtWidgets.QDialog):
@@ -591,6 +851,8 @@ class SweepPointsDialog(QtWidgets.QDialog):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
         self.add_sweep_points_button = QtWidgets.QPushButton('&Add')
+        self.add_sweep_points_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.layout().addWidget(self.add_sweep_points_button)
         self.sweep_points_list = []
         self.add_sweep_points_button.clicked.connect(self.add_sweep_points)
@@ -661,19 +923,21 @@ class SweepPointsForm(QtWidgets.QGroupBox):
              SweepPointsValueSelectionTypes])
         self.values_selection_type_cbox.setCurrentIndex(0)
         self.delete_sweep_points_button = QtWidgets.QPushButton('Delete')
+        self.delete_sweep_points_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.setup_dialog()
 
     def configure_layout(self):
-        self.row_layouts["row_1"].addLayout(add_label_to_widget(
+        self.row_layouts["row_1"].addLayout(g_utils.add_label_to_widget(
             self.dimension_combobox, "Dimension: "))
-        self.row_layouts["row_1"].addLayout(add_label_to_widget(
+        self.row_layouts["row_1"].addLayout(g_utils.add_label_to_widget(
             self.parameter_name_cbox, "Parameter Name: "))
         self.row_layouts["row_1"].addLayout(
-            add_label_to_widget(self.unit_lineedit, "Base unit: "))
+            g_utils.add_label_to_widget(self.unit_lineedit, "Base unit: "))
         self.row_layouts["row_2"].addLayout(
-            add_label_to_widget(self.label_lineedit, "Label: "))
+            g_utils.add_label_to_widget(self.label_lineedit, "Label: "))
         self.row_layouts["row_2"].addLayout(
-            add_label_to_widget(self.values_selection_type_cbox,
+            g_utils.add_label_to_widget(self.values_selection_type_cbox,
                                 "Values Selection Type: "))
 
         self.row_layouts["row_3"].addLayout(self.values_layout)
@@ -750,7 +1014,7 @@ class SweepPointsForm(QtWidgets.QGroupBox):
                     self.sweep_parameters[current_dimension][selected_sweep_parameter])
 
     def configure_values_selection_field(self, set_previous_choice=False):
-        clear_layout(self.values_layout)
+        g_utils.clear_layout(self.values_layout)
         if not set_previous_choice:
             values_selection_type = self.values_selection_type_cbox.currentText()
         else:
@@ -766,12 +1030,15 @@ class SweepPointsForm(QtWidgets.QGroupBox):
             self.values_end_value = QLineEditDouble()
             self.values_number_of_steps = QLineEditInt()
             if set_previous_choice:
-                self.values_start_value.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["start_value"]))
-                self.values_end_value.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["end_value"]))
-                self.values_number_of_steps.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["number_of_steps"]))
+                self.values_start_value.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["start_value"]))
+                self.values_end_value.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["end_value"]))
+                self.values_number_of_steps.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["number_of_steps"]))
             fields.extend([
                 (self.values_start_value, "Start Value: "),
                 (self.values_end_value, "End Value: "),
@@ -783,12 +1050,15 @@ class SweepPointsForm(QtWidgets.QGroupBox):
             self.values_end_value = QLineEditDouble()
             self.values_step_size = QLineEditDouble()
             if set_previous_choice:
-                self.values_start_value.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["start_value"]))
-                self.values_end_value.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["end_value"]))
-                self.values_step_size.setText(convert_field_value_to_string(
-                    self.previous_choice["_field_values"]["step_size"]))
+                self.values_start_value.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["start_value"]))
+                self.values_end_value.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["end_value"]))
+                self.values_step_size.setText(
+                    g_utils.convert_field_value_to_string(
+                        self.previous_choice["_field_values"]["step_size"]))
             fields.extend([
                 (self.values_start_value, "Start Value: "),
                 (self.values_end_value, "End Value: "),
@@ -809,7 +1079,7 @@ class SweepPointsForm(QtWidgets.QGroupBox):
         else:
             return
 
-        [self.values_layout.addLayout(add_label_to_widget(widget, label))
+        [self.values_layout.addLayout(g_utils.add_label_to_widget(widget, label))
          for widget, label in fields]
 
     def get_and_store_sweep_points_config(self):
@@ -877,7 +1147,7 @@ class SweepPointsForm(QtWidgets.QGroupBox):
                 "list_string": self.values_list.text(),
             })
             if self.values_list.text() != "":
-                values = [convert_string_to_number_if_possible(value)
+                values = [g_utils.convert_string_to_number_if_possible(value)
                           for value in self.values_list.text().split(",")]
         sweep_points_config["kwargs"].update({"values": values})
         self.previous_choice = sweep_points_config
@@ -887,7 +1157,6 @@ class SweepPointsForm(QtWidgets.QGroupBox):
         self.dialog.sweep_points_list.remove(self)
         self.deleteLater()
         self.dialog.resize(self.dialog.minimumSizeHint())
-
 
 
 class TaskForm(QtWidgets.QWidget):
@@ -903,6 +1172,8 @@ class TaskForm(QtWidgets.QWidget):
                 self.add_task_widget(kwarg, field_information)
 
         delete_task_button = QtWidgets.QPushButton("Delete Task")
+        delete_task_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         delete_task_button.clicked.connect(self.delete_task_form)
         self.layout().addRow("", delete_task_button)
 
@@ -933,6 +1204,8 @@ class SweepPointsWidget(QtWidgets.QWidget):
         self.layout = QtWidgets.QHBoxLayout()
         self.setLayout(self.layout)
         self.configure_sweep_points_button = QtWidgets.QPushButton("Configure")
+        self.configure_sweep_points_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.chosen_sweep_points_kwargs = None
         self.configure_sweep_points_button.clicked.connect(
             self.spawn_sweep_points_dialog)
@@ -941,7 +1214,7 @@ class SweepPointsWidget(QtWidgets.QWidget):
         self.stored_sweep_parameter.setText('None')
         self.layout.addWidget(self.configure_sweep_points_button,
                               QtCore.Qt.AlignLeft)
-        self.layout.addWidget(self.stored_sweep_parameter, QtCore.Qt.AlignLeft)
+        self.layout.addWidget(self.stored_sweep_parameter, QtCore.Qt.AlignTop)
         self.sweep_points_dialog = SweepPointsDialog(
             self.sweeping_parameters, parent=self, gui=self.gui)
         self.sweep_points_dialog.setModal(True)

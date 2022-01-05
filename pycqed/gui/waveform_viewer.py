@@ -8,30 +8,21 @@ import matplotlib.pyplot as plt
 from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.gui.rc_params import GUI_RC_PARAMS
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
+from pycqed.gui import gui_utilities as g_utils
 from matplotlib.backend_bases import _Mode
 from pycqed.gui import pulsar_shadow
 from matplotlib.backend_tools import cursors
 import multiprocessing as mp
 from copy import deepcopy
-from itertools import chain, combinations
 from enum import Enum
 import logging
 log = logging.getLogger(__name__)
-
-def powerset(iterable):
-    """powerset([1,2,3]) --> (), (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
-    s = list(iterable)
-    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 
 class PLOT_OPTIONS(Enum):
     NORMALIZED = "normalized amp"
     SHAREX = "share x-axis"
     DEMODULATE = "demodulate"
-
-
-class Object(object):
-    pass
 
 
 class WaveformViewer:
@@ -83,7 +74,7 @@ class WaveformViewer:
         # quantum_experiment.get_qubits[1]
         qubits = quantum_experiment.dev.get_qubits(
             quantum_experiment.get_qubits()[1])
-        for qset in powerset(qubits):
+        for qset in g_utils.powerset(qubits):
             if len(qset) != 0:
                 channel_map = {}
                 [channel_map.update(qb.get_channel_map()) for qb in qset]
@@ -180,16 +171,6 @@ def start_qapp_in_new_process(sequences, qubit_channel_maps,
     )
     main_window.showMaximized()
     app.exec_()
-
-
-def add_label_to_widget(widget, labeltext):
-    layout = QtWidgets.QHBoxLayout()
-    label = QtWidgets.QLabel(labeltext)
-    label.setAlignment(QtCore.Qt.AlignCenter)
-    layout.addWidget(label)
-    layout.addWidget(widget)
-    layout.setSpacing(0)
-    return layout
 
 
 class WaveformViewerMainWindow(QtWidgets.QWidget):
@@ -292,17 +273,18 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         self.selectbox_instruments.model().dataChanged.connect(self.on_change)
 
     def set_layout(self):
-        input_widgets = [add_label_to_widget(self.cbox_sequence_indices,
-                                             'Sequence: '),
-                         add_label_to_widget(self.cbox_segment_indices,
-                                             'Segment: '),
-                         add_label_to_widget(self.selectbox_qubits,
-                                             'Qubits: '),
-                         add_label_to_widget(self.selectbox_instruments,
-                                             'Instruments: '),
-                         add_label_to_widget(self.plot_options,
-                                             'Plot Options: '),
-                         ]
+        input_widgets = [
+            g_utils.add_label_to_widget(
+                self.cbox_sequence_indices, 'Sequence: '),
+            g_utils.add_label_to_widget(
+                self.cbox_segment_indices, 'Segment: '),
+            g_utils.add_label_to_widget(
+                self.selectbox_qubits, 'Qubits: '),
+            g_utils.add_label_to_widget(
+                self.selectbox_instruments, 'Instruments: '),
+            g_utils.add_label_to_widget(
+                self.plot_options, 'Plot Options: '),
+        ]
 
         self.input_layout_widget.setLayout(QtWidgets.QHBoxLayout())
         for input_widget in input_widgets:
@@ -345,7 +327,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         t = event.mouseevent.xdata/1e6
         plist = [p for p in self.get_current_segment().resolved_pulses]
         for p in self.get_current_segment().extra_pulses:
-            plist.append(Object())
+            plist.append(g_utils.Object())
             plist[-1].pulse_obj = p
         plist = [p for p in plist
                  if p.pulse_obj.algorithm_time() < t <
@@ -475,25 +457,14 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
     def get_experiment_plot(self):
         channel_map, instruments = self.prepare_experiment_plot()
 
-        self.get_plots_thread = QtCore.QThread()
-        self.get_plots_worker = GetExperimentPlotWorker(
-            current_segment=self.get_current_segment(),
-            channel_map=channel_map, instruments=instruments,
-            gui_kwargs=self.gui_kwargs, rc_params=self.rc_params
+        self.get_plots_thread = g_utils.ThreadAndWorker(
+            worker_class=GetExperimentPlotWorker,
+            worker_method="get_experiment_plot",
+            signal_finished="finished_plots",
+            slot_finished=self.set_experiment_plot,
+            args=[self.get_current_segment(), channel_map, instruments,
+                  self.gui_kwargs, self.rc_params]
         )
-        self.get_plots_worker.moveToThread(self.get_plots_thread)
-
-        self.get_plots_worker.finished_plots.connect(
-            self.set_experiment_plot)
-        self.get_plots_thread.started.connect(
-            self.get_plots_worker.get_experiment_plot)
-        self.get_plots_worker.finished_plots.connect(
-            self.get_plots_thread.quit)
-        self.get_plots_worker.finished_plots.connect(
-            self.get_plots_worker.deleteLater)
-        self.get_plots_thread.finished.connect(
-            self.get_plots_thread.deleteLater)
-        self.get_plots_thread.start()
 
     def prepare_experiment_plot(self):
         self.gui_kwargs.update({
