@@ -5,28 +5,23 @@ from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
 from itertools import chain, combinations
 
 
-class ThreadAndWorker:
-    def __init__(self, worker_class, worker_method, signal_finished,
-                 slot_finished, args, exception_slot=None):
-        self.thread = QtCore.QThread()
-        self.worker = worker_class(*args)
-        self.worker.moveToThread(self.thread)
-        worker_signal = getattr(self.worker, signal_finished)
-        if slot_finished is not None:
-            worker_signal.connect(
-                slot_finished)
-        self.thread.started.connect(
-            getattr(self.worker, worker_method))
-        worker_signal.connect(
-            self.thread.quit)
-        worker_signal.connect(
-            self.worker.deleteLater)
-        self.thread.finished.connect(
-            self.thread.deleteLater)
-        if exception_slot is not None:
-            self.worker.exception.connect(
-                exception_slot)
-        self.thread.start()
+class GUIWorkerSignals(QtCore.QObject):
+    finished_experiment = QtCore.Signal(object, str)
+    finished_measurement = QtCore.Signal(str)
+    finished_analysis = QtCore.Signal(str)
+    finished_update = QtCore.Signal(str)
+    finished_plots = QtCore.Signal(object, object)
+    exception = QtCore.Signal(object)
+
+
+class SimpleWorker(QtCore.QRunnable):
+    def __init__(self):
+        super().__init__()
+        self.signals = GUIWorkerSignals()
+
+    def update_parameters(self, **kwargs):
+        [setattr(self, argument_name, value)
+         for argument_name, value in kwargs.items()]
 
 
 def clear_layout(layout):

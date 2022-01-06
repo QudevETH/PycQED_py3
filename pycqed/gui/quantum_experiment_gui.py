@@ -1,4 +1,5 @@
 import sys
+import os
 import types
 from pycqed.gui.qt_widgets.qt_field_widgets import *
 from pycqed.gui import gui_utilities as g_utils
@@ -65,7 +66,7 @@ class QuantumExperimentGUI:
         self.app.exec_()
 
 
-class autoAdjustWidthScrollcontentWidget(QtWidgets.QWidget):
+class AutoAdjustWidthScrollcontentWidget(QtWidgets.QWidget):
     def __init__(self, main_window, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.main_window = main_window
@@ -78,7 +79,6 @@ class autoAdjustWidthScrollcontentWidget(QtWidgets.QWidget):
             self.main_window.resize(screen_width, self.main_window.height())
         else:
             self.main_window.resize(self.width(), self.main_window.height())
-
 
 
 class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
@@ -95,7 +95,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         # button, qubit selection dropdown)
         self.scroll = QtWidgets.QScrollArea()
         self.setCentralWidget(self.scroll)
-        self.mainWidget = autoAdjustWidthScrollcontentWidget(self)
+        self.mainWidget = AutoAdjustWidthScrollcontentWidget(self)
         self.scroll.setWidget(self.mainWidget)
         self.mainWidget.setLayout(QtWidgets.QVBoxLayout())
 
@@ -111,8 +111,9 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
 
         self.selectbox_qubits = MultiQubitSelectionWidget(
             [qb.name for qb in self.device.get_qubits()])
-
-        self.logo_pixmap = QtGui.QPixmap("pycqed/gui/assets/qudev_logo.png")
+        self.file_path = os.path.dirname(os.path.abspath(__file__))
+        self.logo_pixmap = QtGui.QPixmap(
+            os.path.join(self.file_path, "assets/qudev_logo.png"))
 
         self.logo_label = QtWidgets.QLabel()
         self.logo_label.setPixmap(self.logo_pixmap)
@@ -155,7 +156,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.create_experiment_pushbutton.hide()
         self.run_waiting_label = QtWidgets.QLabel()
         self.run_waiting_animation = QtGui.QMovie(
-            "pycqed/gui/assets/spinner_animation.gif")
+            os.path.join(self.file_path, "assets/spinner_animation.gif"))
         self.run_waiting_animation.setScaledSize(QtCore.QSize(40, 40))
         self.run_waiting_label.setMovie(self.run_waiting_animation)
         self.run_waiting_label.hide()
@@ -201,6 +202,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
 
         self.set_layout()
         self.connect_widgets()
+        self.threadpool = QtCore.QThreadPool.globalInstance()
 
     def connect_widgets(self):
         self.cbox_experiment_options.currentIndexChanged.connect(
@@ -295,9 +297,9 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             elif type == 'stretch':
                 self.mainWidget.layout().addStretch()
 
-        screens = QtWidgets.QApplication.instance().screens()
-        min_screen_height = min([screen.size().height() for screen in screens])
-        self.resize(self.width(), min_screen_height)
+        screen_height = QtWidgets.QApplication.desktop().availableGeometry(
+            self).height()
+        self.resize(self.width(), screen_height)
         self.scroll.setWidgetResizable(True)
 
     def handle_experiment_choice(self):
@@ -551,14 +553,17 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         # performing the experiment in a separate thread has the advantage
         # of making the gui main window responsive while the experiment is
         # being performed
-        self.create_experiment_thread = g_utils.ThreadAndWorker(
-            worker_class=CreateExperimentWorker,
-            worker_method="create_experiment",
-            signal_finished="finished_experiment",
-            slot_finished=self.handle_experiment_result,
-            args=[experiment, task_list, qubits, self.device,
-                  experiment_settings_kwargs]
+        create_experiment_worker = CreateExperimentWorker()
+        create_experiment_worker.signals.finished_experiment.connect(
+            self.handle_experiment_result)
+        create_experiment_worker.update_parameters(
+            experiment=experiment,
+            task_list=task_list,
+            qubits=qubits,
+            dev=self.device,
+            experiment_settings_kwargs=experiment_settings_kwargs
         )
+        self.threadpool.start(create_experiment_worker)
 
     @QtCore.Slot(object, str)
     def handle_experiment_result(self, experiment, argument_string):
@@ -639,13 +644,13 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 self.message_textedit.clear_and_set_text(
                     "Running measurement..."
                 )
-                self.run_measurement_thread = g_utils.ThreadAndWorker(
-                    worker_class=RunMeasurementWorker,
-                    worker_method="run_measurement",
-                    signal_finished="finished_measurement",
-                    slot_finished=self.handle_experiment_actions,
-                    args=[experiment]
+                run_measurement_worker = RunMeasurementWorker()
+                run_measurement_worker.signals.finished_measurement.connect(
+                    self.handle_experiment_actions)
+                run_measurement_worker.update_parameters(
+                    experiment=experiment
                 )
+                self.threadpool.start(run_measurement_worker)
             elif action == "run_analysis":
                 self.run_waiting_animation.start()
                 self.run_waiting_label.show()
@@ -653,14 +658,15 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 self.message_textedit.clear_and_set_text(
                     "Running analysis..."
                 )
-                self.run_analysis_thread = g_utils.ThreadAndWorker(
-                    worker_class=RunAnalysisWorker,
-                    worker_method="run_analysis",
-                    signal_finished="finished_analysis",
-                    slot_finished=self.handle_experiment_actions,
-                    args=[experiment],
-                    exception_slot=self.handle_analysis_exception
+                run_analysis_worker = RunAnalysisWorker()
+                run_analysis_worker.signals.finished_analysis.connect(
+                    self.handle_experiment_actions)
+                run_analysis_worker.signals.exception.connect(
+                    self.handle_analysis_exception)
+                run_analysis_worker.update_parameters(
+                    experiment=experiment
                 )
+                self.threadpool.start(run_analysis_worker)
             elif action == "update_metadata":
                 self.run_waiting_animation.start()
                 self.run_waiting_label.show()
@@ -668,13 +674,13 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 self.message_textedit.clear_and_set_text(
                     "Updating metadata..."
                 )
-                self.update_metadata_thread = g_utils.ThreadAndWorker(
-                    worker_class=UpdateMetadataWorker,
-                    worker_method="update_metadata",
-                    signal_finished="finished_update",
-                    slot_finished=self.handle_experiment_actions,
-                    args=[experiment]
+                update_metadata_worker = UpdateMetadataWorker()
+                update_metadata_worker.signals.finished_update.connect(
+                    self.handle_experiment_actions)
+                update_metadata_worker.update_parameters(
+                    experiment=experiment
                 )
+                self.threadpool.start(update_metadata_worker)
             elif action == "spawn_waveform_viewer":
                 self.spawn_waveform_viewer_button.setEnabled(False)
                 experiment.spawn_waveform_viewer(
@@ -751,26 +757,16 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             event.accept()
 
 
-class CreateExperimentWorker(QtCore.QObject):
-    finished_experiment = QtCore.Signal(object, str)
-
-    def __init__(self, experiment, task_list, qubits, dev,
-                 experiment_settings_kwargs):
-        super().__init__()
-        self.experiment = experiment
-        self.task_list = task_list
-        self.qubits = qubits
-        self.dev = dev
-        self.experiment_settings_kwargs = experiment_settings_kwargs
-        self.argument_string = (f"Arguments:\n"
-                                f"  task list:\n"
-                                f"    {task_list}\n"
-                                f"  experiment settings:\n"
-                                f"    {experiment_settings_kwargs}\n"
-                                f"  qubits:\n"
-                                f"    {qubits}")
-
-    def create_experiment(self):
+class CreateExperimentWorker(g_utils.SimpleWorker):
+    @QtCore.Slot()
+    def run(self):
+        argument_string = (f"Arguments:\n"
+                           f"  task list:\n"
+                           f"    {self.task_list}\n"
+                           f"  experiment settings:\n"
+                           f"    {self.experiment_settings_kwargs}\n"
+                           f"  qubits:\n"
+                           f"    {self.qubits}")
         try:
             return_experiment = self.experiment(
                 task_list=self.task_list,
@@ -780,49 +776,34 @@ class CreateExperimentWorker(QtCore.QObject):
         except Exception as exception:
             return_experiment = types.SimpleNamespace()
             return_experiment.exception = exception
-        self.finished_experiment.emit(return_experiment, self.argument_string)
+        self.signals.finished_experiment.emit(
+            return_experiment, argument_string)
 
 
-class RunMeasurementWorker(QtCore.QObject):
-    finished_measurement = QtCore.Signal(str)
-
-    def __init__(self, experiment):
-        super().__init__()
-        self.experiment = experiment
-
-    def run_measurement(self):
+class RunMeasurementWorker(g_utils.SimpleWorker):
+    @QtCore.Slot()
+    def run(self):
         self.experiment.run_measurement()
-        self.finished_measurement.emit("run_measurement")
+        self.signals.finished_measurement.emit("run_measurement")
 
 
-class RunAnalysisWorker(QtCore.QObject):
-    finished_analysis = QtCore.Signal(str)
-    exception = QtCore.Signal(object)
-
-    def __init__(self, experiment):
-        super().__init__()
-        self.experiment = experiment
-
-    def run_analysis(self):
+class RunAnalysisWorker(g_utils.SimpleWorker):
+    @QtCore.Slot()
+    def run(self):
         try:
             self.experiment.run_analysis(
                 analysis_kwargs={"raise_exceptions": True})
         except Exception as exception:
-            self.exception.emit(exception)
+            self.signals.exception.emit(exception)
             return
-        self.finished_analysis.emit("run_analysis")
+        self.signals.finished_analysis.emit("run_analysis")
 
 
-class UpdateMetadataWorker(QtCore.QObject):
-    finished_update = QtCore.Signal(str)
-
-    def __init__(self, experiment):
-        super().__init__()
-        self.experiment = experiment
-
-    def update_metadata(self):
+class UpdateMetadataWorker(g_utils.SimpleWorker):
+    @QtCore.Slot()
+    def run(self):
         self.experiment.update_metadata()
-        self.finished_update.emit("update_metadata")
+        self.signals.finished_update.emit("update_metadata")
 
 
 class SweepPointsValueSelectionTypes(Enum):

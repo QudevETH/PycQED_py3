@@ -260,6 +260,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
 
         self.set_layout()
         self.setWindowTitle(self.get_window_title_string())
+        self.threadpool = QtCore.QThreadPool.globalInstance()
 
         self.cbox_sequence_indices.currentIndexChanged.connect(
             lambda: self.on_change(caller_id='sequence_change'))
@@ -457,14 +458,18 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
     def get_experiment_plot(self):
         channel_map, instruments = self.prepare_experiment_plot()
 
-        self.get_plots_thread = g_utils.ThreadAndWorker(
-            worker_class=GetExperimentPlotWorker,
-            worker_method="get_experiment_plot",
-            signal_finished="finished_plots",
-            slot_finished=self.set_experiment_plot,
-            args=[self.get_current_segment(), channel_map, instruments,
-                  self.gui_kwargs, self.rc_params]
+        get_plots_worker = GetExperimentPlotWorker()
+        get_plots_worker.update_parameters(
+            current_segment=self.get_current_segment(),
+            channel_map=channel_map,
+            instruments=instruments,
+            gui_kwargs=self.gui_kwargs,
+            rc_params=self.rc_params
         )
+        get_plots_worker.signals.finished_plots.connect(
+            self.set_experiment_plot
+        )
+        self.threadpool.start(get_plots_worker)
 
     def prepare_experiment_plot(self):
         self.gui_kwargs.update({
@@ -512,19 +517,9 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
             event.accept()
 
 
-class GetExperimentPlotWorker(QtCore.QObject):
-    finished_plots = QtCore.Signal(object, object)
-
-    def __init__(self, current_segment, channel_map, instruments,
-                 gui_kwargs, rc_params):
-        super().__init__()
-        self.current_segment = current_segment
-        self.channel_map = channel_map
-        self.instruments = instruments
-        self.gui_kwargs = gui_kwargs
-        self.rc_params = rc_params
-
-    def get_experiment_plot(self):
+class GetExperimentPlotWorker(g_utils.SimpleWorker):
+    @QtCore.Slot()
+    def run(self):
         with plt.rc_context(self.rc_params):
             fig, axes = self.current_segment.plot(
                 channel_map=self.channel_map,
@@ -532,7 +527,7 @@ class GetExperimentPlotWorker(QtCore.QObject):
                 **self.gui_kwargs
             )
             add_picker_to_line_artists(axes)
-            self.finished_plots.emit(fig, axes)
+            self.signals.finished_plots.emit(fig, axes)
 
 
 def add_picker_to_line_artists(axes):
