@@ -126,12 +126,14 @@ class ScrollLabelFixedLineHeight(QtWidgets.QScrollArea):
 
 class ConfigureDialogWidget(QtWidgets.QWidget):
     def __init__(self, gui, dialog_widget, on_ok_method, cancel_message,
-                 on_cancel_reset_method=None, *args, **kwargs):
+                 on_cancel_reset_method=None, on_open_dialog_method=None,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cancel_message = cancel_message
         self.on_cancel_reset_method = on_cancel_reset_method
         self.on_ok_method = on_ok_method
         self.gui = gui
+        self.on_open_dialog_method = on_open_dialog_method
 
         self.setLayout(QtWidgets.QHBoxLayout())
         self.configure_button = QtWidgets.QPushButton('Configure')
@@ -139,18 +141,20 @@ class ConfigureDialogWidget(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.configure_button.clicked.connect(self.show_config_dialog)
         self.layout().addWidget(self.configure_button)
-        self.acq_avg_dialog = dialog_widget(parent=self, gui=gui)
+        self.dialog_widget = dialog_widget(parent=self, gui=gui)
 
     def show_config_dialog(self):
-        clicked_button = self.acq_avg_dialog.exec_()
+        if self.on_open_dialog_method is not None:
+            getattr(self.dialog_widget, self.on_open_dialog_method)()
+        clicked_button = self.dialog_widget.exec_()
         if clicked_button == 1:
-            getattr(self.acq_avg_dialog, self.on_ok_method)()
+            getattr(self.dialog_widget, self.on_ok_method)()
         else:
             self.gui.message_textedit.clear_and_set_text(
                 self.cancel_message
             )
             if self.on_cancel_reset_method is not None:
-                getattr(self.acq_avg_dialog, self.on_cancel_reset_method)()
+                getattr(self.dialog_widget, self.on_cancel_reset_method)()
 
 
 class SimpleDialog(QtWidgets.QDialog):
@@ -197,6 +201,15 @@ class AcqAvgDialog(SimpleDialog):
         self.select_choices_layout.addWidget(self.unselect_all_button)
         self.layout().insertLayout(1, self.select_choices_layout)
 
+    def on_open_dialog(self):
+        self.qubit_selection_cbox.blockSignals(True)
+        self.set_all_qubits(True)
+        self.qubit_selection_cbox.blockSignals(False)
+        qubits = self.qubit_selection_cbox.get_selected_qubits_from_device(
+            self.gui.device)
+        max_set_value = max([qubit.acq_averages() for qubit in qubits])
+        self.value_lineedit.setText(str(max_set_value))
+
     def set_all_qubits(self, state):
         check_state = QtCore.Qt.Checked if state else QtCore.Qt.Unchecked
         for i in range(self.qubit_selection_cbox.model().rowCount()):
@@ -206,7 +219,9 @@ class AcqAvgDialog(SimpleDialog):
     def show_current_value(self):
         qubits = self.qubit_selection_cbox.get_selected_qubits_from_device(
             self.gui.device)
-        if qubits is not None and len(qubits) == 1:
+        # qubits is either None or a list with length >= 1
+        if qubits is not None and (
+                len(set([qubit.acq_averages() for qubit in qubits])) == 1):
             self.value_lineedit.setText(str(qubits[0].acq_averages()))
         else:
             self.value_lineedit.setText("")

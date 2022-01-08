@@ -7,11 +7,11 @@ from itertools import chain, combinations
 
 class GUIWorkerSignals(QtCore.QObject):
     finished_experiment = QtCore.Signal(object, str)
-    finished_measurement = QtCore.Signal(str)
-    finished_analysis = QtCore.Signal(str)
-    finished_update = QtCore.Signal(str)
+    finished_measurement = QtCore.Signal(str, object)
+    finished_analysis = QtCore.Signal(str, object)
+    finished_update = QtCore.Signal(str, object)
     finished_plots = QtCore.Signal(object, object)
-    exception = QtCore.Signal(object)
+    exception = QtCore.Signal(object, str)
 
 
 class SimpleWorker(QtCore.QRunnable):

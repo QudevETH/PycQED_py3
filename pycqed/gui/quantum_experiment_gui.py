@@ -47,12 +47,14 @@ class QuantumExperimentGUI:
                         'binding')
         self.device = device
         self.experiments = []
+        self.experiments_failed_in_init = []
         if not QtWidgets.QApplication.instance():
             self.app = QtWidgets.QApplication(sys.argv)
         else:
             self.app = QtWidgets.QApplication.instance()
         self.main_window = QuantumExperimentGUIMainWindow(
-            self.device, self.experiments, **kwargs
+            self.device, self.experiments, self.experiments_failed_in_init,
+            **kwargs
         )
         self.main_window.setStyleSheet("""
                 QGroupBox {
@@ -82,11 +84,13 @@ class AutoAdjustWidthScrollcontentWidget(QtWidgets.QWidget):
 
 
 class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
-    def __init__(self, device, experiments, *args, **kwargs):
+    def __init__(self, device, experiments, experiments_failed_in_init,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle("Quantum Experiment GUI")
         self.device = device
         self.experiments = experiments
+        self.experiments_failed_in_init = experiments_failed_in_init
 
         self.boldfont = QtGui.QFont()
         self.boldfont.setBold(True)
@@ -137,7 +141,9 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             gui=self, dialog_widget=AcqAvgDialog,
             on_ok_method="update_acq_avg_for_selected_qubit",
             cancel_message="No acq_averages configured\n",
-            on_cancel_reset_method="show_current_value")
+            on_cancel_reset_method="show_current_value",
+            on_open_dialog_method="on_open_dialog"
+        )
 
         # container for configuring the task list
         self.tasks_configuration_container = QtWidgets.QGroupBox(
@@ -168,29 +174,29 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         )
         self.performed_experiments_cbox.hide()
         self.spawn_waveform_viewer_button = QtWidgets.QPushButton(
-            "&View Waveforms")
+            "View Waveforms")
         self.spawn_waveform_viewer_button.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.run_measurement_button = QtWidgets.QPushButton(
-            "&Run Measurement")
+            "Run Measurement")
         self.run_measurement_button.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.run_analysis_button = QtWidgets.QPushButton(
-            "&Run Analysis")
+            "Run Analysis")
         self.run_analysis_button.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
-        self.update_metadata_button = QtWidgets.QPushButton(
-            "&Update Metadata")
-        self.update_metadata_button.setSizePolicy(
+        self.run_update_button = QtWidgets.QPushButton(
+            "Run Update")
+        self.run_update_button.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.open_in_explorer_button = QtWidgets.QPushButton(
-            "&Open in Explorer")
+            "Open in Explorer")
         self.open_in_explorer_button.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.spawn_waveform_viewer_button.hide()
         self.run_measurement_button.hide()
         self.run_analysis_button.hide()
-        self.update_metadata_button.hide()
+        self.run_update_button.hide()
         self.open_in_explorer_button.hide()
 
         # container for actions below the experiment configuration widgets
@@ -202,6 +208,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
 
         self.set_layout()
         self.connect_widgets()
+        self.active_threads = 0
         self.threadpool = QtCore.QThreadPool.globalInstance()
 
     def connect_widgets(self):
@@ -221,8 +228,8 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.run_analysis_button.clicked.connect(
             lambda: self.perform_experiment_action("run_analysis")
         )
-        self.update_metadata_button.clicked.connect(
-            lambda: self.perform_experiment_action("update_metadata")
+        self.run_update_button.clicked.connect(
+            lambda: self.perform_experiment_action("run_update")
         )
         self.open_in_explorer_button.clicked.connect(
             lambda: self.perform_experiment_action("open_in_explorer")
@@ -269,7 +276,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.experiment_actions_container.layout().addWidget(
             self.run_analysis_button)
         self.experiment_actions_container.layout().addWidget(
-            self.update_metadata_button)
+            self.run_update_button)
         self.experiment_actions_container.layout().addWidget(
             self.open_in_explorer_button)
         self.experiment_actions_container.layout().addStretch()
@@ -346,7 +353,7 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
         self.spawn_waveform_viewer_button.show()
         self.run_measurement_button.show()
         self.run_analysis_button.show()
-        self.update_metadata_button.show()
+        self.run_update_button.show()
         self.open_in_explorer_button.show()
 
     def add_widget_to_experiment_section(self, kwarg, field_information):
@@ -563,32 +570,31 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
             dev=self.device,
             experiment_settings_kwargs=experiment_settings_kwargs
         )
+        self.active_threads += 1
         self.threadpool.start(create_experiment_worker)
+        self.handle_experiment_action_buttons()
 
     @QtCore.Slot(object, str)
     def handle_experiment_result(self, experiment, argument_string):
+        self.active_threads -= 1
         self.run_waiting_animation.stop()
         self.run_waiting_label.hide()
         added_experiment = False
         if experiment.exception is not None:
             self.handle_exception(
                 experiment.exception,
-                pre_error_message="Experiment could not be created:\n",
+                pre_error_message="Unable to create experiment:\n",
                 post_error_message=f"\n{argument_string}")
-            message_box = QtWidgets.QMessageBox(parent=self)
-            message_box.setText("Unable to create experiment. Check the "
-                                "message box or the output of your python "
-                                "console to read the error message.")
-            message_box.setWindowTitle("Error")
-            message_box.setDefaultButton(message_box.Ok)
-            message_box.setIcon(message_box.Icon.Warning)
-            if hasattr(experiment, 'waveform_viewer'):
+            if len(getattr(experiment, "sequences", [])):
                 self.experiments.append(experiment)
                 experiment.guess_label()
+                self.performed_experiments_cbox.blockSignals(True)
                 self.performed_experiments_cbox.insertItem(
                     0, f"{experiment.label} (failed)", False)
+                self.performed_experiments_cbox.blockSignals(False)
                 added_experiment = True
-            message_box.exec_()
+            else:
+                self.experiments_failed_in_init.append(experiment)
 
         else:
             self.message_textedit.clear_and_set_text(
@@ -597,13 +603,18 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
                 f"{argument_string}")
             experiment.guess_label()
             self.experiments.append(experiment)
+            self.performed_experiments_cbox.blockSignals(True)
             self.performed_experiments_cbox.insertItem(
                 0, f"{experiment.label} ({experiment.timestamp})", True)
+            self.performed_experiments_cbox.blockSignals(False)
             added_experiment = True
         if added_experiment:
+            self.performed_experiments_cbox.blockSignals(True)
             self.performed_experiments_cbox.setCurrentIndex(0)
+            self.performed_experiments_cbox.blockSignals(False)
             self.performed_experiments_cbox.show()
             self.show_experiment_action_buttons()
+        self.handle_experiment_action_buttons()
         self.create_experiment_pushbutton.setEnabled(True)
 
     def get_QFormLayout_settings(self, QFormLayoutInstance):
@@ -636,119 +647,129 @@ class QuantumExperimentGUIMainWindow(QtWidgets.QMainWindow):
     def perform_experiment_action(self, action):
         experiment_index = self.get_selected_performed_experiment_index()
         experiment = self.experiments[experiment_index]
-        try:
-            if action == "run_measurement":
-                self.run_waiting_animation.start()
-                self.run_waiting_label.show()
-                self.set_enabled_buttons_experiment_methods(False)
-                self.message_textedit.clear_and_set_text(
-                    "Running measurement..."
-                )
-                run_measurement_worker = RunMeasurementWorker()
-                run_measurement_worker.signals.finished_measurement.connect(
-                    self.handle_experiment_actions)
-                run_measurement_worker.update_parameters(
-                    experiment=experiment
-                )
-                self.threadpool.start(run_measurement_worker)
-            elif action == "run_analysis":
-                self.run_waiting_animation.start()
-                self.run_waiting_label.show()
-                self.set_enabled_buttons_experiment_methods(False)
-                self.message_textedit.clear_and_set_text(
-                    "Running analysis..."
-                )
-                run_analysis_worker = RunAnalysisWorker()
-                run_analysis_worker.signals.finished_analysis.connect(
-                    self.handle_experiment_actions)
-                run_analysis_worker.signals.exception.connect(
-                    self.handle_analysis_exception)
-                run_analysis_worker.update_parameters(
-                    experiment=experiment
-                )
-                self.threadpool.start(run_analysis_worker)
-            elif action == "update_metadata":
-                self.run_waiting_animation.start()
-                self.run_waiting_label.show()
-                self.set_enabled_buttons_experiment_methods(False)
-                self.message_textedit.clear_and_set_text(
-                    "Updating metadata..."
-                )
-                update_metadata_worker = UpdateMetadataWorker()
-                update_metadata_worker.signals.finished_update.connect(
-                    self.handle_experiment_actions)
-                update_metadata_worker.update_parameters(
-                    experiment=experiment
-                )
-                self.threadpool.start(update_metadata_worker)
-            elif action == "spawn_waveform_viewer":
-                self.spawn_waveform_viewer_button.setEnabled(False)
-                experiment.spawn_waveform_viewer(
-                    new_process=False, active_qapp=True)
-                self.spawn_waveform_viewer_button.setEnabled(True)
-            elif action == "open_in_explorer":
-                filepath = a_tools.get_folder(
-                    experiment.timestamp)
-                g_utils.open_file_in_explorer(filepath)
-        except Exception as exception:
-            self.handle_exception(
-                exception=exception,
-                pre_error_message=f"Action {action} could not be performed:\n")
-            self.set_enabled_buttons_experiment_methods(True)
+        experiment_methods = {
+            "run_measurement":
+                ("Running measurement...",
+                 RunMeasurementWorker,
+                 "finished_measurement"),
+            "run_analysis":
+                ("Running analysis...",
+                 RunAnalysisWorker,
+                 "finished_analysis"),
+            "run_update":
+                ("Running update...",
+                 RunUpdateWorker,
+                 "finished_update")
+        }
+        if action in experiment_methods.keys():
+            message, worker_class, signal = experiment_methods[action]
+            self.run_waiting_animation.start()
+            self.run_waiting_label.show()
+            self.set_enabled_buttons_experiment_methods(False)
+            self.message_textedit.clear_and_set_text(
+                message
+            )
+            worker = worker_class()
+            getattr(worker.signals, signal).connect(
+                self.handle_experiment_actions
+            )
+            worker.signals.exception.connect(
+                self.handle_experiment_action_exception)
+            worker.update_parameters(
+                experiment=experiment
+            )
+            self.active_threads += 1
+            self.threadpool.start(worker)
+        elif action == "spawn_waveform_viewer":
+            self.spawn_waveform_viewer_button.setEnabled(False)
+            experiment.spawn_waveform_viewer(
+                new_process=False, active_qapp=True)
+            self.spawn_waveform_viewer_button.setEnabled(True)
+        elif action == "open_in_explorer":
+            filepath = a_tools.get_folder(
+                experiment.timestamp)
+            g_utils.open_file_in_explorer(filepath)
 
-    @QtCore.Slot(object)
-    def handle_analysis_exception(self, exception):
-        pre_error_message = "Could not perform analysis\n"
+    @QtCore.Slot(object, str)
+    def handle_experiment_action_exception(self, exception, pre_error_message):
+        self.active_threads -= 1
+        pre_error_message = pre_error_message
         self.handle_exception(
             exception,
-            pre_error_message=pre_error_message,
-            post_error_message="")
+            pre_error_message=pre_error_message)
         self.run_waiting_animation.stop()
         self.run_waiting_label.hide()
-        self.set_enabled_buttons_experiment_methods(True)
+        self.handle_experiment_action_buttons()
 
     def handle_exception(self, exception, pre_error_message="",
                          post_error_message=""):
-        traceback.print_exc()
+        traceback.print_exception(
+            type(exception), exception, exception.__traceback__)
         self.message_textedit.clear_and_set_text(
             pre_error_message +
             f"{type(exception).__name__}: {str(exception)}\n"
             + post_error_message)
 
-    @QtCore.Slot(str)
-    def handle_experiment_actions(self, action):
+    @QtCore.Slot(str, object)
+    def handle_experiment_actions(self, action, experiment):
+        self.active_threads -= 1
         message = None
         if action == "run_measurement":
             message = "Successfully ran the measurement!\n"
+            experiment_index = self.experiments.index(experiment)
+            list_index = len(self.experiments) - experiment_index - 1
+            experiment.guess_label()
+            self.performed_experiments_cbox.setItemText(
+                list_index, f"{experiment.label} ({experiment.timestamp})")
         elif action == "run_analysis":
             message = "Successfully ran the analysis!\n"
-        elif action == "update_metadata":
-            message = "Successfully updated the metadata!\n"
+        elif action == "run_update":
+            message = "Successfully updated the experiment!\n"
         if message is not None:
             self.message_textedit.clear_and_set_text(message)
         self.run_waiting_animation.stop()
         self.run_waiting_label.hide()
-        self.set_enabled_buttons_experiment_methods(True)
+        self.handle_experiment_action_buttons()
 
     def handle_experiment_action_buttons(self):
+        if self.performed_experiments_cbox.count() == 0:
+            return
         # index of experiment in performed experiments dropdown list
         dropdown_experiment_index = \
             self.performed_experiments_cbox.currentIndex()
         # index of experiment in self.experiments
         experiment_index = self.get_selected_performed_experiment_index()
-        if self.performed_experiments_cbox.itemData(dropdown_experiment_index):
-            self.set_enabled_buttons_experiment_methods(True)
-        else:
-            self.set_enabled_buttons_experiment_methods(False)
-        if hasattr(self.experiments[experiment_index], 'timestamp'):
+        chosen_experiment = self.experiments[experiment_index]
+        # checks
+        experiment_successful = self.performed_experiments_cbox.itemData(
+            dropdown_experiment_index)
+        timestamp_not_none = getattr(
+            chosen_experiment, 'timestamp', None) is not None
+        run_update_possible = \
+            getattr(chosen_experiment, 'analysis', None) is not None and \
+            getattr(chosen_experiment, 'run_update', None) is not None
+        # disable all buttons
+        self.set_enabled_buttons_experiment_methods(False)
+        self.open_in_explorer_button.setEnabled(False)
+        # handle buttons associated with methods of experiment. They should
+        # only be available if no thread is running
+        # self.active_threads is used as manual thread counter, because
+        # self.threadpool.activeThreadCount() behaves inconsistently
+        if not self.active_threads > 0:
+            if experiment_successful:
+                self.run_measurement_button.setEnabled(True)
+            if timestamp_not_none:
+                self.run_analysis_button.setEnabled(True)
+            if run_update_possible:
+                self.run_update_button.setEnabled(True)
+        # handle open in explorer button
+        if timestamp_not_none:
             self.open_in_explorer_button.setEnabled(True)
-        else:
-            self.open_in_explorer_button.setEnabled(False)
 
     def set_enabled_buttons_experiment_methods(self, enabled=True):
         self.run_measurement_button.setEnabled(enabled)
         self.run_analysis_button.setEnabled(enabled)
-        self.update_metadata_button.setEnabled(enabled)
+        self.run_update_button.setEnabled(enabled)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_W \
@@ -783,8 +804,13 @@ class CreateExperimentWorker(g_utils.SimpleWorker):
 class RunMeasurementWorker(g_utils.SimpleWorker):
     @QtCore.Slot()
     def run(self):
-        self.experiment.run_measurement()
-        self.signals.finished_measurement.emit("run_measurement")
+        try:
+            self.experiment.run_measurement()
+            self.signals.finished_measurement.emit(
+                "run_measurement", self.experiment)
+        except Exception as exception:
+            pre_error_message = "Unable to perform measurement\n"
+            self.signals.exception.emit(exception, pre_error_message)
 
 
 class RunAnalysisWorker(g_utils.SimpleWorker):
@@ -793,17 +819,22 @@ class RunAnalysisWorker(g_utils.SimpleWorker):
         try:
             self.experiment.run_analysis(
                 analysis_kwargs={"raise_exceptions": True})
+            self.signals.finished_analysis.emit(
+                "run_analysis", self.experiment)
         except Exception as exception:
-            self.signals.exception.emit(exception)
-            return
-        self.signals.finished_analysis.emit("run_analysis")
+            pre_error_message = "Unable to perform analysis\n"
+            self.signals.exception.emit(exception, pre_error_message)
 
 
-class UpdateMetadataWorker(g_utils.SimpleWorker):
+class RunUpdateWorker(g_utils.SimpleWorker):
     @QtCore.Slot()
     def run(self):
-        self.experiment.update_metadata()
-        self.signals.finished_update.emit("update_metadata")
+        try:
+            self.experiment.run_update()
+            self.signals.finished_update.emit("run_update", self.experiment)
+        except Exception as exception:
+            pre_error_message = "Unable to update the experiment\n"
+            self.signals.exception.emit(exception, pre_error_message)
 
 
 class SweepPointsValueSelectionTypes(Enum):
