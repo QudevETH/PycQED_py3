@@ -895,3 +895,63 @@ class TempLogLevel:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logger.setLevel(self.log_level)
+
+
+def assert_not_none(*param_names):
+    """
+    Decorator that ensures that all (keyword) arguments of the decorated function
+     `f` provided in param_names are not None.
+    Args:
+        *param_names (str): One or several strings indicating the name of the
+            (keyword) arguments which should not have a value of None
+    Returns:
+         decorated function.
+    Examples:
+        >>>  class Test:
+        >>>    @assert_not_none('arg2', 'kwarg1', "other_kwarg")
+        >>>    def test(self, arg1, arg2, kwarg1=0, kwarg2=None, **kwargs):
+        >>>        pass
+        >>> t = Test()
+        >>> t.test('a', "b") # does not raise an error
+        >>> t.test('a', None) # raises error because arg2 is None
+        >>> t.test('a', 'b', None,) # raises error because kwarg1 is passed
+        >>>                         # as positional argument with a value of None
+        >>> t.test('a', 'b', "c", something=None) # does not raise an error
+        >>> t.test('a', 'b', "c", other_kwarg=None) # raises an error because
+        >>>                                         # other_kwarg is None
+    Raises:
+        ValueError if a (keyword) argument mentioned in param_names is None.
+    """
+    import inspect
+
+    def check(f):
+        def wrapped_func(*args, **kwds):
+            signature_args_and_kwargs = inspect.getfullargspec(f).args
+            default_kwarg_values = inspect.getfullargspec(f).defaults
+            error_msg = ' {name} is None, but {name} should not be None when ' \
+                        'passed to ' + f.__qualname__
+
+            # check if a positional argument is None or a signature keyword
+            # argument is None:
+            # take argument values and default values of keyword arguments
+            # which are not passed as positional arguments (since keyword
+            # arguments can also be provided as positional arguments)
+            x = len(signature_args_and_kwargs) - len(
+                args)  # index of first needed default keyword arg value
+            for (name, value) in zip(signature_args_and_kwargs,
+                                     args + default_kwarg_values[x:]):
+                # print(name, value)
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            # check if a passed keyword argument is None
+            for (name, value) in kwds.items():
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            return f(*args, **kwds)
+
+        wrapped_func.__name__ = f.__name__
+        return wrapped_func
+
+    return check
