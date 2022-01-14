@@ -6223,18 +6223,18 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                     'qubit_frequencies'][qbn]['val']
                 new_ss_freq = freqs[idx]
 
-                logging.warning(f"New sweet spot voltage suggested by fitting "
+                log.warning(f"New sweet spot voltage suggested by fitting "
                                 f"is {fit_res.best_values['V0']} and exceeds "
                                 f"the voltage range [{min(voltages)}, "
                                 f"{max(voltages)}] that is swept. New sweet "
                                 f"spot voltage set to {new_ss_volt}.")
 
-            self.proc_data_dict['analysis_params_dict'][
-                'reparking_params'][qbn] = {
-                    'new_ss_vals': {'ss_freq': new_ss_freq,
-                                    'ss_volt': new_ss_volt},
-                    'fitted_vals': {'ss_freq': fit_res.best_values['f0'],
-                                    'ss_volt': fit_res.best_values['V0']}}
+        self.proc_data_dict['analysis_params_dict'][
+            'reparking_params'][qbn] = {
+                'new_ss_vals': {'ss_freq': new_ss_freq,
+                                'ss_volt': new_ss_volt},
+                'fitted_vals': {'ss_freq': fit_res.best_values['f0'],
+                                'ss_volt': fit_res.best_values['V0']}}
 
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
