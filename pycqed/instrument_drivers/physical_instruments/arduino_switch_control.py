@@ -158,9 +158,9 @@ class ArduinoSwitchControl(Instrument):
         serial (serial.Serial): serial port to connect to the Arduino
 
     Class Attributes:
-        DELAY (float): Waiting period after setting a switch.
+        WRITE_DELAY (float): Waiting period after setting a switch.
                        Default: 0.15 s
-        SHORT_DELAY (float): Waiting period after reading the switch.
+        READ_DELAY (float): Waiting period after reading the switch.
                              Default: 0.05 s
 
     """
@@ -283,8 +283,8 @@ class ArduinoSwitchControl(Instrument):
     # ---------------
 
     MAX_SWITCHES = 20
-    SHORT_DELAY = 0.05  # after reading a switch
-    DELAY = 0.15  # after setting a switch
+    READ_DELAY = 0.05  # after reading a switch
+    WRITE_DELAY = 0.15  # after setting a switch
 
     # Properties
     # ----------
@@ -885,10 +885,10 @@ class ArduinoSwitchControl(Instrument):
         # create command for the arduino and send it
         input_string = 'r' + str(id[0]) + str(id[1])
         self.serial.write(input_string.encode('ascii'))
-        time.sleep(self.SHORT_DELAY)
+        time.sleep(self.READ_DELAY)
         # retrieve result
         result = self.serial.readline().decode().rstrip()
-        time.sleep(self.SHORT_DELAY)
+        time.sleep(self.READ_DELAY)
         # store the indicators to the switch
         switch.indicators = (int(result[0]), int(result[1]))
         # raise error if the indicators show an error
@@ -929,7 +929,7 @@ class ArduinoSwitchControl(Instrument):
         # create command for the arduino and send it
         input_string = str(id[0]) + str(id[1]) + str(state)
         self.serial.write(input_string.encode('ascii'))
-        time.sleep(self.DELAY)
+        time.sleep(self.WRITE_DELAY)
         # read switch after setting it, to confirm switching
         try:
             self._get_switch(switch)
