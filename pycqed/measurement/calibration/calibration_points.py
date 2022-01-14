@@ -267,8 +267,6 @@ class CalibrationPoints:
             # of magnitude as the value of the single sweep point
             step = np.abs(sweep_points[0])
         except Exception:
-            print(sweep_points)
-
             return np.arange(len(sweep_points) + n_cal_pts)
         plot_sweep_points = \
             np.concatenate([sweep_points, [sweep_points[-1] + i * step

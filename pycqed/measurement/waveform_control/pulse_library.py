@@ -1047,9 +1047,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         phase += 360 * self.phase_lock * self.mod_frequency \
                  * self.algorithm_time()
         hashlist += [self.alpha, self.phi_skew, phase]
-        # if self.mirror_pattern is not None:
-        #     print("here")
-        #     hashlist += [self.mirror_pattern]
         return hashlist
 
 
@@ -1066,7 +1063,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                          element_name,
                          name=name,
                          **kw)
-        # print(kw)
+
         self.flux_channel = flux_channel
         self.channels.append(flux_channel)
         self.flux_pulse_length = self.pulse_length + self.flux_extend_start + self.flux_extend_end
