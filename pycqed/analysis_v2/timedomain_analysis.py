@@ -8829,6 +8829,19 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 self.figs[fig_key] = fig
 
 class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Analyzes the performance of (two- or three-level) active reset
+    (Measured via pycqed.measurement.calibration.single_qubit_gates.ActiveReset,
+    see the corresponding doc string for details about the sequence).
+
+    Extracts the reset rate (how fast is the reset) and the residual excited
+    state population.
+
+    Helps to choose the number of reset repetitions for experiments making use
+    of active reset, by considering the tradeoff between the time required
+    for reset and the residual excited state population.
+
+    """
     def __init__(self, options_dict: dict = None, auto=True, **kw):
         '''
         options dict options:
