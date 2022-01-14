@@ -1,11 +1,10 @@
 import numpy as np
 import time
-import logging
-
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac, Mode
-
+import logging
+log = logging.getLogger(__name__)
 
 class QDacSmooth(QDac):
     def __init__(self, name, port, channel_map):
@@ -144,7 +143,7 @@ class QDacSmooth(QDac):
             set_mode = Mode.vlow_ilow
         else:
             set_mode = Mode.vhigh_ihigh
-            logging.warning(f"{mode} is not a valid mode. Using the default"
+            log.warning(f"{mode} is not a valid mode. Using the default"
                             "vhigh_ihigh mode.")
         for chan in range(self.num_chans):
             self.channels[chan].mode(set_mode)
@@ -154,6 +153,13 @@ class QDacSmooth(QDac):
         # the default value {} in the following line prevents a crash in __init__
         for ch_number, ch_name in getattr(self, 'channel_map', {}).items():
             self.parameters[f"volt_{ch_name}"].get()
+
+    def _set_voltage(self, chan: int, v_set: float) -> None:
+        super()._set_voltage(chan, v_set)
+        # FIXME: test whether the default values & the if are needed
+        ch_name = getattr(self, 'channel_map', {}).get(chan, None)
+        if ch_name is not None:
+            self.parameters[f"volt_{ch_name}"].cache.set(v_set)
 
 # channel_map_qdac = {i: f'fluxline{i + 1}' for i in range(6)}
 # qdac = QDacSmooth('qdac', 'COM3', channel_map_qdac)
