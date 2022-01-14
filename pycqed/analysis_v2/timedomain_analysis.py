@@ -4509,13 +4509,13 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                                        ) for qb in self.qb_names}
 
         gaussian_decay_func = \
-            lambda x, amplitude, decay: amplitude * np.exp(-(x / decay) ** 2)
+            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
 
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
-            # exp_mod = self.get_param_value('exp_fit_mod',
-            #                                lmfit.Model(gaussian_decay_func))
-            exp_mod = fit_mods.ExponentialModel()
+            exp_mod = self.get_param_value('exp_fit_mod',
+                                           lmfit.Model(gaussian_decay_func))
+            # exp_mod = fit_mods.ExponentialModel()
             guess_pars_dict = self.get_param_value("guess_pars_dict",
                                                    guess_pars_dict_default)[qb]
             for i in range(nr_amps):
