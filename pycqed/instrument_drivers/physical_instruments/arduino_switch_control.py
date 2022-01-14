@@ -204,7 +204,8 @@ class ArduinoSwitchControl(Instrument):
             self.switch_labels = switch_labels
 
         # switch ids (group_id, switch_id) 0n PCB
-        switch_ids_list = [(n, m) for n in range(5) for m in range(4)]
+        switch_ids_list = [(n, m) for n in range(self.NUM_IO)
+                           for m in range(self.NUM_IO_SWITCHES)]
 
         # create switches
         self.switch_ids = OrderedDict()
@@ -282,7 +283,9 @@ class ArduinoSwitchControl(Instrument):
     # Class constants
     # ---------------
 
-    MAX_SWITCHES = 20
+    NUM_IO = 5
+    NUM_IO_SWITCHES = 4
+    MAX_SWITCHES = NUM_IO*NUM_IO_SWITCHES
     READ_DELAY = 0.05  # after reading a switch
     WRITE_DELAY = 0.15  # after setting a switch
 
