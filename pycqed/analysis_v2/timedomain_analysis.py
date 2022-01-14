@@ -423,7 +423,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.data_with_reset = False
         if self.data_filter is None:
             if 'active' in self.prep_params.get('preparation_type', 'wait'):
-                reset_reps = self.prep_params.get('reset_reps', 1)
+                reset_reps = self.prep_params.get('reset_reps', 3)
                 self.data_filter = lambda x: x[reset_reps::reset_reps+1]
                 self.data_with_reset = True
             elif "preselection" in self.prep_params.get('preparation_type',

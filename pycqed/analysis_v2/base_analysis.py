@@ -556,7 +556,7 @@ class BaseDataAnalysis(object):
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
                     if 'active' in prep_params.get('preparation_type', 'wait'):
-                        reset_reps = prep_params.get('reset_reps', 1)
+                        reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
                     elif "preselection" in prep_params.get('preparation_type',
                                                            'wait'):
