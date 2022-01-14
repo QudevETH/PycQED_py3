@@ -123,15 +123,27 @@ class CircuitBuilder:
             return [qb_map[qb] for qb in qb_names], qb_names
 
     def get_prep_params(self, qb_names='all'):
+        """
+        Gets a copy of preparation parameters (used for active reset,
+        preselection) for qb_names.
+        Args:
+            qb_names (list): list of qubit names for which the
+                preparation params should be retrieved. Default is 'all',
+                which retrieves the preparation parameters for all qubits.
+
+        Returns:
+            preparation_params (dict): deep copy of preparation parameters
+
+        """
         qubits, qb_names = self.get_qubits(qb_names)
         if self.prep_params is not None:
-            return self.prep_params
+            return deepcopy(self.prep_params)
         elif self.dev is not None:
             return self.dev.get_prep_params(qubits)
         elif qubits is not None:
             return mqm.get_multi_qubit_prep_params(qubits)
         else:
-            return self.STD_PREP_PARAMS
+            return deepcopy(self.STD_PREP_PARAMS)
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
         """
