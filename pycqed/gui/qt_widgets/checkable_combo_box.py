@@ -1,9 +1,10 @@
-from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
+from pycqed.gui import qt_compat as qt
 
-class CheckableComboBox(QtWidgets.QComboBox):
+
+class CheckableComboBox(qt.QtWidgets.QComboBox):
 
     # Subclass Delegate to increase item height
-    class Delegate(QtWidgets.QStyledItemDelegate):
+    class Delegate(qt.QtWidgets.QStyledItemDelegate):
         def sizeHint(self, option, index):
             size = super().sizeHint(option, index)
             size.setHeight(20)
@@ -16,8 +17,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         # Make the lineedit the same color as QPushButton
-        palette = QtWidgets.QApplication.instance().palette()
-        palette.setBrush(QtGui.QPalette.Base, palette.button())
+        palette = qt.QtWidgets.QApplication.instance().palette()
+        palette.setBrush(qt.QtGui.QPalette.ColorRole.Base, palette.button())
         self.lineEdit().setPalette(palette)
 
         # Use custom delegate
@@ -42,7 +43,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
     def eventFilter(self, object, event):
 
         if object == self.lineEdit():
-            if event.type() == QtCore.QEvent.MouseButtonRelease:
+            if event.type() == qt.QtCore.QEvent.Type.MouseButtonRelease:
                 if self.closeOnLineEditClick:
                     self.hidePopup()
                 else:
@@ -51,14 +52,14 @@ class CheckableComboBox(QtWidgets.QComboBox):
             return False
 
         if object == self.view().viewport():
-            if event.type() == QtCore.QEvent.MouseButtonRelease:
+            if event.type() == qt.QtCore.QEvent.Type.MouseButtonRelease:
                 index = self.view().indexAt(event.pos())
                 item = self.model().item(index.row())
 
-                if item.checkState() == QtCore.Qt.Checked:
-                    item.setCheckState(QtCore.Qt.Unchecked)
+                if item.checkState() == qt.QtCore.Qt.CheckState.Checked:
+                    item.setCheckState(qt.QtCore.Qt.CheckState.Unchecked)
                 else:
-                    item.setCheckState(QtCore.Qt.Checked)
+                    item.setCheckState(qt.QtCore.Qt.CheckState.Checked)
                 return True
         return False
 
@@ -83,7 +84,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
         texts = []
         items_selected = False
         for i in range(self.model().rowCount()):
-            if self.model().item(i).checkState() == QtCore.Qt.Checked:
+            if self.model().item(i).checkState() == \
+                    qt.QtCore.Qt.CheckState.Checked:
                 items_selected = True
                 texts.append(self.model().item(i).text())
         text = ", ".join(texts)
@@ -91,19 +93,22 @@ class CheckableComboBox(QtWidgets.QComboBox):
             text = self.default_display_text
 
         # Compute elided text (with "...")
-        metrics = QtGui.QFontMetrics(self.lineEdit().font())
-        elidedText = metrics.elidedText(text, QtCore.Qt.ElideRight, self.lineEdit().width())
+        metrics = qt.QtGui.QFontMetrics(self.lineEdit().font())
+        elidedText = metrics.elidedText(
+            text, qt.QtCore.Qt.TextElideMode.ElideRight, self.lineEdit().width())
         self.lineEdit().setText(elidedText)
 
     def addItem(self, text, data=None):
-        item = QtGui.QStandardItem()
+        item = qt.QtGui.QStandardItem()
         item.setText(text)
         if data is None:
             item.setData(text)
         else:
             item.setData(data)
-        item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
-        item.setData(QtCore.Qt.Unchecked, QtCore.Qt.CheckStateRole)
+        item.setFlags(qt.QtCore.Qt.ItemFlag.ItemIsEnabled |
+                      qt.QtCore.Qt.ItemFlag.ItemIsUserCheckable)
+        item.setData(qt.QtCore.Qt.CheckState.Unchecked,
+                     qt.QtCore.Qt.ItemDataRole.CheckStateRole)
         item.setToolTip(text)
         self.model().appendRow(item)
 
@@ -119,6 +124,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         # Return the list of selected items data
         res = []
         for i in range(self.model().rowCount()):
-            if self.model().item(i).checkState() == QtCore.Qt.Checked:
+            if self.model().item(i).checkState() == \
+                    qt.QtCore.Qt.CheckState.Checked:
                 res.append(self.model().item(i).data())
         return res

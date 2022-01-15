@@ -1,4 +1,4 @@
-from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
+from pycqed.gui import qt_compat as qt
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
 from pycqed.gui import gui_utilities as g_utils
@@ -6,28 +6,28 @@ import traceback
 import numpy as np
 
 
-class QLineEditInt(QtWidgets.QLineEdit):
+class QLineEditInt(qt.QtWidgets.QLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setValidator(QtGui.QIntValidator())
+        self.setValidator(qt.QtGui.QIntValidator())
 
 
-class QLineEditDouble(QtWidgets.QLineEdit):
+class QLineEditDouble(qt.QtWidgets.QLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setValidator(QtGui.QDoubleValidator())
+        self.setValidator(qt.QtGui.QDoubleValidator())
 
 
-class QLineEditInitStateSelection(QtWidgets.QLineEdit):
+class QLineEditInitStateSelection(qt.QtWidgets.QLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         allowed_states = list(CircuitBuilder.STD_INIT.keys())
         # expects two characters of allowed_states. Inside character range []
         # all characters are interpreted as literals, except the dash,
         # hence it has to be escaped
-        regex = QtCore.QRegularExpression('[%s]{2}' % ''.join(
+        regex = qt.QtCore.QRegularExpression('[%s]{2}' % ''.join(
             allowed_states).replace('-', '\-'))
-        validator = QtGui.QRegularExpressionValidator(regex)
+        validator = qt.QtGui.QRegularExpressionValidator(regex)
         self.setPlaceholderText('e.g. "1+"')
         self.setToolTip(f"two chars from {allowed_states}, first should be "
                         "control qubit state and second should be target "
@@ -36,14 +36,14 @@ class QLineEditInitStateSelection(QtWidgets.QLineEdit):
 
     def input_is_acceptable(self):
         return self.validator().validate(self.text(), 0)[0] == \
-               QtGui.QValidator.State.Acceptable
+               qt.QtGui.QValidator.State.Acceptable
 
-class GlobalChoiceOptionWidget(QtWidgets.QWidget):
+class GlobalChoiceOptionWidget(qt.QtWidgets.QWidget):
     def __init__(self, widget, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setLayout(QtWidgets.QHBoxLayout())
+        self.setLayout(qt.QtWidgets.QHBoxLayout())
         self.widget = widget
-        self.global_choice_checkbox = QtWidgets.QCheckBox("use global choice")
+        self.global_choice_checkbox = qt.QtWidgets.QCheckBox("use global choice")
         self.global_choice_checkbox.stateChanged.connect(
             lambda: connect_widget_and_checkbox(widget,
                                                 self.global_choice_checkbox))
@@ -52,7 +52,7 @@ class GlobalChoiceOptionWidget(QtWidgets.QWidget):
         self.layout().addWidget(self.global_choice_checkbox)
 
 
-class SingleQubitSelectionWidget(QtWidgets.QComboBox):
+class SingleQubitSelectionWidget(qt.QtWidgets.QComboBox):
     """
     Qt form widget for single Qubit selection
 
@@ -98,23 +98,26 @@ class MultiQubitSelectionWidget(CheckableComboBox):
             self.currentData() != [] else None
 
 
-class ScrollLabelFixedLineHeight(QtWidgets.QScrollArea):
+class ScrollLabelFixedLineHeight(qt.QtWidgets.QScrollArea):
     def __init__(self, number_of_lines=1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWidgetResizable(True)
-        content = QtWidgets.QWidget(self)
+        content = qt.QtWidgets.QWidget(self)
         self.setWidget(content)
-        lay = QtWidgets.QVBoxLayout(content)
-        self.label = QtWidgets.QLabel(content)
-        self.label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
+        lay = qt.QtWidgets.QVBoxLayout(content)
+        self.label = qt.QtWidgets.QLabel(content)
+        self.label.setAlignment(qt.QtCore.Qt.AlignmentFlag.AlignLeft |
+                                qt.QtCore.Qt.AlignmentFlag.AlignTop)
         self.label.setWordWrap(True)
-        font_metrics = QtGui.QFontMetrics(self.font())
+        font_metrics = qt.QtGui.QFontMetrics(self.font())
         # TODO: find better solution than adding a small number of pixels
         #  manually
         self.setMaximumHeight((font_metrics.lineSpacing()+3)*number_of_lines)
         lay.addWidget(self.label)
-        self.label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        self.label.setCursor(QtGui.QCursor(QtCore.Qt.IBeamCursor))
+        self.label.setTextInteractionFlags(
+            qt.QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.label.setCursor(qt.QtGui.QCursor(
+            qt.QtCore.Qt.CursorShape.IBeamCursor))
         self.setStyleSheet("""
         background-color: white;
         """)
@@ -124,7 +127,7 @@ class ScrollLabelFixedLineHeight(QtWidgets.QScrollArea):
         self.label.setText(text)
 
 
-class ConfigureDialogWidget(QtWidgets.QWidget):
+class ConfigureDialogWidget(qt.QtWidgets.QWidget):
     def __init__(self, gui, dialog_widget, on_ok_method, cancel_message,
                  on_cancel_reset_method=None, on_open_dialog_method=None,
                  *args, **kwargs):
@@ -135,10 +138,11 @@ class ConfigureDialogWidget(QtWidgets.QWidget):
         self.gui = gui
         self.on_open_dialog_method = on_open_dialog_method
 
-        self.setLayout(QtWidgets.QHBoxLayout())
-        self.configure_button = QtWidgets.QPushButton('Configure')
+        self.setLayout(qt.QtWidgets.QHBoxLayout())
+        self.configure_button = qt.QtWidgets.QPushButton('Configure')
         self.configure_button.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+            qt.QtWidgets.QSizePolicy.Policy.Preferred,
+            qt.QtWidgets.QSizePolicy.Policy.Fixed)
         self.configure_button.clicked.connect(self.show_config_dialog)
         self.layout().addWidget(self.configure_button)
         self.dialog_widget = dialog_widget(parent=self, gui=gui)
@@ -157,17 +161,18 @@ class ConfigureDialogWidget(QtWidgets.QWidget):
                 getattr(self.dialog_widget, self.on_cancel_reset_method)()
 
 
-class SimpleDialog(QtWidgets.QDialog):
+class SimpleDialog(qt.QtWidgets.QDialog):
     def __init__(self, parent, window_title=""):
         super().__init__(parent=parent)
         self.setSizeGripEnabled(True)
         self.setWindowTitle(window_title)
-        self.setLayout(QtWidgets.QVBoxLayout())
-        self.configuration_layout = QtWidgets.QHBoxLayout()
+        self.setLayout(qt.QtWidgets.QVBoxLayout())
+        self.configuration_layout = qt.QtWidgets.QHBoxLayout()
 
         accept_cancel_buttons = \
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
-        self.buttonBox = QtWidgets.QDialogButtonBox(accept_cancel_buttons)
+            qt.QtWidgets.QDialogButtonBox.StandardButton.Ok | \
+            qt.QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        self.buttonBox = qt.QtWidgets.QDialogButtonBox(accept_cancel_buttons)
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
         self.layout().addLayout(self.configuration_layout)
@@ -190,13 +195,13 @@ class AcqAvgDialog(SimpleDialog):
         self.configuration_layout.addLayout(g_utils.add_label_to_widget(
             self.value_lineedit, "set Value"))
 
-        self.select_all_button = QtWidgets.QPushButton('Select All')
+        self.select_all_button = qt.QtWidgets.QPushButton('Select All')
         self.select_all_button.clicked.connect(
             lambda: self.set_all_qubits(True))
-        self.unselect_all_button = QtWidgets.QPushButton('Unselect All')
+        self.unselect_all_button = qt.QtWidgets.QPushButton('Unselect All')
         self.unselect_all_button.clicked.connect(
             lambda: self.set_all_qubits(False))
-        self.select_choices_layout = QtWidgets.QHBoxLayout()
+        self.select_choices_layout = qt.QtWidgets.QHBoxLayout()
         self.select_choices_layout.addWidget(self.select_all_button)
         self.select_choices_layout.addWidget(self.unselect_all_button)
         self.layout().insertLayout(1, self.select_choices_layout)
@@ -211,7 +216,8 @@ class AcqAvgDialog(SimpleDialog):
         self.value_lineedit.setText(str(max_set_value))
 
     def set_all_qubits(self, state):
-        check_state = QtCore.Qt.Checked if state else QtCore.Qt.Unchecked
+        check_state = qt.QtCore.Qt.CheckState.Checked if state else \
+            qt.QtCore.Qt.CheckState.Unchecked
         for i in range(self.qubit_selection_cbox.model().rowCount()):
             self.qubit_selection_cbox.model().item(i).setCheckState(
                 check_state)
@@ -258,7 +264,7 @@ class PulsePeriodDialog(SimpleDialog):
                 first_qubit.instr_trigger.get_instr().pulse_period()))
         self.configuration_layout.addLayout(g_utils.add_label_to_widget(
             self.value_lineedit, "Set Pulse Period "))
-        self.configuration_layout.addWidget(QtWidgets.QLabel("s"))
+        self.configuration_layout.addWidget(qt.QtWidgets.QLabel("s"))
 
     def update_pulse_period(self):
         first_qubit = self.gui.device.get_qubits()[0]

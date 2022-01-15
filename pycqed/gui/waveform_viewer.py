@@ -1,8 +1,6 @@
 import sys
 import matplotlib
-from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from pycqed.gui import qt_compat as qt
 from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
 from pycqed.measurement.waveform_control.pulsar import Pulsar
@@ -15,6 +13,7 @@ from matplotlib.backend_tools import cursors
 import multiprocessing as mp
 from copy import deepcopy
 from enum import Enum
+from pycqed.gui import gui_process
 import logging
 log = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ class WaveformViewer:
 
     """
     def __init__(self, quantum_experiment, sequence_index=0,
-                 segment_index=0, rc_params=None, new_process=True,
+                 segment_index=0, rc_params=None, new_process=False,
                  active_qapp=False, **kwargs):
         """
         Initialization of the WaveformViewer object. As we can only pass
@@ -61,13 +60,14 @@ class WaveformViewer:
             plotting method
 
         """
-        if QtWidgets.__package__ not in ['PySide2']:
+        if qt.QtWidgets.__package__ not in ['PySide2']:
             log.warning('This GUI is optimized to run with the PySide2 Qt '
                         'binding')
-        if not QtWidgets.QApplication.instance():
-            self.app = QtWidgets.QApplication(sys.argv)
+        if not qt.QtWidgets.QApplication.instance():
+            self.app = qt.QtWidgets.QApplication(sys.argv)
         else:
-            self.app = QtWidgets.QApplication.instance()
+            self.app = qt.QtWidgets.QApplication.instance()
+        g_utils.handle_matplotlib_backends(self.app)
         self.experiment_name = quantum_experiment.experiment_name
         self.qubit_channel_maps = []
         # get all qubit objects corresponding to the qubit names returned by
@@ -137,14 +137,11 @@ class WaveformViewer:
         if self.new_process:
             if self.p_shadow is None:
                 self._prepare_new_process()
-            process = mp.Process(
-                name='pycqed_waveform_viewer',
-                target=start_qapp_in_new_process,
+            gui_process.create_waveform_viewer_process(
                 args=(self.sequences, self.qubit_channel_maps,
                       self.experiment_name, self.pass_kwargs),
+                qt_lib=qt.QtWidgets.__package__
             )
-            process.daemon = False
-            process.start()
         else:
             if self.main_window is None:
                 self._prepare_main_window()
@@ -153,27 +150,16 @@ class WaveformViewer:
     def _start_qapp(self, active_qapp=False):
         self.main_window.showMaximized()
         self.main_window.activateWindow()
-        QtWidgets.QApplication.processEvents()
+        qt.QtWidgets.QApplication.processEvents()
         self.main_window.trigger_resize_event()
         if not active_qapp:
+            self.app._matplotlib_backend = \
+                sys.modules.get('matplotlib').get_backend()
+            sys.modules.get('matplotlib').use('Agg')
             self.app.exec_()
 
 
-def start_qapp_in_new_process(sequences, qubit_channel_maps,
-                               experiment_name, pass_kwargs):
-    if not QtWidgets.QApplication.instance():
-        app = QtWidgets.QApplication(sys.argv)
-    else:
-        app = QtWidgets.QApplication.instance()
-    main_window = WaveformViewerMainWindow(
-        sequences, qubit_channel_maps,
-        experiment_name, **pass_kwargs
-    )
-    main_window.showMaximized()
-    app.exec_()
-
-
-class WaveformViewerMainWindow(QtWidgets.QWidget):
+class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
 
     def __init__(self, sequences, qubit_channel_maps, experiment_name,
                  sequence_index=0, segment_index=0,  rc_params=None,
@@ -190,18 +176,18 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
             self.rc_params.update(rc_params)
         self._toolbar_memory = _Mode.NONE
 
-        self.setLayout(QtWidgets.QVBoxLayout())
+        self.setLayout(qt.QtWidgets.QVBoxLayout())
         self.layout().setContentsMargins(0, 5, 0, 5)
         self.layout().setSpacing(0)
 
-        self.cbox_sequence_indices = QtWidgets.QComboBox()
+        self.cbox_sequence_indices = qt.QtWidgets.QComboBox()
         self.cbox_sequence_indices.addItems(
             [seq.name for seq in self.sequences])
         if self.cbox_sequence_indices.count() != 0:
             self.cbox_sequence_indices.setCurrentIndex(
                 self.current_sequence_index)
 
-        self.cbox_segment_indices = QtWidgets.QComboBox()
+        self.cbox_segment_indices = qt.QtWidgets.QComboBox()
         self.cbox_segment_indices.addItems(
             list(self.sequences[self.current_sequence_index].segments.keys()))
         if self.cbox_segment_indices.count() != 0:
@@ -231,7 +217,8 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
              PLOT_OPTIONS.SHAREX.value]
         )
         self.plot_options.model().item(self.plot_options.findText(
-            PLOT_OPTIONS.SHAREX.value)).setCheckState(QtCore.Qt.Checked)
+            PLOT_OPTIONS.SHAREX.value)).setCheckState(
+            qt.QtCore.Qt.CheckState.Checked)
 
         if kwargs:
             self.plot_kwargs = kwargs
@@ -243,30 +230,30 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         }
 
         fig, axes = self.get_init_experiment_plot()
-        self.view = FigureCanvasQTAgg(fig)
+        self.view = qt.FigureCanvasQTAgg(fig)
         self.view.draw()
-        self.scroll = QtWidgets.QScrollArea(self)
+        self.scroll = qt.QtWidgets.QScrollArea(self)
         self.scroll.setWidget(self.view)
         self.scroll.setWidgetResizable(True)
         self.view.setMinimumSize(800, 400)
-        self.toolbar = NavigationToolbar2QT(self.view, self)
+        self.toolbar = qt.NavigationToolbar2QT(self.view, self)
 
-        self.toggle_selection_button = QtWidgets.QPushButton('&Select Waveform')
+        self.toggle_selection_button = qt.QtWidgets.QPushButton('&Select Waveform')
         self.toggle_selection_button.setCheckable(True)
         self.toggle_selection_button.toggled.connect(self.on_toggle_selection)
         self.cid_bpe = self.view.mpl_connect('pick_event', self.on_pick)
 
-        self.input_layout_widget = QtWidgets.QWidget()
+        self.input_layout_widget = qt.QtWidgets.QWidget()
 
         self.set_layout()
         self.setWindowTitle(self.get_window_title_string())
-        self.threadpool = QtCore.QThreadPool.globalInstance()
+        self.threadpool = qt.QtCore.QThreadPool.globalInstance()
 
         self.cbox_sequence_indices.currentIndexChanged.connect(
             lambda: self.on_change(caller_id='sequence_change'))
         self.cbox_segment_indices.currentIndexChanged.connect(
             lambda: self.on_change(caller_id='segment_change'))
-        self.toolbar.actionTriggered[QtWidgets.QAction].connect(
+        self.toolbar.actionTriggered[qt.QAction].connect(
             self.on_toolbar_selection)
         self.plot_options.model().dataChanged.connect(self.on_change)
         self.selectbox_qubits.model().dataChanged.connect(
@@ -287,7 +274,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
                 self.plot_options, 'Plot Options: '),
         ]
 
-        self.input_layout_widget.setLayout(QtWidgets.QHBoxLayout())
+        self.input_layout_widget.setLayout(qt.QtWidgets.QHBoxLayout())
         for input_widget in input_widgets:
             self.input_layout_widget.layout().addLayout(input_widget)
         self.input_layout_widget.layout().addWidget(
@@ -304,7 +291,8 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
 
     def on_toggle_selection(self):
         if not self.toggle_selection_button.isChecked():
-            self.view.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+            self.view.setCursor(qt.QtGui.QCursor(
+                qt.QtCore.Qt.CursorShape.ArrowCursor))
             self.toolbar.mode = self._toolbar_memory
             if self.toolbar.mode in [_Mode.PAN, _Mode.ZOOM]:
                 self.view.widgetlock(self.toolbar)
@@ -315,7 +303,8 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         # if the _lastCursor is not set to cursor.POINTER the mouse will be
         # changed to ArrowCursor after the next mouse move event
         self.toolbar._lastCursor = cursors.POINTER
-        self.view.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.view.setCursor(qt.QtGui.QCursor(
+            qt.QtCore.Qt.CursorShape.PointingHandCursor))
         self._toolbar_memory = self.toolbar.mode
         self.toolbar.mode = _Mode.NONE
         self.view.widgetlock.release(self.toolbar)
@@ -369,7 +358,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
             self.reload_instrument_keys()
         self.get_experiment_plot()
 
-    @QtCore.Slot(object, object)
+    @qt.QtCore.Slot(object, object)
     def set_experiment_plot(self, fig, axes):
         oldfig = self.view.figure
         self.view.figure = fig
@@ -414,7 +403,7 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
                     index = self.selectbox_instruments.findText(
                         selected_instrument)
                     self.selectbox_instruments.model().item(
-                        index).setCheckState(QtCore.Qt.Checked)
+                        index).setCheckState(qt.QtCore.Qt.CheckState.Checked)
         self.selectbox_instruments.updateText()
         self.selectbox_instruments.blockSignals(False)
 
@@ -500,25 +489,26 @@ class WaveformViewerMainWindow(QtWidgets.QWidget):
         if not isinstance(plot_option, PLOT_OPTIONS):
             raise TypeError('plot_option must be of type PLOT_OPTIONS')
         return self.plot_options.model().item(self.plot_options.findText(
-            plot_option.value)).checkState() == QtCore.Qt.Checked
+            plot_option.value)).checkState() == qt.QtCore.Qt.CheckState.Checked
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Control:
+        if event.key() == qt.QtCore.Qt.Key.Key_Control:
             self.toggle_selection_button.setChecked(True)
             event.accept()
-        elif event.key() == QtCore.Qt.Key_W \
-                and event.modifiers() == QtCore.Qt.ControlModifier:
+        elif event.key() == qt.QtCore.Qt.Key.Key_W \
+                and event.modifiers() == \
+                qt.QtCore.Qt.KeyboardModifier.ControlModifier:
             self.close()
             event.accept()
 
     def keyReleaseEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Control:
+        if event.key() == qt.QtCore.Qt.Key.Key_Control:
             self.toggle_selection_button.setChecked(False)
             event.accept()
 
 
 class GetExperimentPlotWorker(g_utils.SimpleWorker):
-    @QtCore.Slot()
+    @qt.QtCore.Slot()
     def run(self):
         with plt.rc_context(self.rc_params):
             fig, axes = self.current_segment.plot(
@@ -538,19 +528,22 @@ def add_picker_to_line_artists(axes):
                 ch.set_pickradius(3)
 
 
-class PulseInformationWindow(QtWidgets.QWidget):
+class PulseInformationWindow(qt.QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self._data = []
         self.setWindowTitle('Pulse Information')
-        layout = QtWidgets.QVBoxLayout()
-        self.table = QtWidgets.QTableWidget()
+        layout = qt.QtWidgets.QVBoxLayout()
+        self.table = qt.QtWidgets.QTableWidget()
         self.table.setColumnCount(2)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(
+            0, qt.QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(
+            1, qt.QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.table.setHorizontalHeaderLabels(['label', 'value'])
-        self.table.setEditTriggers(QtWidgets.QTableWidget.NoEditTriggers)
+        self.table.setEditTriggers(
+            qt.QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
         self.setLayout(layout)
         self.resize(450, 800)
@@ -577,13 +570,13 @@ class PulseInformationWindow(QtWidgets.QWidget):
             self.setWindowTitle('Pulse Information')
         for i, pulse_dict in enumerate(self._data):
             for j, key in enumerate(pulse_dict):
-                col1 = QtWidgets.QTableWidgetItem(key)
-                col2 = QtWidgets.QTableWidgetItem(repr(pulse_dict[key]))
+                col1 = qt.QtWidgets.QTableWidgetItem(key)
+                col2 = qt.QtWidgets.QTableWidgetItem(repr(pulse_dict[key]))
                 self.table.setItem(i*len(pulse_dict)+j, 0, col1)
                 self.table.setItem(i*len(pulse_dict)+j, 1, col2)
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_W \
-                and event.modifiers() == QtCore.Qt.ControlModifier:
+        if event.key() == qt.QtCore.Qt.Key.Key_W \
+                and event.modifiers() == qt.QtCore.Qt.ControlModifier:
             self.close()
             event.accept()

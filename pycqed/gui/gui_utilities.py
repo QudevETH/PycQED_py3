@@ -1,20 +1,21 @@
 import platform
 import os
+import sys
 import subprocess
-from matplotlib.backends.qt_compat import QtWidgets, QtGui, QtCore
+from pycqed.gui import qt_compat as qt
 from itertools import chain, combinations
 
 
-class GUIWorkerSignals(QtCore.QObject):
-    finished_experiment = QtCore.Signal(object, str)
-    finished_measurement = QtCore.Signal(str, object)
-    finished_analysis = QtCore.Signal(str, object)
-    finished_update = QtCore.Signal(str, object)
-    finished_plots = QtCore.Signal(object, object)
-    exception = QtCore.Signal(object, str)
+class GUIWorkerSignals(qt.QtCore.QObject):
+    finished_experiment = qt.QtCore.Signal(object, str)
+    finished_measurement = qt.QtCore.Signal(str, object)
+    finished_analysis = qt.QtCore.Signal(str, object)
+    finished_update = qt.QtCore.Signal(str, object)
+    finished_plots = qt.QtCore.Signal(object, object)
+    exception = qt.QtCore.Signal(object, str)
 
 
-class SimpleWorker(QtCore.QRunnable):
+class SimpleWorker(qt.QtCore.QRunnable):
     def __init__(self):
         super().__init__()
         self.signals = GUIWorkerSignals()
@@ -22,6 +23,45 @@ class SimpleWorker(QtCore.QRunnable):
     def update_parameters(self, **kwargs):
         [setattr(self, argument_name, value)
          for argument_name, value in kwargs.items()]
+
+
+def reset_matplotlib_backend(matplotlib_backend):
+    """
+    Resets the matplotlib backend to the backend specified by the passed
+    string. Make sure that matplotlib has been imported when using this
+    function, otherwise nothing will happen.
+
+    Args:
+        matplotlib_backend (str): Specifier string of the matplotlib backend
+        that should be activated.
+
+    """
+    if 'matplotlib' in sys.modules:
+        sys.modules.get('matplotlib').use(matplotlib_backend)
+
+
+def get_meta_signal_from_q_object(q_object, signal_name):
+    meta_object = q_object.metaObject()
+    for i in range(meta_object.methodCount()):
+        meta_method = meta_object.method(i)
+        if not meta_method.isValid():
+            continue
+        if meta_method.methodType () == meta_method.MethodType.Signal and \
+            meta_method.name() == signal_name:
+            return meta_method
+    return None
+
+
+def handle_matplotlib_backends(app):
+    if 'matplotlib' not in sys.modules:
+        import matplotlib
+    app._matplotlib_backend = \
+        sys.modules.get('matplotlib').get_backend()
+    if not app.isSignalConnected(get_meta_signal_from_q_object(
+                app, "lastWindowClosed")):
+        app.lastWindowClosed.connect(
+            lambda: reset_matplotlib_backend(
+                app._matplotlib_backend))
 
 
 def clear_layout(layout):
@@ -62,9 +102,9 @@ def open_file_in_explorer(path):
 
 
 def add_label_to_widget(widget, labeltext):
-    layout = QtWidgets.QHBoxLayout()
-    label = QtWidgets.QLabel(labeltext)
-    label.setAlignment(QtCore.Qt.AlignCenter)
+    layout = qt.QtWidgets.QHBoxLayout()
+    label = qt.QtWidgets.QLabel(labeltext)
+    label.setAlignment(qt.QtCore.Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(label)
     layout.addWidget(widget)
     layout.setSpacing(0)
