@@ -26,9 +26,6 @@ class VC707(VC707_core, AcquisitionDevice):
                                  ],
                      # 'scope': [],
                      }
-    res_logging_indices = {#'raw': 1,  # raw integrated+averaged results
-                           #'digitized': 3,  # thresholded results (0 or 1)
-                           }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
