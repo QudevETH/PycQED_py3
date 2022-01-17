@@ -367,7 +367,6 @@ class QuantumExperiment(CircuitBuilder):
     def autorun(self, **kw):
         if self.measure:
             try:
-                self.prepare_measurement(**kw)
                 # Do not save timers here since they will be saved below.
                 self.run_measurement(save_timers=False, **kw)
             except (Exception, KeyboardInterrupt) as e:
