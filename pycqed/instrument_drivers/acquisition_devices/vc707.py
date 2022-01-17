@@ -19,7 +19,7 @@ class VC707(VC707_core, AcquisitionDevice):
     acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
-    acq_max_trace_samples = 4096
+    acq_weights_n_samples = 4096
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw',
                                  # 'digitized'

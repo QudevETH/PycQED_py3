@@ -15,7 +15,7 @@ class AcquisitionDevice():
     n_acq_channels = 1
     acq_length_granularity = 1
     acq_sampling_rate = None
-    acq_max_trace_samples = None
+    acq_weights_n_samples = None
     acq_Q_sign = 1
     allowed_modes = []
     allowed_weights_types = ['optimal', 'optimal_qutrit', 'SSB',
@@ -262,7 +262,7 @@ class AcquisitionDevice():
                         f'integration weights.')
             return []
         tbase = np.arange(
-            0, self.acq_max_trace_samples / self.acq_sampling_rate,
+            0, self.acq_weights_n_samples / self.acq_sampling_rate,
             1 / self.acq_sampling_rate)
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)

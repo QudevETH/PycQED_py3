@@ -16,7 +16,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     """
     # acq_length_granularity = 4
     acq_sampling_rate = 2.0e9
-    acq_max_trace_samples = 4096  #??
+    acq_weights_n_samples = 4096  #??
     acq_Q_sign = -1
     allowed_modes = {#'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'],
