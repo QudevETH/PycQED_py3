@@ -41,12 +41,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self._waves_to_upload = {}
 
         self.add_parameter(
-            'timeout',
-            unit='s',
-            initial_value=30,
-            parameter_class=ManualParameter,
-            vals=validators.Ints())
-        self.add_parameter(
             'allowed_lo_freqs',
             initial_value=np.arange(1e9, 8.1e9, 100e6),
             parameter_class=ManualParameter,

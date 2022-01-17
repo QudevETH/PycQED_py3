@@ -34,12 +34,6 @@ class VC707(VC707_core, AcquisitionDevice):
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
         self.initialize()
-        self.add_parameter(
-            'timeout',
-            unit='s',
-            initial_value=30,
-            parameter_class=ManualParameter,
-            vals=validators.Ints())
         self._acq_integration_weights = {}
         self._last_traces = []
 

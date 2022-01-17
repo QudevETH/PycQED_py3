@@ -1,5 +1,7 @@
 import numpy as np
 from copy import deepcopy
+from qcodes.utils import validators
+from qcodes.instrument.parameter import ManualParameter
 import logging
 log = logging.getLogger(__name__)
 
@@ -28,6 +30,15 @@ class AcquisitionDevice():
         self._reset_n_acquired()
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
+        if 'timeout' not in self.parameters:
+            # The underlying qcodes driver has not created a parameter
+            # timeout. In that case, we add the parameter here.
+            self.add_parameter(
+                'timeout',
+                unit='s',
+                initial_value=30,
+                parameter_class=ManualParameter,
+                vals=validators.Ints())
 
     def set_lo_freq(self, acq_unit, lo_freq):
         self.lo_freqs[acq_unit] = lo_freq
