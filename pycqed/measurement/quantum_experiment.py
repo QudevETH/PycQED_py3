@@ -829,24 +829,6 @@ class QuantumExperiment(CircuitBuilder):
         # avoid returning a list of Nones (if show_and_close is True)
         return [v for v in figs_and_axs if v is not None] or None
 
-
-
     def __repr__(self):
         return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
 
-    def prepare_measurement(self, **kwargs):
-        """
-        Function to be overridden by child classes for all the conceptual
-        preparatory processing before executing run_measurement().
-        This includes e.g. generating multiprocessing tasks,
-        generating sequences or calls to preparatory measurements.
-        This avoids having very long __init__() which should
-        be used solely to initialize parameters, and possibly call
-        autorun().
-        Args:
-            **kwargs:
-
-        Returns:
-
-        """
-        pass

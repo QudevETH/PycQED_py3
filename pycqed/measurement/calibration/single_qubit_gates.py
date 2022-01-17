@@ -2748,6 +2748,15 @@ class ActiveReset(CalibBuilder):
                                  CalibrationPoints([qb.name for qb in qb_in_exp],
                                                    ()))
         self.cal_states = kw.get('cal_states', ())
+        self.autorun(**kw)
+
+    # FIXME: temporary solution to overwrite base method until the question of
+    #  defining whether or not self.prepare_measurement should be used in the
+    #  general case.
+    def autorun(self, **kw):
+        if self.measure:
+            self.prepare_measurement(**kw)
+        super().autorun(**kw)
 
     def prepare_measurement(self, **kw):
 
