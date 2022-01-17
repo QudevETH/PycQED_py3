@@ -234,6 +234,7 @@ def avg_loss(angles, grad):
 
 ### Analysis functions ###
 def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
+                              meas_obj_names=None,
                               state_prob_mtxs=None, correct_ro=True,
                               sweep_type=None, save_processed_data=True,
                               probability_states=None, save_figures=True,
@@ -248,8 +249,9 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
     # len(z_angles[i]) == len(cycles)
     # [len(z_angles[i][j]) == nr_cycles for nr_cycles in cycles]
     try:
-        meas_obj_names = hlp_mod.get_param_from_metadata_group(timestamp,
-                                                               'meas_objs')
+        if meas_obj_names is None:
+            meas_obj_names = hlp_mod.get_param_from_metadata_group(timestamp,
+                                                                   'meas_objs')
         print(meas_obj_names)
         if raw_keys_in is None:
             raw_keys_in = {mobjn: 'raw' for mobjn in meas_obj_names}
