@@ -9,8 +9,16 @@ log = logging.getLogger(__name__)
 
 class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             ZI_AcquisitionDevice):
-    """This is the Qudev specific PycQED driver for the 1.8 GSa/s UHFQA instrument
+    """QuDev-specific PycQED driver for the ZI UHFQA
+
+    This is the QuDev-specific PycQED driver for the 1.8 GSa/s UHFQA instrument
     from Zurich Instruments AG.
+
+    Attributes:
+        USER_REG_FIRST_SEGMENT (int): index of user register for first segment
+            index, see parameter filter_segments in Pulsar
+        USER_REG_LAST_SEGMENT (int): index of user register for last segment
+            index, see parameter filter_segments in Pulsar
     """
 
     USER_REG_FIRST_SEGMENT = 5
@@ -29,21 +37,19 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                      'index': [],
                      'none': [],
                      }
-    # 0/1/2 crosstalk-suppressed/digitized/raw
-    # FIXME: check this comment mode 3 is statistics logging, this is
-    #  implemented in a different detector
-    res_logging_indices = {'lin_trans': 0,  # applies the linear transformation
-                                            # matrix and subtracts the offsets
-                                            # defined in the UHFQC.
-                           'digitized': 1,  # thresholded results (0 or 1)
-                           'raw': 2,  # raw integrated+averaged results
-                           'raw_corr': 4,  # correlations mode before threshold
-                           'digitized_corr': 5  # correlations mode after
-                                                # threshold
-                                                # NOTE: thresholds need to be
-                                                # set outside the detector
-                                                # object.
-                           }
+    # private lookup dict to translate a data_type to an index understood by
+    # the UHF
+    _res_logging_indices = {
+        'lin_trans': 0,  # applies the linear transformation matrix and
+                         # subtracts the offsets defined in the UHFQC.
+        'digitized': 1,  # thresholded results (0 or 1)
+        'raw': 2,  # raw integrated+averaged results
+        # FIXME: 3 is statistics logging. Do we need to implement it here?
+        'raw_corr': 4,  # correlations mode before threshold
+        'digitized_corr': 5  # correlations mode after threshold
+                             # NOTE: thresholds need to be set outside the
+                             # detector object.
+    }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -69,17 +75,16 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         # to define the number of iterations in the loop
         self.awgs_0_single(1)
 
-        # UHFQC in iavg mode returns data in Volts as expected for the avg mode
+        # Translate mode to one of the two modes of the UHF driver
         self._acq_mode_uhf = 'iavg' if mode == 'avg' else 'rl'
 
-        self._acq_data_type = data_type
         if data_type is not None:
-            self.qas_0_result_source(self.res_logging_indices[data_type])
+            self.qas_0_result_source(self._res_logging_indices[data_type])
         if acquisition_length is not None:
             self.qas_0_integration_length(
                 self.convert_time_to_n_samples(acquisition_length))
 
-        if self._acq_mode_uhf == 'rl':
+        if self._acq_mode_uhf == 'rl':  # integrated
             for c in channels:
                 path = self._get_full_path(f'qas/0/result/data/{c[1]}/wave')
                 self._acquisition_nodes.append(path)
@@ -90,7 +95,9 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             self.qas_0_result_length(n_results)
             self.qas_0_result_averages(averages)
             ro_mode = 0
-        else:
+        else:  # input average = time traces
+            # Note: UHFQA in iavg mode returns data in Volts as expected for
+            # the avg mode
             for c in channels:
                 path = self._get_full_path(f'qas/0/monitor/inputs/{c[1]}/wave')
                 self._acquisition_nodes.append(path)
