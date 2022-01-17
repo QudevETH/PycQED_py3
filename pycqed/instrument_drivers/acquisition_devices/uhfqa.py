@@ -125,14 +125,14 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
 
     def _reset_n_acquired(self):
         super()._reset_n_acquired()
-        self._n_aquisition_progress_last = 0
-        self._n_aquisition_progress_add = 0
+        self._n_acquisition_progress_last = 0
+        self._n_acquisition_progress_add = 0
 
     def acquisition_progress(self):
         n_acq = (self.qas_0_result_acquired()
                  if self._acq_mode_uhf == 'rl'
                  else self.qas_0_monitor_acquired())
-        n_last = self._n_aquisition_progress_last
+        n_last = self._n_acquisition_progress_last
         if n_last > 0 and n_acq == 0:
             # The UHF reports 0 when it is done. In this case, we keep the
             # last known progress value. This means that the progress
@@ -140,16 +140,16 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             # data transfer, and MC will update the progress to the correct
             # value once it takes over control after the end of the data
             # transfer.
-            return n_last + self._n_aquisition_progress_add
+            return n_last + self._n_acquisition_progress_add
         if n_acq < n_last:
             # This workaround is needed because the UHF truncates
             # qas_0_result_acquired at 2**18 (and starts counting from 0
             # again). A decrease in n_acq compared to the last function call
             # indicates that this has happened and that we need to add 2**18
             # to the progess values.
-            self._n_aquisition_progress_add += 2 ** 18
-        self._n_aquisition_progress_last = n_acq
-        return n_acq + self._n_aquisition_progress_add
+            self._n_acquisition_progress_add += 2 ** 18
+        self._n_acquisition_progress_last = n_acq
+        return n_acq + self._n_acquisition_progress_add
 
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()

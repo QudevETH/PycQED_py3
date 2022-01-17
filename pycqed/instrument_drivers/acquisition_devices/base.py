@@ -71,8 +71,7 @@ class AcquisitionDevice():
         pass
 
     def _reset_n_acquired(self):
-        """
-        Reset quantities that are needed by aquisition_progress.
+        """Reset quantities that are needed by acquisition_progress.
         """
         pass
 
@@ -94,7 +93,7 @@ class AcquisitionDevice():
     def acquisition_nodes(self):
         return deepcopy(self._acquisition_nodes)
 
-    def aquisition_progress(self):
+    def acquisition_progress(self):
         return 0  # no intermediate progress information available
 
     def prepare_poll(self):
