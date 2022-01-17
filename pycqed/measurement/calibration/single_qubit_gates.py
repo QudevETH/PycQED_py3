@@ -9,6 +9,7 @@ from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
+from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
@@ -2636,6 +2637,7 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
 
 
 class ActiveReset(CalibBuilder):
+    @handle_exception
     def __init__(self, task_list=None, recalibrate_ro=False,
                  prep_states=('g', 'e'), n_shots=10000,
                  reset_reps=10, set_thresholds=True,
