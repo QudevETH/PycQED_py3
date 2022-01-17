@@ -24,6 +24,11 @@ class AcquisitionDevice():
                              'DSB', 'DSB2', 'square_rot']
 
     def __init__(self, *args, **kwargs):
+        if not hasattr(self, 'IDN'):
+            raise AttributeError(
+                f'{repr(self)} was not properly initialized as a qcodes '
+                f'instrument. See the class docstring of AcquisitionDevice '
+                f'for proper usage of this class.')
         self._acquisition_nodes = []
         self._acq_mode = None
         self._acq_data_type = None
