@@ -85,14 +85,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        self._acquisition_initialize_base(
+        super().acquisition_initialize(
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
         self._acq_units_modes = {i: self.qachannels[i].mode()
                                  for i in self._acq_units_used}
-        self._acquisition_nodes = deepcopy(channels)
 
         for i in range(self.n_acq_units):
             # Make sure the readout is stopped. It will be started in

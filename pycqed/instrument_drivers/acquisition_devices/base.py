@@ -46,15 +46,8 @@ class AcquisitionDevice():
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        self._acquisition_initialize_base(
-            channels, n_results, averages, loop_cnt,
-            mode, acquisition_length, data_type=None)
 
-    def _acquisition_initialize_base(
-            self, channels, n_results, averages, loop_cnt,
-            mode, acquisition_length, data_type=None):
-
-        self._acquisition_nodes = []
+        self._acquisition_nodes = deepcopy(channels)
         self._acq_length = acquisition_length
         self._acq_channels = channels
         for ch in channels:

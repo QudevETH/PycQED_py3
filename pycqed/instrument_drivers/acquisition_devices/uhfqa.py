@@ -56,9 +56,14 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        self._acquisition_initialize_base(
+        # explicit call to the correct super method since UHFQA_core has a
+        # method with the same name.
+        ZI_AcquisitionDevice.acquisition_initialize(self,
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
+
+        # Overwrite default _acquisition_nodes
+        self._acquisition_nodes = []  # will be filled below
 
         # Do not enable the rerun button; the AWG program uses userregs/0
         # to define the number of iterations in the loop

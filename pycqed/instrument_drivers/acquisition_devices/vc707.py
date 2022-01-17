@@ -44,12 +44,11 @@ class VC707(VC707_core, AcquisitionDevice):
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        self._acquisition_initialize_base(
+        super().acquisition_initialize(
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
-        self._acquisition_nodes = deepcopy(channels)
 
         self.averager_nb_samples.set(self.convert_time_to_n_samples(
             acquisition_length))
