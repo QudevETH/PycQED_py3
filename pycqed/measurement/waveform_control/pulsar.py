@@ -1542,6 +1542,17 @@ class SHFQAPulsar:
     )
 
     def _create_awg_parameters(self, awg, channel_name_map):
+        """Create parameters in the pulsar specific to the added AWG
+
+        Args:
+           awg:
+                Instance of the AWG to be added to the pulsar.
+            channel_name_map: dict
+                Mapping from channel ids (keys, as string) to channels names
+                (values, as string) to be used for this AWG. Names for missing
+                ids default to `f'{awg.name}_{chid}'`.
+        """
+
         if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
             return super()._create_awg_parameters(awg, channel_name_map)
 
@@ -1550,6 +1561,7 @@ class SHFQAPulsar:
         self.add_parameter('{}_reuse_waveforms'.format(awg.name),
                            initial_value=True, vals=vals.Bool(),
                            parameter_class=ManualParameter)
+        # Repeat pattern support is not yet implemented for the SHFQA
         # self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
         #                    initial_value=True, vals=vals.Bool(),
         #                    parameter_class=ManualParameter,
@@ -1618,6 +1630,19 @@ class SHFQAPulsar:
                 self.channel_groups.update({name: group})
 
     def _shfqa_create_channel_parameters(self, id, name, awg):
+        """Create parameters in the pulsar specific to one added channel
+
+        Args:
+            id:
+                Channel id. For the SHFQA, valid channel ids are ch#i and ch#q,
+                where # is a number from 1 to 4. This defines the harware port
+                used.
+            name:
+                Name of the channel to address it by in rest of the codebase.
+            awg:
+                Instance of the AWG this channel is on.
+
+        """
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
         self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
         self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
@@ -1652,6 +1677,8 @@ class SHFQAPulsar:
 
     @staticmethod
     def _shfqa_setter(obj, id, par):
+        """Generate a function to set the output amplitude of a channel.
+                Converts the input in volts to dBm."""
         if par == 'amp':
             def s(val):
                 obj.qachannels[int(id[2]) - 1].output_range(
@@ -1662,6 +1689,8 @@ class SHFQAPulsar:
         return s
 
     def _shfqa_getter(self, obj, id, par):
+        """Generate a function to get the output amplitude of a channel.
+                Converts the output in dBm to volts."""
         if par == 'amp':
             def g():
                 if self._awgs_prequeried_state:
@@ -1676,6 +1705,29 @@ class SHFQAPulsar:
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      channels_to_upload='all', **kw):
+        """Upload the waveforms to the SHFQA.
+
+        Args:
+            obj:
+                AWG instance
+            awg_sequence:
+                AWG sequence data (not waveforms) as returned from
+                `Sequence.generate_waveforms_sequences`. The key-structure
+                of the nested dictionary is like this:
+                `awg_sequence[elname][cw][chid]`,
+                where elname is the elment name, cw is the codeword, or the
+                string `'no_codeword'` and chid is the channel id. The values
+                are hashes of waveforms to be played
+            waveforms:
+                A dictionary of waveforms, keyed by their hash.
+            repeat_pattern:
+                Not used for now
+            channels_to_upload:
+                list of channel names to upload or 'all'
+
+        Keyword args:
+            No keyword arguments are used.
+        """
         # Note: For now, we only check for channels_to_upload and always
         # re-program when re-uploading (i.e., we ignore channels_to_program).
         # This could be further optimized in the future. Moreover, we currently
@@ -1814,6 +1866,7 @@ class SHFQAPulsar:
 
 
     def _is_awg_running(self, obj):
+        """Checks whether the sequencer of AWG `obj` is running"""
         if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
             return super()._is_awg_running(obj)
         is_running = []
@@ -1821,7 +1874,7 @@ class SHFQAPulsar:
             qachannel = obj.qachannels[awg_nr]
             if qachannel.mode() == 'readout':
                 is_running.append(qachannel.generator.is_running)
-            else: # spectroscopy
+            else:  # spectroscopy
                 daq = obj._controller._controller.connection._daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
                        f"spectroscopy/result/enable"
@@ -1829,16 +1882,19 @@ class SHFQAPulsar:
         return any(is_running)
 
     def _clock(self, obj, cid=None):
+        """Returns the sample clock of the SHFQA: 2 GHz."""
         if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
             return super()._clock(obj)
         return 2.0e9
 
     def _get_segment_filter_userregs(self, obj):
+        """Segment filter currently not supported on SHFQA"""
         if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
             return super()._get_segment_filter_userregs(obj)
         return []
 
     def sigout_on(self, ch, on=True):
+        """Turn channel outputs on or off."""
         awg = self.find_instrument(self.get(ch + '_awg'))
         if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
