@@ -4,6 +4,7 @@ from numpy.linalg import inv
 import scipy as sp
 import itertools
 import matplotlib as mpl
+import cmath
 from collections import OrderedDict, defaultdict
 
 from pycqed.utilities import timer as tm_mod
@@ -6236,6 +6237,8 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 'fitted_vals': {'ss_freq': fit_res.best_values['f0'],
                                 'ss_volt': fit_res.best_values['V0']}}
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
         for qbn in self.qb_names:
@@ -6329,10 +6332,10 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                         f"{ss_vals['ss_freq']/1e9:.6f} GHz " \
                     f"\nPrevious ss frequency: {old_qb_freq/1e9:.6f} GHz " \
                     f"\nSweet spot DC voltage: " \
-                        f"{ss_vals['ss_volt']:.3f} V "
+                        f"{ss_vals['ss_volt']:.6f} V "
                 if qbn in current_voltages:
                     old_voltage = current_voltages[qbn]
-                    textstr += f"\nPrevious DC voltage: {old_voltage:.3f} V"
+                    textstr += f"\nPrevious DC voltage: {old_voltage:.6f} V"
                 self.plot_dicts[f'{base_plot_name}_text'] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
@@ -9659,3 +9662,411 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                                percentage_measured):
         return n_ssp * n_hsp * repetition_rate * nr_averages \
                * percentage_measured
+
+
+class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_model' measurement.
+    
+    The class extracts the DC biases on the I and Q channel inputs of the 
+    measured IQ mixer that minimize the LO leakage.
+    """
+    def extract_data(self):
+        super().extract_data()
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def process_data(self):
+        super().process_data()
+
+        hsp = self.raw_data_dict['hard_sweep_points']
+        ssp = self.raw_data_dict['soft_sweep_points']
+        mdata = self.raw_data_dict['measured_data']
+
+        # Conversion from V_peak -> V_RMS
+        V_RMS = list(mdata.values())[0]/np.sqrt(2)
+        # Conversion to P (dBm):
+        #   P = V_RMS^2 / 50 Ohms
+        #   P (dBm) = 10 * log10(P / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2 / 50 Ohms / 1 mW)
+        #   P (dBm) = 20 * log10(V_RMS) - 10 * log10(50 Ohms * 1 mW)
+        LO_dBm = 20*np.log10(V_RMS) - 10 * np.log10(50 * 1e-3)
+
+        VI = hsp
+        VQ = ssp
+
+        if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
+            VI, VQ = np.meshgrid(hsp, ssp)
+            VI = VI.flatten()
+            VQ = VQ.flatten()
+            LO_dBm = LO_dBm.T.flatten()
+
+        self.proc_data_dict['V_I'] = VI
+        self.proc_data_dict['V_Q'] = VQ
+        self.proc_data_dict['LO_leakage'] = LO_dBm
+        self.proc_data_dict['data_to_fit'] = LO_dBm
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+
+        VI = self.proc_data_dict['V_I']
+        VQ = self.proc_data_dict['V_Q']
+        data = self.proc_data_dict['data_to_fit']
+
+        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, 
+                                           independent_vars=['vi', 'vq'])
+        # Use two lowest values in measurements to choose
+        # initial model parameters.
+        VI_two_lowest = VI[np.argpartition(data, 2)][0:2]
+        VQ_two_lowest = VQ[np.argpartition(data, 2)][0:2]
+        minimum = - np.mean(VI_two_lowest) + 1j * np.mean(VQ_two_lowest)
+        li_guess = np.abs(minimum)
+        theta_i_guess = cmath.phase(minimum)
+        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod, 
+                                                     li=li_guess, 
+                                                     theta_i=theta_i_guess)
+
+        self.fit_dicts['mixer_lo_leakage'] = {
+            'model': mixer_lo_leakage_mod,
+            'fit_xvals': {'vi': VI,
+                          'vq': VQ},
+            'fit_yvals': {'data': data},
+            'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        fit_dict = self.fit_dicts['mixer_lo_leakage']
+        best_values = fit_dict['fit_res'].best_values
+        
+        # compute values that minimize the fitted model:
+        leakage = best_values['li'] * np.exp(1j* best_values['theta_i']) \
+                  - 1j * best_values['lq'] * np.exp(1j*best_values['theta_q'])
+        adict = self.proc_data_dict['analysis_params_dict']
+        adict['V_I'] = -leakage.real
+        adict['V_Q'] = leakage.imag
+
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        V_I = self.proc_data_dict['V_I']
+        V_Q = self.proc_data_dict['V_Q']
+
+        timestamp = self.timestamps[0]
+
+        if self.do_fitting:
+            # interpolate data for plot,
+            # define grid with limits based on measurement 
+            # points and make it 10 % larger in both axes
+            size_offset_vi = 0.05 * (np.max(V_I) - np.min(V_I))
+            size_offset_vq = 0.05 * (np.max(V_Q) - np.min(V_Q))
+            vi = np.linspace(np.min(V_I) - size_offset_vi,
+                             np.max(V_I) + size_offset_vi, 250)
+            vq = np.linspace(np.min(V_Q) - size_offset_vq,
+                             np.max(V_Q) + size_offset_vq, 250)
+            V_I_plot, V_Q_plot = np.meshgrid(vi, vq)
+            fit_dict = self.fit_dicts['mixer_lo_leakage']
+            fit_res = fit_dict['fit_res']
+            best_values = fit_res.best_values
+            model_func = fit_dict['model'].func
+            z = model_func(V_I_plot, V_Q_plot, **best_values)
+
+            base_plot_name = 'mixer_lo_leakage'
+            self.plot_dicts['base_contour'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_contourf,
+                'xvals': V_I_plot,
+                'yvals': V_Q_plot,
+                'zvals': z,
+                'xlabel': 'Offset, $V_\\mathrm{I}$',
+                'ylabel': 'Offset, $V_\\mathrm{Q}$',
+                'xunit': 'V',
+                'yunit': 'V',
+                'setlabel': 'lo leakage magnitude',
+                'cmap': 'plasma',
+                'cmap_levels': 100,
+                'clabel': 'Carrier Leakage $V_\\mathrm{LO}$ (dBm)',
+                'title': f'{timestamp} calibrate_drive_mixer_carrier_'
+                         f'{self.qb_names[0]}'
+            }
+
+            self.plot_dicts['base_measurement_points'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': V_I,
+                'yvals': V_Q,
+                'color': 'white',
+                'marker': '.',
+                'linestyle': 'None',
+                'setlabel': ''
+            }
+
+            V_I_opt = self.proc_data_dict['analysis_params_dict']['V_I']
+            V_Q_opt = self.proc_data_dict['analysis_params_dict']['V_Q']
+            self.plot_dicts['base_minimum'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([V_I_opt]),
+                'yvals': np.array([V_Q_opt]),
+                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
+                            '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
+                'color': 'red',
+                'marker': 'o',
+                'linestyle': 'None',
+                'do_legend': True,
+                'legend_pos': 'upper right',
+                'legend_title': None,
+                'legend_frameon': True
+            }
+
+        for ch in ['I', 'Q']:
+            plot_name = f'V_{ch}_vs_LO_magn'
+            leakage = self.proc_data_dict['LO_leakage']
+            self.plot_dicts[f'raw_V_{ch}_vs_LO_magn'] = {
+                'fig_id': plot_name,
+                'plotfn': self.plot_line,
+                'xvals': self.proc_data_dict[f'V_{ch}'],
+                'yvals': leakage,
+                'color': 'blue',
+                'marker': '.',
+                'linestyle': 'None',
+                'xlabel': f'Offset, $V_\\mathrm{{{ch}}}$',
+                'ylabel': 'Carrier Leakage $V_\\mathrm{LO}$',
+                'xunit': 'V',
+                'yunit': 'dBm',
+                'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO}}$ '
+                         f'projected onto offset $V_\\mathrm{{{ch}}}$'
+            }
+
+            if self.do_fitting:
+                optimum =self.proc_data_dict['analysis_params_dict']['V_'+ch]
+                y_min = np.min(leakage)
+                y_max = np.max(leakage)
+                self.plot_dicts[f'optimum_V_{ch}_vs_LO_magn'] = {
+                    'fig_id': plot_name,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([optimum, optimum]),
+                    'yvals': np.array([y_min, y_max]),
+                    'color': 'red',
+                    'marker': 'None',
+                    'linestyle': '--'
+                }
+
+
+class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_skewness_model' measurement.
+    
+    The class extracts the phase and amplitude correction settings of the Q 
+    channel input of the measured IQ mixer that maximize the suppression of the 
+    unwanted sideband.
+    """
+    def extract_data(self):
+        super().extract_data()
+        if self.get_param_value('TwoD', default_value=None) is None:
+            self.options_dict['TwoD'] = True
+
+    def process_data(self):
+        super().process_data()
+
+        hsp = self.raw_data_dict['hard_sweep_points']
+        ssp = self.raw_data_dict['soft_sweep_points']
+        mdata = self.raw_data_dict['measured_data']
+
+        sideband_I, sideband_Q = list(mdata.values())
+
+        if len(hsp) * len(ssp) == len(sideband_I.flatten()):
+            # The arrays hsp and ssp define the edges of a grid of measured 
+            # points. We reshape the arrays such that each data point 
+            # sideband_I/Q[i] corresponds to the sweep point alpha[i], phase[i]
+            alpha, phase = np.meshgrid(hsp, ssp)
+            alpha = alpha.flatten()
+            phase = phase.flatten()
+            sideband_I = sideband_I.T.flatten()
+            sideband_Q = sideband_Q.T.flatten()
+        else:
+            alpha = hsp
+            phase = ssp
+        
+        # Conversion from V_peak -> V_RMS 
+        #   V_RMS = sqrt(V_peak_I^2 + V_peak_Q^2)/sqrt(2)
+        # Conversion to P (dBm):
+        #   P = V_RMS^2 / 50 Ohms
+        #   P (dBm) = 10 * log10(P / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2 / 50 Ohms / 1 mW)
+        #   P (dBm) = 10 * log10(V_RMS^2) - 10 * log10(50 Ohms * 1 mW)
+        #   P (dBm) = 10 * log10(V_peak_I^2 + V_peak_Q^2) 
+        #             - 10 * log10(2 * 50 Ohms * 1 mW)
+        sideband_dBm_amp = 10 * np.log10(sideband_I**2 + sideband_Q**2) \
+                           - 10 * np.log10(2 * 50 * 1e-3)
+
+        self.proc_data_dict['alpha'] = alpha
+        self.proc_data_dict['phase'] = phase
+        self.proc_data_dict['sideband_I'] = sideband_I
+        self.proc_data_dict['sideband_Q'] = sideband_Q
+        self.proc_data_dict['sideband_dBm_amp'] = sideband_dBm_amp
+        self.proc_data_dict['data_to_fit'] = sideband_dBm_amp
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+        data = self.proc_data_dict['data_to_fit']
+
+        mixer_imbalance_sideband_mod = lmfit.Model(
+            fit_mods.mixer_imbalance_sideband, 
+            independent_vars=['alpha', 'phi_skew']
+            )
+        # Use two lowest values in measurements to choose
+        # initial model parameters.
+        alpha_two_lowest = self.proc_data_dict['alpha'][np.argpartition(data, 2)][0:2]
+        phi_two_lowest = self.proc_data_dict['phase'][np.argpartition(data, 2)][0:2]
+        g_guess = np.mean(alpha_two_lowest)
+        phi_guess = - np.mean(phi_two_lowest)
+        guess_pars = fit_mods.mixer_imbalance_sideband_guess(
+            mixer_imbalance_sideband_mod,
+            g=g_guess,
+            phi=phi_guess
+            )
+
+        self.fit_dicts['mixer_imbalance_sideband'] = {
+            'model': mixer_imbalance_sideband_mod,
+            'fit_xvals': {'alpha': self.proc_data_dict['alpha'],
+                          'phi_skew': self.proc_data_dict['phase']},
+            'fit_yvals': {'data': self.proc_data_dict['data_to_fit']},
+            'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        fit_dict = self.fit_dicts['mixer_imbalance_sideband']
+        best_values = fit_dict['fit_res'].best_values
+        self.proc_data_dict['analysis_params_dict']['alpha'] = best_values['g']
+        self.proc_data_dict['analysis_params_dict']['phase'] = -best_values['phi']
+
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        pdict = self.proc_data_dict
+
+        alpha = pdict['alpha']
+        phase = pdict['phase']
+
+        timestamp = self.timestamps[0]
+
+        if self.do_fitting:
+            # define grid with limits based on measurement points 
+            # and make it 10 % larger in both axes
+            size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
+            size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
+            xi = np.linspace(np.min(alpha) - size_offset_alpha, 
+                            np.max(alpha) + size_offset_alpha, 250)
+            yi = np.linspace(np.min(phase) - size_offset_phase, 
+                            np.max(phase) + size_offset_phase, 250)
+            x, y = np.meshgrid(xi, yi)
+
+            fit_dict = self.fit_dicts['mixer_imbalance_sideband']
+            fit_res = fit_dict['fit_res']
+            best_values = fit_res.best_values
+            model_func = fit_dict['model'].func
+            z = model_func(x, y, **best_values)
+
+            base_plot_name = 'mixer_sideband_suppression'
+            self.plot_dicts['base_contour'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_contourf,
+                'xvals': x,
+                'yvals': y,
+                'zvals': z,
+                'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
+                'ylabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
+                'xunit': '',
+                'yunit': 'deg',
+                'setlabel': 'sideband magnitude',
+                'cmap': 'plasma',
+                'cmap_levels': 100,
+                'clabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$ (dBm)',
+                'title': f'{timestamp} calibrate_drive_mixer_skewness_'
+                        f'{self.qb_names[0]}'
+            }
+
+            self.plot_dicts['base_measurement_points'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': alpha,
+                'yvals': phase,
+                'color': 'white',
+                'marker': '.',
+                'linestyle': 'None',
+                'setlabel': '',
+            }
+
+            alpha_min = pdict['analysis_params_dict']['alpha']
+            phase_min = pdict['analysis_params_dict']['phase']
+            self.plot_dicts['base_minimum'] = {
+                'fig_id': base_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([alpha_min]),
+                'yvals': np.array([phase_min]),
+                'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
+                            f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                'color': 'red',
+                'marker': 'o',
+                'linestyle': 'None',
+                'do_legend': True,
+                'legend_pos': 'upper right',
+                'legend_title': None,
+                'legend_frameon': True
+            }
+
+        raw_alpha_plot_name = 'alpha_vs_sb_magn'
+        self.plot_dicts['raw_alpha_vs_sb_magn'] = {
+            'fig_id': raw_alpha_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': alpha,
+            'yvals': pdict['sideband_dBm_amp'],
+            'color': 'blue',
+            'marker': '.',
+            'linestyle': 'None',
+            'xlabel': 'Ampl., Ratio, $\\alpha_\\mathrm{IQ}$',
+            'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
+            'xunit': '',
+            'yunit': 'dBm',
+            'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
+                     f'projected onto ampl. ratio $\\alpha_\\mathrm{{IQ}}$'
+        }
+
+        if self.do_fitting:
+            self.plot_dicts['optimum_in_alpha_vs_sb_magn'] = {
+                'fig_id': raw_alpha_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([alpha_min, alpha_min]),
+                'yvals': np.array([np.min(pdict['sideband_dBm_amp']),
+                                np.max(pdict['sideband_dBm_amp'])]),
+                'color': 'red',
+                'marker': 'None',
+                'linestyle': '--'
+            }
+
+        raw_phase_plot_name = 'phase_vs_sb_magn'
+        self.plot_dicts['raw_phase_vs_sb_magn'] = {
+            'fig_id': raw_phase_plot_name,
+            'plotfn': self.plot_line,
+            'xvals': phase,
+            'yvals': pdict['sideband_dBm_amp'],
+            'color': 'blue',
+            'marker': '.',
+            'linestyle': 'None',
+            'xlabel': 'Phase Off., $\\Delta\\phi_\\mathrm{IQ}$',
+            'ylabel': 'Sideband Leakage $V_\\mathrm{LO-IF}$',
+            'xunit': 'deg',
+            'yunit': 'dBm',
+            'title': f'{timestamp} {self.qb_names[0]}\n$V_\\mathrm{{LO-IF}}$ '
+                     f'projected onto phase offset $\\Delta\\phi_\\mathrm{{IQ}}$'
+        }
+
+        if self.do_fitting:
+            self.plot_dicts['optimum_in_phase_vs_sb_magn'] = {
+                'fig_id': raw_phase_plot_name,
+                'plotfn': self.plot_line,
+                'xvals': np.array([phase_min, phase_min]),
+                'yvals': np.array([np.min(pdict['sideband_dBm_amp']),
+                                np.max(pdict['sideband_dBm_amp'])]),
+                'color': 'red',
+                'marker': 'None',
+                'linestyle': '--'
+            }

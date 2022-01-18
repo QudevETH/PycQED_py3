@@ -1,15 +1,14 @@
-{{ fullname | escape | underline}}
+{{ name | escape | underline}}
 
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
    :members:
-   :undoc-members:
    :show-inheritance:
 
    {% block attributes %}
    {% if attributes %}
-   .. rubric:: {{ _('Attributes') }}
+   .. rubric:: Attributes
 
    .. autosummary::
    {% for item in attributes %}
@@ -20,7 +19,7 @@
 
    {% block methods %}
    {% if methods %}
-   .. rubric:: {{ _('Methods') }}
+   .. rubric:: Methods
 
    .. autosummary::
    {% for item in methods %}
