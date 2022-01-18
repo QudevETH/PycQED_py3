@@ -299,7 +299,7 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
             elif f['type'] == 'csv':
                 if datadir is not None:
                     filename = os.path.join(datadir,
-                                            f['filename'].lstrip('\\'))
+                                            f['filename'].lstrip(os.sep))
                 else:
                     filename = f['filename']
                 if (not os.path.exists(filename)
@@ -308,8 +308,8 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
                     # If the missing file is supposed to be stored inside
                     # the data folder, we can try to fetch it if a
                     # fetch_data_dir is configured in a_tools.
-                    ts = filename.lstrip(a_tools.datadir).lstrip('\\')[
-                         :15].replace('\\', '_')  # extract timestamp
+                    ts = filename.lstrip(a_tools.datadir).lstrip(os.sep)[
+                         :15].replace(os.sep, '_')  # extract timestamp
                     a_tools.get_folder(ts)  # try to fetch the folder
                 if fclass == 'IIR':
                     coeffs = import_iir(filename)
