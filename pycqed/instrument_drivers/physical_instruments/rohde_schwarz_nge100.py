@@ -9,6 +9,7 @@ from abc import ABC, abstractproperty
 from functools import partial, wraps
 import io
 from qcodes import VisaInstrument, InstrumentChannel
+from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils.validators import Numbers, Enum
 
 
@@ -114,17 +115,41 @@ class NGE100Channel(InstrumentChannel):
             docstring="(readonly)"
         )
 
-    def _param_from_visa_cmd(self, command:str) -> str:
+        if self.parent.virtual:
+            self.add_parameter(
+                name="simulated_output_current",
+                parameter_class=ManualParameter,
+                unit="A",
+                initial_value=0.0,
+                vals=Numbers(0, 3.0),
+                docstring="This value will be forwarded to ``measured_current``. "
+                          "Only available for virtual instruments."
+            )
+
+    def _param_from_visa_cmd(self, visa_cmd:str) -> str:
         """Util function to extract a parameter name from a visa command."""
 
         # Remove ?, {} and trailing whitespaces
-        return command.replace("?", "").replace("{}", "").strip()
+        return visa_cmd.replace("?", "").replace("{}", "").strip()
+
+    def _get_simulated_value(self, visa_cmd:str):
+        visa_cmd = self._param_from_visa_cmd(visa_cmd)
+
+        if visa_cmd == "MEASure:VOLTage":
+            # Query the value set by the user instead
+            visa_cmd = visa_cmd.replace("MEASure:", "")
+        elif visa_cmd == "MEASure:CURRent":
+            return self.simulated_output_current()
+        elif visa_cmd == "MEASure:POWer":
+            return self.measured_voltage() * self.measured_current()
+
+        return self._sim_parameters.get(
+                visa_cmd, 0.0
+            )
 
     def _get_channel_parameter(self, visa_cmd:str):
         if self.parent.virtual:
-            return self._sim_parameters.get(
-                self._param_from_visa_cmd(visa_cmd), 0.0
-            )
+            return self._get_simulated_value(visa_cmd)
         else:
             self.parent.select_channel(self.channel)
             return self.ask_raw(visa_cmd)
