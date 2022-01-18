@@ -11,12 +11,9 @@ log = logging.getLogger(__name__)
 
 
 class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
-    """This is the Qudev specific PycQED driver for the SHFQA instrument
-    from Zurich Instruments AG.
-    """
     """QuDev-specific PycQED driver for the ZI SHFQA
 
-    This is the QuDev-specific PycQED driver for the 4 GSa/s SHFQA instrument
+    This is the QuDev-specific PycQED driver for the 2 GSa/s SHFQA instrument
     from Zurich Instruments AG.
 
     Attributes:
@@ -26,10 +23,21 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
     """
-    # acq_length_granularity = 4
+    # acq_length_granularity = 4 #FIXME should this be set to some value?
+
+    # acq_sampling_rate is the effective sampling rate provided by the SHF,
+    # even though internally it has an ADC running at 4e9 Sa/s.
+    # More details on the chain of downconversions on the SHF input:
+    # Signal at center_freq+/-1e9 Hz
+    # (or +/-700e6 is the actual analog bandwidth)
+    # DC by center_freq+12e9 and filter -> 12e9+/-1e9
+    # DC by 9e9 and filter -> 3e9+/-1e9
+    # Acq at 4e9 Sa/s (f_Nyq=2e9) -> aliasing to 1e9+/-1e9
+    # Digital DC by 1e9 -> 0+/-1e9 (I/Q signal)
+    # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
-    acq_weights_n_samples = 4096  #??
-    acq_Q_sign = -1
+    acq_weights_n_samples = 4096 #TODO: is this the maximum in readout mode?
+    acq_Q_sign = -1 # Determined experimentally
     allowed_modes = {#'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'],
                      # 'scope': [],
@@ -68,6 +76,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     @property
     def daq(self):
+        """Returns the ZI data server (DAQ).
+        """
         return self._controller._controller._connection.daq
 
     def _reset_acq_poll_inds(self):
@@ -158,6 +168,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             ch.sweeper.oscillator_gain(0)
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
+        """Receive sequence data from Pulsar.
+
+         This will be uploaded in self.acquisition_initialize.
+         The reason is that awg_program is incomplete as Pulsar
+         does not know yet the loop count, which is replaced
+         in self._program_awg.
+        """
         self._awg_programs[acq_unit] = awg_program
         self._waves_to_upload[acq_unit] = waves_to_upload
         # force programming in acquisition_initialize
@@ -241,6 +258,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         return dataset
 
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+
         name = 'Readout frequency'
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
@@ -279,26 +297,5 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         properties = super().get_value_properties(
             data_type=data_type, acquisition_length=acquisition_length)
-        # if data_type == 'raw':
-        if 'raw' in data_type:
-            if acquisition_length is None:
-                raise ValueError('Please specify acquisition_length.')
-            # Units are only valid when using SSB or DSB demodulation.
-            # value corresponds to the peak voltage of a cosine with the
-            # demodulation frequency.
-            if data_type == 'raw_corr':
-                # Note that V^2 is in brackets to prevent confusion with unit
-                # prefixes
-                properties['value_unit'] = '(V^2)'
-            else:
-                properties['value_unit'] = 'Vpeak'
-            properties['scaling_factor'] = 1 # Set separately in poll()
-        elif data_type == 'lin_trans':
-            properties['value_unit'] = 'a.u.'
-            properties['scaling_factor'] = 1
-        elif 'digitized' in data_type:
-            properties['value_unit'] = 'frac'
-            properties['scaling_factor'] = 1
-        else:
-            raise ValueError(f'Data type {data_type} not understood.')
+        properties['scaling_factor'] = 1 # Set separately in poll()
         return properties
