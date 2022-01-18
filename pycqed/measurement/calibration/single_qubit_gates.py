@@ -2145,10 +2145,11 @@ class ReparkingRamsey(Ramsey):
             apd = self.analysis.proc_data_dict['analysis_params_dict']
             # set new qubit frequency
             qubit.set(f'{task["transition_name_input"]}_freq',
-                      apd['reparking_params'][qubit.name]['ss_freq'])
+                      apd['reparking_params'][qubit.name]['new_ss_vals'][
+                          'ss_freq'])
             # set new voltage
-            fluxline(apd['reparking_params'][qubit.name]['ss_volt'])
-
+            fluxline(apd['reparking_params'][qubit.name]['new_ss_vals'][
+                         'ss_volt'])
 
 class T1(SingleQubitGateCalibExperiment):
     """
