@@ -6230,12 +6230,12 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                                 f"{max(voltages)}] that is swept. New sweet "
                                 f"spot voltage set to {new_ss_volt}.")
 
-        self.proc_data_dict['analysis_params_dict'][
-            'reparking_params'][qbn] = {
-                'new_ss_vals': {'ss_freq': new_ss_freq,
-                                'ss_volt': new_ss_volt},
-                'fitted_vals': {'ss_freq': fit_res.best_values['f0'],
-                                'ss_volt': fit_res.best_values['V0']}}
+            self.proc_data_dict['analysis_params_dict'][
+                'reparking_params'][qbn] = {
+                    'new_ss_vals': {'ss_freq': new_ss_freq,
+                                    'ss_volt': new_ss_volt},
+                    'fitted_vals': {'ss_freq': fit_res.best_values['f0'],
+                                    'ss_volt': fit_res.best_values['V0']}}
 
         self.save_processed_data(key='analysis_params_dict')
 
