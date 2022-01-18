@@ -1,9 +1,5 @@
 import numpy as np
-from copy import deepcopy
-from qcodes.utils import validators
-from qcodes.instrument.parameter import ManualParameter
-from pycqed.instrument_drivers.acquisition_devices.base import \
-    AcquisitionDevice
+from pycqed.instrument_drivers.acquisition_devices.base import AcquisitionDevice
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
 import logging
@@ -11,14 +7,14 @@ log = logging.getLogger(__name__)
 
 
 class VC707(VC707_core, AcquisitionDevice):
-    """
-    This is the Qudev specific PycQED driver for the VC707 FPGA instrument.
-    """
+    """PycQED acquisition device wrapper for the VC707 FPGA."""
+
     n_acq_units = 2
     n_acq_channels = 2  # TODO
     acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
+    # TODO: In state discrimination mode this is actually 256.
     acq_weights_n_samples = 4096
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw',
@@ -104,13 +100,5 @@ class VC707(VC707_core, AcquisitionDevice):
         self._last_traces.append(last_traces)
         return dataset
 
-#    def get_value_properties(self, data_type='raw', acquisition_length=None):
-#        raise NotImplementedError(
-#            'get_value_properties still needs to be implemented for using '
-#            'the VC707 in integration mode.')
-
     def _acquisition_set_weight(self, channel, weight):
         self._acq_integration_weights[channel] = weight
-
-
-
