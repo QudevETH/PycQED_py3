@@ -2867,7 +2867,7 @@ class ActiveReset(CalibBuilder):
             channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
             # set thresholds
             for unit, thresh in clf_params[qb.name]['thresholds'].items():
-                qb.instr_uhf.get_instr().set(
+                qb.instr_acq.get_instr().set(
                     f'qas_0_thresholds_{channels[unit]}_level', thresh)
 
     @staticmethod
@@ -2910,7 +2910,7 @@ class ActiveReset(CalibBuilder):
             # get UHF thresholds
             else:
                 thresholds[qb.name] = \
-                    {u: qb.instr_uhf.get_instr()
+                    {u: qb.instr_acq.get_instr()
                           .get(f'qas_0_thresholds_{ch}_level')
                      for u, ch in chs.items()}
 
