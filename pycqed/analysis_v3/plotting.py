@@ -142,12 +142,12 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
     s = alphabet.index(startletter)
     letters = [fmt.format(alphabet[x + s]) for x in range(len(np.array(axes).flatten()))]
     for i, ax in enumerate(np.array(axes).flatten()):
-        label = labels[i]
+        letter = letters[i]
         xo = xoffset[i] if np.ndim(xoffset) != 0 else xoffset
         yo = yoffset[i] if np.ndim(yoffset) != 0 else yoffset
         ax.text(ax.bbox.transformed(fig.transFigure.inverted()).x0 + xo,
                 ax.bbox.transformed(fig.transFigure.inverted()).y1 + yo,
-                label,
+                letter,
                 ha=ha, va=va, transform=fig.transFigure, **kwargs)
     return fig, axes
 
