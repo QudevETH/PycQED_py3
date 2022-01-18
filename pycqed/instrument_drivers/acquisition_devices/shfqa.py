@@ -14,6 +14,18 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     """This is the Qudev specific PycQED driver for the SHFQA instrument
     from Zurich Instruments AG.
     """
+    """QuDev-specific PycQED driver for the ZI SHFQA
+
+    This is the QuDev-specific PycQED driver for the 4 GSa/s SHFQA instrument
+    from Zurich Instruments AG.
+
+    Attributes:
+        allowed_lo_freqs (list of floats): List of values that the centre frequency
+            (LO) is allowed to take. As of now this is limited to steps
+            of 100 MHz
+        awg_active (list of bool): Whether the AWG of each acquisition unit has
+            been started by Pulsar.
+    """
     # acq_length_granularity = 4
     acq_sampling_rate = 2.0e9
     acq_weights_n_samples = 4096  #??
@@ -22,6 +34,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                      'int_avg': ['raw', 'digitized'],
                      # 'scope': [],
                      }
+    # private lookup dict to translate a data_type to an index understood by
+    # the SHF
     res_logging_indices = {'raw': 1,  # raw integrated+averaged results
                            'digitized': 3,  # thresholded results (0 or 1)
                            }
@@ -57,6 +71,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         return self._controller._controller._connection.daq
 
     def _reset_acq_poll_inds(self):
+        """Resets the data indices that have been acquired until now.
+
+        self._acq_poll_inds will be set to a list of lists of zeros,
+            with first dimension the number of acquisition units
+            and second dimension the number of integration channels
+            used per acquisition unit.
+        """
         self._acq_poll_inds = []
         for i in range(self.n_acq_units):
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
@@ -69,14 +90,19 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '
-                        f'{new_lo_freq/1e6:.6f} MHz.')
+                        f'{new_lo_freq/1e6:.6f} MHz. This does NOT'
+                        f'automatically set the IF!')
 
     def prepare_poll(self):
         super().prepare_poll()
         for i in self._acq_units_used:
+            # Readout mode outputs programmed waveforms, and integrates
+            # against different custom weights for each integration channel
             if self._acq_units_modes[i] == 'readout':
                 self.qachannels[i].readout.arm(length=self._acq_n_results,
                                                averages=self._acq_averages)
+            # Spectroscopy mode outputs a sine wave at a given frequency
+            # and integrates against this same signal only
             else:  # spectroscopy
                 self._arm_spectroscopy(i, length=self._acq_n_results,
                                        averages=self._acq_averages)
@@ -98,12 +124,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             # prepare_poll
             self.qachannels[i].readout.stop()  # readout mode
             if i not in self._acq_units_used:
+                # In spectroscopy mode there seems to be no stop() functionality
+                # meaning that the output generator must be always running.
+                # Here it is effectively disabled by oscillator_gain(0)
                 self.qachannels[i].sweeper.oscillator_gain(0)  # spectroscopy mode
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
             if self._acq_units_modes[i] == 'readout':
-                # Disable rerun; the AWG program defines the number of
+                # Disable rerun; the AWG seqc program defines the number of
                 # iterations in the loop
                 self.qachannels[i].generator.single(1)
                 if data_type is not None:
@@ -112,6 +141,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 if acquisition_length is not None:
                     self.qachannels[i].readout.integration_length(
                         self.convert_time_to_n_samples(acquisition_length))
+                # This is needed because the SHF currently lacks user
+                # registers and thus cannot be programmed by Pulsar,
+                # which is instead done in self._program_awg
                 if self._acq_loop_cnts_last[i] != loop_cnt:
                     self._program_awg(i)  # reprogramm this acq unit
                     self._acq_loop_cnts_last[i] = loop_cnt
@@ -128,13 +160,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
         self._awg_programs[acq_unit] = awg_program
         self._waves_to_upload[acq_unit] = waves_to_upload
-        self._acq_loop_cnts_last[acq_unit] = None  # force programming
+        # force programming in acquisition_initialize
+        self._acq_loop_cnts_last[acq_unit] = None
 
     def _program_awg(self, acq_unit):
         awg_program = self._awg_programs.get(acq_unit, None)
         if awg_program is None:
             return
         qachannel = self.qachannels[acq_unit]
+        # This is now known and can be replaced in the seqc code
         awg_program = awg_program.replace(
             '{loop_count}', f'{self._acq_loop_cnt}')
         qachannel.generator.set_sequence_params(
@@ -150,6 +184,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             self._waves_to_upload[acq_unit] = None  # upload only once
 
     def _get_spectroscopy_node(self, acq_unit, node):
+        # These direct accesses to the zhinst-toolkit were simpler to
+        # implement based on the SHF documentation than finding
+        # the corresponding higher-level functions in zhinst-qcodes
         lookup = {
             'enable': 'result/enable',
             'averages': 'result/averages',
@@ -170,12 +207,19 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.daq.sync()
 
     def poll(self, *args, **kwargs):
+        # 220118 For now, poll reads all data available from the data server
+        # at each run, and then returns only the newer data to match the
+        # normal behaviour of poll. One could implement an actual poll after
+        # ZI has improved the drivers, if that turns out to be a bottleneck.
+        # sqrt(2) values are because the SHF seems to return RMS voltages.
         dataset = {}
         for i in self._acq_units_used:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
             if self._acq_units_modes[i] == 'readout':
                 res = self.qachannels[i].readout.read(integrations=channels,
                                                       blocking=False)
+                # In readout mode the data isn't rescaled yet in the SHF
+                # by the number of points
                 scaling_factor = np.sqrt(2)\
                                  / (self.acq_sampling_rate * self._acq_length)
                 dataset.update(
