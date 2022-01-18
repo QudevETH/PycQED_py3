@@ -23,7 +23,7 @@ def simulation_patch(return_value):
         @wraps(method)
         def _wrapper(self, *args, **kwargs):
             if (hasattr(self, "virtual") and self.virtual) or \
-               (hasattr(self, "parent") and self.parent.virtual):
+               (self.parent and hasattr(self.parent, "virtual") and self.parent.virtual):
                 return return_value
             else:
                 return method(self, *args, **kwargs)
@@ -153,10 +153,13 @@ class NGE100Base(VisaInstrument, ABC):
     * 6.6.1
     """
 
+    # As recommended in doc of abstractproperty, @property is also applied
+    @property
     @abstractproperty
     def nb_channels(self):
         """Number of instrument channels."""
 
+    @property
     @abstractproperty
     def model_name(self):
         """Instrument model name. Used for checking if the connected instrument
