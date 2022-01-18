@@ -2283,7 +2283,7 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det_spec)
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_uhf()])
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
 

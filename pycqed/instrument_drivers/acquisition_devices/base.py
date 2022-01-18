@@ -26,7 +26,7 @@ class AcquisitionDevice():
         acq_length_granularity (int): indicates that the number of samples
             in an acquired signal must be a multiple of this number (*)
         acq_sampling_rate (float): sampling rate of the acquisition units in
-            seconds (*)
+            Hertz (*)
         acq_weights_n_samples (int): number of samples of auto-generated
             integration weights (*)
         acq_Q_sign (1 or -1): sign of auto-generated integration weights for
@@ -492,7 +492,6 @@ class ZI_AcquisitionDevice(AcquisitionDevice):
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         properties = super().get_value_properties(
             data_type=data_type, acquisition_length=acquisition_length)
-        # if data_type == 'raw':
         if 'raw' in data_type:
             if acquisition_length is None:
                 raise ValueError('Please specify acquisition_length.')
