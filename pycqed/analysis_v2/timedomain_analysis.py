@@ -10672,8 +10672,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
 class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_model' measurement.
-    
-    The class extracts the DC biases on the I and Q channel inputs of the 
+
+    The class extracts the DC biases on the I and Q channel inputs of the
     measured IQ mixer that minimize the LO leakage.
     """
     def extract_data(self):
@@ -10718,7 +10718,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         VQ = self.proc_data_dict['V_Q']
         data = self.proc_data_dict['data_to_fit']
 
-        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage, 
+        mixer_lo_leakage_mod = lmfit.Model(fit_mods.mixer_lo_leakage,
                                            independent_vars=['vi', 'vq'])
         # Use two lowest values in measurements to choose
         # initial model parameters.
@@ -10727,8 +10727,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         minimum = - np.mean(VI_two_lowest) + 1j * np.mean(VQ_two_lowest)
         li_guess = np.abs(minimum)
         theta_i_guess = cmath.phase(minimum)
-        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod, 
-                                                     li=li_guess, 
+        guess_pars = fit_mods.mixer_lo_leakage_guess(mixer_lo_leakage_mod,
+                                                     li=li_guess,
                                                      theta_i=theta_i_guess)
 
         self.fit_dicts['mixer_lo_leakage'] = {
@@ -10742,7 +10742,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         fit_dict = self.fit_dicts['mixer_lo_leakage']
         best_values = fit_dict['fit_res'].best_values
-        
+
         # compute values that minimize the fitted model:
         leakage = best_values['li'] * np.exp(1j* best_values['theta_i']) \
                   - 1j * best_values['lq'] * np.exp(1j*best_values['theta_q'])
@@ -10760,7 +10760,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
 
         if self.do_fitting:
             # interpolate data for plot,
-            # define grid with limits based on measurement 
+            # define grid with limits based on measurement
             # points and make it 10 % larger in both axes
             size_offset_vi = 0.05 * (np.max(V_I) - np.min(V_I))
             size_offset_vq = 0.05 * (np.max(V_Q) - np.min(V_Q))
@@ -10859,9 +10859,9 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_skewness_model' measurement.
-    
-    The class extracts the phase and amplitude correction settings of the Q 
-    channel input of the measured IQ mixer that maximize the suppression of the 
+
+    The class extracts the phase and amplitude correction settings of the Q
+    channel input of the measured IQ mixer that maximize the suppression of the
     unwanted sideband.
     """
     def extract_data(self):
@@ -10879,8 +10879,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         sideband_I, sideband_Q = list(mdata.values())
 
         if len(hsp) * len(ssp) == len(sideband_I.flatten()):
-            # The arrays hsp and ssp define the edges of a grid of measured 
-            # points. We reshape the arrays such that each data point 
+            # The arrays hsp and ssp define the edges of a grid of measured
+            # points. We reshape the arrays such that each data point
             # sideband_I/Q[i] corresponds to the sweep point alpha[i], phase[i]
             alpha, phase = np.meshgrid(hsp, ssp)
             alpha = alpha.flatten()
@@ -10890,15 +10890,15 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         else:
             alpha = hsp
             phase = ssp
-        
-        # Conversion from V_peak -> V_RMS 
+
+        # Conversion from V_peak -> V_RMS
         #   V_RMS = sqrt(V_peak_I^2 + V_peak_Q^2)/sqrt(2)
         # Conversion to P (dBm):
         #   P = V_RMS^2 / 50 Ohms
         #   P (dBm) = 10 * log10(P / 1 mW)
         #   P (dBm) = 10 * log10(V_RMS^2 / 50 Ohms / 1 mW)
         #   P (dBm) = 10 * log10(V_RMS^2) - 10 * log10(50 Ohms * 1 mW)
-        #   P (dBm) = 10 * log10(V_peak_I^2 + V_peak_Q^2) 
+        #   P (dBm) = 10 * log10(V_peak_I^2 + V_peak_Q^2)
         #             - 10 * log10(2 * 50 Ohms * 1 mW)
         sideband_dBm_amp = 10 * np.log10(sideband_I**2 + sideband_Q**2) \
                            - 10 * np.log10(2 * 50 * 1e-3)
@@ -10915,7 +10915,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         data = self.proc_data_dict['data_to_fit']
 
         mixer_imbalance_sideband_mod = lmfit.Model(
-            fit_mods.mixer_imbalance_sideband, 
+            fit_mods.mixer_imbalance_sideband,
             independent_vars=['alpha', 'phi_skew']
             )
         # Use two lowest values in measurements to choose
@@ -10955,13 +10955,13 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         timestamp = self.timestamps[0]
 
         if self.do_fitting:
-            # define grid with limits based on measurement points 
+            # define grid with limits based on measurement points
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
-            xi = np.linspace(np.min(alpha) - size_offset_alpha, 
+            xi = np.linspace(np.min(alpha) - size_offset_alpha,
                             np.max(alpha) + size_offset_alpha, 250)
-            yi = np.linspace(np.min(phase) - size_offset_phase, 
+            yi = np.linspace(np.min(phase) - size_offset_phase,
                             np.max(phase) + size_offset_phase, 250)
             x, y = np.meshgrid(xi, yi)
 
