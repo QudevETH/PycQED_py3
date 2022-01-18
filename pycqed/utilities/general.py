@@ -19,6 +19,7 @@ from functools import reduce  # forward compatibility for Python 3
 import operator
 import string
 from collections import OrderedDict  # for eval in load_settings
+import functools
 log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -925,6 +926,7 @@ def assert_not_none(*param_names):
     import inspect
 
     def check(f):
+        @functools.wraps(f)
         def wrapped_func(*args, **kwds):
             signature_args_and_kwargs = inspect.getfullargspec(f).args
             default_kwarg_values = inspect.getfullargspec(f).defaults
