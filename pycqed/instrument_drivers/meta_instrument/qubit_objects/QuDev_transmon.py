@@ -252,7 +252,7 @@ class QuDev_transmon(Qubit):
                                       " ['ge', 'gf'] or ['ge', 'ortho']."),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_classifier_params', vals=vals.Dict(),
-                           intial_value={},
+                           initial_value={},
                            label='Parameters for the qutrit classifier.',
                            docstring=("Used in the int_avg_classif_det to "
                                       "classify single shots into g, e, f."),
