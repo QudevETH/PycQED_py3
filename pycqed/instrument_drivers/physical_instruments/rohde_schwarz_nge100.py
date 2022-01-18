@@ -6,15 +6,35 @@ also works as it has 3 channels instead of 2.
 
 
 from abc import ABC, abstractproperty
-from functools import partial
+from functools import partial, wraps
 import io
 from qcodes import VisaInstrument, InstrumentChannel
 from qcodes.utils.validators import Numbers, Enum
 
 
+def simulation_patch(return_value):
+    """Decorator to bypass a method and return another value for simulations.
+
+    This can be use to decorate methods of :class:`NGE100Channel` or
+    :class:`NGE100Base` (and derived classes).
+    """
+
+    def _decorator(method):
+        @wraps(method)
+        def _wrapper(self, *args, **kwargs):
+            if (hasattr(self, "virtual") and self.virtual) or \
+               (hasattr(self, "parent") and self.parent.virtual):
+                return return_value
+            else:
+                return method(self, *args, **kwargs)
+        return _wrapper
+    return _decorator
+
+
 class WrongInstrumentError(Exception):
     """Error raised if the connected VISA instrument is not a R&S NGE100B."""
     pass
+
 
 class NGE100Channel(InstrumentChannel):
     """Instrument channel for R&S NGE100B series instruments."""
@@ -32,6 +52,10 @@ class NGE100Channel(InstrumentChannel):
 
         super().__init__(parent, name=f"ch{channel}")
         self.channel = channel
+
+        # Store dummy values for simulation
+        if self.parent.virtual:
+            self._sim_parameters = {}
 
         self.add_parameter(
             name="voltage",
@@ -90,13 +114,28 @@ class NGE100Channel(InstrumentChannel):
             docstring="(readonly)"
         )
 
+    def _param_from_visa_cmd(self, command:str) -> str:
+        """Util function to extract a parameter name from a visa command."""
+
+        # Remove ?, {} and trailing whitespaces
+        return command.replace("?", "").replace("{}", "").strip()
+
     def _get_channel_parameter(self, visa_cmd:str):
-        self.parent.select_channel(self.channel)
-        return self.ask_raw(visa_cmd)
+        if self.parent.virtual:
+            return self._sim_parameters.get(
+                self._param_from_visa_cmd(visa_cmd), 0.0
+            )
+        else:
+            self.parent.select_channel(self.channel)
+            return self.ask_raw(visa_cmd)
 
     def _set_channel_parameter(self, visa_cmd:str, value):
-        self.parent.select_channel(self.channel)
-        return self.write_raw(visa_cmd.format(value))
+        if self.parent.virtual:
+            self._sim_parameters[self._param_from_visa_cmd(visa_cmd)] = value
+        else:
+            self.parent.select_channel(self.channel)
+            self.write_raw(visa_cmd.format(value))
+
 
 class NGE100Base(VisaInstrument, ABC):
     """Base Qcodes driver for R&S NGE100 series (abstract class).
@@ -123,13 +162,19 @@ class NGE100Base(VisaInstrument, ABC):
         """Instrument model name. Used for checking if the connected instrument
         is of the expected model."""
 
-    def __init__(self, name, address:str=None):
+    def __init__(self, name, address:str, virtual=False):
         """
         Arguments:
             name: Name of the instrument.
             address: IP address of the device, e.g. ``TCPIP::192.1.2.3::INST``.
+            virtual: Set to True to use a virtual instrument, mocking all
+                instruments parameters and methods.
         """
-        super().__init__(name, address=address)
+
+        self.virtual = virtual
+        visalib = "@sim" if self.virtual else None
+
+        super().__init__(name, address=address, visalib=visalib)
 
         # Check that the accessed device is of the correct kind
         if self.IDN()["model"] != self.model_name:
@@ -146,11 +191,24 @@ class NGE100Base(VisaInstrument, ABC):
         # Print standard connection message
         self.connect_message()
 
+    def get_idn(self):
+        if self.virtual:
+            return {
+            'vendor': "Rohde&Schwarz",
+            'model': self.model_name,
+            'serial': "123456",
+            'firmware': "1.0"
+        }
+        else:
+            return super().get_idn()
+
+    @simulation_patch(return_value="")
     def get_system_options(self):
         """Get the list of installed options on the instrument."""
 
         return self.ask_raw("SYSTem:OPTion?")
 
+    @simulation_patch(return_value=io.BytesIO(bytearray()))
     def get_screenshot(self) -> io.BytesIO:
         """Returns a screenshot of the instument screen.
 
@@ -179,10 +237,11 @@ class NGE100Base(VisaInstrument, ABC):
         )
         return io.BytesIO(screenshot)
 
+    @simulation_patch(return_value=None)
     def select_channel(self, channel:int):
         """Select an instrument channel, necessary prior to reading/setting
         any channel specific parameter.
-        
+
         No need to call this method directly, it is internally called by
         :class:`NGE100Channel`.
         """
@@ -214,6 +273,7 @@ class NGE102B(NGE100Base):
         return 2
 
     @property
+    @simulation_patch(return_value="Simulated NGE102B")
     def model_name(self):
         return "NGE102B"
 
@@ -227,7 +287,7 @@ class NGE103B(NGE100Base):
 
         This instrument driver has not been tested. Only the 2-channel version
         was tested, but it is very likely that the driver works as well for the
-        3-channel instrument. 
+        3-channel instrument.
     """
 
     @property
@@ -235,5 +295,6 @@ class NGE103B(NGE100Base):
         return 3
 
     @property
+    @simulation_patch(return_value="Simulated NGE103B")
     def model_name(self):
         return "NGE103B"
