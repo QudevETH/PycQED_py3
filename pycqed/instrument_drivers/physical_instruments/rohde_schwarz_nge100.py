@@ -13,8 +13,9 @@ from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils.validators import Numbers, Enum
 
 
-def simulation_patch(return_value):
-    """Decorator to bypass a method and return another value for simulations.
+def virtual_instrument_patch(return_value):
+    """Decorator to bypass a method and return another value when instrument is 
+    virtual.
 
     This can be use to decorate methods of :class:`NGE100Channel` or
     :class:`NGE100Base` (and derived classes).
@@ -54,9 +55,9 @@ class NGE100Channel(InstrumentChannel):
         super().__init__(parent, name=f"ch{channel}")
         self.channel = channel
 
-        # Store dummy values for simulation
+        # Store dummy values for virtual instrument
         if self.parent.virtual:
-            self._sim_parameters = {}
+            self._virtual_parameters = {}
 
         self.add_parameter(
             name="voltage",
@@ -117,11 +118,12 @@ class NGE100Channel(InstrumentChannel):
 
         if self.parent.virtual:
             self.add_parameter(
-                name="simulated_output_current",
+                name="mock_output_current",
                 parameter_class=ManualParameter,
                 unit="A",
                 initial_value=0.0,
                 vals=Numbers(0, 3.0),
+                snapshot_exclude=True,
                 docstring="This value will be forwarded to ``measured_current``. "
                           "Only available for virtual instruments."
             )
@@ -132,31 +134,29 @@ class NGE100Channel(InstrumentChannel):
         # Remove ?, {} and trailing whitespaces
         return visa_cmd.replace("?", "").replace("{}", "").strip()
 
-    def _get_simulated_value(self, visa_cmd:str):
+    def _get_virtual_value(self, visa_cmd:str):
         visa_cmd = self._param_from_visa_cmd(visa_cmd)
 
         if visa_cmd == "MEASure:VOLTage":
             # Query the value set by the user instead
             visa_cmd = visa_cmd.replace("MEASure:", "")
         elif visa_cmd == "MEASure:CURRent":
-            return self.simulated_output_current()
+            return self.mock_output_current()
         elif visa_cmd == "MEASure:POWer":
             return self.measured_voltage() * self.measured_current()
 
-        return self._sim_parameters.get(
-                visa_cmd, 0.0
-            )
+        return self._virtual_parameters.get(visa_cmd, 0.0)
 
     def _get_channel_parameter(self, visa_cmd:str):
         if self.parent.virtual:
-            return self._get_simulated_value(visa_cmd)
+            return self._get_virtual_value(visa_cmd)
         else:
             self.parent.select_channel(self.channel)
             return self.ask_raw(visa_cmd)
 
     def _set_channel_parameter(self, visa_cmd:str, value):
         if self.parent.virtual:
-            self._sim_parameters[self._param_from_visa_cmd(visa_cmd)] = value
+            self._virtual_parameters[self._param_from_visa_cmd(visa_cmd)] = value
         else:
             self.parent.select_channel(self.channel)
             self.write_raw(visa_cmd.format(value))
@@ -222,21 +222,21 @@ class NGE100Base(VisaInstrument, ABC):
     def get_idn(self):
         if self.virtual:
             return {
-            'vendor': "Rohde&Schwarz",
-            'model': self.model_name,
-            'serial': "123456",
-            'firmware': "1.0"
-        }
+                'vendor': "Rohde&Schwarz",
+                'model': self.model_name,
+                'serial': "123456",
+                'firmware': "1.0"
+            }
         else:
             return super().get_idn()
 
-    @simulation_patch(return_value="")
+    @virtual_instrument_patch(return_value="")
     def get_system_options(self):
         """Get the list of installed options on the instrument."""
 
         return self.ask_raw("SYSTem:OPTion?")
 
-    @simulation_patch(return_value=io.BytesIO(bytearray()))
+    @virtual_instrument_patch(return_value=io.BytesIO(bytearray()))
     def get_screenshot(self) -> io.BytesIO:
         """Returns a screenshot of the instument screen.
 
@@ -265,7 +265,7 @@ class NGE100Base(VisaInstrument, ABC):
         )
         return io.BytesIO(screenshot)
 
-    @simulation_patch(return_value=None)
+    @virtual_instrument_patch(return_value=None)
     def select_channel(self, channel:int):
         """Select an instrument channel, necessary prior to reading/setting
         any channel specific parameter.
@@ -301,7 +301,7 @@ class NGE102B(NGE100Base):
         return 2
 
     @property
-    @simulation_patch(return_value="Simulated NGE102B")
+    @virtual_instrument_patch(return_value="Virtual NGE102B")
     def model_name(self):
         return "NGE102B"
 
@@ -323,6 +323,6 @@ class NGE103B(NGE100Base):
         return 3
 
     @property
-    @simulation_patch(return_value="Simulated NGE103B")
+    @virtual_instrument_patch(return_value="Virtual NGE103B")
     def model_name(self):
         return "NGE103B"

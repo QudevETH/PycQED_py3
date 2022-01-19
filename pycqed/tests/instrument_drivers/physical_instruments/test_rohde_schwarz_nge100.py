@@ -62,9 +62,6 @@ class TestNGE102B(unittest.TestCase):
             self.ch1.current_limit.set(3.1)
 
     def test_simulated_output_current(self):
-        # Test initial value
-        self.assertEqual(self.ch1.simulated_output_current(), 0.0)
-
         # Test setting a value
         self.ch1.simulated_output_current.set(1.5)
         self.assertEqual(self.ch1.simulated_output_current(), 1.5)
@@ -110,3 +107,6 @@ class TestNGE103B(unittest.TestCase):
 
     def test_nb_channels(self):
         self.assertEqual(self.instrument.nb_channels, 3)
+        self.assertTrue(hasattr(self.instrument, "ch1"))
+        self.assertTrue(hasattr(self.instrument, "ch2"))
+        self.assertTrue(hasattr(self.instrument, "ch3"))
