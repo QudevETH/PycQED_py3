@@ -1,26 +1,13 @@
-# PycQED [![Build Status](https://travis-ci.org/DiCarloLab-Delft/PycQED_py3.svg?branch=master)](https://travis-ci.org/DiCarloLab-Delft/PycQED_py3) [![DOI](https://zenodo.org/badge/49057179.svg)](https://zenodo.org/badge/latestdoi/49057179) [![Codacy](https://api.codacy.com/project/badge/Grade/1266308dd9b84d7b933c2b46804aeb12)](https://www.codacy.com/app/AdriaanOrganization/PycQED_py3?utm_source=github.com&utm_medium=referral&utm_content=DiCarloLab-Delft/PycQED_py3&utm_campaign=badger) [![Coverage Status](https://coveralls.io/repos/github/DiCarloLab-Delft/PycQED_py3/badge.svg?branch=master)](https://coveralls.io/github/DiCarloLab-Delft/PycQED_py3?branch=master)
+![Qudev logo](docs/source/images/qudev_logo.png)
 
-A python based measurement environment for circuit-QED experiments by the [DiCarlo group](http://dicarlolab.tudelft.nl/) at [QuTech](http://qutech.nl/), Delft University of Technology.
-This module is build on top of qcodes and is not intended as a stand-alone package.
+# PycQED 
 
-## License
-This software is released under the [MIT License](LICENSE.md)
+A python based measurement environment for circuit-QED experiments.
 
-## Contributors
-Contributors (in alphabetical order):
-Serwan Asaad,
-Niels Bultink,
-Christian Dickel,
-Bart Dikken,
-Xiang Fu,
-Sjoerd de Jong,
-Gijs de Lange,
-Nathan Langford,
-Florian Luthi,
-Adriaan Rol,
-
-## Contributing
-Please see [Contributing.md](.github/CONTRIBUTING.md)
+This repository was originally forked from
+[PycQED](https://github.com/DiCarloLab-Delft/PycQED_py3) by the
+[DiCarlo group](http://dicarlolab.tudelft.nl/) at [QuTech](http://qutech.nl/),
+Delft University of Technology.
 
 ## Installation
 
@@ -73,39 +60,36 @@ git clone https://github.com/pyGSTio/pyGSTi.git
 pip install -e ./pyGSTi
 ```
 
-## Building the documentation
+## Examples
+
+TODO: Add here link to relevant notebook example.
+
+## Documentation
+
+The documentation for the `qudev_master` branch is available online
+[here](https://documentation.qudev.phys.ethz.ch/control_software/pycqed_py3/qudev_master/).
+The documentation for other branches can be found on
+[documentation.qudev.phys.ethz.ch](https://documentation.qudev.phys.ethz.ch/control_software/pycqed_py3).
+
+### Building the documentation locally
 
 Assuming you have followed the installation steps, you can locally build the
 documentation as follows:
 ```bash
 # From the root of the repo
 cd docs
+make clean
 make html
 ```
 
 You can then access the documentation by opening `docs/build/html/index.html` in
 your browser.
 
-## Usage
-
-+ start up qcodes
-+ load corresponding [config file](init\config\)
-+ set folder locations
-+ create instruments
-+ load values set in the init
-
-```python
-import sys
-import qcodes as qc
-import pycqed as pq
-from init.your_initscript import *
-```
-
-You are now ready to start your experiment.
-
-If you use this software in any of your publications we would appreciate it if you cite this repository using the [![DOI](https://zenodo.org/badge/49057179.svg)](https://zenodo.org/badge/latestdoi/49057179).
-
 ## Overview of the main modules
+
+TODO: This section should be replaced by the short PycQED user manual/general
+overview, to make this README lighter. 
+
 Below follows an overview of the main structure of the code. It makes sense to take a look around here if your are new to get a feeling where to find things.
 Also take a look at [this presentation](docs/160714_qcodes_meetup.pdf), where the relation to qcodes and the core concepts in the package are explained.
 Mind however that the code is continuously under development so if you think something should be in a different location feel free to tap me (Adriaan) on the shoulder or create an issue to discuss it.
@@ -186,13 +170,19 @@ This toolbox contains tools for analysis such as file-handling tools, plotting t
 ##### Fitting models
 This module contains the lmfit model definitions and fitting functions used for curve fitting.
 
-### The scripts folder
-The scripts that run an experiment. Dig around a bit here to get a feel of what a measurement looks like.
-It is split into personal folders for messing around with your personal files and project folders where people working on the same project have their experimental scripts.
+## Dependencies
 
-## Other useful stuff
-A little document containing some handy git commands.
-[Git tips & tricks ](docs/git_tips_and_tricks.md).
+* Python 3.6
+* [QCodes](https://gitlab.ethz.ch/qudev/control_software/qcodes) `0.1.11`:
+Custom fork of [QCodes](https://github.com/QCoDeS/Qcodes), a data acquisition
+framework.
+* TODO: clean list of dependencies and document which version we use.
 
-Lecture series on scientific python
-[Scientific Computing with Python](https://github.com/jrjohansson/scientific-python-lectures)
+## License
+
+This software is released under the [MIT License](LICENSE.md)
+
+## Contributing
+
+TODO: Clean contributing and put it somewhere else
+Please see [Contributing.md](.github/CONTRIBUTING.md)
