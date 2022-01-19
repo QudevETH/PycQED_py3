@@ -5915,7 +5915,19 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Analysis for a Ramsey measurement.
 
+    Parameters recognized in the options_dict:
+     - artificial_detuning_dict (dict; default: None): has the form
+        {qbn: artificial detuning value}
+    - artificial_detuning (float or dict; default: None): accepted parameter
+        for legacy reasons. Can be the same as artificial_detuning_dict or just
+        a single value which will be used for all qubits.
+    - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
+        envelope for the oscillations in addition to the exponential decay
+        envelope.
+    """
     def extract_data(self):
         super().extract_data()
         params_dict = {}
@@ -5927,7 +5939,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
-        if self.options_dict.get('fit_gaussian_decay', True):
+        if self.get_param_value('fit_gaussian_decay', default_value=True):
             self.fit_keys = ['exp_decay_', 'gauss_decay_']
         else:
             self.fit_keys = ['exp_decay_']
@@ -5970,23 +5982,22 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        if 'artificial_detuning' in self.options_dict:
-            artificial_detuning_dict = OrderedDict(
-                [(qbn, self.options_dict['artificial_detuning'])
-             for qbn in self.qb_names])
-        elif 'preprocessed_task_list' in self.metadata:
-            pptl = self.metadata['preprocessed_task_list']
-            artificial_detuning_dict = OrderedDict([
-                (t['qb'], t['artificial_detuning']) for t in pptl
-            ])
-        elif 'artificial_detuning_dict' in self.metadata:
-            artificial_detuning_dict = self.metadata[
-                'artificial_detuning_dict']
-        elif 'artificial_detuning' in self.metadata:
-            artificial_detuning_dict = OrderedDict(
-                [(qbn, self.metadata['artificial_detuning'])
-                 for qbn in self.qb_names])
-        else:
+        self.artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if self.artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if artificial_detuning is not None:
+                if isinstance(artificial_detuning, dict):
+                    self.artificial_detuning_dict = artificial_detuning
+                else:
+                    self.artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+            elif 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                self.artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+        if self.artificial_detuning_dict is None:
             raise ValueError('"artificial_detuning" not found.')
 
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
@@ -6021,7 +6032,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 'old_qb_freq'] = old_qb_freq
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq'] = old_qb_freq + \
-                                 artificial_detuning_dict[qbn] - \
+                                 self.artificial_detuning_dict[qbn] - \
                                  fit_res.best_values['frequency']
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
@@ -6030,7 +6041,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'T2_star_stderr'] = fit_res.params['tau'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'artificial_detuning'] = artificial_detuning_dict[qbn]
+                'artificial_detuning'] = self.artificial_detuning_dict[qbn]
 
         hdf_group_name_suffix = self.options_dict.get(
             'hdf_group_name_suffix', '')
