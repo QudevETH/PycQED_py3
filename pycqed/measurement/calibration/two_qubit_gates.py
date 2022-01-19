@@ -454,7 +454,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                     qubits}
         found_qubits = []
 
-        # helper function that checks candiates and calls itself recursively
+        # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
             if isinstance(candidate, QuDev_transmon):
