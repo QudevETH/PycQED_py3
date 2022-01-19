@@ -59,14 +59,12 @@ class Device(Instrument):
         qubits = [qb if not isinstance(qb, str) else self.find_instrument(qb) for qb in qubits]
         connectivity_graph = [[qb1 if isinstance(qb1, str) else qb1.name,
                                qb2 if isinstance(qb2, str) else qb2.name] for [qb1, qb2] in connectivity_graph]
+        self._two_qb_gates = []
 
         for qb in qubits:
             setattr(self, qb.name, qb)
 
-        self.add_parameter('qubits',
-                           vals=vals.Lists(),
-                           initial_value=qubits,
-                           parameter_class=ManualParameter)
+        self.qubits = qubits
         self.add_parameter('qb_names',
                            vals=vals.Lists(),
                            initial_value=qb_names,
@@ -102,10 +100,9 @@ class Device(Instrument):
                            docstring='a list of operations on the device, without single QB operations.',
                            get_cmd=self._get_operations)
         self.add_parameter('two_qb_gates',
-                           vals=vals.Lists(),
-                           initial_value=[],
                            docstring='stores all two qubit gate names',
-                           parameter_class=ManualParameter)
+                           get_cmd=lambda s=self: copy(s._two_qb_gates)
+                           )
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -242,17 +239,17 @@ class Device(Instrument):
             - list of integers specifying the index, e.g. [0, 1] for qb1, qb2
         :param return_type (str): "obj" --> qubit objects are returned.
             "str": --> qubit names are returned.
-            "ind": --> returns indices to find the qubits in self.qubits()
+            "ind": --> returns indices to find the qubits in self.qubits
         :return: list of qb_names or qb objects. Note that a list is
             returned in all cases
         """
         if return_type not in ['obj', 'str', 'ind']:
             raise ValueError(f'Return type: {return_type} not understood')
 
-        qb_names = [qb.name for qb in self.qubits()]
+        qb_names = [qb.name for qb in self.qubits]
         if qubits == 'all':
             if return_type == "obj":
-                return self.qubits()
+                return copy(self.qubits)
             elif return_type == "str":
                 return qb_names
             else:
@@ -284,7 +281,7 @@ class Device(Instrument):
         if return_type == "str":
             return qubits_to_return
         elif return_type == "obj":
-            return [self.qubits()[qb_names.index(qbn)]
+            return [self.qubits[qb_names.index(qbn)]
                     for qbn in qubits_to_return]
         else:
             return [qb_names.index(qb) for qb in qubits_to_return]
@@ -337,9 +334,12 @@ class Device(Instrument):
 
         # threshold_map has to be updated for all qubits
         thresh_map = {}
-        for prep_params in [qb.preparation_params() for qb in qb_list]:
+        for i, prep_params in enumerate([qb.preparation_params()
+                                         for qb in qb_list]):
             if 'threshold_mapping' in prep_params:
-                thresh_map.update(prep_params['threshold_mapping'])
+
+                thresh_map.update({qb_list[i].name:
+                                       prep_params['threshold_mapping']})
 
         prep_params = deepcopy(self.preparation_params())
         prep_params['threshold_mapping'] = thresh_map
@@ -481,7 +481,7 @@ class Device(Instrument):
         """
 
         # add gate to list of two qubit gates
-        self.set('two_qb_gates', self.get('two_qb_gates') + [gate_name])
+        self._two_qb_gates.append(gate_name)
 
         # find pulse module
         pulse_func = bpl.get_pulse_class(pulse_type)

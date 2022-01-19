@@ -181,6 +181,13 @@ class QuDev_transmon(Qubit):
                                  initial_value=150e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
                                  initial_value=0.5e-9, vals=vals.Numbers())
+        self.add_pulse_parameter('RO', 'ro_flux_mirror_pattern',
+                                 'mirror_pattern',
+                                 initial_value=None, vals=vals.Enum(None,
+                                                                    "none",
+                                                                    "all",
+                                                                    "odd", "even"))
+
 
         # acquisition parameters
         self.add_parameter('acq_unit', initial_value=0,
@@ -250,6 +257,7 @@ class QuDev_transmon(Qubit):
                                       " ['ge', 'gf'] or ['ge', 'ortho']."),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_classifier_params', vals=vals.Dict(),
+                           initial_value={},
                            label='Parameters for the qutrit classifier.',
                            docstring=("Used in the int_avg_classif_det to "
                                       "classify single shots into g, e, f."),
@@ -2840,7 +2848,7 @@ class QuDev_transmon(Qubit):
                 classifier_params = ssqtro.proc_data_dict[
                     'analysis_params'].get('classifier_params', None)
                 if update:
-                    self.acq_classifier_params(classifier_params)
+                    self.acq_classifier_params().update(classifier_params)
                     self.acq_state_prob_mtx(state_prob_mtx)
                 return state_prob_mtx, classifier_params
             else:
