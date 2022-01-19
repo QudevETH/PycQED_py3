@@ -337,9 +337,12 @@ class Device(Instrument):
 
         # threshold_map has to be updated for all qubits
         thresh_map = {}
-        for prep_params in [qb.preparation_params() for qb in qb_list]:
+        for i, prep_params in enumerate([qb.preparation_params()
+                                         for qb in qb_list]):
             if 'threshold_mapping' in prep_params:
-                thresh_map.update(prep_params['threshold_mapping'])
+
+                thresh_map.update({qb_list[i].name:
+                                       prep_params['threshold_mapping']})
 
         prep_params = deepcopy(self.preparation_params())
         prep_params['threshold_mapping'] = thresh_map
