@@ -1838,7 +1838,7 @@ class Ramsey(SingleQubitGateCalibExperiment):
         Updates self.experiment_name to Echo if self.echo is True.
         """
         if self.echo:
-            self.experiment_name.replace('Ramsey', 'Echo')
+            self.experiment_name = self.experiment_name.replace('Ramsey', 'Echo')
 
     def preprocess_task(self, task, global_sweep_points, sweep_points=None,
                         **kw):
