@@ -209,7 +209,8 @@ class QuantumExperiment(CircuitBuilder):
 
         # determine data type
         if "log" in self.df_name or not \
-                self.df_kwargs.get('averaged', True):
+                self.df_kwargs.get("det_get_values_kws",
+                                   {}).get('averaged', True):
             data_type = "singleshot"
         else:
             data_type = "averaged"
@@ -829,5 +830,5 @@ class QuantumExperiment(CircuitBuilder):
         return [v for v in figs_and_axs if v is not None] or None
 
     def __repr__(self):
-        return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
-
+        return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
+               f"qubits={getattr(self, 'qubits', None)})"

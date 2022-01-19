@@ -3,7 +3,7 @@ from copy import copy
 from copy import deepcopy
 from itertools import zip_longest
 import traceback
-from pycqed.utilities.general import temporary_value
+from pycqed.utilities.general import assert_not_none
 from pycqed.measurement.quantum_experiment import QuantumExperiment
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.measurement.waveform_control.block import Block, ParametricValue
@@ -64,6 +64,7 @@ class MultiTaskingExperiment(QuantumExperiment):
     # the actual objects were provided.
     task_mobj_keys = ()
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, dev=None, qubits=None,
                  operation_dict=None, **kw):
 
@@ -1039,6 +1040,7 @@ class DynamicPhase(CalibBuilder):
     kw_for_task_keys = ['num_cz_gates', 'init_for_swap']
     default_experiment_name = 'Dynamic_phase_measurement'
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             self.simultaneous = kw.get('simultaneous', False)
@@ -1447,6 +1449,7 @@ class Chevron(CalibBuilder):
     task_mobj_keys = ['qbc', 'qbt']
     default_experiment_name = 'Chevron'
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             for d in task_list + [kw]:
