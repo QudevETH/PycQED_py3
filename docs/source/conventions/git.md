@@ -9,10 +9,6 @@ branches.
 
 ### Branch naming
 
-TODO: points to discuss: 
-* I would recommend to avoid any uppercase in branch naming (i.e. 
-`Proj` -> `proj`), but rather only use snake case.
-
 Here is the branch naming scheme used, which will be explained in the following
 subsections:
 *  `qudev_master`: Main branch of the repository.
@@ -51,9 +47,6 @@ project-specific and will never be needed anywhere else.
 
 For practical reasons, the following scenarios are tolerated:
 * Commit to the project branch when developing directly on the experiment setup.
-TODO: Maybe I forgot what Christoph exactly  meant with this sentence. I would
-think that it is actually bad to commit on the project branch when developping
-directly on the setup. I would rather recommend to commit on a tmp branch.
 * Developing something that is based on functionality that is currently only
 available on the project branch. When ready for a merge request, cherry-pick
 onto a new feature branch.
@@ -94,11 +87,6 @@ would be more suited.
 * Don't hesitate to prefix the temp branches with your name (e.g.
 `tmp/thomas/something`) so that people know who cares about this branch.
 * Should be deleted regularly.
-
-### Branch archiving
-
-TODO: Check with Christoph what the strategy will be. Still planning to have
-a mirror repo with archived branches ? Tags ?
 
 ## Commits
 
