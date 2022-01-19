@@ -6314,12 +6314,12 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 delta_secant = np.array(freqs['val'] - secant(voltages))
                 convexity = np.sum((delta_secant[:-1] + delta_secant[1:]) / 2
                                    * (voltages[1:] - voltages[:-1]))
-                fit_uss = convexity >= 0
+                self.fit_uss = convexity >= 0
             else:
-                fit_uss = ss_type == 'upper'
+                self.fit_uss = ss_type == 'upper'
 
             # set initial values of fitting parameters depending on USS or LSS
-            if fit_uss:  # USS
+            if self.fit_uss:  # USS
                 guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
                                    'f0': np.max(np.array(freqs['val'])),
                                    'fv': 2.5e9}
