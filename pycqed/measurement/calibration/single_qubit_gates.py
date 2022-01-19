@@ -5,7 +5,7 @@ import traceback
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import ParametricValue
+from pycqed.measurement.waveform_control.block import ParametricValue, Block
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
