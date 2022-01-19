@@ -6265,10 +6265,10 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
             if new_ss_volt < min(voltages) or new_ss_volt > max(voltages):
                 # if the fitted voltage is outside the sweep points range take
                 # the max or min of range depending on where the fitted point is
+                idx = np.argmin(voltages) if new_ss_volt < min(voltages) else \
+                    np.argmax(voltages)
                 new_ss_volt = min(voltages) if new_ss_volt < min(voltages) else \
                         max(voltages)
-                idx = np.argmin(voltages) if new_ss_volt < min(voltages) else \
-                        np.argmax(voltages)
                 freqs = self.proc_data_dict['analysis_params_dict'][
                     'qubit_frequencies'][qbn]['val']
                 new_ss_freq = freqs[idx]
