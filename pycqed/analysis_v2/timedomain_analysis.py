@@ -4415,7 +4415,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
             # Plot all fits in single figure
             if self.options_dict.get('all_fits', False) and self.do_fitting:
-                colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+                colormap = self.options_dict.get('colormap', mpl.cm.Blues)
                 for i in range(len(self.amps[qb])):
                     color = colormap(i/(len(self.amps[qb])-1))
                     label = f'exp_fit_{qb}_amp_{i}'
@@ -4568,7 +4568,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             if not self.options_dict.get('all_fits', False):
                 continue
 
-            colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['frequencies'])-1))
                 label = f'exp_fit_{qb}_amp_{i}'
@@ -4720,7 +4720,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'zlabel': 'Excited state population',
                 }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
             for i, amp in enumerate(pdd['amps_reshaped']):
                 color = colormap(i/(len(pdd['amps_reshaped'])-1))
                 label = f'cos_data_{qb}_{i}'
@@ -4921,7 +4921,7 @@ class DriveCrosstalkCancellationAnalysis(MultiQubit_TimeDomain_Analysis):
                 'zlabel': 'Excited state population',
             }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
             for i, pval in enumerate(pdd['qb_sweep_points'][qb]):
                 if i == len(pdd['qb_sweep_points'][qb]) - 1:
                     legendlabel='data, ref.'
