@@ -769,7 +769,7 @@ def get_reset_reps_from_data_dict(data_dict):
         if 'active' in metadata['preparation_params'].get(
                 'preparation_type', 'wait'):
             reset_reps = metadata['preparation_params'].get(
-                'reset_reps', 0)
+                'reset_reps', 3)
     return reset_reps
 
 

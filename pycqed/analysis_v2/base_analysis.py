@@ -569,7 +569,7 @@ class BaseDataAnalysis(object):
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
                     if 'active' in prep_params.get('preparation_type', 'wait'):
-                        reset_reps = prep_params.get('reset_reps', 1)
+                        reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
                     elif "preselection" in prep_params.get('preparation_type',
                                                            'wait'):
@@ -1447,10 +1447,11 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
-
+        plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
 
+        plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
         plot_linestyle = pdict.get('linestyle', '-')
         plot_marker = pdict.get('marker', 'o')
@@ -1509,7 +1510,7 @@ class BaseDataAnalysis(object):
             axs.set_xlim(xmin, xmax)
 
         if plot_title is not None:
-            axs.figure.text(0.5, 1, plot_title,
+            axs.figure.text(0.5, 1 + plot_title_pad, plot_title,
                             horizontalalignment='center',
                             verticalalignment='bottom',
                             transform=axs.transAxes)
@@ -1973,6 +1974,7 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
+        fontsize=pdict.get("fontsize", None)
         color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
@@ -1987,14 +1989,16 @@ class BaseDataAnalysis(object):
                          strings=plot_text_string, colors=color,
                          ax=axs, orientation=orientation,
                          verticalalignment=verticalalignment,
-                         horizontalalignment=horizontalalignment)
+                         horizontalalignment=horizontalalignment,
+                         fontsize=fontsize)
         else:
             # pfunc is expected to be ax.text
             pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
                   transform=axs.transAxes,
                   verticalalignment=verticalalignment,
                   horizontalalignment=horizontalalignment,
-                  bbox=box_props)
+                  bbox=box_props,
+                  fontsize=fontsize)
 
     def plot_vlines(self, pdict, axs):
         """
