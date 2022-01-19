@@ -714,14 +714,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             {qbn: '' for qbn in self.qb_names})
 
         if len(self.data_to_fit):
+            if not len(self.cal_states_dict):
+                self.data_to_fit = {qbn: 'pca' for qbn in self.qb_names}
             storing_keys = self.data_to_fit
         elif len(self.cal_states_dict):
             csr = [(k, v) for k, v in self.cal_states_rotations.items()]
             csr.sort(key=lambda t: t[1])
-            storing_keys = OrderedDict({qbn: f'p{csr[-1][0]}'
-                                        for qbn in self.qb_names})
+            storing_keys = {qbn: f'p{csr[-1][0]}' for qbn in self.qb_names}
         else:
-            storing_keys = OrderedDict({qbn: 'pca' for qbn in self.qb_names})
+            storing_keys = {qbn: 'pca' for qbn in self.qb_names}
 
         for qbn in self.qb_names:
             cal_states_dict = self.cal_states_dict_for_rotation[qbn]
@@ -5963,7 +5964,19 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
 
 class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Analysis for a Ramsey measurement.
 
+    Parameters recognized in the options_dict:
+     - artificial_detuning_dict (dict; default: None): has the form
+        {qbn: artificial detuning value}
+    - artificial_detuning (float or dict; default: None): accepted parameter
+        for legacy reasons. Can be the same as artificial_detuning_dict or just
+        a single value which will be used for all qubits.
+    - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
+        envelope for the oscillations in addition to the exponential decay
+        envelope.
+    """
     def extract_data(self):
         super().extract_data()
         params_dict = {}
@@ -5975,7 +5988,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
-        if self.options_dict.get('fit_gaussian_decay', True):
+        if self.get_param_value('fit_gaussian_decay', default_value=True):
             self.fit_keys = ['exp_decay_', 'gauss_decay_']
         else:
             self.fit_keys = ['exp_decay_']
@@ -6018,18 +6031,23 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        if 'artificial_detuning' in self.options_dict:
-            artificial_detuning_dict = OrderedDict(
-                [(qbn, self.options_dict['artificial_detuning'])
-             for qbn in self.qb_names])
-        elif 'artificial_detuning_dict' in self.metadata:
-            artificial_detuning_dict = self.metadata[
-                'artificial_detuning_dict']
-        elif 'artificial_detuning' in self.metadata:
-            artificial_detuning_dict = OrderedDict(
-                [(qbn, self.metadata['artificial_detuning'])
-                 for qbn in self.qb_names])
-        else:
+        self.artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if self.artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                self.artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    self.artificial_detuning_dict = artificial_detuning
+                else:
+                    self.artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if self.artificial_detuning_dict is None:
             raise ValueError('"artificial_detuning" not found.')
 
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
@@ -6064,7 +6082,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 'old_qb_freq'] = old_qb_freq
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq'] = old_qb_freq + \
-                                 artificial_detuning_dict[qbn] - \
+                                 self.artificial_detuning_dict[qbn] - \
                                  fit_res.best_values['frequency']
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
@@ -6073,7 +6091,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'T2_star_stderr'] = fit_res.params['tau'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'artificial_detuning'] = artificial_detuning_dict[qbn]
+                'artificial_detuning'] = self.artificial_detuning_dict[qbn]
 
         hdf_group_name_suffix = self.options_dict.get(
             'hdf_group_name_suffix', '')
@@ -6260,23 +6278,23 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
             par_name = \
                 [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
                  if 'offset' not in p][0]
-            voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
+            voltages = self.sp.get_sweep_params_property('values', 1, par_name)
             if new_ss_volt < min(voltages) or new_ss_volt > max(voltages):
                 # if the fitted voltage is outside the sweep points range take
                 # the max or min of range depending on where the fitted point is
+                idx = np.argmin(voltages) if new_ss_volt < min(voltages) else \
+                    np.argmax(voltages)
                 new_ss_volt = min(voltages) if new_ss_volt < min(voltages) else \
                         max(voltages)
-                idx = np.argmin(voltages) if new_ss_volt < min(voltages) else \
-                        np.argmax(voltages)
                 freqs = self.proc_data_dict['analysis_params_dict'][
                     'qubit_frequencies'][qbn]['val']
                 new_ss_freq = freqs[idx]
 
                 log.warning(f"New sweet spot voltage suggested by fitting "
-                                f"is {fit_res.best_values['V0']} and exceeds "
-                                f"the voltage range [{min(voltages)}, "
-                                f"{max(voltages)}] that is swept. New sweet "
-                                f"spot voltage set to {new_ss_volt}.")
+                            f"is {fit_res.best_values['V0']:.6f} and exceeds "
+                            f"the voltage range [{min(voltages):.6f}, "
+                            f"{max(voltages):.6f}] that is swept. New sweet "
+                            f"spot voltage set to {new_ss_volt:.6f}.")
 
             self.proc_data_dict['analysis_params_dict'][
                 'reparking_params'][qbn] = {
@@ -6289,20 +6307,36 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
+        ss_type = self.get_param_value('sweet_spot_type')
         for qbn in self.qb_names:
-            # old qb freq is the same for all keys in
-            # self.proc_data_dict['analysis_params_dict'] so take qbn_0
-            old_qb_freq = self.proc_data_dict['analysis_params_dict'][
-                f'{qbn}_0'][self.fit_type]['old_qb_freq']
             freqs = self.proc_data_dict['analysis_params_dict'][
                 'qubit_frequencies'][qbn]
             par_name = \
                 [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
                  if 'offset' not in p][0]
-            voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
+            voltages, _, label = self.sp.get_sweep_params_description(par_name,
+                                                                      1)
             fit_func = lambda V, V0, f0, fv: f0 - fv * (V - V0)**2
             model = lmfit.Model(fit_func)
-            if old_qb_freq > 5e9:  # USS
+
+            if ss_type is None:
+                # define secant from outermost points to check
+                # convexity and decide for USS or LSS
+                secant_gradient = ((freqs['val'][-1] - freqs['val'][0])
+                                   / (voltages[-1] - voltages[0]))
+                secant = lambda x: secant_gradient * x + freqs['val'][-1] \
+                                   - secant_gradient * voltages[-1]
+                # compute convexity as trapezoid integral of difference to
+                # secant
+                delta_secant = np.array(freqs['val'] - secant(voltages))
+                convexity = np.sum((delta_secant[:-1] + delta_secant[1:]) / 2
+                                   * (voltages[1:] - voltages[:-1]))
+                self.fit_uss = convexity >= 0
+            else:
+                self.fit_uss = ss_type == 'upper'
+
+            # set initial values of fitting parameters depending on USS or LSS
+            if self.fit_uss:  # USS
                 guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
                                    'f0': np.max(np.array(freqs['val'])),
                                    'fv': 2.5e9}
@@ -6376,14 +6410,14 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 ss_vals = self.proc_data_dict['analysis_params_dict'][
                     'reparking_params'][qbn]['new_ss_vals']
                 textstr = \
-                    "Sweet spot frequency: " \
+                    "SS frequency: " \
                         f"{ss_vals['ss_freq']/1e9:.6f} GHz " \
-                    f"\nPrevious ss frequency: {old_qb_freq/1e9:.6f} GHz " \
-                    f"\nSweet spot DC voltage: " \
-                        f"{ss_vals['ss_volt']:.6f} V "
+                    f"\nSS DC voltage: " \
+                        f"{ss_vals['ss_volt']:.6f} V " \
+                    f"\nPrevious SS frequency: {old_qb_freq/1e9:.6f} GHz "
                 if qbn in current_voltages:
                     old_voltage = current_voltages[qbn]
-                    textstr += f"\nPrevious DC voltage: {old_voltage:.6f} V"
+                    textstr += f"\nPrevious SS DC voltage: {old_voltage:.6f} V"
                 self.plot_dicts[f'{base_plot_name}_text'] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
@@ -6396,8 +6430,8 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 self.plot_dicts[f'{base_plot_name}_marker'] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': [fit_res.best_values['V0']],
-                    'yvals': [fit_res.best_values['f0']],
+                    'xvals': [ss_vals['ss_volt']],
+                    'yvals': [ss_vals['ss_freq']],
                     'color': 'r',
                     'marker': 'o',
                     'line_kws': {'markersize': 10},

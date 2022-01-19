@@ -872,7 +872,7 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     message = f'{datetime.datetime.now():%Y%m%d_%H%M%S}\n{message}'
 
     # Write message to file
-    file = open(destination_path + f"\\{filename}", 'a+')
+    file = open(os.path.join(destination_path, filename), 'a+')
     file.writelines(message)
     file.close()
 
