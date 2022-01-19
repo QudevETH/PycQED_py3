@@ -6261,7 +6261,7 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
             par_name = \
                 [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
                  if 'offset' not in p][0]
-            voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
+            voltages = self.sp.get_sweep_params_property('values', 1, par_name)
             if new_ss_volt < min(voltages) or new_ss_volt > max(voltages):
                 # if the fitted voltage is outside the sweep points range take
                 # the max or min of range depending on where the fitted point is
@@ -6274,10 +6274,10 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 new_ss_freq = freqs[idx]
 
                 log.warning(f"New sweet spot voltage suggested by fitting "
-                                f"is {fit_res.best_values['V0']} and exceeds "
-                                f"the voltage range [{min(voltages)}, "
-                                f"{max(voltages)}] that is swept. New sweet "
-                                f"spot voltage set to {new_ss_volt}.")
+                            f"is {fit_res.best_values['V0']:.6f} and exceeds "
+                            f"the voltage range [{min(voltages):.6f}, "
+                            f"{max(voltages):.6f}] that is swept. New sweet "
+                            f"spot voltage set to {new_ss_volt:.6f}.")
 
             self.proc_data_dict['analysis_params_dict'][
                 'reparking_params'][qbn] = {
@@ -6290,20 +6290,36 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
     def prepare_fitting_qubit_freqs(self):
         fit_dict_keys = []
+        ss_type = self.get_param_value('sweet_spot_type')
         for qbn in self.qb_names:
-            # old qb freq is the same for all keys in
-            # self.proc_data_dict['analysis_params_dict'] so take qbn_0
-            old_qb_freq = self.proc_data_dict['analysis_params_dict'][
-                f'{qbn}_0'][self.fit_type]['old_qb_freq']
             freqs = self.proc_data_dict['analysis_params_dict'][
                 'qubit_frequencies'][qbn]
             par_name = \
                 [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
                  if 'offset' not in p][0]
-            voltages, _, label = self.sp.get_sweep_params_description(par_name, 1)
+            voltages, _, label = self.sp.get_sweep_params_description(par_name,
+                                                                      1)
             fit_func = lambda V, V0, f0, fv: f0 - fv * (V - V0)**2
             model = lmfit.Model(fit_func)
-            if old_qb_freq > 5e9:  # USS
+
+            if ss_type is None:
+                # define secant from outermost points to check
+                # convexity and decide for USS or LSS
+                secant_gradient = ((freqs['val'][-1] - freqs['val'][0])
+                                   / (voltages[-1] - voltages[0]))
+                secant = lambda x: secant_gradient * x + freqs['val'][-1] \
+                                   - secant_gradient * voltages[-1]
+                # compute convexity as trapezoid integral of difference to
+                # secant
+                delta_secant = np.array(freqs['val'] - secant(voltages))
+                convexity = np.sum((delta_secant[:-1] + delta_secant[1:]) / 2
+                                   * (voltages[1:] - voltages[:-1]))
+                fit_uss = convexity >= 0
+            else:
+                fit_uss = ss_type == 'upper'
+
+            # set initial values of fitting parameters depending on USS or LSS
+            if fit_uss:  # USS
                 guess_pars_dict = {'V0': voltages[np.argmax(freqs['val'])],
                                    'f0': np.max(np.array(freqs['val'])),
                                    'fv': 2.5e9}
@@ -6377,14 +6393,14 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 ss_vals = self.proc_data_dict['analysis_params_dict'][
                     'reparking_params'][qbn]['new_ss_vals']
                 textstr = \
-                    "Sweet spot frequency: " \
+                    "SS frequency: " \
                         f"{ss_vals['ss_freq']/1e9:.6f} GHz " \
-                    f"\nPrevious ss frequency: {old_qb_freq/1e9:.6f} GHz " \
-                    f"\nSweet spot DC voltage: " \
-                        f"{ss_vals['ss_volt']:.6f} V "
+                    f"\nSS DC voltage: " \
+                        f"{ss_vals['ss_volt']:.6f} V " \
+                    f"\nPrevious SS frequency: {old_qb_freq/1e9:.6f} GHz "
                 if qbn in current_voltages:
                     old_voltage = current_voltages[qbn]
-                    textstr += f"\nPrevious DC voltage: {old_voltage:.6f} V"
+                    textstr += f"\nPrevious SS DC voltage: {old_voltage:.6f} V"
                 self.plot_dicts[f'{base_plot_name}_text'] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
@@ -6397,8 +6413,8 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 self.plot_dicts[f'{base_plot_name}_marker'] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_line,
-                    'xvals': [fit_res.best_values['V0']],
-                    'yvals': [fit_res.best_values['f0']],
+                    'xvals': [ss_vals['ss_volt']],
+                    'yvals': [ss_vals['ss_freq']],
                     'color': 'r',
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
