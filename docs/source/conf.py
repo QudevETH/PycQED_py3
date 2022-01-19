@@ -21,8 +21,6 @@ sys.path.append(os.path.abspath("./ext"))
 import builtins
 builtins.__sphinx_build__ = True
 
-
-
 # -- Project information -----------------------------------------------------
 
 project = 'PycQED'
@@ -46,8 +44,6 @@ extensions = [
 
 source_suffix = ['.rst', '.md']
 
-autosummary_generate = True
-
 numfig = True
 
 myst_enable_extensions = [
@@ -64,6 +60,16 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
+# -- Autodoc and autosummary -------------------------------------------------
+
+# Do not prepend module names to avoid long, overflowing titles
+add_module_names = False
+
+autosummary_generate = True
+
+autodoc_default_options = {
+    'undoc-members': True,
+}
 
 # -- Options for HTML output -------------------------------------------------
 
