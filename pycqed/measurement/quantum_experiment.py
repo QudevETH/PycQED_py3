@@ -31,6 +31,10 @@ class QuantumExperiment(CircuitBuilder):
     """
     _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
                         'channel_map', 'meas_objs'}
+    # The following string can be overwritten by child classes to provide a
+    # default value for the kwarg experiment_name. None means that the name
+    # of the first sequences will be used.
+    default_experiment_name = None
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  meas_objs=None, classified=False, MC=None,
@@ -183,7 +187,8 @@ class QuantumExperiment(CircuitBuilder):
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
         self.experiment_name = kw.pop(
-            'experiment_name', getattr(self, 'experiment_name', None))
+            'experiment_name', getattr(self, 'experiment_name',
+                                       self.default_experiment_name))
         self.timestamp = None
         self.analysis = None
 
@@ -204,7 +209,8 @@ class QuantumExperiment(CircuitBuilder):
 
         # determine data type
         if "log" in self.df_name or not \
-                self.df_kwargs.get('averaged', True):
+                self.df_kwargs.get("det_get_values_kws",
+                                   {}).get('averaged', True):
             data_type = "singleshot"
         else:
             data_type = "averaged"
@@ -823,7 +829,6 @@ class QuantumExperiment(CircuitBuilder):
         # avoid returning a list of Nones (if show_and_close is True)
         return [v for v in figs_and_axs if v is not None] or None
 
-
-
     def __repr__(self):
-        return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
+        return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
+               f"qubits={getattr(self, 'qubits', None)})"

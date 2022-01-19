@@ -23,12 +23,6 @@ from pycqed.utilities.general import temporary_value
 from pycqed.analysis_v2 import tomography_qudev as tomo
 import pycqed.analysis.analysis_toolbox as a_tools
 
-try:
-    import \
-        pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQuantumController as uhfqc
-except ModuleNotFoundError:
-    log.warning('"UHFQuantumController" not imported.')
-
 
 def get_operation_dict(qubits):
     operation_dict = dict()
@@ -191,14 +185,16 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
     return combined_detectors
 
 
-def get_multi_qubit_prep_params(prep_params_list):
+def get_multi_qubit_prep_params(qubits):
+    prep_params_list = [qb.preparation_params() for qb in qubits]
     if len(prep_params_list) == 0:
         raise ValueError('prep_params_list is empty.')
 
     thresh_map = {}
-    for prep_params in prep_params_list:
+    for i, prep_params in enumerate(prep_params_list):
         if 'threshold_mapping' in prep_params:
-            thresh_map.update(prep_params['threshold_mapping'])
+            thresh_map.update({qubits[i].name:
+                                   prep_params['threshold_mapping']})
 
     prep_params = deepcopy(prep_params_list[0])
     prep_params['threshold_mapping'] = thresh_map
@@ -415,7 +411,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
             classifier_params = a.proc_data_dict[
                 'analysis_params']['classifier_params'][qb.name]
             if update:
-                qb.acq_classifier_params(classifier_params)
+                qb.acq_classifier_params().update(classifier_params)
                 if 'state_prob_mtx_masked' in a.proc_data_dict[
                         'analysis_params']:
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
@@ -431,7 +427,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
-                         update=True, measure=True):
+                         update=True, measure=True, operation_dict=None):
     """
     Measures time traces for specified states and
     Args:
@@ -478,7 +474,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                             f"except if you know what you are doing.")
 
         # combine operations and preparation dictionaries
-        operation_dict = dev.get_operation_dict(qubits=qubits)
+        if operation_dict is None:
+            operation_dict = dev.get_operation_dict(qubits=qubits)
         prep_params = dev.get_prep_params(qubits)
         MC = qubits[0].instr_mc.get_instr()
 
@@ -691,8 +688,7 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
     classified = kw.get('classified', False)
     predictive_label = kw.pop('predictive_label', False)
     if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(
-            [qb.preparation_params() for qb in qb_dephased])
+        prep_params = get_multi_qubit_prep_params(qb_dephased)
 
     if label is None:
         label = 'measurement_induced_dephasing_x{}_{}_{}'.format(
