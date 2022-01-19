@@ -29,11 +29,11 @@ class HDIQ(Instrument):
         kw = {}
         if port is not None:
             kw['port'] = port
-        self.instrument = hdiq.Hdiq(ip=address, **kw)
+        self._instrument = hdiq.Hdiq(ip=address, **kw)
         self.n_channels = n_channels
-        self.modes = OrderedDict({'modulated': self.instrument.set_rf_to_exp,
-                                  'calib': self.instrument.set_rf_to_calib,
-                                  'spec': self.instrument.set_lo_to_exp})
+        self.modes = OrderedDict({'modulated': self._instrument.set_rf_to_exp,
+                                  'calib': self._instrument.set_rf_to_calib,
+                                  'spec': self._instrument.set_lo_to_exp})
 
         for ch in range(self.n_channels):
             self.add_parameter(
@@ -41,7 +41,7 @@ class HDIQ(Instrument):
                 vals=qc.validators.Enum(*self.modes.keys()),
                 label=f'active path in upconversion channel {ch+1}',
                 get_cmd=lambda ch=ch: list(self.modes)[
-                        int(self.instrument.get_channel_status(ch+1))-1],
+                        int(self._instrument.get_channel_status(ch+1))-1],
                 set_cmd=lambda mode, ch=ch:
                     self.modes[mode](ch+1),
                 docstring = "possible values: " + ', '.join(
@@ -50,8 +50,8 @@ class HDIQ(Instrument):
         self.add_parameter(
             'timeout',
             vals=vals.Numbers(0, 120),
-            get_cmd=lambda: self.instrument.timeout,
-            set_cmd=lambda x: setattr(self.instrument, 'timeout', x),
+            get_cmd=lambda: self._instrument.timeout,
+            set_cmd=lambda x: setattr(self._instrument, 'timeout', x),
         )
 
     def set_switch(self, values):
