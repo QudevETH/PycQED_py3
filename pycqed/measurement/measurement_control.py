@@ -1117,6 +1117,8 @@ class MeasurementControl(Instrument):
                     # supported by 2D plotmon), we have to fall back to
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
+                        if len(new_sweep_vals[i]) == 1:  # single sweep point
+                            continue  # the following check is not needed
                         # Check if the new_sweep_vals are not equidistant
                         # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
