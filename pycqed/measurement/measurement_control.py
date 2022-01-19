@@ -159,12 +159,7 @@ class MeasurementControl(Instrument):
 
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
-            self.main_QtPlot = QtPlot(
-                window_title='Main plotmon of {}'.format(self.name),
-                figsize=(600, 400))
-            self.secondary_QtPlot = QtPlot(
-                window_title='Secondary plotmon of {}'.format(self.name),
-                figsize=(600, 400))
+            self.open_plotmon_windows()
 
         self.plotting_interval(plotting_interval)
 
@@ -814,6 +809,37 @@ class MeasurementControl(Instrument):
             return False
         else:
             return self.live_plot_enabled()
+
+    def open_plotmon_windows(self, name=None, close_previous_windows=True):
+        """Opens the windows of the main and secondary plotting monitor.
+
+        This method is called in the init if live_plot_enabled is True,
+        and it can also be called by the user, e.g., if the windows have
+        been closed by accident.
+
+        Args:
+            name (str): A name to be shown in the title bar of the windows.
+                Defaults to None, in which case the name of the MC object is
+                used.
+            close_previous_windows (bool): Specifies whether the previously
+                used plotmon windows should be closed before creating the
+                new ones. Default: True.
+        """
+        if close_previous_windows:
+            for plotmon in ['main_QtPlot', 'secondary_QtPlot']:
+                try:
+                    getattr(self, plotmon).win.close()
+                except Exception:
+                    # Either the window did not exist, or an error occured.
+                    # This can be ignored: in the worst case, an unused
+                    # window will stay open.
+                    pass
+        if name is None:
+            name = self.name
+        self.main_QtPlot = QtPlot(
+            window_title=f'Main plotmon of {name}', figsize=(600, 400))
+        self.secondary_QtPlot = QtPlot(
+            window_title=f'Secondary plotmon of {name}', figsize=(600, 400))
 
     def _get_plotmon_axes_info(self):
         '''
