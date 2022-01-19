@@ -5986,17 +5986,18 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             'artificial_detuning_dict')
         if self.artificial_detuning_dict is None:
             artificial_detuning = self.get_param_value('artificial_detuning')
-            if artificial_detuning is not None:
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                self.artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
                 if isinstance(artificial_detuning, dict):
                     self.artificial_detuning_dict = artificial_detuning
                 else:
                     self.artificial_detuning_dict = OrderedDict(
                         [(qbn, artificial_detuning) for qbn in self.qb_names])
-            elif 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                self.artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
         if self.artificial_detuning_dict is None:
             raise ValueError('"artificial_detuning" not found.')
 
