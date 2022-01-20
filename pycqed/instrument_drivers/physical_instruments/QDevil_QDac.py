@@ -117,6 +117,7 @@ class QDacSmooth(QDac):
 
         if immediate:
             self.channels[chan-1].v(voltage)
+            self._update_cache()
         else:
             self.set_smooth({chan-1: voltage})
 
@@ -165,8 +166,15 @@ class QDacSmooth(QDac):
             set_mode = Mode.vhigh_ihigh
             log.warning(f"{mode} is not a valid mode. Using the default"
                             "vhigh_ihigh mode.")
+
+        # First set the voltages to zero and then ramp up again when
+        # changing modes.
+        current_volt_dict = self.get_current_fluxline_voltages()
+        zero_volt_dict = {ch: 0.0 for ch in range(self.num_chans)}
+        self.set_smooth(zero_volt_dict)
         for chan in range(self.num_chans):
             self.channels[chan].mode(set_mode)
+        self.set_smooth(current_volt_dict)
 
     def _update_cache(self, *args, **kwargs):
         super()._update_cache(*args, **kwargs)
