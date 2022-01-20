@@ -822,6 +822,15 @@ def get_pycqed_appdata_dir():
     return path
 
 
+def default_awg_dir():
+    """
+    Returns the path of an awg subfolder in the pycqed application data dir.
+    """
+    path = os.path.join(get_pycqed_appdata_dir(), 'awg')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def raise_warning_image(destination_path, warning_image_path=None):
     """
     Copy the image specified by warning_image_path to the folder specified by
