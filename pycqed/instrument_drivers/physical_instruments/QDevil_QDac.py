@@ -21,7 +21,8 @@ class QDacSmooth(QDac):
         for ch_number, ch_name in self.channel_map.items():
             stepname = f"volt_{ch_name}_step"
             self.add_parameter(stepname, unit='V',
-                               label="Step size when changing the voltage " + f"smoothly on module {ch_name}",
+                               label="Step size when changing the voltage " +
+                                     f"smoothly on module {ch_name}",
                                get_cmd=None, set_cmd=None,
                                vals=vals.Numbers(0, 20), initial_value=0.001)
             #             stepparam = self.parameters[stepname]
@@ -109,6 +110,8 @@ class QDacSmooth(QDac):
             Args:
                 chan (int): Channel number of the channel to set the voltage of.
                 voltage (float): The value to set the voltage to.
+                immediate (bool): Indicates if the voltage should be set smooth
+                (False) or should be set immediately (True).
         """
         vals.Ints(1, self.num_chans).validate(chan)
 
@@ -132,9 +135,26 @@ class QDacSmooth(QDac):
         return self.channels[chan-1].v()
 
     def get_current_fluxline_voltages(self):
-        return {chan+1: self.channels[chan].v() for chan in range(self.num_chans)}
+        """
+        Convenience method to retrieve the fluxline voltages.
+
+        Returns:
+            dict: The current fluxline voltages of all channels.
+        """
+        return {chan+1: self.channels[chan].v()
+                for chan in range(self.num_chans)}
 
     def set_mode(self, mode: str="vhigh_ihigh"):
+        """
+        Method for setting the mode of the QDAC controlling the voltage and
+        current ranges. The voltage range can be either [-1.1, 1.1] or
+        [-10, 10] (vlow/vhigh). The current range also has a low and a high
+        version (ilow/ihigh).
+
+        Args:
+            mode (str): desired voltage and current mode (either "vhigh_ihigh",
+            "vhigh_ilow" or "vlow_ilow").
+        """
         if mode == "vhigh_ihigh":
             set_mode = Mode.vhigh_ihigh
         elif mode == "vhigh_ilow":
