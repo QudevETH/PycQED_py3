@@ -30,6 +30,8 @@ class CircuitBuilder:
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
                 'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
+    STD_PREP_PARAMS = {'preparation_type': 'wait', 'reset_reps': 3,
+                       'ro_separation': 1.5e-6, 'post_ro_wait': 1e-6}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -121,16 +123,27 @@ class CircuitBuilder:
             return [qb_map[qb] for qb in qb_names], qb_names
 
     def get_prep_params(self, qb_names='all'):
+        """
+        Gets a copy of preparation parameters (used for active reset,
+        preselection) for qb_names.
+        Args:
+            qb_names (list): list of qubit names for which the
+                preparation params should be retrieved. Default is 'all',
+                which retrieves the preparation parameters for all qubits.
+
+        Returns:
+            preparation_params (dict): deep copy of preparation parameters
+
+        """
         qubits, qb_names = self.get_qubits(qb_names)
         if self.prep_params is not None:
-            return self.prep_params
+            return deepcopy(self.prep_params)
         elif self.dev is not None:
             return self.dev.get_prep_params(qubits)
         elif qubits is not None:
-            return mqm.get_multi_qubit_prep_params(
-                [qb.preparation_params() for qb in qubits])
+            return mqm.get_multi_qubit_prep_params(qubits)
         else:
-            return {'preparation_type': 'wait'}
+            return deepcopy(self.STD_PREP_PARAMS)
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
         """
@@ -304,7 +317,8 @@ class CircuitBuilder:
         self.qb_names[i], self.qb_names[j] = self.qb_names[j], self.qb_names[i]
 
     def initialize(self, init_state='0', qb_names='all', prep_params=None,
-                   simultaneous=True, block_name=None, pulse_modifs=None):
+                   simultaneous=True, block_name=None, pulse_modifs=None,
+                   prepend_block=None):
         """
         Initializes the specified qubits with the corresponding init_state
         :param init_state (String or list): Can be one of the following
@@ -324,6 +338,8 @@ class CircuitBuilder:
             automatically generated block name of the initialization block
         :param pulse_modifs: (dict) Modification of pulses parameters.
             See method block_from_ops.
+        :param prepend_block: (Block, optional) An extra block that will be
+            executed between the preparation and the initialization.
         :return: init block
         """
         if block_name is None:
@@ -356,11 +372,17 @@ class CircuitBuilder:
                 pulses += tmp_block.pulses
         block = Block(block_name, pulses)
         block.set_end_after_all_pulses()
+        blocks = []
         if len(prep_params) != 0:
-            block = self.sequential_blocks(
-                block_name, [self.prepare(qb_names, ref_pulse="start",
-                                          **prep_params), block])
+            blocks.append(self.prepare(qb_names, ref_pulse="start",
+                                       **prep_params))
+        if prepend_block is not None:
+            blocks.append(prepend_block)
+        if len(blocks) > 0:
+            blocks.append(block)
+            block = self.sequential_blocks(block_name, blocks)
         return block
+
 
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):
@@ -379,9 +401,11 @@ class CircuitBuilder:
                                pulse_modifs=pulse_modifs)
 
     def prepare(self, qb_names='all', ref_pulse='start',
-                preparation_type='wait', post_ro_wait=1e-6,
-                ro_separation=1.5e-6, reset_reps=3, final_reset_pulse=False,
-                threshold_mapping=None, block_name=None):
+                preparation_type=STD_PREP_PARAMS['preparation_type'],
+                post_ro_wait=STD_PREP_PARAMS['post_ro_wait'],
+                ro_separation=STD_PREP_PARAMS['ro_separation'],
+                reset_reps=STD_PREP_PARAMS['reset_reps'], final_reset_pulse=False,
+                pad_end=False, threshold_mapping=None, block_name=None):
         """
         Prepares specified qb for an experiment by creating preparation pulse
         for preselection or active reset.
@@ -401,6 +425,13 @@ class CircuitBuilder:
             reset_reps: number of reset repetitions
             final_reset_pulse: Note: NOT used in this function.
             threshold_mapping (dict): thresholds mapping for each qb
+            pad_end (bool): Only used in active reset. Whether or not padding
+                should be added after the last reset readout pulse. If False,
+                no padding is added and therefore any subsequent pulse will start
+                right after the last reset pulse. If True, then the end of the
+                prepare block is set such that the subsequent pulse start
+                "ro_separation" after the start of the last readout pulse.
+
 
         Returns:
 
@@ -491,14 +522,12 @@ class CircuitBuilder:
                 prep_pulse_list += ro_list
                 prep_pulse_list += rp_list
 
-            # manually add block_end with delay referenced to last readout
-            # as if it was an additional readout pulse
-            # otherwise next pulse will overlap with codeword padding.
-            block_end = dict(
-                name='end', pulse_type="VirtualPulse",
-                ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
-                pulse_delay=ro_separation)
-            prep_pulse_list += [block_end]
+            if pad_end:
+                block_end = dict(
+                    name='end', pulse_type="VirtualPulse",
+                    ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
+                    pulse_delay=ro_separation, ref_point="start")
+                prep_pulse_list += [block_end]
             return Block(block_name, prep_pulse_list)
 
         # preselection
@@ -626,6 +655,104 @@ class CircuitBuilder:
                   for op in operations]
 
         return Block(block_name, pulses, pulse_modifs)
+
+    def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
+                            block_align='end', segment_prefix='calibration_',
+                            **kw):
+        """
+        Returns a list of segments for each cal state in cal_points.states.
+        :param cal_points: CalibrationPoints instance
+        :param init_state: initialization state (string or list),
+            see documentation of initialize().
+        :param ro_kwargs: Keyword arguments (dict) for the function
+            mux_readout().
+        :param block_align: passed to simultaneous_blocks; see docstring there
+        :param segment_prefix: prefix for segment name (string)
+        :param kw: keyword arguments (to allow pass through kw even if it
+            contains entries that are not needed)
+        :return: list of Segment instances
+        """
+        if ro_kwargs is None:
+            ro_kwargs = {}
+
+        segments = []
+        for i, seg_states in enumerate(cal_points.states):
+            cal_ops = [[f'{p}{qbn}' for p in cal_points.pulse_label_map[s]]
+                       for s, qbn in zip(seg_states, cal_points.qb_names)]
+            qb_blocks = [self.block_from_ops(
+                f'body_block_{i}_{o}', ops,
+                pulse_modifs=cal_points.pulse_modifs)
+                for o, ops in enumerate(cal_ops)]
+            parallel_qb_block = self.simultaneous_blocks(
+                f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
+
+            prep = self.initialize(init_state=init_state,
+                                   qb_names=cal_points.qb_names)
+            ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
+            cal_state_block = self.sequential_blocks(
+                f'cal_states_{i}', [prep, parallel_qb_block, ro])
+            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
+                          cal_state_block.build())
+            segments.append(seg)
+
+        return segments
+
+    def block_from_anything(self, pulses, block_name):
+        """
+        Convert various input formats into a `Block`.
+        Args:
+            pulses: A specification of a pulse sequence. Can have the following
+                formats:
+                    1) Block: A block class is returned unmodified.
+                    2) str: A single op code.
+                    3) dict: A single pulse dictionary. If the dictionary
+                           includes the key `op_code`, then the unspecified
+                           pulse parameters are taken from the corresponding
+                           operation.
+                    4) list of str: A list of op codes.
+                    5) list of dict: A list of pulse dictionaries, optionally
+                           including the op-codes, see also format 3).
+            block_name: Name of the resulting block
+        Returns: The input converted to a Block.
+        """
+
+        if hasattr(pulses, 'build'):  # Block
+            return pulses
+        elif isinstance(pulses, str):  # opcode
+            return self.block_from_ops(block_name, [pulses])
+        elif isinstance(pulses, dict):  # pulse dict
+            return self.block_from_pulse_dicts([pulses], block_name=block_name)
+        elif isinstance(pulses[0], str):  # list of opcodes
+            return self.block_from_ops(block_name, pulses)
+        elif isinstance(pulses[0], dict):  # list of pulse dicts
+            return self.block_from_pulse_dicts(pulses, block_name=block_name)
+
+    def block_from_pulse_dicts(self, pulse_dicts,
+                               block_name='from_pulse_dicts'):
+        """
+        Generates a block from a list of pulse dictionaries.
+
+        Args:
+            pulse_dicts: list
+                Pulse dictionaries, each containing either 1) an op_code of the
+                desired pulse plus optional pulse parameters to overwrite the
+                default values of the chosen operation, or 2) a full set of
+                pulse parameters.
+            block_name: str, optional
+                Name of the resulting block
+        Returns:
+             A block containing the pulses in pulse_dicts
+        """
+        pulses = []
+        if pulse_dicts is not None:
+            for i, pp in enumerate(pulse_dicts):
+                # op_code determines which pulse to use
+                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
+                # all other entries in the pulse dict are interpreted as
+                # pulse parameters that overwrite the default values
+                pulse.update(pp)
+                pulses += [pulse]
+        return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
@@ -792,15 +919,18 @@ class CircuitBuilder:
         :param ro_qubits: is passed as argument qb_names to self.initialize()
             and self.mux_ro() to specify that only subset of qubits should
             be prepared and read out (default: 'all')
-        :param kw: keyword arguments
-            body_block_func_kw (dict, default: {}): keyword arguments for the
-                body_block_func
         :param repeat_ro: (bool) set repeat pattern for readout pulses
             (default: True)
         :param init_kwargs: Keyword arguments (dict) for the initialization,
             see method initialize().
         :param final_kwargs: Keyword arguments (dict) for the finalization,
             see method finalize().
+        :param kw: additional keyword arguments
+            body_block_func_kw (dict, default: {}): keyword arguments for the
+                body_block_func
+            block_align_cal_pts (str, default: 'end'): aligment condition for
+                the calpoints segments. Passed to seg_from_cal_points. See
+                block_align in docstring for simultaneous_blocks.
         :return:
             - if return_segments==True:
                 1D: list of segments, number of 1d sweep points or
@@ -896,8 +1026,10 @@ class CircuitBuilder:
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
-                seq.extend(cal_points.create_segments(self.operation_dict,
-                                                      **self.get_prep_params()))
+                block_align_cal_pts = kw.get('block_align_cal_pts', 'end')
+                seq.extend(self.seg_from_cal_points(
+                    cal_points, init_state, ro_kwargs,
+                    block_align=block_align_cal_pts, **kw))
             seqs.append(seq)
 
         if return_segments:
