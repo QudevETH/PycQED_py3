@@ -140,9 +140,20 @@ class QDacSmooth(QDac):
         Convenience method to retrieve the fluxline voltages.
 
         Returns:
-            dict: The current fluxline voltages of all channels.
+            dict: The current fluxline voltages.
         """
-        return {chan+1: self.channels[chan].v()
+        return {ch_name: self.channels[chan].v()
+                for ch_name, chan in zip(self.channel_map.values(),
+                                         range(self.num_chans))}
+
+    def get_current_channel_voltages(self):
+        """
+        Convenience method to retrieve the channel voltages.
+
+        Returns:
+            dict: The current channel voltages.
+        """
+        return {chan: self.channels[chan].v()
                 for chan in range(self.num_chans)}
 
     def set_mode(self, mode: str="vhigh_ihigh"):
@@ -188,8 +199,3 @@ class QDacSmooth(QDac):
         ch_name = getattr(self, 'channel_map', {}).get(chan, None)
         if ch_name is not None:
             self.parameters[f"volt_{ch_name}"].cache.set(v_set)
-
-# channel_map_qdac = {i: f'fluxline{i + 1}' for i in range(6)}
-# qdac = QDacSmooth('qdac', 'COM3', channel_map_qdac)
-# fluxlines_dict = {f'qb{i + 1}': qdac.parameters[f"volt_{channel_map_qdac[i]}"]
-#     for i in range(6)}
