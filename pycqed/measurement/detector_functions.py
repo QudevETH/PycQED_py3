@@ -564,9 +564,26 @@ class Function_Detector(Soft_Detector):
 
 class PollDetector(Hard_Detector):
     """
-    Base Class for all polling detectors
+    Base Class for all polling detectors. A polling detector is one that calls
+    the poll method of an acquisition device.
     """
+
     def __init__(self, acq_dev=None, detectors=None, **kw):
+        """
+        Init of the PollDetector base class.
+
+        Args
+            acq_dev: instance of AcquisitionDevice. Must be provided when a
+                single polling detector is passed to detectors.
+            detectors (list): poling detectors from this module to be used for
+                acquisition
+
+        Keyword args: passed to parent class
+
+        Creates self.det_from_acq_dev as a dict with values the polling
+        detectors in detectors, and keys the acquisition device names used by
+        these detectors.
+        """
         super().__init__(**kw)
         self.always_prepare = False
 
@@ -591,6 +608,14 @@ class PollDetector(Hard_Detector):
 
     @Timer()
     def poll_data(self):
+        """
+        Acquire raw data from the acquisition device by calling its poll
+        function. Raises error if not all data was acquired as expected from
+        the nr_sweep_points attribute of the detector functions.
+
+        Returns:
+            raw data: dict of the form {acq_dev.name: raw data array}
+        """
         if self.AWG is not None:
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.start")
             self.AWG.stop()
@@ -684,6 +709,14 @@ class PollDetector(Hard_Detector):
         return data_raw
 
     def get_values(self):
+        """
+        Wrapper around poll_data and process_data. Used for getting the data
+        from a polling detector, which can process the raw data returned by
+        poll data.
+
+        Returns:
+            processed data array of the same shape as the raw data
+        """
         if self.always_prepare:
             self.prepare()
         data_raw = self.poll_data()
@@ -691,9 +724,24 @@ class PollDetector(Hard_Detector):
         return data_processed
 
     def process_data(self, data_raw):
+        """
+        Process a raw data array as returned by poll_data().
+
+        Args:
+            data_raw (array): raw data array to be processed
+
+        Returns:
+             processed data array
+
+        No processing done by default. Should be overwritten by child classes.
+        """
         return data_raw
 
     def finish(self):
+        """
+        Takes care of setting instruments into a known state at the end of
+        acquisition.
+        """
         if self.AWG is not None:
             self.AWG.stop()
 
@@ -703,9 +751,18 @@ class PollDetector(Hard_Detector):
 
 class MultiPollDetector(PollDetector):
     """
-    Combines several polling detectors into a single detector
+    Combines several polling detectors into a single detector.
     """
     def __init__(self, detectors, **kw):
+        """
+        Init of the PollDetector base class.
+
+        Args
+            detectors (list): poling detectors from this module to be used for
+                acquisition
+
+        Keyword args: passed to parent class
+        """
         super().__init__(detectors=detectors, **kw)
         self.AWG = None
         self.value_names = []
@@ -746,6 +803,15 @@ class MultiPollDetector(PollDetector):
 
     @Timer()
     def prepare(self, sweep_points):
+        """
+        Calls the prepare method of each polling detector in self.detectors
+        and defines self.progress_scaling to be used in poll_data to decide
+        whether to display the acquisition progress.
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -754,6 +820,15 @@ class MultiPollDetector(PollDetector):
             self.progress_scaling = None
 
     def get_values(self):
+        """
+        Get raw acquisition data from poll_data and process it by calling
+        process_data of each polling detectors in self.detectors.
+        In addition, calls get_correlations_classif_det if self.correlated is
+        True and the acquisition type was single shot.
+
+        Returns:
+            processed data array of the same shape as the raw data
+        """
         data_raw = self.poll_data()
 
         data_processed = [self.det_from_acq_dev[acq_dev].process_data(d)
@@ -771,6 +846,20 @@ class MultiPollDetector(PollDetector):
         return data_processed
 
     def get_correlations_classif_det(self, data):
+        """
+        Correlate single shot data obtained with the ClassifyingPollDetector.
+        For example, for two qubits:
+            - if both qubits are in g or f ---> correlator = 0
+            - if both qubits are in e ---> correlator = 0
+            - if one qubit is in g or f but the other in e ---> correlator = 1
+
+        Args:
+            data (numpy array): single shot data for which to compute
+            correlations; must have shape (nr ro channels, nr data points)
+
+        Returns:
+            correlated data
+        """
         classifier_params_list = []
         state_prob_mtx_list = []
         for d in self.detectors:
@@ -835,6 +924,12 @@ class MultiPollDetector(PollDetector):
         return corr_data
 
     def finish(self):
+        """
+        Takes care of setting instruments into a known state at the end of
+        acquisition by calling the finish method of each polling detector in
+        self.detectors.
+        TODO: shouldn't it call the super method?
+        """
         if self.AWG is not None:
             self.AWG.stop()
         for d in self.detectors:
@@ -844,11 +939,27 @@ class MultiPollDetector(PollDetector):
 class AveragingPollDetector(PollDetector):
 
     """
-    Detector used for acquiring averaged timetraces withe the UHFQC
+    Poling detector used for acquiring averaged timetraces.
     """
 
     def __init__(self, acq_dev, AWG=None, channels=(0, 1),
                  nr_averages=1024, acquisition_length=2.275e-6, **kw):
+        """
+        Init of the AveragingPollDetector class.
+
+        Args:
+            acq_dev ()
+            :param AWG: instance of AcquisitionDevice. Must be provided when a
+                single polling detector is passed to detectors.
+            channels (tuple or list): Channels on which the acquisition should
+                be performed. See more details in the docstring of
+                AcquisitionDevice.acquisition_initialize.
+            nr_averages (int): number of acquisition averages as a power of 2.
+            acquisition_length (float): acquisition duration in seconds
+
+        Keyword args: passed to parent class
+
+        """
         super().__init__(acq_dev, **kw)
         self.channels = channels
         self.value_names = ['']*len(self.channels)
@@ -863,6 +974,14 @@ class AveragingPollDetector(PollDetector):
 
     @Timer()
     def prepare(self, sweep_points):
+        """
+        Prepares instruments for acquisition by calling
+        self.acq_dev.acquisition_initialize.
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = len(sweep_points)
@@ -877,47 +996,7 @@ class AveragingPollDetector(PollDetector):
 
 class IntegratingAveragingPollDetector(PollDetector):
     """
-    Detector used for integrated average results
-
-    Args:
-        acq_dev (instrument) : data acquisition device
-        AWG   (instrument) : device responsible for starting and stopping
-                the experiment, can also be a central controller
-        integration_length (float): integration length in seconds
-        nr_averages (int)         : nr of averages per data point
-            IMPORTANT: this must be a power of 2
-        data_type (str) :  options are
-            - raw            -> returns raw data in V
-            - raw_corr       -> correlations mode: multiplies results from
-                                pairs of integration channels
-            - lin_trans      -> applies the linear transformation matrix and
-                                subtracts the offsets defined in the UHFQC.
-                                This is typically used for crosstalk suppression
-                                and normalization. Requires optimal weights.
-            - digitized      -> returns fraction of shots based on the threshold
-                                defined in the UHFQC. Requires optimal weights.
-            - digitized_corr -> correlations mode after threshold: XNOR of
-                                thresholded results from pairs of integration
-                                channels.
-                                NOTE: thresholds need to be set outside the
-                                detector object.
-        real_imag (bool)     : if False returns data in polar coordinates
-                                useful for e.g., spectroscopy
-                                FIXME -> should be named "polar"
-        single_int_avg (bool): if True makes this a soft detector
-
-        Args relating to changing the amount of points being detected:
-
-        chunk_size    (int)  : used in single shot readout experiments.
-        values_per_point (int): number of values to measure per sweep point.
-                creates extra column/value_names in the dataset for each channel.
-        values_per_point_suffix (list): suffix to add to channel names for
-                each value. should be a list of strings with lenght equal to
-                values per point.
-        always_prepare (bool) : when True the acquire/get_values method will
-            first call the prepare statement. This is particularly important
-            when it is both a single_int_avg detector and acquires multiple
-            segments per point.
+    Detector used for integrated average acquisition.
     """
 
     def __init__(self, acq_dev, AWG=None,
@@ -934,7 +1013,54 @@ class IntegratingAveragingPollDetector(PollDetector):
                  prepare_function=None,
                  prepare_function_kwargs: dict = None,
                  **kw):
+        """
+        Init of the IntegratingAveragingPollDetector.
 
+        Args:
+            acq_dev (instrument) : data acquisition device
+            AWG   (instrument) : device responsible for starting and stopping
+                    the experiment, can also be a central controller
+            integration_length (float): integration length in seconds
+            nr_averages (int)         : nr of averages per data point
+                IMPORTANT: this must be a power of 2
+            data_type (str) :  options are
+                - raw            -> returns raw data in V
+                - raw_corr       -> correlations mode: multiplies results from
+                                    pairs of integration channels
+                - lin_trans      -> applies the linear transformation matrix and
+                                    subtracts the offsets defined in the UHFQC.
+                                    This is typically used for crosstalk
+                                    suppression and normalization. Requires
+                                    optimal weights.
+                - digitized      -> returns fraction of shots based on the
+                                    threshold defined in the UHFQC. Requires
+                                    optimal weights.
+                - digitized_corr -> correlations mode after threshold: XNOR of
+                                    thresholded results from pairs of
+                                    integration channels.
+                                    NOTE: thresholds need to be set outside the
+                                    detector object.
+            real_imag (bool)     : if False returns data in polar coordinates
+                                    useful for e.g., spectroscopy
+                                    FIXME -> should be named "polar"
+            single_int_avg (bool): if True makes this a soft detector
+
+            Args relating to changing the amount of points being detected:
+
+            chunk_size    (int)  : used in single shot readout experiments.
+            values_per_point (int): number of values to measure per sweep point.
+                    creates extra column/value_names in the dataset for each
+                    channel.
+            values_per_point_suffix (list): suffix to add to channel names for
+                    each value. should be a list of strings with lenght equal to
+                    values per point.
+            always_prepare (bool) : when True the acquire/get_values method will
+                first call the prepare statement. This is particularly important
+                when it is both a single_int_avg detector and acquires multiple
+                segments per point.
+            prepare_function (callable): function to be called in prepare
+            prepare_function_kwargs (dict): kwargs for prepare_function
+        """
         super().__init__(acq_dev, **kw)
         self.name = '{}_integrated_average'.format(data_type)
         self.channels = deepcopy(channels)
@@ -993,7 +1119,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
     def _set_real_imag(self, real_imag=False):
         """
-        Function so that real imag can be changed after initialization
+        Function so that real_imag can be changed after initialization.
         """
         self.real_imag = real_imag
         if not self.real_imag:
@@ -1005,6 +1131,24 @@ class IntegratingAveragingPollDetector(PollDetector):
             self.value_units[1] = 'deg'
 
     def process_data(self, data_raw, real_imag=None, reshape_data=True):
+        """
+        Process the raw data array as returned by poll_data().
+         - multiplies by self.scaling_factor
+         - calls acq_dev.correct_offset (see docstring there)
+         - calls convert_to_polar if needed
+         - reshapes data if needed
+
+        Args:
+            data_raw (array): raw data array to be processed
+            real_imag (bool): whether to convert to polar data (True), see
+                docstring of convert_to_polar. Defaults to self.real_imag if
+                None.
+            reshape_data (bool): whether to reshape the processed data based on
+                len(self.value_names) // len(self.channels).
+
+        Returns:
+             processed data array of the same shape as data_raw
+        """
         data = data_raw * self.scaling_factor
         data = self.acq_dev.correct_offset(self.channels, data)
 
@@ -1022,6 +1166,16 @@ class IntegratingAveragingPollDetector(PollDetector):
         return data
 
     def convert_to_polar(self, data):
+        """
+        Convert 2-channel IQ data to signal magnitude and phase.
+
+        Args:
+            data (array): 2-channel IQ data array to be converted
+
+        Returns:
+            converted data as array of shape (2, nr points) where the first row
+                is the signal magnitude and the second is the signal phase
+        """
         if len(data) != 2:
             raise ValueError(
                 'Expect 2 channels for rotation. Got {}'.format(len(data)))
@@ -1033,9 +1187,25 @@ class IntegratingAveragingPollDetector(PollDetector):
         return data
 
     def acquire_data_point(self):
+        """
+        Calls self.get_values().
+        """
         return self.get_values()
 
     def prepare(self, sweep_points=None):
+        """
+        Prepares instruments for acquisition:
+         - defines self.nr_sweep_points based on sweep_points,
+            self.values_per_point, self.single_int_avg, self.chunk_size,
+            self.acq_data_len_scaling, and self.nr_shots. Will be checked in
+            poll_data of the parent class.
+         - calls prepare_function if defined
+         - calls self.acq_dev.acquisition_initialize
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
@@ -1237,19 +1407,25 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
 class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
     """
-    Detector used for integrated single-shot results
-
-    Args:
-        acq_dev (instrument): data acquisition device
-        nr_shots (int)     : nr of shots
-
-        kw is passed to the init of the parent class. In addition,
-        the following keyword arguments are understood:
-        - live_plot_allowed: (bool, default: False) whether to allow MC to
-          use live plotting
+    Detector used for integrated single-shot acquisition.
     """
 
     def __init__(self, acq_dev, nr_shots: int = 4094, **kw):
+        """
+        Init of the IntegratingSingleShotPollDetector.
+        See the IntegratingAveragingPollDetector for the full dostring of the
+        accepted input parameters.
+
+        Args:
+            acq_dev (instrument): data acquisition device
+            nr_shots (int)     : number of acquisition shots
+
+        Keyword args:
+            passed to the init of the parent class. In addition,
+            the following keyword arguments are understood:
+            - live_plot_allowed: (bool, default: False) whether to allow MC to
+              use live plotting
+        """
         super().__init__(acq_dev, nr_averages=1, **kw)
 
         self.name = '{}_integration_logging_det'.format(self.data_type)
@@ -1261,16 +1437,15 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
     """
-    Hybrid detector function to be used for qutrit readout:
-     - only works with 2 readout channels per qutrit!
+    Hybrid detector function:
      - the acq_dev is configured to return single shots, but this function can
      then return either single shots, or averaged sweep points (can average
      over the shots for each segment)
-     - This class always performs classification of 2-channel single shots data
-     (shot_i_ch0, shot_i_ch1) into a 3 state probability
-     (shot_i_pg, shot_i_pe, shot_i_pf), for all recorded shots. Here
-     shot_i_pg, shot_i_pe, shot_i_pf \in [0, 1] and
-     shot_i_pg + shot_i_pe + shot_i_pf = 1.
+     - This class always performs classification of each single shot data
+     into either a 3 state probability tuple (shot_i_pg, shot_i_pe, shot_i_pf)
+     if qutrit is True, or a 2 state probability tuple (shot_i_pg, shot_i_pe).
+     Here shot_i_pg, shot_i_pe, (shot_i_pf) \in [0, 1] and
+     shot_i_pg + shot_i_pe (+ shot_i_pf) = 1.
 
     See the IntegratingPollDetector for the full dostring of the accepted
     input parameters.
@@ -1281,10 +1456,10 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
     the shots.
     get_values_function_kwargs can contain:
      - classifier_params_list (list or dict): THIS ENTRY MUST EXIST. This class
-        always classifies qutrits and it does so based on this parameter.
-        It is either the QuDev_transmon acq_classifier_params attribute (if only
-        one qubit is measured), or list of these dictionaries (if multiple
-        qubits are measured).
+        always classifies into state probabilities and it does so based on this
+        parameter. It is either the QuDev_transmon acq_classifier_params
+        attribute (if only one qubit is measured), or list of these dictionaries
+        (if multiple qubits are measured).
      - averaged (bool; default: True): decides whether to average over the
         shots of each segment. If True, this class returns averaged data with
         size == len(sweep_points). If False, this class returns single shot
@@ -1310,10 +1485,11 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         extracted from the measurement sequence. THIS CAN ONLY BE DONE IF
         THE DATA IS AVERAGED FIRST (averaged == True)
 
-    kw is passed to the init of the parent class. In addition,
-    the following keyword arguments are understood:
-        - live_plot_allowed: (bool) whether to allow MC to use live plotting.
-          By default, it is set to the value of averaged.
+    Keyword args:
+        kw is passed to the init of the parent class. In addition,
+        the following keyword arguments are understood:
+            - live_plot_allowed: (bool) whether to allow MC to use live plotting
+              By default, True if averaged acquisition and False if single shot.
     """
 
     def __init__(self, acq_dev, *args, **kw):
@@ -1360,6 +1536,28 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             self.live_plot_allowed = kw.get('live_plot_allowed', False)
 
     def process_data(self, data_raw, **kw):
+        """
+        Process the raw data array as returned by poll_data().
+        Calls the following methods (if enabled) in the order given here:
+         - self.classify_shots if self.classified is True
+         - self.threshold_shots if both thresholded and self.classified are True
+         - self.average_shots if averaged is True
+         - self.reshapes data if needed
+         - readout correction:
+            - only if averaged is True and thresholded is False
+            - self.correct_readout_stored_mtx if ro_corrected_stored_mtx is True
+            - self.correct_readout_stored_mtx if ro_corrected_seq_cal_mtx
+                is True and averaged is True
+
+        Args:
+            data_raw (array): raw data array to be processed
+
+        Keyword args:
+            taken from self.get_values_function_kwargs (see docstring in init)
+
+        Returns:
+             processed data array of the same shape as data_raw
+        """
         data_processed = super().process_data(data_raw, real_imag=True,
                                               reshape_data=False).T
         nr_states = len(self.state_labels)
@@ -1419,6 +1617,22 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return data_processed.T
 
     def classify_shots(self, data, classifier_params_list, nr_states):
+        """
+        Classify raw single shots into qubit or qutrit state probabilities.
+
+        Args:
+            data (numpy array): single shot data to be classified with shape
+                (nr acquisition channels, nr shots)
+            classifier_params_list (list or dict): either the QuDev_transmon
+                acq_classifier_params attribute (if only one qubit is measured),
+                or list of these dictionaries (if multiple qubits are measured).
+                Passed to a_tools.predict_gm_proba_from_clf.
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            classified data as array of shape (nr shots, nr_states)
+        """
         classified_data = np.zeros((self.nr_sweep_points,
                                     nr_states*len(self.channel_str_mobj)))
         k = len(self.channels) // self.n_meas_objs
@@ -1436,6 +1650,18 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return classified_data
 
     def threshold_shots(self, data, nr_states):
+        """
+        Assign each classified shot to a given state. For example,
+        (0.01, 0.98, 0.01) --> (0, 1, 0), i.e. qutrit in e.
+
+        Args:
+            data (numpy array): data classified into state probabilities
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns:
+            assigned data of the same shape as data
+        """
         thresholded_data = np.zeros_like(data)
         for i in range(len(self.channel_str_mobj)):
             # For each shot, set the largest probability entry to 1, and the
@@ -1452,6 +1678,16 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return thresholded_data
 
     def average_shots(self, data):
+        """
+        Average single shot data.
+
+        Args:
+            data (numpy array): single shot data
+
+        Returns
+            averaged data of shape
+            (self.nr_sweep_points//self.nr_shots, data.shape[1])
+        """
         # reshape into
         # (nr_shots, nr_sweep_points//self.nr_shots, nr_data_columns)
         # then average over nr_shots
@@ -1464,7 +1700,21 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return averaged_data
 
     def correct_readout_stored_mtx(self, data, nr_states):
-        # correct data with matrices from state_prob_mtx_list
+        """
+        Correct for readout errors by multiplying with the inverse of
+            state_prob_mtx given in get_values_function_kwargs
+            (see init docstring)
+
+        Args:
+            data (numpy array): averaged data with
+                self.nr_sweep_points//self.nr_shots rows, and columns given
+                by nr acquisition channels or nr of transmon states
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            readout corrected data array of the same shape as data
+        """
         corrected_data = np.zeros_like(data)
 
         self.state_prob_mtx_list = self.get_values_function_kwargs.get(
@@ -1488,8 +1738,21 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         return corrected_data
 
     def correct_readout_seq_cal_mtx(self, data, nr_states):
-        # correct data with the calibration matrix extracted from
-        # the data array
+        """
+        Correct for readout errors by multiplying with the inverse of the
+        calibration matrix extracted from the data array, if calibration
+        segments were measured.
+
+        Args:
+            data (numpy array): averaged data with
+                self.nr_sweep_points//self.nr_shots rows, and columns given
+                by nr acquisition channels or nr of transmon states
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            readout corrected data array of the same shape as data
+        """
         corrected_data = np.zeros_like(data)
         for i in range(len(self.channel_str_mobj)):
             # get cal matrix
