@@ -4,6 +4,8 @@ import sys
 import subprocess
 from pycqed.gui import qt_compat as qt
 from itertools import chain, combinations
+from contextlib import contextmanager
+import traceback
 
 
 class GUIWorkerSignals(qt.QtCore.QObject):
@@ -62,6 +64,19 @@ def handle_matplotlib_backends(app):
         app.lastWindowClosed.connect(
             lambda: reset_matplotlib_backend(
                 app._matplotlib_backend))
+
+
+@contextmanager
+def set_wait_cursor(widget):
+    try:
+        qt.QtWidgets.QApplication.setOverrideCursor(qt.QtGui.QCursor(
+            qt.QtCore.Qt.CursorShape.WaitCursor))
+        yield
+    except Exception as exception:
+        traceback.print_exception(
+            type(exception), exception, exception.__traceback__)
+    finally:
+        qt.QtWidgets.QApplication.restoreOverrideCursor()
 
 
 def clear_layout(layout):

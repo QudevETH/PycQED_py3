@@ -24,6 +24,7 @@ def start_qapp_in_new_process(sequences, qubit_channel_maps,
         experiment_name, **pass_kwargs
     )
     main_window.showMaximized()
+    main_window.on_change()
     from pycqed.gui.gui_utilities import handle_matplotlib_backends
     handle_matplotlib_backends(app)
     app._matplotlib_backend = \

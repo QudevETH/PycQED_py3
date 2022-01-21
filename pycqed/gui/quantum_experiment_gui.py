@@ -74,6 +74,7 @@ class QuantumExperimentGUI:
         # backend might try to spawn a matplotlib gui in a separate thread.
         # As matplotlib is not thread-safe, this might cause a crash
         sys.modules.get('matplotlib').use('Agg')
+        qt.QtWidgets.QApplication.restoreOverrideCursor()
         self.main_window.show()
         self.app.exec_()
 
@@ -1213,7 +1214,7 @@ class TaskForm(qt.QtWidgets.QWidget):
         self.experiment_name = self.parent.cbox_experiment_options.currentText()
         self.setLayout(qt.QtWidgets.QFormLayout())
         self.layout().setFieldGrowthPolicy(
-            qt.QtWidgets.QFormLayout.ExpandingFieldsGrow)
+            qt.QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         for class_name, kwarg_dict \
                 in self.experiment_kwargs["task_list_fields"].items():
             for kwarg, field_information in kwarg_dict.items():
