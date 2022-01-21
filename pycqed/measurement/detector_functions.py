@@ -827,7 +827,8 @@ class MultiPollDetector(PollDetector):
         True and the acquisition type was single shot.
 
         Returns:
-            processed data array of the same shape as the raw data
+            processed data array of the same shape as the raw data + 1 if
+            self.correlated is True
         """
         data_raw = self.poll_data()
 
@@ -847,18 +848,21 @@ class MultiPollDetector(PollDetector):
 
     def get_correlations_classif_det(self, data):
         """
-        Correlate single shot data obtained with the ClassifyingPollDetector.
+        Correlate the single shot data obtained with the ClassifyingPollDetector
+        for n qubits. Correlates all the measured qubits. It is currently not
+        implemented to correlate subsets of qubits.
+
         For example, for two qubits:
             - if both qubits are in g or f ---> correlator = 0
             - if both qubits are in e ---> correlator = 0
             - if one qubit is in g or f but the other in e ---> correlator = 1
 
         Args:
-            data (numpy array): single shot data for which to compute
-            correlations; must have shape (nr ro channels, nr data points)
+            data (numpy array): single shot data for n qubits which will be
+            correlated; must have shape (nr ro channels, nr data points)
 
         Returns:
-            correlated data
+            correlated data array of shape (1, nr single shots)
         """
         classifier_params_list = []
         state_prob_mtx_list = []
