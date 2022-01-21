@@ -53,7 +53,8 @@ def mwg_with_lo_calibration_template(mwg_class):
             for par, freqs, cal_vals in lo_cal_data().values():
                 par(float(sp.interpolate.interp1d(
                     freqs, cal_vals, kind=lo_cal_interp_kind(),
-                    fill_value=(min(cal_vals), max(cal_vals)))(val)))
+                    fill_value=(min(cal_vals), max(cal_vals)),
+                    bounds_error=False)(val)))
             return val
 
     return MWGWithLOCalibration

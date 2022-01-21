@@ -13,49 +13,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def one_qubit_reset(qb_name, operation_dict, prep_params=dict(), upload=True,
-                    states=('g','e',)):
-    """
-    :param qb_name:
-    :param states (tuple): ('g','e',) for active reset e, ('g','f',) for active
-    reset f and ('g', 'e', 'f') for both.
-
-    :return:
-    """
-
-    seq_name = '{}_reset_x{}_sequence'.format(qb_name,
-                                              prep_params.get('reset_reps',
-                                                              '_default_n_reps'))
-
-
-    pulses = [deepcopy(operation_dict['RO ' + qb_name])]
-    reset_and_last_ro_pulses = \
-        add_preparation_pulses(pulses, operation_dict, [qb_name], **prep_params)
-    swept_pulses = []
-
-    state_ops = dict(g=['I '], e=['X180 '], f=['X180 ', 'X180_ef '])
-    for s in states:
-        pulses = deepcopy(reset_and_last_ro_pulses)
-        state_pulses = [deepcopy(operation_dict[op + qb_name]) for op in
-                       state_ops[s]]
-        # reference end of state pulse to start of first reset pulse,
-        # to effectively prepend the state pulse
-        segment_pulses = prepend_pulses(pulses, state_pulses)
-        swept_pulses.append(segment_pulses)
-
-    seq = pulse_list_list_seq(swept_pulses, seq_name, upload=False)
-
-    # reuse sequencer memory by repeating readout pattern
-    seq.repeat_ro(f"RO {qb_name}", operation_dict)
-
-    log.debug(seq)
-
-    if upload:
-        ps.Pulsar.get_instance().program_awgs(seq)
-
-    return seq, np.arange(seq.n_acq_elements())
-
-
 def rabi_seq_active_reset(amps, qb_name, operation_dict, cal_points,
                           upload=True, n=1, for_ef=False,
                           last_ge_pulse=False, prep_params=dict()):
@@ -927,7 +884,7 @@ def prepend_pulses(pulse_list, pulses_to_prepend):
 def add_preparation_pulses(pulse_list, operation_dict, qb_names,
                            preparation_type='wait', post_ro_wait=1e-6,
                            ro_separation=1.5e-6,
-                           reset_reps=3, final_reset_pulse=True,
+                           reset_reps=1, final_reset_pulse=True,
                            threshold_mapping=None):
     """
     Prepends to pulse_list the preparation pulses corresponding to preparation

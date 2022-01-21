@@ -210,7 +210,12 @@ class Segment:
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
                 p.pulse_obj.element_name = f'default_ese_{self.name}'
-                self.resolved_pulses.append(p)
+                if p.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p)
+                else:
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(p.pulse_obj.channels)}')
             elif any(ch_mask):
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask = [not x for x in ch_mask]
@@ -995,12 +1000,20 @@ class Segment:
             mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
             if mirror_correction is None:
                 mirror_correction = {}
-            for k in p.pulse_obj.__dict__:
-                if 'amplitude' in k:
-                    amp = -getattr(p.pulse_obj, k)
-                    if k in mirror_correction:
-                        amp += mirror_correction[k]
-                    setattr(p.pulse_obj, k, amp)
+            if "fp" in p.pulse_obj.__dict__:
+                for kk in p.pulse_obj.fp.__dict__:
+                    if 'amplitude' in kk:
+                        amp = - p.pulse_obj.flux_amplitude
+                        if kk in mirror_correction:
+                            amp += mirror_correction[kk]
+                        setattr(p.pulse_obj.fp, kk, amp)
+            else:
+                for k in p.pulse_obj.__dict__:
+                    if 'amplitude' in k:
+                        amp = -getattr(p.pulse_obj, k)
+                        if k in mirror_correction:
+                            amp += mirror_correction[k]
+                        setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """

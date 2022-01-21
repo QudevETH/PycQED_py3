@@ -3,6 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. image:: images/qudev_logo.png
+   :alt: QuDev logo
+   :align: center
+
 Welcome to PycQED's documentation!
 ==================================
 
@@ -10,6 +14,9 @@ Welcome to PycQED's documentation!
    :maxdepth: 4
    :caption: Contents:
 
+   conventions/coding
+   conventions/docstring
+   conventions/git
    writing_documentation
    demo_notebooks
 
