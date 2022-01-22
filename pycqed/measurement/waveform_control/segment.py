@@ -840,11 +840,22 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if (el_prev_end - el_new_start) > tol :
+                if (el_prev_end - el_new_start) > tol:
                     if track_and_ignore:
                         # add set of two overlapping elements to list
                         self.overlapping_elements.append({prev_el,
                                                           el_list[i + 1][2]})
+                        # test whether any of the following elements also
+                        # overlaps with previous element
+                        for j in range(i+2, len(el_list)):
+                            if el_prev_end - el_list[j][0] > tol:
+                                self.overlapping_elements.append(
+                                    {prev_el, el_list[j][2]})
+                            else:
+                                # once a successive element does not
+                                # overlap, non of the following
+                                # elements overlap either
+                                break
                     else:
                         msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) ' \
                               f'and {el_list[i + 1][2]} (' \
