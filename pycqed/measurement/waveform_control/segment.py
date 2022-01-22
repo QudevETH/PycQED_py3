@@ -869,7 +869,7 @@ class Segment:
     def resolve_overlap(self):
         """
         Routine to resolve overlapping elements. Will be exectued if
-        corresponding pulsar parameter is true. This code
+        self.resolve_overlapping_elements is True. This code
         first goes through the list of overlapping elements that are
         pairwise overlapping and clusters them into lists
         of overlapping elements, where two different lists of overlapping
@@ -882,7 +882,7 @@ class Segment:
         self._test_overlap(track_and_ignore=True)
         overlapping_elements = self.overlapping_elements
 
-        if len(overlapping_elements)==0:
+        if len(overlapping_elements) == 0:
             return
 
         # add first two overlapping elements to list
@@ -927,17 +927,16 @@ class Segment:
         new_pulse_list = []
 
         for el in elements:
-            new_pulse_list+= self.elements.pop(el)
-            #remove it from element_start_end
+            new_pulse_list += self.elements.pop(el)
+            # remove it from element_start_end
             self.element_start_end.pop(el)
 
         # add new element
         self.elements[combined_el_name] = new_pulse_list
         # update new elements_on_awg
         self.gen_elements_on_awg()
-        # update element_start_end
 
-        #for awg in self.pulsar.awgs:
+        # update element_start_end
         for awg in self.pulsar.awgs:
             self.element_start_length(combined_el_name, awg)
 
