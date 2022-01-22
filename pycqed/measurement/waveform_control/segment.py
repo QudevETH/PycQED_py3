@@ -1051,8 +1051,8 @@ class Segment:
             self.element_start_end[element] = {}
 
         # find element start, end and length
-        t_start = float('inf')
-        t_end = -float('inf')
+        t_start = np.inf
+        t_end = -np.inf
 
         for pulse in self.elements[element]:
             for ch in pulse.masked_channels():
@@ -1063,7 +1063,14 @@ class Segment:
             t_start = min(pulse.algorithm_time(), t_start)
             t_end = max(pulse.algorithm_time() + pulse.length, t_end)
 
-        if t_start == float('inf') or t_end == -float('inf'):
+        # if element is not on the awg provided, the function
+        # shall return None. This is useful for
+        # self._combine_elements which in some instances wants to
+        # update start and length for an element on all AWGs
+        # without taking care of whether the element is actually
+        # on that AWG. One could think of splitting these two
+        # aspects of the self.element_start_length.
+        if t_start == np.inf or t_end == -np.inf:
             log.debug(f'Asked to find start of element {element} on AWG '
                       f'{awg}, but element not on AWG.')
             return
