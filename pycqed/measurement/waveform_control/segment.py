@@ -80,7 +80,6 @@ class Segment:
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
         self.acquisition_elements = set()
-        self.overlapping_elements = []
         self.timer = Timer(self.name)
         self.pulse_pars = []
 
@@ -813,6 +812,7 @@ class Segment:
         """
 
         self.gen_elements_on_awg()
+        overlapping_elements = []
 
         for awg in self.elements_on_awg:
             el_list = []
@@ -843,13 +843,13 @@ class Segment:
                 if (el_prev_end - el_new_start) > tol:
                     if track_and_ignore:
                         # add set of two overlapping elements to list
-                        self.overlapping_elements.append({prev_el,
+                        overlapping_elements.append({prev_el,
                                                           el_list[i + 1][2]})
                         # test whether any of the following elements also
                         # overlaps with previous element
                         for j in range(i+2, len(el_list)):
                             if el_prev_end - el_list[j][0] > tol:
-                                self.overlapping_elements.append(
+                                overlapping_elements.append(
                                     {prev_el, el_list[j][2]})
                             else:
                                 # once a successive element does not
@@ -866,6 +866,9 @@ class Segment:
                         else:
                             raise ValueError(msg)
 
+        if track_and_ignore:
+            return overlapping_elements
+
     def resolve_overlap(self):
         """
         Routine to resolve overlapping elements. Will be exectued if
@@ -879,8 +882,7 @@ class Segment:
         """
 
         self.gen_elements_on_awg()
-        self._test_overlap(track_and_ignore=True)
-        overlapping_elements = self.overlapping_elements
+        overlapping_elements = self._test_overlap(track_and_ignore=True)
 
         if len(overlapping_elements) == 0:
             return
