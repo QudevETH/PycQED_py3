@@ -22,6 +22,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             of 100 MHz
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
+        _acq_scope_memory: #FIXME is this the correct number?
     """
     # acq_length_granularity = 4 #FIXME should this be set to some value?
 
@@ -36,11 +37,12 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     # Digital DC by 1e9 -> 0+/-1e9 (I/Q signal)
     # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
-    acq_weights_n_samples = 4096 #TODO: is this the maximum in readout mode?
+    _acq_scope_memory = 2 ** 18
+    acq_weights_n_samples = 4096 #FIXME: is this the maximum in readout mode?
     acq_Q_sign = -1 # Determined experimentally
     allowed_modes = {#'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'],
-                     # 'scope': [],
+                     'scope': ['spd', 'timetrace', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
     # the SHF
@@ -56,6 +58,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self._acq_loop_cnts_last = [None] * self.n_acq_units
         self.n_acq_channels = len(self.qachannels[0].readout.integrations)
         self._reset_acq_poll_inds()
+        # Mode of the acquisition units ('readout' or 'spectroscopy')
+        # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
 
         self.awg_active = [False] * self.n_acq_units
@@ -108,25 +112,67 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         for i in self._acq_units_used:
             # Readout mode outputs programmed waveforms, and integrates
             # against different custom weights for each integration channel
-            if self._acq_units_modes[i] == 'readout':
-                self.qachannels[i].readout.arm(length=self._acq_n_results,
-                                               averages=self._acq_averages)
-            # Spectroscopy mode outputs a sine wave at a given frequency
-            # and integrates against this same signal only
-            else:  # spectroscopy
-                self._arm_spectroscopy(i, length=self._acq_n_results,
-                                       averages=self._acq_averages)
+            if self._acq_mode == 'int_avg':
+                if self._acq_units_modes[i] == 'readout':
+                    self.qachannels[i].readout.arm(length=self._acq_n_results,
+                                                   averages=self._acq_averages)
+                # Spectroscopy mode outputs a sine wave at a given frequency
+                # and integrates against this same signal only
+                elif self._acq_units_modes[i] == 'spectroscopy':
+                    self._arm_spectroscopy(i, length=self._acq_n_results,
+                                           averages=self._acq_averages)
+            elif self._acq_mode == 'scope':
+                def assert_node_changes_to_expected_value(daq, node, expected_value, sleep_time=0.005, #TODO in qcodes
+                                                          max_repetitions=200):
+                    """Polls a node until it has the the expected value. If the node didn't change to the expected
+                    value within the maximum number of polls an assertion error is issued.
+
+                    Arguments:
+
+
+                      daq (instance of ziDAQServer): A ziPython API session.
+                      node (str): path of the node that should change to expected value
+                      expected_value (int | float | str): value the node is expected to change to
+                      sleep_time (float): time in seconds to wait between requesting th value
+                      max_repetitions (int): max. number of loops we wait for the node to change
+
+                    Returns:
+
+                      None
+                    """
+
+                    daq.sync()
+                    import time
+                    for _ in range(max_repetitions):
+                        readback_value = daq.getInt(node)
+                        if readback_value == expected_value:
+                            break
+                        time.sleep(sleep_time)
+
+                    assert readback_value == expected_value, (
+                        "Node '{}' did not return {} (but returned {}) within {} sec."
+                    ).format(node, expected_value, readback_value, max_repetitions * sleep_time)
+
+                def enable_scope():
+                    path = f"/{self._serial}/scopes/0/enable"
+                    if self.daq.getInt(path) == 1:
+                        self.daq.setInt(path, 0)
+                        assert_node_changes_to_expected_value(self.daq, path, 0)
+                    self.daq.syncSetInt(path, 1)
+                enable_scope()
         self._reset_acq_poll_inds()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
+        # if mode == 'avg': #TODO: these other modes
+        #     data_type = 'timetrace'
         super().acquisition_initialize(
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
-        self._acq_units_modes = {i: self.qachannels[i].mode()
+        self._acq_units_modes = {i: self.qachannels[i].mode()  # Caching
                                  for i in self._acq_units_used}
 
         for i in range(self.n_acq_units):
@@ -141,27 +187,84 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
-            if self._acq_units_modes[i] == 'readout':
-                # Disable rerun; the AWG seqc program defines the number of
-                # iterations in the loop
-                self.qachannels[i].generator.single(1)
-                if data_type is not None:
-                    self.qachannels[i].readout.result_source(
-                        self.res_logging_indices[data_type])
-                if acquisition_length is not None:
-                    self.qachannels[i].readout.integration_length(
-                        self.convert_time_to_n_samples(acquisition_length))
-                # This is needed because the SHF currently lacks user
-                # registers and thus cannot be programmed by Pulsar,
-                # which is instead done in self._program_awg
-                if self._acq_loop_cnts_last[i] != loop_cnt:
-                    self._program_awg(i)  # reprogramm this acq unit
-                    self._acq_loop_cnts_last[i] = loop_cnt
-            else:  # spectroscopy
-                self.qachannels[i].sweeper.oscillator_gain(1.0)
+            if self._acq_mode == 'int_avg':
+                if self._acq_units_modes[i] == 'readout':
+                    # Disable rerun; the AWG seqc program defines the number of
+                    # iterations in the loop
+                    self.qachannels[i].generator.single(1)
+                    if data_type is not None:
+                        self.qachannels[i].readout.result_source(
+                            self.res_logging_indices[data_type])
+                    if self._acq_length is not None:
+                        self.qachannels[i].readout.integration_length(
+                            self.convert_time_to_n_samples(self._acq_length))
+                    # This is needed because the SHF currently lacks user
+                    # registers and thus cannot be programmed by Pulsar,
+                    # which is instead done in self._program_awg
+                    if self._acq_loop_cnts_last[i] != loop_cnt:
+                        self._program_awg(i)  # reprogramm this acq unit
+                        self._acq_loop_cnts_last[i] = loop_cnt
+                elif self._acq_units_modes[i] == 'spectroscopy':
+                    self.qachannels[i].sweeper.oscillator_gain(1.0)
+                    self.daq.setInt(
+                        self._get_spectroscopy_node(i, "integration_length"),
+                        self.convert_time_to_n_samples(self._acq_length))
+            elif self._acq_mode == 'scope':
+
+                # Concatenate the timetraces by chunks in the available _acq_scope_memory
+                #if the traces are very long this might occupy down to 50% of the memory
+
+                max_memory_length = self.convert_n_samples_to_time(self._acq_scope_memory)
+                num_traces_per_run = int(np.floor(max_memory_length/self._acq_length))
+                # num_traces_per_run = 1
+                # number of calls to the SHF to reach at least num_avg traces in total
+                # self._acq_loop_cnt = int(np.ceil(self._acq_averages / num_traces_per_run))
+                total_acq_length = self._acq_length * num_traces_per_run
+
+                self.qachannels[i].mode('readout')
+                self.qachannels[i].input('on')
+                self.qachannels[i].output('on')
+
+                scope_channel = 0  # could use 4 scope channels in the self (is this firmware in the FPGA?)
+                input_select = {scope_channel: f"channel{i}_signal_input"}
+
+                num_segments = 1  # for segmented averaging (several triggers per time trace)
+                num_hard_averages = 1  # HW averages, don't use for power measurements
+                # compensation for the delay between generator output and input of the integration unit
+                trigger_delay = 200e-9
+
+                self.daq.setInt(f"/{self._serial}/scopes/0/segments/count", num_segments)
+                if num_segments > 1:
+                    self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 1)
+                else:
+                    self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 0)
+
+                if num_hard_averages > 1:
+                    self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 1)
+                else:
+                    self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 0)
                 self.daq.setInt(
-                    self._get_spectroscopy_node(i, "integration_length"),
-                    self.convert_time_to_n_samples(acquisition_length))
+                    f"/{self._serial}/scopes/0/averaging/count",
+                    num_hard_averages,
+                )
+                self.daq.setInt(f"/{self._serial}/scopes/0/channels/*/enable", 0)
+                for channel, selected_input in input_select.items():
+                    self.daq.setString(
+                        f"/{self._serial}/scopes/0/channels/{channel}/inputselect",
+                        selected_input,
+                    )
+                    self.daq.setInt(
+                        f"/{self._serial}/scopes/0/channels/{channel}/enable", 1
+                    )
+
+                self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay", trigger_delay)
+                self.daq.setInt(f"/{self._serial}/scopes/0/length",
+                    self.convert_time_to_n_samples(total_acq_length))
+
+                # self.daq.setString(
+                #     f"/{self._serial}/scopes/0/trigger/channel",
+                #     trigger_input, #FIXME
+                # )
 
     def acquisition_finalize(self):
         for ch in self.qachannels:
@@ -232,29 +335,78 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         dataset = {}
         for i in self._acq_units_used:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            if self._acq_units_modes[i] == 'readout':
-                res = self.qachannels[i].readout.read(integrations=channels,
-                                                      blocking=False)
-                # In readout mode the data isn't rescaled yet in the SHF
-                # by the number of points
-                scaling_factor = np.sqrt(2)\
-                                 / (self.acq_sampling_rate * self._acq_length)
-                dataset.update(
-                    {(i, ch): [np.real(res[n][self._acq_poll_inds[i][n]:])
-                               * scaling_factor]
-                    for n, ch in enumerate(channels)})
-                self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
-            else:  # spectroscopy
-                progress = self.daq.getInt(
-                    self._get_spectroscopy_node(i, "acquired"))
-                if progress == self._acq_averages:
-                    node = self._get_spectroscopy_node(i, "data")
-                    data = self.daq.get(node, flat=True).get(node, [])
-                    data = [a.get('vector', a) for a in data]
-                    data = [[np.real(a), np.imag(a)] for a in data]
-                    scaling_factor = np.sqrt(2)
-                    dataset.update({(i, ch): [a[n % 2] * scaling_factor
-                        for a in data] for n, ch in enumerate(channels)})
+            if self._acq_mode == 'int_avg':
+                if self._acq_units_modes[i] == 'readout':
+                    res = self.qachannels[i].readout.read(integrations=channels,
+                                                          blocking=False)
+                    # In readout mode the data isn't rescaled yet in the SHF
+                    # by the number of points
+                    scaling_factor = np.sqrt(2) \
+                                     / (self.acq_sampling_rate * self._acq_length)
+                    dataset.update(
+                        {(i, ch): [np.real(res[n][self._acq_poll_inds[i][n]:])
+                                   * scaling_factor]
+                         for n, ch in enumerate(channels)})
+                    self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
+                elif self._acq_units_modes[i] == 'spectroscopy':
+                    progress = self.daq.getInt(
+                        self._get_spectroscopy_node(i, "acquired"))
+                    if progress == self._acq_averages:
+                        node = self._get_spectroscopy_node(i, "data")
+                        data = self.daq.get(node, flat=True).get(node, [])
+                        data = [a.get('vector', a) for a in data]
+                        data = [[np.real(a), np.imag(a)] for a in data]
+                        scaling_factor = np.sqrt(2)
+                        dataset.update({(i, ch): [a[n % 2] * scaling_factor
+                                                  for a in data] for n, ch in enumerate(channels)})
+            elif self._acq_mode in ['scope', 'avg']:  # TODO
+                if not channels == [0, 1]:  # FIXME
+                    raise ValueError('Channels [0,1] are for now supported for a scope (I and Q)\n'
+                                     'Does the ZI framework allow to extend this?')
+
+                timetraces = np.array([])
+                scope_channel = 0  # could use 4 scope channels in the SHF (is this firmware in the FPGA?)
+
+                # this verification should be useless?
+                #             if SHF.daq.getInt(f"/{SHF._serial}/scopes/0/channels/{scope_channel}/enable"):
+                path = f"/{self._serial}/scopes/0/channels/{scope_channel}/wave"
+
+                max_memory_length = self.convert_n_samples_to_time(self._acq_scope_memory)
+                num_traces_per_run = int(np.floor(max_memory_length / self._acq_length))
+                num_runs = int(np.ceil(self._acq_loop_cnt / num_traces_per_run))
+
+                for _ in range(num_runs):
+                    data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                    timetraces = np.concatenate((timetraces, (data)))  # This is a 1-D complex time trace
+
+                if self._acq_data_type == 'spd':
+                    timetraces = timetraces.reshape(-1,
+                                                    self.convert_time_to_n_samples(self._acq_length))
+                    v_peak = np.fft.fft(timetraces,
+                                        norm="forward")  # normalise by 1/num_samples_per_trace to get the amplitude
+                    v_peak_rolled = np.roll(v_peak, int(self._acq_length / 2))
+                    v_peak_squared = np.mean(np.abs(v_peak_rolled) ** 2, axis=0)
+                    power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
+                    res = power_spectrum
+                    #TODO: also generate frequency sweep points somewhere
+                    dataset.update({(i, 0): [res]})
+                    dataset.update({(i, 1): [res]})
+                elif self._acq_data_type == 'timetrace':
+                    res = timetraces
+                    dataset.update({(i, 0): [np.real(res)]})
+                    dataset.update({(i, 1): [np.imag(res)]})
+
+                #             recorded_data[channel] = vector[0]["vector"]
+                #             averagecount = vector[0]["properties"]["averagecount"]
+                #             scaling = vector[0]["properties"]["scaling"]
+
+                #             # generate the time base
+                #             scope_time = [[]] # [[],[],[],[]]
+                #             decimation_rate = 2 ** SHF.daq.getInt(f"/{SHF._serial}/scopes/0/time")
+                #             sampling_rate = SHF.acq_sampling_rate / decimation_rate  # [Hz]
+                #             scope_time[scope_channel] = (
+                #                 np.array(range(0, len(recorded_data[scope_channel]))) / sampling_rate
+                #             )
         return dataset
 
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):

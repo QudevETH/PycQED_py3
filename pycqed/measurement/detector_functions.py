@@ -1257,6 +1257,53 @@ class IntegratingAveragingPollDetector(PollDetector):
         )
 
 
+class ScopePollDetector(PollDetector):
+    """
+    Detector for scope measurements.
+
+    Attributes:
+        data_type (str) :  options are
+            - timedomain        -> returns (possibly averaged) time traces
+            - voltage_spectrum  -> returns (possibly averaged) voltage spectral density
+            - power_spectrum    -> returns (possibly averaged) power spectral density
+    """
+
+    def __init__(self,
+                 acq_dev,
+                 AWG,
+                 channels,
+                 used_channels,
+                 nr_shots,
+                 integration_length,
+                 nr_averages,
+                 correlations,
+                 data_type,
+                 **kw):
+        super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.channels = channels
+        self.integration_length = integration_length  # For a scope, length of a timetrace
+        self.nr_averages = nr_averages
+        self.data_type = data_type
+        self.AWG = AWG
+        self.nr_sweep_points = None
+        self.values_per_point = 1
+        self.nr_shots = nr_shots
+        self.acq_data_len_scaling = self.nr_shots  # to be used in MC
+
+    def prepare(self, sweep_points=None):
+
+        self.nr_sweep_points = len(sweep_points)
+
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=self.nr_sweep_points,
+            acquisition_length=self.integration_length,
+            averages=self.nr_averages,
+            loop_cnt=int(self.nr_shots * self.nr_averages),
+            mode='scope', data_type=self.data_type,
+        )
+
+
 class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     """
     Detector used for correlation mode with the UHFQC.
