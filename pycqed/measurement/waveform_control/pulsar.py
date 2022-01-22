@@ -1567,7 +1567,9 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            initial_value=False, parameter_class=ManualParameter,
                            docstring='Flag determining whether overlapping '
                                      'elements should be resolved by '
-                                     'combining them into one element.')
+                                     'combining them into one element. NB: '
+                                     'overlap resolution only applies to'
+                                     'non-trigger elements!')
         # This parameter can be used to record only a specified consecutive
         # subset of segments of a programmed hard sweep. This is used by the
         # sweep function FilteredSweep. The parameter expects a tuple of indices
