@@ -846,7 +846,6 @@ class Segment:
                         self.overlapping_elements.append({prev_el,
                                                           el_list[i + 1][2]})
                     else:
-                        print(el_prev_end, el_new_start)
                         msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) ' \
                               f'and {el_list[i + 1][2]} (' \
                               f'starts at {el_new_start*1e6:.4f}us) overlap ' \
