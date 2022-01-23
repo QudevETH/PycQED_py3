@@ -931,6 +931,9 @@ class Segment:
             # remove it from element_start_end
             self.element_start_end.pop(el)
 
+        # update pulse objects with new name of element
+        for p in new_pulse_list:
+            p.element_name = combined_el_name
         # add new element
         self.elements[combined_el_name] = new_pulse_list
         # update new elements_on_awg
