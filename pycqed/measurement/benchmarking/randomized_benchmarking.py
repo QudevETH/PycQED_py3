@@ -25,6 +25,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T),
     }
+    default_experiment_name = 'RB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  sweep_type=None, interleaved_gate=None, purity=False,
@@ -135,9 +136,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
-            if self.experiment_name is None:
-                self.experiment_name = f'RB_{gate_decomposition}' if \
-                    interleaved_gate is None else f'IRB_{gate_decomposition}'
+            self.experiment_name += f'_{gate_decomposition}'
             self.identical_pulses = kw.get('nr_seeds', None) is not None and all([
                 task.get('nr_seeds', None) is None for task in task_list])
             self.gate_decomposition = gate_decomposition
@@ -205,6 +204,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
 
 class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
+    default_experiment_name = 'SingleQubitRB'
+
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, **kw):
         """
@@ -214,8 +215,9 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
             cliffords to apply.
         See docstring for RandomizedBenchmarking for the other parameters.
         """
-        self.experiment_name = f'SingleQubitRB' if \
-            kw.get('interleaved_gate', None) is None else f'SingleQubitIRB'
+
+        if kw.get('interleaved_gate', None) is not None:
+            self.experiment_name = 'SingleQubitIRB'
 
         for task in task_list:
             if 'qb' not in task:
@@ -267,6 +269,8 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
 class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
+    default_experiment_name = 'TwoQubitRB'
+
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, max_clifford_idx=11520, **kw):
         """
@@ -294,9 +298,8 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
             if 'prefix' not in task:
                 task['prefix'] = f"{task['qb_1']}{task['qb_2']}_"
         kw['for_ef'] = kw.get('for_ef', True)
-        self.experiment_name = 'TwoQubitRB' if \
-            kw.get('interleaved_gate', None) is None else 'TwoQubitIRB'
-
+        if kw.get('interleaved_gate', None) is not None:
+            self.experiment_name = 'TwoQubitIRB'
         kw['dim_hilbert'] = 4
         super().__init__(task_list, sweep_points=sweep_points,
                          nr_seeds=nr_seeds, cliffords=cliffords, **kw)
@@ -391,6 +394,7 @@ class SingleQubitXEB(MultiTaskingExperiment):
                                   list(np.random.uniform(0, 2, nc) * 180)
                                   for nc in cycles] for _ in range(ns)]),
     }
+    default_experiment_name = 'SingleQubitXEB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  nr_seqs=None, cycles=None, sweep_type=None,
@@ -471,8 +475,6 @@ class SingleQubitXEB(MultiTaskingExperiment):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
-            if self.experiment_name is None:
-                self.experiment_name = f'XEB'
             self.init_rotation = init_rotation
             self.identical_pulses = nr_seqs is not None and all([
                 task.get('nr_seqs', None) is None for task in task_list])
@@ -537,6 +539,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
                                label='cycles gates', dimension=1,
                                values_func='paulis_gen_func')
                            }
+    default_experiment_name = 'TwoQubitXEB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  nr_seqs=None, cycles=None, sweep_type=None, **kw):
@@ -615,8 +618,6 @@ class TwoQubitXEB(MultiTaskingExperiment):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
-            if self.experiment_name is None:
-                self.experiment_name = f'TwoQubitXEB'
             self.identical_pulses = nr_seqs is not None and all([
                 task.get('nr_seqs', None) is None for task in task_list])
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
