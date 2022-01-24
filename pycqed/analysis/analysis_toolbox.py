@@ -318,6 +318,19 @@ def get_instr_setting_value_from_file(file_path, instr_name, param_name,
 
 
 def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
+    """
+    Construct the qubit channel map based on an HDF file.
+
+    Args:
+        qb_names (list): list of qubit names
+        file_path (str): path to the HDF file
+        value_names (list): list of detector function value names
+        h5mode (str): HDF opening mode
+
+    Returns
+        qubit channel map as a dict with qubit names as keys and the list of
+        value names corresponding to each qubit as values
+    """
     data_file = h5py.File(measurement_filename(file_path), h5mode)
     try:
         instr_settings = data_file['Instrument settings']

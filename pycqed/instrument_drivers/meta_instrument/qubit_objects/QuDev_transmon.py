@@ -818,6 +818,19 @@ class QuDev_transmon(Qubit):
         return vfc
 
     def get_acq_channels(self, n_channels=None):
+        """
+        Get the list of tuples with the qubit acquisition channels.
+
+        Args:
+            n_channels (int): number of integration channels; can be
+                1: for ro_weights_type == 'optimal
+                2: for ro_weights_type in ['SSB', 'DSB', 'DSB2',
+                 'optimal_qutrit', 'manual']
+
+        Returns
+            list with n_channels tuples, where the first entry in each tuple is
+            the acq_unit and the second is an integration channel
+        """
         if n_channels is None:
             n_channels = 2 if (self.acq_weights_type() in [
                 'SSB', 'DSB', 'DSB2', 'optimal_qutrit', 'manual']
@@ -826,6 +839,34 @@ class QuDev_transmon(Qubit):
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
 
     def update_detector_functions(self):
+        """
+        Instantiates common detector classes and assigns them as attributes.
+        See detector_functions.py for all available detector classes and the
+        docstrings of the individual detector classes for more details.
+
+        Creates the following attributes:
+            - self.int_log_det: IntegratingSingleShotPollDetector with
+                data_type='raw'
+                Used for single shot acquisition
+            - self.dig_log_det: IntegratingSingleShotPollDetector with
+                data_type='digitized'
+                Used for thresholded single shot acquisition
+            - self.int_avg_classif_det: ClassifyingPollDetector
+                Used for classified acquisition.
+            - self.int_avg_det: IntegratingAveragingPollDetector with
+                data_type='raw'
+                Used for integrated averaged acquisition
+            - self.dig_avg_det: IntegratingAveragingPollDetector with
+                data_type='digitized'
+                Used for thresholded integrated averaged acquisition
+            - int_avg_det_spec: IntegratingAveragingPollDetector with
+                single_int_avg=True (soft detector)
+                Used for spectroscopy measurements
+            - self.inp_avg_det: AveragingPollDetector
+                Used for recording timetraces
+            - self.scope_fft_det: UHFQC_scope_detector
+                Used for acquisition with the scope module of the UHF.
+        """
         channels = self.get_acq_channels()
 
         self.int_log_det = det.IntegratingSingleShotPollDetector(

@@ -55,6 +55,72 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                                                add_channels=None,
                                                det_get_values_kws=None,
                                                **kw):
+    """
+    Creates an instances of the MultiPollDetector with the detector classes
+    specified by df_name and for the specified qubits.
+    See detector_functions.py for all available detector classes.
+
+    An instance of the same type of detector class is constructed for
+    each acquisition device (taken from qubits) and passed as a list to the
+    MultiPollDetector.
+    Also see the docstring of the MultiPollDetector for more details.
+
+    Args:
+        df_name (str): string indicating which detector class is to be used
+            to instantiate the MultiPollDetector.
+            The following strings are understood (see also the docstring of the
+            individual detector classes):
+             - int_log_det: IntegratingSingleShotPollDetector with
+                data_type='raw'
+                Used for single shot acquisition
+             - dig_log_det: IntegratingSingleShotPollDetector with
+                data_type='digitized'
+                Used for thresholded single shot acquisition
+             - int_avg_det: IntegratingAveragingPollDetector with
+                data_type='raw'
+                Used for integrated averaged acquisition
+             - dig_avg_det: IntegratingAveragingPollDetector with
+                data_type='digitized'
+                Used for thresholded integrated averaged acquisition
+             - int_avg_classif_det: ClassifyingPollDetector
+                Used for classified acquisition.
+             - inp_avg_det: AveragingPollDetector
+                Used for recording timetraces
+             - int_corr_det: UHFQC_correlation_detector with
+                data_type='raw'
+                Used for recording correlations of acquisition channels
+             - dig_corr_det: UHFQC_correlation_detector with
+                data_type='digitized'
+                Used for recording thresholded correlations of acquisition
+                channels
+        qubits (list): instances of QuDev_transmon for which the acquisition
+            will be performed
+        nr_averages (int): number of acquisition averages as a power of 2.
+        nr_shots (int): number of acquisition shots as a power of 2.
+        used_channels (dict): only used with the UHFQC_correlation_detector.
+            Keys are UHFQA instances and values are lists/tuples of lists/tuples
+            with the channels on which the acquisition is done (excluding
+            correlation channels). See more details about channels in the
+            docstring of AcquisitionDevice.acquisition_initialize.
+        correlations (dict): only used with the UHFQC_correlation_detector.
+            Keys are UHFQA instances and values are lists/tuples of lists/tuples
+            with the pairs of acquisition channels from used_channels that are
+            to be correlated
+        add_channels (dict): keys are acquisition devices and values are
+            lists/tuples of lists/tuples with pairs of acquisition channels to
+            be used IN ADDITION to those returned by qb.get_acq_channels()
+        det_get_values_kws (dict): on used with the ClassifyingPollDetector.
+            Keys are acquisition devices and values are dictionaries
+            corresponding to get_values_function_kwargs (see docstring of the
+            ClassifyingPollDetector).
+
+    Keyword args: passed to the instantiation call of the detector classes that
+        are used to instantiate the MultiPollDetector's
+
+    Returns:
+        instance of MultiPollDetector for qubits with the detector classes
+        specified by df_name
+    """
     if nr_averages is None:
         nr_averages = max(qb.acq_averages() for qb in qubits)
     if nr_shots is None:
@@ -199,6 +265,16 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
 
 
 def get_multi_qubit_prep_params(qubits):
+    """
+    Create the preparation parameters dict from the preparation_params of each
+    qubit.
+
+    Args:
+        qubits (list): instances of QuDev_transmon
+
+    Returns:
+        preparation parameters dict for a measurement on qubits
+    """
     prep_params_list = [qb.preparation_params() for qb in qubits]
     if len(prep_params_list) == 0:
         raise ValueError('prep_params_list is empty.')
