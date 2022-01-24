@@ -2637,6 +2637,28 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
         self.data_to_fit.update({qb: 'pe'})
         return b
 
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """Run RabiAnalysis
+
+        The RabiAnalysis will create individual Rabi fits for each of the
+        qubit frequencies in the sweep, as well as 2D plots of raw and
+        corrected data.
+
+        FIXME: We currently do not call the RabiFrequencySweepAnalysis because
+         the additional fitting steps in that class do not always work
+         reliably yet.
+
+        Args:
+            analysis_kwargs: keyword arguments passed to the analysis class
+            kw: passed through to super method
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 't_start' not in analysis_kwargs:
+            analysis_kwargs['t_start'] = self.timestamp
+        super().run_analysis(analysis_class=tda.RabiAnalysis,
+                             analysis_kwargs=analysis_kwargs, **kw)
+
 
 class ActiveReset(CalibBuilder):
     @handle_exception
