@@ -1,6 +1,7 @@
 import logging
 log = logging.getLogger(__name__)
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
 from copy import deepcopy
 
@@ -282,11 +283,15 @@ class QuDev_transmon(Qubit):
                            label='Parameters for frequency vs flux dc '
                                  'offset fit',
                            initial_value={}, parameter_class=ManualParameter)
-        self.add_parameter('fit_ge_amp180_over_ge_freq',
-                           label='String representation of function to '
-                                 'calculate a pi pulse amplitude for a given '
-                                 'ge transition frequency.',
-                           initial_value=None, parameter_class=ManualParameter)
+        self.add_parameter(
+            'fit_ge_amp180_over_ge_freq',
+            docstring='String representation of a function to calculate a pi '
+                      'pulse amplitude for a given ge transition frequency. '
+                      'Alternatively, a list of two arrays to perform an '
+                      'interpolation, where the first array contains ge '
+                      'frequencies and the second one contains the '
+                      'corresponding pi pulse amplitude.',
+            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('fit_ro_freq_over_ge_freq',
                            label='String representation of function to '
                                  'calculate a RO frequency for a given '
@@ -534,7 +539,8 @@ class QuDev_transmon(Qubit):
         """
         Calculates the pi pulse amplitude required for a given ge transition
         frequency using the function stored in the parameter
-        fit_ge_amp180_over_ge_freq. If this parameter is None, the method
+        fit_ge_amp180_over_ge_freq or by performing an interpolation if a data
+        array is stored in the parameter. If the parameter is None, the method
         returns None.
 
         :param ge_freq: ge transition frequency or an array of frequencies
@@ -545,7 +551,14 @@ class QuDev_transmon(Qubit):
             log.warning(f'Cannot calculate drive amp for {self.name} since '
                         f'fit_ge_amp180_over_ge_freq is None.')
             return None
-        return eval(amp_func)(ge_freq)
+        elif isinstance(amp_func, str):
+            return eval(amp_func)(ge_freq)
+        else:
+            i_min, i_max = np.argmin(amp_func[0]), np.argmax(amp_func[0])
+            return sp.interpolate.interp1d(
+                amp_func[0], amp_func[1], kind='linear',
+                fill_value=(amp_func[1][i_min], amp_func[1][i_max]),
+                bounds_error=False)(ge_freq)
 
     def get_ro_freq_from_ge_freq(self, ge_freq):
         """
