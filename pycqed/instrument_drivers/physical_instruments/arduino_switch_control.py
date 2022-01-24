@@ -80,11 +80,11 @@ class ArduinoSwitchControl(Instrument):
     The switches in the switch box are controlled by an Arduino and a printed
     circuit board (PCB). The Arduino is connected to the PC via USB and to the
     PCB via two signal wires for I2C-communication and a ground wire. On the
-    PCB, 5 input/output-expanders, which can be addressed with I2C, can
-    control 4 switches each, giving a maximum amount of 20 switches. The
-    Arduino selects the switches by the number of the I/O-expander (0,1,2,3,4)
-    (here, usually referred to as group_id) and the number of the switch for
-    this I/O-expander (0,1,2,3) (here usually switch_id).
+    PCB, cls.NUM_IO = 5 input/output-expanders, which can be addressed with I2C, can
+    control cls.NUM_IO_SWITCHES = 4 switches each, giving a maximum amount of
+    cls.MAX_SWITCHES = 20 switches. The Arduino selects the switches by the number
+    of the I/O-expander (0,1,2,3,4) (here, usually referred to as group_id) and the
+    number of the switch for this I/O-expander (0,1,2,3) (here usually switch_id).
     Using self.switch_ids[(group_id,switch_id)] returns the instance of
     ArduinoSwitchControlSwitch that represents the switch with this id.
 
@@ -97,12 +97,12 @@ class ArduinoSwitchControl(Instrument):
             Dictionary for the configuration of the switch box.
             Must include:
                 'switches': Specify the switches. The PCB in the switch box
-                    allows up to 20 switches. Can be:
-                    - int <= 20: Specify the number of switches.
-                                 The switches are then labeled with integers
-                                 1,...,num_switches
+                    allows up to cls.MAX_SWITCHES = 20 switches. Can be:
+                    - int <= MAX_SWITCHES: Specify the number of switches.
+                                  The switches are then labeled with integers
+                                  1,...,num_switches
                     - list(like): Specify labels for the switches in a list
-                                  with length <= 20
+                                  with length <= MAX_SWITCHES
                 'inputs': Specify the input connectors.
                           For format of specifying connectors, see above
                 'outputs': Specify the output connectors.
