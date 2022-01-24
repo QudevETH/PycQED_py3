@@ -262,22 +262,22 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 correlations=correlations[uhf], data_type='digitized_corr',
                 **kw)
             for uhf in uhfs])
-    elif df_name == 'scope_spd_det':
-        return det.MultiPollDetector([
-            det.ScopePollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
-                used_channels=used_channels[uhf],
-                integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], data_type='spd',
-                **kw)
-            for uhf in uhfs])
-    elif df_name == 'scope_timetrace_det':
+    elif df_name == 'timetrace_avg_ss_det':
         return det.MultiPollDetector([
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf], nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], data_type='timetrace',
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'soft_spectrum_avg_det':
+        return det.MultiPollDetector([
+            det.ScopePollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                used_channels=used_channels[uhf], nr_shots=nr_shots,
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                correlations=correlations[uhf], data_type='spectrum',
                 **kw)
             for uhf in uhfs])
 
