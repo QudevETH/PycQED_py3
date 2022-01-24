@@ -195,7 +195,10 @@ class QDacSmooth(QDac):
 
     def _set_voltage(self, chan: int, v_set: float) -> None:
         super()._set_voltage(chan, v_set)
-        # FIXME: test whether the default values & the if are needed
-        ch_name = getattr(self, 'channel_map', {}).get(chan, None)
+        ch_name = self.channel_map.get(chan-1, None)
         if ch_name is not None:
             self.parameters[f"volt_{ch_name}"].cache.set(v_set)
+        else:
+            log.warning(f"Channel map doesn't contain {ch_name} (channel "
+                        f"number {chan}). Voltage of {ch_name} could not "
+                        f"be set to {v_set}.")
