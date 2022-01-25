@@ -13,6 +13,13 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
                      ZI_base_qudev.ZI_base_instrument_qudev):
     """This is the Qudev specific PycQED driver for the HDAWG instrument
     from Zurich Instruments AG.
+
+    Changes compared to the base class include:
+    - Add user registers for segment filtering
+    - Bypass unneeded check for PC option
+    - Add clock_freq method
+    - Add _snapshot_whitelist to let MC store only a subset of parameters
+      (see MC.store_snapshot_parameters)
     """
 
     USER_REG_FIRST_SEGMENT = 5
