@@ -167,6 +167,19 @@ class QDacSmooth(QDac):
             mode (str): desired voltage and current mode (either "vhigh_ihigh",
             "vhigh_ilow" or "vlow_ilow").
         """
+        def _clipto(ch_number: int, value: float, min_: float, max_: float):
+            errmsg = (f"Voltage of channel number {ch_number} is outside the "
+                      f"bounds of the new voltage range and is therefore "
+                      f"clipped.")
+            if value > max_:
+                log.warning(errmsg)
+                return max_
+            elif value < min_:
+                log.warning(errmsg)
+                return min_
+            else:
+                return value
+
         if mode == "vhigh_ihigh":
             set_mode = Mode.vhigh_ihigh
         elif mode == "vhigh_ilow":
@@ -180,11 +193,14 @@ class QDacSmooth(QDac):
 
         # First set the voltages to zero and then ramp up again when
         # changing modes.
-        current_volt_dict = self.get_current_fluxline_voltages()
+        current_volt_dict = self.get_current_channel_voltages()
         zero_volt_dict = {ch: 0.0 for ch in range(self.num_chans)}
         self.set_smooth(zero_volt_dict)
-        for chan in range(self.num_chans):
-            self.channels[chan].mode(set_mode)
+        for ch_number, ch_volt in current_volt_dict.items():
+            self.channels[ch_number].mode(set_mode)
+            current_volt_dict[ch_number] = _clipto(ch_number, ch_volt,
+                               self.vranges[ch_number+1][set_mode.value.v]['Min'],
+                               self.vranges[ch_number+1][set_mode.value.v]['Max'])
         self.set_smooth(current_volt_dict)
 
     def _update_cache(self, *args, **kwargs):
