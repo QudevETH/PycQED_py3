@@ -933,6 +933,28 @@ class QuDev_transmon(Qubit):
             )
 
     def prepare(self, drive='timedomain', switch='default'):
+        """Prepare instruments for a measurement involving this qubit.
+
+        The preparation includes:
+        - call configure_offsets
+        - configure readout local oscillators
+        - configure qubit drive local oscillator
+        - call update_detector_functions
+        - call set_readout_weights
+        - set switches to the mode required for the measurement
+
+        Args:
+            drive (str, None): the kind of drive to be applied, which can be
+                None (no drive), 'continuous_spec' (continuous spectroscopy),
+                'pulsed_spec' (pulsed spectroscopy), or the default
+                'timedomain' (AWG-generated signal upconverted by the mixer)
+            switch (str): the required switch mode. Can be a switch mode
+                understood by set_switch or the default value 'default', in
+                which case the switch mode is determined based on the kind
+                of drive ('spec' for continuous/pulsed spectroscopy;
+                'no_drive' if drive is None and a switch mode 'no_drive' is
+                configured for this qubit; 'modulated' in all other cases).
+        """
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -989,6 +1011,7 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        # set switches to the mode required for the measurement
         # See the docstring of switch_modes for an explanation of the
         # following modes.
         if switch == 'default':
@@ -1008,6 +1031,27 @@ class QuDev_transmon(Qubit):
             self.set_switch(switch)
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
+        """Set acquisition weights for this qubit in the acquisition device.
+
+        Depending on the weights type, some of the following qcodes
+        parameters can have an influence on the programmed weigths (see the
+        docstrings of these parameters and of
+        AcquisitionDevice._acquisition_generate_weights):
+        - instr_acq, acq_unit, acq_I_channel, acq_Q_channel
+        - acq_weights_type (if not overridden with the arg weights_type)
+        - ro_mod_freq (if not overridden with the arg f_mod)
+        - acq_IQ_angle
+        - acq_weights_I, acq_weights_I2, acq_weights_Q, acq_weights_Q2
+
+        Args:
+            weights_type (str, None): a weights_type understood by
+                AcquisitionDevice._acquisition_generate_weights, or the
+                default None, in which case the qcodes parameter
+                acq_weights_type is used.
+            f_mod (float, None): The intermediate frequency of the signal to
+                be acquired, or the default None, in which case the qcodes
+                parameter ro_mod_freq is used.
+        """
         if weights_type is None:
             weights_type = self.acq_weights_type()
         if f_mod is None:
@@ -1103,6 +1147,16 @@ class QuDev_transmon(Qubit):
         return operation_dict
 
     def swf_ro_freq_lo(self):
+        """Create a sweep function for sweeping the readout frequency.
+
+        The sweep is implemented as an LO sweep in case of an acquisition
+        device with an external LO. The implementation depends on the
+        get_lo_sweep_function method of the acquisition device in case of an
+        internal LO (note that it might be an IF sweep or a combined LO and
+        IF sweep in that case.)
+
+        Returns: the Sweep_function object
+        """
         if self.instr_ro_lo() is not None:
             return swf.Offset_Sweep(
                 self.instr_ro_lo.get_instr().frequency,
