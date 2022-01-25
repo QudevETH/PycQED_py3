@@ -753,6 +753,32 @@ def configure_qubit_mux_drive(qubits, lo_freqs_dict):
 
 
 def configure_qubit_mux_readout(qubits, lo_freqs_dict):
+    """Configure qubits for multiplexed readout.
+
+    This helper function configures the given qubits for multiplexed readout
+    as follows:
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
+    - assign unique acquisition channels for qubits sharing an LO. This
+      assumes that qubits sharing an LO also share an acquisition unit of an
+      acquisition decvice.
+
+    By passing a list with only a single qubit, the function can also be
+    used to ensure that a given LO frequency is used for a qubit, even in a
+    non-multiplexed readout setting. Note that the acquisition I/Q channel
+    indices of the qubit are set to 0 and 1 in this case.
+
+    Args:
+        qubits (list of qubit objects): The qubits for which the readout
+            should be configured.
+        lo_freqs_dict (dict): A dict where each key identifies a readout LO
+            in one of the following formats, and the corresponding value
+            determines the LO frequency that this LO should use. Keys can be:
+            - str indicating the instrument name of an external LO
+            - tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+    """
     idx = {lo: 0 for lo in lo_freqs_dict}
     for qb in qubits:
         # try whether the external LO name is found in the lo_freqs_dict
