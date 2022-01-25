@@ -1980,8 +1980,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             classifier_params = {}
             from numpy import array  # for eval
             for qbn in self.qb_names:
-                classifier_params[qbn] = eval(self.get_hdf_param_value(
-                f'Instrument settings/{qbn}', "acq_classifier_params"))
+                classifier_params[qbn] = self.get_hdf_param_value(
+                f'Instrument settings/{qbn}', "acq_classifier_params")
 
         # prepare preselection mask
         if preselection:
