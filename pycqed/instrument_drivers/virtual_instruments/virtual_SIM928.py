@@ -102,7 +102,7 @@ class VirtualSIM928(Instrument):
              A list of slot numbers where a SIM928 module is present (starting
                  from 1)
         """
-        return list(range(1, 10))
+        return list(self.slot_names)
 
     def set_voltage(self, i, voltage):
         """
