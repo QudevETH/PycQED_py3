@@ -41,20 +41,86 @@ def get_correlation_channels(qubits, self_correlated, **kw):
     """
     if self_correlated:
         return list(itertools.combinations_with_replacement(
-            [qb.acq_I_channel() for qb in qubits], r=2))
+            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
     else:
         return list(itertools.combinations(
-            [qb.acq_I_channel() for qb in qubits], r=2))
+            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
 
 
-def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
+def get_multiplexed_readout_detector_functions(df_name, qubits,
+                                               nr_averages=None,
                                                nr_shots=None,
                                                used_channels=None,
                                                correlations=None,
                                                add_channels=None,
                                                det_get_values_kws=None,
-                                               nr_samples=4096,
                                                **kw):
+    """
+    Creates an instances of the MultiPollDetector with the detector classes
+    specified by df_name and for the specified qubits.
+    See detector_functions.py for all available detector classes.
+
+    An instance of the same type of detector class is constructed for
+    each acquisition device (taken from qubits) and passed as a list to the
+    MultiPollDetector.
+    Also see the docstring of the MultiPollDetector for more details.
+
+    Args:
+        df_name (str): string indicating which detector class is to be used
+            to instantiate the MultiPollDetector.
+            The following strings are understood (see also the docstring of the
+            individual detector classes):
+             - int_log_det: IntegratingSingleShotPollDetector with
+                data_type='raw'
+                Used for single shot acquisition
+             - dig_log_det: IntegratingSingleShotPollDetector with
+                data_type='digitized'
+                Used for thresholded single shot acquisition
+             - int_avg_det: IntegratingAveragingPollDetector with
+                data_type='raw'
+                Used for integrated averaged acquisition
+             - dig_avg_det: IntegratingAveragingPollDetector with
+                data_type='digitized'
+                Used for thresholded integrated averaged acquisition
+             - int_avg_classif_det: ClassifyingPollDetector
+                Used for classified acquisition.
+             - inp_avg_det: AveragingPollDetector
+                Used for recording timetraces
+             - int_corr_det: UHFQC_correlation_detector with
+                data_type='raw'
+                Used for recording correlations of acquisition channels
+             - dig_corr_det: UHFQC_correlation_detector with
+                data_type='digitized'
+                Used for recording thresholded correlations of acquisition
+                channels
+        qubits (list): instances of QuDev_transmon for which the acquisition
+            will be performed
+        nr_averages (int): number of acquisition averages as a power of 2.
+        nr_shots (int): number of acquisition shots as a power of 2.
+        used_channels (dict): only used with the UHFQC_correlation_detector.
+            Keys are UHFQA instances and values are lists/tuples of lists/tuples
+            with the channels on which the acquisition is done (excluding
+            correlation channels). See more details about channels in the
+            docstring of AcquisitionDevice.acquisition_initialize.
+        correlations (dict): only used with the UHFQC_correlation_detector.
+            Keys are UHFQA instances and values are lists/tuples of lists/tuples
+            with the pairs of acquisition channels from used_channels that are
+            to be correlated
+        add_channels (dict): keys are acquisition devices and values are
+            lists/tuples of lists/tuples with pairs of acquisition channels to
+            be used IN ADDITION to those returned by qb.get_acq_channels()
+        det_get_values_kws (dict): on used with the ClassifyingPollDetector.
+            Keys are acquisition devices and values are dictionaries
+            corresponding to get_values_function_kwargs (see docstring of the
+            ClassifyingPollDetector).
+
+    Keyword args: passed to the instantiation call of the detector classes that
+        are used to instantiate the MultiPollDetector's
+
+    Returns:
+        instance of MultiPollDetector for qubits with the detector classes
+        specified by df_name
+    """
     if nr_averages is None:
         nr_averages = max(qb.acq_averages() for qb in qubits)
     if nr_shots is None:
@@ -67,9 +133,9 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
     acq_classifier_params = {}
     acq_state_prob_mtxs = {}
     for qb in qubits:
-        uhf = qb.instr_uhf()
+        uhf = qb.instr_acq()
         uhfs.add(uhf)
-        uhf_instances[uhf] = qb.instr_uhf.get_instr()
+        uhf_instances[uhf] = qb.instr_acq.get_instr()
 
         if uhf not in max_int_len:
             max_int_len[uhf] = 0
@@ -77,10 +143,7 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
 
         if uhf not in channels:
             channels[uhf] = []
-        channels[uhf] += [qb.acq_I_channel()]
-        if qb.acq_weights_type() in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
-            if qb.acq_Q_channel() is not None:
-                channels[uhf] += [qb.acq_Q_channel()]
+        channels[uhf] += qb.get_acq_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
@@ -139,53 +202,79 @@ def get_multiplexed_readout_detector_functions(qubits, nr_averages=None,
                             'multiple pulsar instances')
         AWG = qbAWG
 
-    individual_detectors = {uhf: {
-            'int_log_det': det.UHFQC_integration_logging_det(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+    if df_name == 'int_log_det':
+        return det.MultiPollDetector([
+            det.IntegratingSingleShotPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                result_logging_mode='raw', **kw),
-            'dig_log_det': det.UHFQC_integration_logging_det(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                data_type='raw', **kw)
+            for uhf in uhfs])
+    elif df_name == 'dig_log_det':
+        return det.MultiPollDetector([
+            det.IntegratingSingleShotPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                result_logging_mode='digitized', **kw),
-            'int_avg_det': det.UHFQC_integrated_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
-                integration_length=max_int_len[uhf], nr_averages=nr_averages, **kw),
-            'int_avg_classif_det': det.UHFQC_classifier_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                data_type='digitized', **kw)
+            for uhf in uhfs])
+    elif df_name == 'int_avg_det':
+        return det.MultiPollDetector([
+            det.IntegratingAveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'dig_avg_det':
+        return det.MultiPollDetector([
+            det.IntegratingAveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                data_type='digitized', **kw)
+            for uhf in uhfs])
+    elif df_name == 'int_avg_classif_det':
+        return det.MultiPollDetector([
+            det.ClassifyingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 get_values_function_kwargs=det_get_values_kws[uhf],
-                result_logging_mode='raw', **kw),
-            'dig_avg_det': det.UHFQC_integrated_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
-                integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                result_logging_mode='digitized', **kw),
-            'inp_avg_det': det.UHFQC_input_average_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
-                nr_samples=nr_samples,
-                **kw),
-            'int_corr_det': det.UHFQC_correlation_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                data_type='raw', **kw)
+            for uhf in uhfs])
+    elif df_name == 'inp_avg_det':
+        return det.MultiPollDetector([
+            det.AveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
+                acquisition_length=max_int_len[uhf], channels=channels[uhf],
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'int_corr_det':
+        return det.MultiPollDetector([
+            det.UHFQC_correlation_detector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], **kw),
-            'dig_corr_det': det.UHFQC_correlation_detector(
-                UHFQC=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                correlations=correlations[uhf], data_type='raw_corr', **kw)
+            for uhf in uhfs])
+    elif df_name == 'dig_corr_det':
+        return det.MultiPollDetector([
+            det.UHFQC_correlation_detector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], thresholding=True, **kw),
-        } for uhf in uhfs}
-
-    combined_detectors = {det_type: det.UHFQC_multi_detector([
-        individual_detectors[uhf][det_type] for uhf in uhfs])
-        for det_type in ['int_log_det', 'dig_log_det',
-                         'int_avg_det', 'dig_avg_det', 'inp_avg_det',
-                         'int_avg_classif_det', 'int_corr_det', 'dig_corr_det']}
-
-    return combined_detectors
+                correlations=correlations[uhf], data_type='digitized_corr',
+                **kw)
+            for uhf in uhfs])
 
 
 def get_multi_qubit_prep_params(qubits):
+    """
+    Create the preparation parameters dict from the preparation_params of each
+    qubit.
+
+    Args:
+        qubits (list): instances of QuDev_transmon
+
+    Returns:
+        preparation parameters dict for a measurement on qubits
+    """
     prep_params_list = [qb.preparation_params() for qb in qubits]
     if len(prep_params_list) == 0:
         raise ValueError('prep_params_list is empty.')
@@ -205,13 +294,13 @@ def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
     # we cannot just use the value_names from the qubit detector functions
     # because the UHF_multi_detector function adds suffixes
 
-    if multi_uhf_det_func.detectors[0].name == 'raw_UHFQC_classifier_det':
+    if multi_uhf_det_func.detectors[0].name == 'raw_classifier_det':
         meas_obj_value_names_map = {
             qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                 multi_uhf_det_func.value_names,
                 qb.int_avg_classif_det.value_names)
             for qb in mobjs}
-    elif multi_uhf_det_func.detectors[0].name == 'UHFQC_input_average_detector':
+    elif multi_uhf_det_func.detectors[0].name == 'AveragingPollDetector':
         meas_obj_value_names_map = {
             qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                 multi_uhf_det_func.value_names, qb.inp_avg_det.value_names)
@@ -230,9 +319,7 @@ def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
     return meas_obj_value_names_map
 
 
-def measure_multiplexed_readout(dev, qubits, liveplot=False,
-                                shots=5000,
-                                RO_spacing=None, preselection=True,
+def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
                                 thresholds=None, thresholded=False,
                                 analyse=True, upload=True):
     for qb in qubits:
@@ -241,13 +328,15 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False,
     for qb in qubits:
         qb.prepare(drive='timedomain')
 
-    if RO_spacing is None:
-        UHFQC = qubits[0].instr_uhf.get_instr()
-        RO_spacing = UHFQC.qas_0_delay() * 2 / 1.8e9
-        RO_spacing += UHFQC.qas_0_integration_length() / 1.8e9
-        RO_spacing += 50e-9  # for slack
-        RO_spacing = np.ceil(RO_spacing * 225e6 / 3) / 225e6 * 3
-    
+    prep_params = \
+        get_multi_qubit_prep_params([qb.preparation_params() for qb in qubits])
+    preselection = prep_params.get(
+        'preparation_type', 'preselection') == 'preselection'
+    RO_spacing = prep_params.get('ro_separation', None)
+    if prep_params and RO_spacing is None:
+        log.warning('This measurement will do preselection but ro_separation '
+                    'is not specified in the prep_params.')
+
     operation_dict = dev.get_operation_dict(qubits=qubits)
     sf = awg_swf2.n_qubit_off_on(
         [operation_dict['X180 ' + qb.name] for qb in qubits],
@@ -261,13 +350,11 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False,
     if preselection:
         m *= 2
     if thresholded:
-        df = get_multiplexed_readout_detector_functions(qubits,
-                                                        nr_shots=shots)[
-            'dig_log_det']
+        df = get_multiplexed_readout_detector_functions('dig_log_det', qubits,
+                                                        nr_shots=shots)
     else:
-        df = get_multiplexed_readout_detector_functions(qubits,
-                                                        nr_shots=shots)[
-            'int_log_det']
+        df = get_multiplexed_readout_detector_functions('int_log_det', qubits,
+                                                        nr_shots=shots)
 
     MC.live_plot_enabled(liveplot)
     MC.soft_avg(1)
@@ -278,7 +365,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False,
         [qb.name for qb in qubits])))
 
     if analyse and thresholds is not None:
-        channel_map = {qb.name: qb.int_log_det.value_names[0]+' '+qb.instr_uhf()
+        channel_map = {qb.name: qb.int_log_det.value_names[0]+' '+qb.instr_acq()
                        for qb in qubits}
         return ra.Multiplexed_Readout_Analysis(options_dict=dict(
             n_readouts=(2 if preselection else 1) * 2 ** len(qubits),
@@ -365,7 +452,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         qb.prepare(drive='timedomain')
     label = f"SSRO_calibration_{states}{get_multi_qubit_msmt_suffix(qubits)}" if \
         label is None else label
-    channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
+    channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                              for vn in qb.int_log_det.value_names]
                    for qb in qubits}
     if exp_metadata is None:
@@ -378,7 +465,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "data_to_fit": {}
                          })
     df = get_multiplexed_readout_detector_functions(
-            qubits, nr_shots=n_shots)['int_log_det']
+            'int_log_det', qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
@@ -423,6 +510,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                         'state_prob_mtx'][qb.name])
         return a
 
+
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
@@ -464,7 +552,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     qb_names = dev.get_qubits(qubits, "str")
 
     if measure:
-        uhf_names = np.array([qubit.instr_uhf.get_instr().name for qubit in qubits])
+        uhf_names = np.array([qubit.instr_acq.get_instr().name for qubit in qubits])
         unique, counts = np.unique(uhf_names, return_counts=True)
         for u, c in zip(unique, counts):
             if c != 1:
@@ -484,10 +572,15 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
-            npoints = qubits[0].inp_avg_det.nr_samples # same for all qubits
-            sweep_points = np.linspace(0, npoints / 1.8e9, npoints,
-                                                endpoint=False)
-            channel_map = {qb.name: [vn + ' ' + qb.instr_uhf()
+            # create dict with acq instr as keys and nr samples corresponding to
+            # acq_length as values
+            samples = [(qb.instr_acq.get_instr(),
+                        qb.instr_acq.get_instr().convert_time_to_n_samples(
+                            acq_length)) for qb in qubits]
+            # sort by nr samples
+            samples.sort(key=lambda t: t[1])
+            sweep_points = samples[0][0].get_sweep_points_time_trace(acq_length)
+            channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                             for vn in qb.inp_avg_det.value_names]
                             for qb in qubits}
             exp_metadata.update(
@@ -522,7 +615,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                                                upload=upload))
                 MC.set_sweep_points(sweep_points)
                 df = get_multiplexed_readout_detector_functions(
-                    qubits, nr_samples=npoints)["inp_avg_det"]
+                    'inp_avg_det', qubits)
                 MC.set_detector_function(df)
                 MC.run(name=name, exp_metadata=exp_metadata)
 
@@ -627,10 +720,10 @@ def measure_tomography(dev, qubits, prep_sequence, state_name,
         shots = 1048576 - 1048576 % n_segments
     if thresholded:
         df = get_multiplexed_readout_detector_functions(
-            qubits, nr_shots=shots)['dig_log_det']
+            'dig_log_det', qubits, nr_shots=shots)
     else:
         df = get_multiplexed_readout_detector_functions(
-            qubits, nr_shots=shots)['int_log_det']
+            'int_log_det', qubits, nr_shots=shots)
 
     # get channel map
     channel_map = get_meas_obj_value_names_map(qubits, df)
@@ -725,8 +818,8 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
 
     det_name = 'int_avg{}_det'.format('_classif' if classified else '')
     det_func = get_multiplexed_readout_detector_functions(
-        qb_dephased, nr_averages=max(qb.acq_averages() for qb in qb_dephased)
-    )[det_name]
+        det_name, qb_dephased,
+        nr_averages=max(qb.acq_averages() for qb in qb_dephased))
     MC.set_detector_function(det_func)
 
     if exp_metadata is None:
@@ -840,9 +933,8 @@ def measure_drive_cancellation(
         MC.set_sweep_points(sweep_vals)
 
         det_func = get_multiplexed_readout_detector_functions(
-            ramsey_qubits,
-            nr_averages=max([qb.acq_averages() for qb in ramsey_qubits]))\
-            ['int_avg_det']
+            'int_avg_det', ramsey_qubits,
+            nr_averages=max([qb.acq_averages() for qb in ramsey_qubits]))
         MC.set_detector_function(det_func)
 
         # !!! Watch out with the call below. See docstring for this function
@@ -966,9 +1058,8 @@ def measure_fluxline_crosstalk(
     MC.set_sweep_points(sweep_vals)
 
     det_func = get_multiplexed_readout_detector_functions(
-        crosstalk_qubits,
-        nr_averages=max([qb.acq_averages() for qb in crosstalk_qubits])) \
-        ['int_avg_det']
+        'int_avg_det', crosstalk_qubits,
+        nr_averages=max([qb.acq_averages() for qb in crosstalk_qubits]))
     MC.set_detector_function(det_func)
 
     # !!! Watch out with the call below. See docstring for this function
