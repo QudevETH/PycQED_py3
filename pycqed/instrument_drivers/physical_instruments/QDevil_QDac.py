@@ -108,10 +108,11 @@ class QDacSmooth(QDac):
         """Set the output voltage of a channel.
 
             Args:
-                chan (int): Channel number of the channel to set the voltage of.
+                chan (int): Channel number of the channel to set the voltage of
+                    (counting starts from 0).
                 voltage (float): The value to set the voltage to.
                 immediate (bool): Indicates if the voltage should be set smooth
-                (False) or should be set immediately (True).
+                    (False) or should be set immediately (True).
         """
         vals.Ints(0, self.num_chans-1).validate(chan)
 
@@ -126,7 +127,7 @@ class QDacSmooth(QDac):
 
             Args:
                 chan (int): Channel number of the channel to get the
-                voltage of.
+                voltage of (counting starts from 0).
 
             Returns:
                 The current voltage of channel ``chan`` as a ``float``.
@@ -198,9 +199,10 @@ class QDacSmooth(QDac):
         self.set_smooth(zero_volt_dict)
         for ch_number, ch_volt in current_volt_dict.items():
             self.channels[ch_number].mode(set_mode)
-            current_volt_dict[ch_number] = _clipto(ch_number, ch_volt,
-                               self.vranges[ch_number+1][set_mode.value.v]['Min'],
-                               self.vranges[ch_number+1][set_mode.value.v]['Max'])
+            current_volt_dict[ch_number] = _clipto(
+                ch_number, ch_volt,
+                self.vranges[ch_number+1][set_mode.value.v]['Min'],
+                self.vranges[ch_number+1][set_mode.value.v]['Max'])
         self.set_smooth(current_volt_dict)
 
     def _update_cache(self, *args, **kwargs):
