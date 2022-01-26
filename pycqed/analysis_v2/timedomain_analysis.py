@@ -7127,6 +7127,12 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
         self.ramsey_qbnames = self.get_param_value('ramsey_qbnames',
                                                    default_value=[])
         self.gates_list = self.get_param_value('gates_list', default_value=[])
+        if not len(self.gates_list):
+            # self.gates_list must exist as a list of tuples where the first
+            # entry in each tuple is a leakage qubit name, and the second is
+            # a ramsey qubit name.
+            self.gates_list = [(qbl, qbr) for qbl, qbr in
+                               zip(self.leakage_qbnames, self.ramsey_qbnames)]
 
         # prepare list of qubits on which must be considered simultaneously
         # for preselection. Default: preselect on all qubits in the gate = ground

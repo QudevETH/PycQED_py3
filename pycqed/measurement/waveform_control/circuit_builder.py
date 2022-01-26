@@ -658,6 +658,7 @@ class CircuitBuilder:
 
     def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
                             block_align='end', segment_prefix='calibration_',
+                            sweep_dicts_list=None, sweep_index_list=None,
                             **kw):
         """
         Returns a list of segments for each cal state in cal_points.states.
@@ -668,6 +669,12 @@ class CircuitBuilder:
             mux_readout().
         :param block_align: passed to simultaneous_blocks; see docstring there
         :param segment_prefix: prefix for segment name (string)
+        :param sweep_dicts_list: Sweep dicts passed on to Block.build for the
+            complete cal_state_block to build a block that corresponds to a
+            point of an N-dimensional sweep.
+        :param sweep_index_list: Passed on to Block.build for the complete
+            cal_state_block. Determines for which sweep points from
+            sweep_dicts_list the block should be build.
         :param kw: keyword arguments (to allow pass through kw even if it
             contains entries that are not needed)
         :return: list of Segment instances
@@ -692,7 +699,9 @@ class CircuitBuilder:
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
             seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
-                          cal_state_block.build())
+                          cal_state_block.build(
+                              sweep_dicts_list=sweep_dicts_list,
+                              sweep_index_list=sweep_index_list))
             segments.append(seg)
 
         return segments
@@ -1029,7 +1038,9 @@ class CircuitBuilder:
                 block_align_cal_pts = kw.get('block_align_cal_pts', 'end')
                 seq.extend(self.seg_from_cal_points(
                     cal_points, init_state, ro_kwargs,
-                    block_align=block_align_cal_pts, **kw))
+                    block_align=block_align_cal_pts,
+                    sweep_dicts_list=sweep_points[1:], sweep_index_list=[i],
+                    **kw))
             seqs.append(seq)
 
         if return_segments:
