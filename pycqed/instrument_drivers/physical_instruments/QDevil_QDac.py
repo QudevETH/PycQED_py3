@@ -113,13 +113,13 @@ class QDacSmooth(QDac):
                 immediate (bool): Indicates if the voltage should be set smooth
                 (False) or should be set immediately (True).
         """
-        vals.Ints(1, self.num_chans).validate(chan)
+        vals.Ints(0, self.num_chans-1).validate(chan)
 
         if immediate:
-            self.channels[chan-1].v(voltage)
+            self.channels[chan].v(voltage)
             self._update_cache()
         else:
-            self.set_smooth({chan-1: voltage})
+            self.set_smooth({chan: voltage})
 
     def get_voltage(self, chan):
         """Read the output voltage of a channel.
@@ -131,9 +131,9 @@ class QDacSmooth(QDac):
             Returns:
                 The current voltage of channel ``chan`` as a ``float``.
         """
-        vals.Ints(1, self.num_chans).validate(chan)
+        vals.Ints(0, self.num_chans-1).validate(chan)
 
-        return self.channels[chan-1].v()
+        return self.channels[chan].v()
 
     def get_current_fluxline_voltages(self):
         """
