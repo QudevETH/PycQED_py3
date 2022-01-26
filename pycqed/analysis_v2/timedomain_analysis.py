@@ -5735,6 +5735,10 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 mask = np.array([i in excl_idxs for i in np.arange(len(freqs))])
                 ampls = ampls[np.logical_not(mask)]
                 freqs = freqs[np.logical_not(mask)]
+            if 'cal_data' not in self.proc_data_dict['analysis_params_dict']:
+                self.proc_data_dict['analysis_params_dict']['cal_data'] = {}
+            self.proc_data_dict['analysis_params_dict']['cal_data'][qbn] = \
+                [freqs, ampls[:, 0]]
 
             optimal_idx = np.argmin(np.abs(
                 freqs - self.raw_data_dict[f'ge_freq_{qbn}']))
@@ -7123,6 +7127,12 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
         self.ramsey_qbnames = self.get_param_value('ramsey_qbnames',
                                                    default_value=[])
         self.gates_list = self.get_param_value('gates_list', default_value=[])
+        if not len(self.gates_list):
+            # self.gates_list must exist as a list of tuples where the first
+            # entry in each tuple is a leakage qubit name, and the second is
+            # a ramsey qubit name.
+            self.gates_list = [(qbl, qbr) for qbl, qbr in
+                               zip(self.leakage_qbnames, self.ramsey_qbnames)]
 
         # prepare list of qubits on which must be considered simultaneously
         # for preselection. Default: preselect on all qubits in the gate = ground
