@@ -537,8 +537,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         acq_weights_basis (list): shortcut for analysis parameter.
             list of basis vectors used for computing the weights.
             (see Timetrace Analysis). e.g. ["ge", "gf"] yields basis vectors e - g
-            and f - g. If None, defaults to  ["ge", "gf"] when more than 2 traces are
-            passed to the analysis and to ['ge'] if 2 traces are measured.
+            and f - g. If None, defaults to  ["ge", "ef"] when more than 2
+            traces are passed to the analysis and to ['ge'] if 2 traces are
+            measured.
         orthonormalize (bool): shortcut for analysis parameter. Whether or not to
             orthonormalize the optimal weights (see MultiQutrit Timetrace Analysis)
         update (bool): update weights
