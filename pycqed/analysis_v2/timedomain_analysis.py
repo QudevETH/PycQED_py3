@@ -542,23 +542,34 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     OrderedDict()
                 for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
-                    self.proc_data_dict['projected_data_dict'][qbn] = \
+                    self.proc_data_dict['projected_data_dict_corrected'][qbn] = \
                         OrderedDict()
                     probas_raw = np.asarray([
                         data_dict[k] for k in data_dict for state_prob in
                         ['pg', 'pe', 'pf'] if state_prob in k])
                     corr_mtx = self.get_param_value("correction_matrix")[qbn]
-                    probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
-                    for state_prob in ['pg', 'pe', 'pf']:
-                        self.proc_data_dict['projected_data_dict_corrected'][
-                            qbn].update({state_prob: data for key, data in
-                             zip(["pg", "pe", "pf"], probas_corrected)})
+
+                    if np.ndim(probas_raw) == 3:
+                        assert self.get_param_value("TwoD", False) == True, \
+                            "'TwoD' is False but data seems to be 2D"
+                        # temporarily put 2D sweep into 1d for readout correction
+                        sh = probas_raw.shape
+                        probas_raw = probas_raw.reshape(sh[0], -1)
+                        probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
+                        probas_corrected = probas_corrected.reshape(sh)
+                    else:
+                        probas_corrected = np.linalg.inv(corr_mtx).T @ probas_raw
+                    self.proc_data_dict['projected_data_dict_corrected'][
+                        qbn] = {key: data for key, data in
+                                zip(["pg", "pe", "pf"], probas_corrected)}
 
         # get data_to_fit
+        suffix = "_corrected" if self.get_param_value("correction_matrix")\
+                                 is not None else ""
         self.proc_data_dict['data_to_fit'] = OrderedDict()
         for qbn, prob_data in self.proc_data_dict[
-                'projected_data_dict'].items():
-            if qbn in self.data_to_fit:
+                'projected_data_dict' + suffix].items():
+            if len(prob_data) and qbn in self.data_to_fit:
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
 
@@ -8347,7 +8358,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'sample_0' : index of first sample (ground-state)
             'sample_1' : index of second sample (first excited-state)
             'max_datapoints' : maximum amount of datapoints for culumative fit
-            'log_hist' : use log scale for the y-axis of the 1D histograms
+            'hist_scale' : scale for the y-axis of the 1D histograms: "linear" or "log"
             'verbose' : see BaseDataAnalysis
             'presentation_mode' : see BaseDataAnalysis
             'classif_method': how to classify the data.
