@@ -923,12 +923,12 @@ class CPhase(CalibBuilder):
         ref_pi_half = kw.get('ref_pi_half', False)
         if self.classified:
             channel_map = {qb.name: [vn + ' ' +
-                                     qb.instr_uhf() for vn in
+                                     qb.instr_acq() for vn in
                                      qb.int_avg_classif_det.value_names]
                            for qb in self.meas_objs}
         else:
             channel_map = {qb.name: [vn + ' ' +
-                                     qb.instr_uhf() for vn in
+                                     qb.instr_acq() for vn in
                                      qb.int_avg_det.value_names]
                            for qb in self.meas_objs}
         self.analysis = tda.CPhaseLeakageAnalysis(
