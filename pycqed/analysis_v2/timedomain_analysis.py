@@ -3005,7 +3005,9 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         rotations = [qtp.Qobj(U) for U in rotations]
 
         all_Fs = tomo.rotated_measurement_operators(rotations, Fs)
-        all_Fs = list(itertools.chain(*np.array(all_Fs, dtype=np.object).T))
+        all_Fs = [all_Fs[i][j]
+                  for j in range(len(all_Fs[0]))
+                  for i in range(len(all_Fs))]
         all_mus = np.array(list(itertools.chain(*data.T)))
         all_Omegas = sp.linalg.block_diag(*[Omega] * len(data[0]))
 
