@@ -60,6 +60,9 @@ class Segment:
                 - 'sweeper': use sweeper mode if available (for RO frequency
                   sweeps, e.g., resonator spectroscopy)
                 - 'default' (default value): normal acquisition elements
+            fast_mode (bool):  If True, copying pulses is avoided. In this
+                case, the pulse_pars_list passed to Segment will be modified
+                (default: False).
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
