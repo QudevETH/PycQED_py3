@@ -23,7 +23,7 @@ class TWPAObject(qc.Instrument):
         self.add_parameter('instr_signal',
                            parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_lo', parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_uhf',
+        self.add_parameter('instr_acq',
                            parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_mc', parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_pulsar',
@@ -110,7 +110,12 @@ class TWPAObject(qc.Instrument):
         self.instr_pump.get_instr().off()
 
     def prepare_readout(self):
-        UHF = self.instr_uhf.get_instr()
+        UHF = self.instr_acq.get_instr()
+        if not UHF.IDN()['model'].startswith('UHF'):
+            raise NotImplementedError(
+                'The UHFQC_correlation_detector used for TWPA tuneup '
+                'measurements is not implemented for '
+                '{acq_dev.name}, but only for ZI UHF devices.')
         pulsar = self.instr_pulsar.get_instr()
 
         # Prepare MWG states

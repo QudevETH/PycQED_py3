@@ -968,7 +968,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             cmap = plt.get_cmap('Reds')
 
         if ax is None:
-            fig, ax = plt.subplots(1, figsize=(8, 6))
+            fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
 
@@ -1363,14 +1363,14 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                 y = stats.norm.pdf(fit_plot_values, means[i],
                                    kwargs['std'][i]).flatten()
                 ax.plot(fit_plot_values, y * np.max(cts) / np.max(y),
-                        color=c, linewidth=3)
+                        color=c)
 
         ax.set_xlabel(kwargs.get("xlabel", 'integration unit 1, $u_1$'))
         ax.set_ylabel('Counts, $n$')
         ax.set_yscale(kwargs.get('scale', "log"))
         ylim = kwargs.get('ylim',
                           ax.get_ylim() if kwargs.get('scale', "log") == "linear"
-                          else [0.1] +[ax.get_ylim()[1]])
+                          else [0.7] +[ax.get_ylim()[1]])
         ax.set_ylim(ylim)
         if kwargs.get('legend', False):
             ax.legend()

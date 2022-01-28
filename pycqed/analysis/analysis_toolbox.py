@@ -318,6 +318,19 @@ def get_instr_setting_value_from_file(file_path, instr_name, param_name,
 
 
 def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
+    """
+    Construct the qubit channel map based on an HDF file.
+
+    Args:
+        qb_names (list): list of qubit names
+        file_path (str): path to the HDF file
+        value_names (list): list of detector function value names
+        h5mode (str): HDF opening mode
+
+    Returns
+        qubit channel map as a dict with qubit names as keys and the list of
+        value names corresponding to each qubit as values
+    """
     data_file = h5py.File(measurement_filename(file_path), h5mode)
     try:
         instr_settings = data_file['Instrument settings']
@@ -333,14 +346,19 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             ro_type = 'w'
 
         for qbn in qb_names:
-            uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
+            uhf = eval(instr_settings[qbn].attrs['instr_acq'])
+            acq_unit = eval(instr_settings[qbn].attrs.get('acq_unit', 'None'))
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
             if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
+            if acq_unit is None:
+                vn_string = uhf+'_'+ro_type
+            else:
+                vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
             channel_map[qbn] = [vn for vn in value_names for nr in qbchs
-                                if uhf+'_'+ro_type+nr in vn]
+                                if vn_string+nr in vn]
 
         all_values_empty = np.all([len(v) == 0 for v in channel_map.values()])
         if len(channel_map) == 0 or all_values_empty:
@@ -349,25 +367,6 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
         data_file.close()
         return channel_map
 
-    except Exception as e:
-        data_file.close()
-        raise e
-
-
-def get_qb_thresholds_from_file(qb_names, file_path, th_scaling=1, h5mode='r'):
-    data_file = h5py.File(measurement_filename(file_path), h5mode)
-    try:
-        instr_settings = data_file['Instrument settings']
-        thresholds = {}
-        for qbn in qb_names:
-            ro_channel = eval(instr_settings[qbn].attrs['acq_I_channel'])
-            instr_uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
-            thresholds[qbn] = eval(instr_settings[instr_uhf].attrs[
-                                       f'qas_0_thresholds_{ro_channel}_level'])
-            if thresholds[qbn] is not None:
-                thresholds[qbn] *= th_scaling
-        data_file.close()
-        return thresholds
     except Exception as e:
         data_file.close()
         raise e

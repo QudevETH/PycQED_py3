@@ -5,6 +5,7 @@ import traceback
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
+import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement.waveform_control.block import ParametricValue, Block
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
@@ -277,7 +278,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
     """
 
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
-                 adapt_drive_amp=False, adapt_ro_freq=False, **kw):
+                 adapt_drive_amp=False, adapt_ro_freq=False,
+                 internal_modulation=None, **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -295,6 +297,13 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.qb_offsets = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
+        self.internal_modulation = (True if internal_modulation is None
+                                            and allowed_lo_freqs is not None
+                                    else internal_modulation)
+        if allowed_lo_freqs is None and internal_modulation:
+            log.warning('ParallelLOSweepExperiment: internal_modulation is '
+                        'set to True, but this will be ignored in a pure LO '
+                        'sweep, where no allowed_lo_freqs are set.')
         self.adapt_drive_amp = adapt_drive_amp
         self.adapt_ro_freq = adapt_ro_freq
         self.drive_amp_adaptation = {}
@@ -398,11 +407,43 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 k.name: v for k, v in self.lo_offsets.items()}
 
         if self.allowed_lo_freqs is not None:
-            # HDAWG internal modulation is needed, switch off modulation in
-            # the waveform generation
-            for task in self.preprocessed_task_list:
-                task['pulse_modifs'] = {'attr=mod_frequency': None}
-            self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
+            if self.internal_modulation:
+                # HDAWG internal modulation is needed, switch off modulation
+                # in the waveform generation
+                for task in self.preprocessed_task_list:
+                    task['pulse_modifs'] = {'attr=mod_frequency': None}
+                self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
+            else:
+                def major_minor_func(val, major_values):
+                    ind = np.argmin(np.abs(major_values - val))
+                    mval = major_values[ind]
+                    return (mval, val - mval)
+
+                modifs = {}
+                for task in self.preprocessed_task_list:
+                    qb = self.get_qubits(task['qb'])[0][0]
+                    lo = qb.instr_ge_lo.get_instr()
+                    if len(self.lo_qubits[lo]) > 1:
+                        raise NotImplementedError(
+                            'ParallelLOSweepExperiment with '
+                            'internal_modulation=False is currently only '
+                            'implemented for a single qubit per LO.'
+                        )
+                    if not kw.get('optimize_mod_freqs', False):
+                        raise NotImplementedError(
+                            'ParallelLOSweepExperiment with '
+                            'internal_modulation=False is currently only '
+                            'implemented for optimize_mod_freqs=True.'
+                        )
+                    maj_vals = np.array(self.allowed_lo_freqs)
+                    func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
+                    if 'pulse_modifs' not in task:
+                        task['pulse_modifs'] = {}
+                    for d in [task['pulse_modifs'], modifs]:
+                        d.update({
+                            f'op_code=X180 {qb.name}, attr=mod_frequency':
+                                ParametricValue('freq', func=func)})
+                self.cal_points.pulse_modifs = modifs
 
         # If applicable, configure drive amplitude adaptation based on the
         # models stored in the qubit objects.
@@ -510,6 +551,11 @@ class ParallelLOSweepExperiment(CalibBuilder):
         if self.allowed_lo_freqs is not None:
             minor_sweep_functions = []
             for lo, qbs in self.lo_qubits.items():
+                if not self.internal_modulation:
+                    # Minor sweep function not needed. Use dummy sweep.
+                    minor_sweep_functions = [
+                        swf.Soft_Sweep() for i in range(len(sweep_functions))]
+                    break
                 qb_sweep_functions = []
                 for qb in qbs:
                     mod_freq = self.get_pulse(f"X180 {qb.name}")[
@@ -581,6 +627,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         for task in self.task_list:
             if 'fluxline' not in task:
                 continue
+            temp_vals.append((task['fluxline'], task['fluxline']()))
             qb = self.get_qubits(task['qb'])[0][0]
             dc_amp = (lambda x, o=self.qb_offsets[qb], qb=qb:
                       qb.calculate_flux_voltage(x + o))
@@ -588,10 +635,29 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 task['fluxline'], transformation=dc_amp,
                 name=f'DC Offset {qb.name}',
                 parameter_name=f'Parking freq {qb.name}', unit='Hz')]
-        self.sweep_functions = [
-            self.sweep_functions[0], swf.multi_sweep_function(
-                sweep_functions, name=name, parameter_name=name)]
-        self.mc_points[1] = self.lo_sweep_points
+        if self.allowed_lo_freqs is None or self.internal_modulation:
+            # The dimension 1 sweep is a parallel sweep of all sweep_functions
+            # created here, and they directly understand the sweep points
+            # stored in self.lo_sweep_points.
+            self.sweep_functions = [
+                self.sweep_functions[0], swf.multi_sweep_function(
+                    sweep_functions, name=name, parameter_name=name)]
+            self.mc_points[1] = self.lo_sweep_points
+        else:
+            # IF sweep without internal modulation, i.e., we have to
+            # reprogram the drive AWG for every sequence. Thus, the sweep
+            # in dimension 1 is a parallel sweep of a SegmentSoftSweep and of
+            # all sweep_functions created here. Since the SegmentSoftSweep
+            # requires indices as sweep points, we use an Indexed_Sweep to
+            # translate the indices to the sweep points stored in
+            # self.lo_sweep_points, which are required by the sweep
+            # functions created here.
+            self.sweep_functions = [
+                self.sweep_functions[0], swf.multi_sweep_function([
+                    awg_swf.SegmentSoftSweep,  # placeholder, see _configure_mc
+                    swf.Indexed_Sweep(swf.multi_sweep_function(
+                        sweep_functions, name=name, parameter_name=name),
+                        self.lo_sweep_points)])]
         with temporary_value(*temp_vals):
             super().run_measurement(**kw)
 
@@ -704,7 +770,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         if fp_during_ro_buffer is None:
             fp_during_ro_buffer = 0.2e-6
 
-        if ro_pulse_delay is 'auto' and (fp_truncation or \
+        if ro_pulse_delay == 'auto' and (fp_truncation or \
             hasattr(fp_truncation, '__iter__')):
             raise Exception('fp_truncation does currently not work ' + \
                             'with the auto mode of ro_pulse_delay.')
@@ -2637,6 +2703,28 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
         self.data_to_fit.update({qb: 'pe'})
         return b
 
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """Run RabiAnalysis
+
+        The RabiAnalysis will create individual Rabi fits for each of the
+        qubit frequencies in the sweep, as well as 2D plots of raw and
+        corrected data.
+
+        FIXME: We currently do not call the RabiFrequencySweepAnalysis because
+         the additional fitting steps in that class do not always work
+         reliably yet.
+
+        Args:
+            analysis_kwargs: keyword arguments passed to the analysis class
+            kw: passed through to super method
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 't_start' not in analysis_kwargs:
+            analysis_kwargs['t_start'] = self.timestamp
+        super().run_analysis(analysis_class=tda.RabiAnalysis,
+                             analysis_kwargs=analysis_kwargs, **kw)
+
 
 class ActiveReset(CalibBuilder):
     @handle_exception
@@ -2867,7 +2955,7 @@ class ActiveReset(CalibBuilder):
             channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
             # set thresholds
             for unit, thresh in clf_params[qb.name]['thresholds'].items():
-                qb.instr_uhf.get_instr().set(
+                qb.instr_acq.get_instr().set(
                     f'qas_0_thresholds_{channels[unit]}_level', thresh)
 
     @staticmethod
@@ -2910,7 +2998,7 @@ class ActiveReset(CalibBuilder):
             # get UHF thresholds
             else:
                 thresholds[qb.name] = \
-                    {u: qb.instr_uhf.get_instr()
+                    {u: qb.instr_acq.get_instr()
                           .get(f'qas_0_thresholds_{ch}_level')
                      for u, ch in chs.items()}
 

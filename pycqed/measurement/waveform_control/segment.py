@@ -36,7 +36,8 @@ class Segment:
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
 
-    def __init__(self, name, pulse_pars_list=[], **kw):
+    def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
+                 **kw):
         """
         Initiate instance of Segment class.
 
@@ -80,6 +81,7 @@ class Segment:
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
         self.acquisition_elements = set()
+        self.acquisition_mode = acquisition_mode
         self.timer = Timer(self.name)
         self.pulse_pars = []
 
