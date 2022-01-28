@@ -45,6 +45,21 @@ class Segment:
             name: Name of segment
             pulse_pars_list: list of pulse parameters in the form
                 of dictionaries
+            acquisition_mode (str): This will be copied into the acq key of
+                the element metadata of acquisition elements to inform Pulsar
+                that waveforms need to be programmed in a way that is
+                compatible with the given acquisition mode. Note:
+                - Pulsar may fall back to the default acquisition mode if
+                  the given mode is not available or not needed on the used
+                  hardware.
+                - If applicable, higher layer code of experiments that use a
+                  special acquisition mode need to ensure that other parts of
+                  pycqed (e.g., sweep_function) get configured in a
+                  compatible manner.
+                Allowed modes currently include:
+                - 'sweeper': use sweeper mode if available (for RO frequency
+                  sweeps, e.g., resonator spectroscopy)
+                - 'default' (default value): normal acquisition elements
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
