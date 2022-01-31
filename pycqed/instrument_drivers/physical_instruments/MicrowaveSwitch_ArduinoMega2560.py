@@ -4,6 +4,7 @@ from qcodes.utils import validators as vals
 import numpy as np
 import telnetlib
 import serial
+import time
 
 
 class MicrowaveSwitch_SP6T_ArduinoMega2560(Instrument):
@@ -37,6 +38,11 @@ class MicrowaveSwitch_SP6T_ArduinoMega2560(Instrument):
             else:
                 self.port.write('L'.encode() + bytes([i]))
 
+        time.sleep(0.2)
+
+        if val != self._get_switch():
+            raise ValueError('Switch did not switch into the specified state.')
+
 
     def _get_switch(self):
         lst = []
@@ -46,10 +52,10 @@ class MicrowaveSwitch_SP6T_ArduinoMega2560(Instrument):
 
         if sum(lst) == 5:
             return lst.index(0) + 1
-        elif sum(lst) == 0:
+        elif sum(lst) == 6:
             return 0
         else:
-            return -1
+            raise ValueError('Unexpected reading from indicator output!')
 
     def __enter__(self):
         return self
