@@ -1608,7 +1608,8 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
                 shots_cont = np.array(
                     self.raw_data_dict['measured_data'][channel]).T.flatten()
                 if self.thresholding_flip.get(qubit, False):
-                    shots_thresh[qubit] = (shots_cont < self.thresholds[qubit])
+                    shots_thresh[qubit] = (
+                            shots_cont <= self.thresholds[qubit])
                 else:
                     shots_thresh[qubit] = (shots_cont > self.thresholds[qubit])
             self.proc_data_dict['shots_thresholded'] = shots_thresh
