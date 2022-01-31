@@ -2668,6 +2668,7 @@ class QuDev_transmon(Qubit):
         exp_metadata = {'qb_names': [self.name], 'rotate': False,
                         'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
 
+        exp_metadata = {'qb_names': [self.name], 'rotate': False}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset
