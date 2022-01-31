@@ -50,6 +50,8 @@ except Exception:
     print('When instantiating an MC object,'
           ' be sure to set live_plot_enabled=False')
 
+EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
+
 
 class MeasurementControl(Instrument):
 
@@ -291,7 +293,7 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.save_exp_metadata(self.exp_metadata, self.data_object)
+            self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
                 self.check_keyboard_interrupt()
@@ -324,8 +326,7 @@ class MeasurementControl(Instrument):
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
-                self.save_exp_metadata({'percentage_done': percentage_done},
-                                       self.data_object)
+                self.save_exp_metadata({'percentage_done': percentage_done})
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
@@ -1647,11 +1648,14 @@ class MeasurementControl(Instrument):
                 val_name+' (' + self.detector_function.value_units[i] + ')')
         return self.column_names
 
-    def create_experimentaldata_dataset(self):
-        if 'Experimental Data' in self.data_object:
-            data_group = self.data_object['Experimental Data']
+    def _get_experimentaldata_group(self):
+        if EXPERIMENTAL_DATA_GROUP_NAME in self.data_object:
+            return self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
         else:
-            data_group = self.data_object.create_group('Experimental Data')
+            return self.data_object.create_group(EXPERIMENTAL_DATA_GROUP_NAME)
+
+    def create_experimentaldata_dataset(self):
+        data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
             'Data', (0, len(self.sweep_functions) +
                      len(self.detector_function.value_names)),
@@ -1769,8 +1773,8 @@ class MeasurementControl(Instrument):
                                         xfavorite, stds,
                                         [fbest], xbest, [evals_best]])
         if (not 'optimization_result'
-                in self.data_object['Experimental Data'].keys()):
-            opt_res_grp = self.data_object['Experimental Data']
+                in self.data_object[EXPERIMENTAL_DATA_GROUP_NAME].keys()):
+            opt_res_grp = self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
             self.opt_res_dset = opt_res_grp.create_dataset(
                 'optimization_result', (0, len(results_array)),
                 maxshape=(None, len(results_array)),
@@ -1965,8 +1969,7 @@ class MeasurementControl(Instrument):
         set_grp.attrs['git_diff'] = diff
         set_grp.attrs['pycqed_version'] = pycqed.version.__version__
 
-    @classmethod
-    def save_exp_metadata(self, metadata: dict, data_object):
+    def save_exp_metadata(self, metadata: dict):
         '''
         Saves experiment metadata to the data file. The metadata is saved at
             file['Experimental Data']['Experimental Metadata']
@@ -1975,13 +1978,8 @@ class MeasurementControl(Instrument):
             metadata (dict):
                     Simple dictionary without nesting. An attribute will be
                     created for every key in this dictionary.
-            data_object:
-                    An open hdf5 data object.
         '''
-        if 'Experimental Data' in data_object:
-            data_group = data_object['Experimental Data']
-        else:
-            data_group = data_object.create_group('Experimental Data')
+        data_group = self._get_experimentaldata_group()
 
         if 'Experimental Metadata' in data_group:
             metadata_group = data_group['Experimental Metadata']
