@@ -1702,6 +1702,9 @@ class MeasurementControl(Instrument):
         Note that the method can only be used during a run of MC, i.e.,
         while self.data_object is open.
 
+        Note that this method is provided as a callback function to
+        self.detector_function.
+
         Args:
             group_name (str): Name of the subgroup inside experimental data
                 group. The subgroup is automatically created if it does
@@ -2264,6 +2267,7 @@ class MeasurementControl(Instrument):
                                                 wrapped_det_control)
         self.detector_function = detector_function
         self.set_detector_function_name(detector_function.name)
+        self.detector_function.extra_data_callback = self.save_extra_data
 
     def get_detector_function(self):
         return self.detector_function
