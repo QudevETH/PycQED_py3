@@ -640,7 +640,7 @@ class QuantumExperiment(CircuitBuilder):
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
         self.df = mqm.get_multiplexed_readout_detector_functions(
-            self.meas_objs, **self.df_kwargs)[self.df_name]
+            self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(

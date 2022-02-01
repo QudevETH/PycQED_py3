@@ -162,6 +162,46 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r', file_id=
     return h5py.File(filepath, mode)
 
 
+def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
+                                    acq_dev_name=None, th_path=None,
+                                    th_scaling=1, **params):
+    """
+    Extracts the state classification threshold value for the qubits in
+    meas_obj_names.
+    :param meas_obj_names: list of measured object names
+    :param timestamp: timestamp string of an HDF file from which to extract
+    :param acq_dev_name: name of acquisition device
+    :param th_path: path inside HDF file to the threshold attribute of acq dev
+    :param th_scaling: float by which to scale the threshold values
+    :param params: passed to get_instr_param_from_hdf_file. See docstring there.
+    :return: thresholds of the form
+        {meas_obj_name: classification threshold value).
+    """
+    thresholds = {}
+    for mobjn in meas_obj_names:
+        if acq_dev_name is None:
+            # take the one defined in mobjn
+            acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'acq_dev',
+                                                         timestamp, **params)
+
+        if th_path is None:
+            # try to figure out the correct path for the acquisition instrument
+            if 'uhf' in acq_dev_name.lower():
+                # acquisition device is a UHFQA
+                ro_ch = get_instr_param_from_hdf_file(mobjn, 'acq_I_channel',
+                                                      timestamp, **params)
+                th_path = f'qas_0_thresholds_{ro_ch}_level'
+            else:
+                raise NotImplementedError('Currently only UHFQA is supported.')
+
+        thresholds[mobjn] = get_instr_param_from_hdf_file(acq_dev_name, th_path,
+                                                          timestamp, **params)
+        if thresholds[mobjn] is not None:
+            thresholds[mobjn] *= th_scaling
+
+    return thresholds
+
+
 def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
                                   folder=None, **params):
     """
