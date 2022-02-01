@@ -16,17 +16,18 @@ class QDacSmooth(QDac):
     can be set to 0.1V:
         QDacSmooth.parameters["volt_fluxline17"](0.1)
         QDacSmooth.volt_fluxline17(0.1)
-        QDacSmooth.set_voltage(16, 0.1)
         QDacSmooth.set_smooth({"volt_fluxline17": 0.1})
         QDacSmooth.set_smooth({16: 0.1})
-    In principle, voltages can also be set using QDacSmooth.ch17.v(0.1), but
-    this will result in an immediate change of the voltage (i.e. the voltage
-    will not be set smooth) and is therefore not recommended.
+    In case the voltage should not be set smooth but should be set immediately
+    (e.g. for faster voltage setting), the qcodes method QDacSmooth.ch17.v(0.1),
+    can be used. However, this will result in an immediate change of the voltage
+    (i.e. the voltage will not be set smooth) and is therefore not generally
+    recommended.
 
-    Recommended ways to get/read the voltage from fluxline/channel 17 are:
+    Recommended ways to get/read the voltage from fluxline/channel 17 (with
+    "index" 16) are:
         QDacSmooth.parameters["volt_fluxline17"]()
         QDacSmooth.volt_fluxline17()
-        QDacSmooth.get_voltage(16)
         QDacSmooth.ch17.v()
 
     Recommended ways to get/read the voltage from all fluxlines/channels (this
@@ -132,38 +133,6 @@ class QDacSmooth(QDac):
                 0))
             print_progress(step + 1, N_steps, begintime)
         self._update_cache()
-
-    def set_voltage(self, chan, voltage, immediate=False):
-        """Set the output voltage of a channel.
-
-            Args:
-                chan (int): Channel number of the channel to set the voltage of
-                    (counting starts from 0).
-                voltage (float): The value to set the voltage to.
-                immediate (bool): Indicates if the voltage should be set smooth
-                    (False) or should be set immediately (True).
-        """
-        vals.Ints(0, self.num_chans-1).validate(chan)
-
-        if immediate:
-            self.channels[chan].v(voltage)
-            self._update_cache()
-        else:
-            self.set_smooth({chan: voltage})
-
-    def get_voltage(self, chan):
-        """Read the output voltage of a channel.
-
-            Args:
-                chan (int): Channel number of the channel to get the
-                voltage of (counting starts from 0).
-
-            Returns:
-                The current voltage of channel ``chan`` as a ``float``.
-        """
-        vals.Ints(0, self.num_chans-1).validate(chan)
-
-        return self.channels[chan].v()
 
     def get_fluxline_voltages(self):
         """
