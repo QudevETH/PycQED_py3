@@ -7,6 +7,29 @@ import logging
 log = logging.getLogger(__name__)
 
 class QDacSmooth(QDac):
+    """
+    Driver for the QDevil QDAC with the ability to set voltages gradually/
+    smoothly.
+
+    The voltages can be set in a different number of ways. Below is a
+    list of recommended ways in which fluxline/channel 17 (with "index" 16)
+    can be set to 0.1V:
+        QDacSmooth.parameters["volt_fluxline17"](0.1)
+        QDacSmooth.volt_fluxline17(0.1)
+        QDacSmooth.set_voltage(16, 0.1)
+        QDacSmooth.set_smooth({"volt_fluxline17": 0.1})
+        QDacSmooth.set_smooth({16: 0.1})
+    In principle, voltages can also be set using QDacSmooth.ch17.v(0.1), but
+    this will result in an immediate change of the voltage (i.e. the voltage
+    will not be set smooth) and is therefore not recommended.
+
+    Recommended ways to get/read the voltage from fluxline/channel 17 are:
+        QDacSmooth.parameters["volt_fluxline17"]()
+        QDacSmooth.volt_fluxline17()
+        QDacSmooth.get_voltage(16)
+        QDacSmooth.ch17.v()
+    """
+
     def __init__(self, name, port, channel_map):
         super().__init__(name, port, update_currents=False)
         self.channel_map = channel_map
@@ -16,7 +39,6 @@ class QDacSmooth(QDac):
                                  "when changing the voltage smoothly",
                            get_cmd=None, set_cmd=None,
                            vals=vals.Numbers(0.002, 1), initial_value=0.01)
-        #         smooth_timestep = self.parameters['smooth_timestep']
 
         for ch_number, ch_name in self.channel_map.items():
             stepname = f"volt_{ch_name}_step"
@@ -25,14 +47,12 @@ class QDacSmooth(QDac):
                                      f"smoothly on module {ch_name}",
                                get_cmd=None, set_cmd=None,
                                vals=vals.Numbers(0, 20), initial_value=0.001)
-            #             stepparam = self.parameters[stepname]
 
             self.add_parameter(name=f"volt_{ch_name}",
                 label=f"DC source voltage on channel {ch_name}", unit='V',
                 get_cmd=self.channels[ch_number].v,
                 set_cmd=lambda val, ch_number=ch_number: self.set_smooth(
                     {ch_number: val}),
-                #                 initial_value=self.qdac.getDCVoltage(key)
             )
         self.add_parameter('verbose',
                            parameter_class=ManualParameter,
@@ -45,16 +65,21 @@ class QDacSmooth(QDac):
         ``volt_#_step/smooth_timestep``.
 
         Args:
-            voltagedict (Dict[float]): A dictionary where keys are module slot
-                numbers or names and values are the desired output voltages.
+            voltagedict (Dict[float]): A dictionary where keys are names (from
+                the channel map) or module slot numbers (starting at 0) where
+                values are the desired output voltages.
+                Example:
+                    {"fluxline1": 0.1, "fluxline2": 0.45, "fluxline15: 2.3, ...}
+                    or
+                    {0: 0.1, 1: 0.45, 14: 2.3}
         """
 
         def print_progress(index, total, begintime):
             if self.verbose() and total > 3:  # do not print for tiny changes
                 percdone = index / total * 100
                 elapsed_time = time.time() - begintime
-                # The trailing spaces are to overwrite some characters in case the
-                # previous progress message was longer.
+                # The trailing spaces are to overwrite some characters in case
+                # the previous progress message was longer.
                 progress_message = (
                     "\r{name}\t{percdone}% completed \telapsed time: "
                     "{t_elapsed}s \ttime left: {t_left}s     ").format(
@@ -88,7 +113,7 @@ class QDacSmooth(QDac):
                 v_sweep[ch_number] = np.arange(old_voltage, voltage, np.sign(
                     voltage - old_voltage) * stepparam)
                 v_sweep[ch_number] = np.append(v_sweep[ch_number],
-                                               voltage)  # end on the correct value
+                                               voltage)  # end on correct value
         N_steps = max([len(v_sweep[ch_number]) for ch_number in v_sweep])
         begintime = time.time()
         for step in range(N_steps):
@@ -96,11 +121,9 @@ class QDacSmooth(QDac):
             for ch_number, v_list in v_sweep.items():
                 if step < len(v_list):
                     self.channels[ch_number].v(v_list[step])
-            # print(self.parameters['smooth_timestep']() - (time.time() - steptime))
             time.sleep(max(
                 self.parameters['smooth_timestep']() - (time.time() - steptime),
                 0))
-            # time.sleep(self.parameters['smooth_timestep']())
             print_progress(step + 1, N_steps, begintime)
         self._update_cache()
 
@@ -141,7 +164,8 @@ class QDacSmooth(QDac):
         Convenience method to retrieve the fluxline voltages.
 
         Returns:
-            dict: The current/actual fluxline voltages.
+            dict: Keys are the channel names provided by the user in
+            channel_map, and the values are the currently set fluxline voltages.
         """
         return {ch_name: self.channels[chan].v()
                 for ch_name, chan in zip(self.channel_map.values(),
@@ -152,17 +176,19 @@ class QDacSmooth(QDac):
         Convenience method to retrieve the channel voltages.
 
         Returns:
-            dict: The current/actual channel voltages.
+            dict: Keys are the channel numbers (starting at 0), and the values
+            are the currently set fluxline voltages.
         """
         return {chan: self.channels[chan].v()
                 for chan in range(self.num_chans)}
 
     def set_mode(self, mode: str="vhigh_ihigh"):
         """
-        Method for setting the mode of the QDAC controlling the voltage and
-        current ranges. The voltage range can be either [-1.1, 1.1] or
-        [-10, 10] (vlow/vhigh). The current range also has a low and a high
-        version (ilow/ihigh).
+        Method for setting the mode of the QDAC. The mode controls the voltage
+        and the current ranges. The voltage range can be either set to
+        [-1.1, 1.1]V (vlow) or [-10, 10]V (vhigh). The current range can be
+        either set to [0, 1]uA (ilow) or [0, 100]uA (ihigh). Only the
+        combinations "vhigh_ihigh", "vhigh_ilow" and "vlow_ilow" are allowed.
 
         Args:
             mode (str): desired voltage and current mode (either "vhigh_ihigh",
@@ -182,13 +208,13 @@ class QDacSmooth(QDac):
                 return value
 
         if mode == "vhigh_ihigh":
-            set_mode = Mode.vhigh_ihigh
+            qdac_mode = Mode.vhigh_ihigh
         elif mode == "vhigh_ilow":
-            set_mode = Mode.vhigh_ilow
+            qdac_mode = Mode.vhigh_ilow
         elif mode == "vlow_ilow":
-            set_mode = Mode.vlow_ilow
+            qdac_mode = Mode.vlow_ilow
         else:
-            set_mode = Mode.vhigh_ihigh
+            qdac_mode = Mode.vhigh_ihigh
             log.warning(f"{mode} is not a valid mode. Using the default"
                             "vhigh_ihigh mode.")
 
@@ -198,25 +224,32 @@ class QDacSmooth(QDac):
         zero_volt_dict = {ch: 0.0 for ch in range(self.num_chans)}
         self.set_smooth(zero_volt_dict)
         for ch_number, ch_volt in original_volt_dict.items():
-            self.channels[ch_number].mode(set_mode)
+            self.channels[ch_number].mode(qdac_mode)
             original_volt_dict[ch_number] = _clipto(
                 ch_number, ch_volt,
-                self.vranges[ch_number+1][set_mode.value.v]['Min'],
-                self.vranges[ch_number+1][set_mode.value.v]['Max'])
+                self.vranges[ch_number+1][qdac_mode.value.v]['Min'],
+                self.vranges[ch_number+1][qdac_mode.value.v]['Max'])
         self.set_smooth(original_volt_dict)
 
     def _update_cache(self, *args, **kwargs):
+        # Extends _update_cache() in the qcodes QDevil_QDAC driver that ensures
+        # that the cache of the qcodes parameter "volt_{ch_name}" is updated.
+        # In turn, this ensures that methods like snapshot() get the correct
+        # values, as methods like these get the values from the cache.
+
         super()._update_cache(*args, **kwargs)
-        # the default value {} in the following line prevents a crash in __init__
+        # the default value {} in the following line prevents a crash in
+        # __init__
         for ch_number, ch_name in getattr(self, 'channel_map', {}).items():
             self.parameters[f"volt_{ch_name}"].get()
 
     def _set_voltage(self, chan: int, v_set: float) -> None:
+        # Extends _set_voltage() such that the cache of the qcodes parameter
+        # "volt_{ch_name}" is set correctly even if the user would use
+        # QDacSmooth.v(...) to set voltages - without this extension the cache
+        # of the qcodes parameter alias would not be updated.
+
         super()._set_voltage(chan, v_set)
         ch_name = self.channel_map.get(chan-1, None)
         if ch_name is not None:
             self.parameters[f"volt_{ch_name}"].cache.set(v_set)
-        else:
-            log.warning(f"Channel map doesn't contain {ch_name} (channel "
-                        f"number {chan}). Voltage of {ch_name} could not "
-                        f"be set to {v_set}.")
