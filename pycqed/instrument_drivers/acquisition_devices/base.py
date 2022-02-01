@@ -75,6 +75,7 @@ class AcquisitionDevice():
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
         self.timer = None
+        self.extra_data_callback = None
         if 'timeout' not in self.parameters:
             # The underlying qcodes driver has not created a parameter
             # timeout. In that case, we add the parameter here.
@@ -162,8 +163,10 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). No actions by default, can be overridden in child classes.
+        sweeps). By default, only removes the extra_data_callback. Can be
+        overridden in child classes to add further functionality.
         """
+        self.extra_data_callback = None
         self.timer = None
         pass
 
@@ -242,6 +245,26 @@ class AcquisitionDevice():
         """
         raise NotImplementedError(f'poll not implemented '
                                   f'for {self.__class__.__name__}')
+
+    def save_extra_data(self, dataset_name, data, column_names=None):
+        """Store additional data via self.extra_data_callback
+
+        This method calls self.extra_data_callback if it is not None. It is
+        expected that the callback function accepts the arguments described
+        in the docstring of MC.save_extra_data, see therein for details
+        about the args. The name of the acquisition device is passed
+        group_name.
+
+        Args:
+            dataset_name (str): The name of the dataset in which the data
+                should be stored.
+            data (np.array): the data to be stored
+            column_names (None or list of str): names of the columns of the
+                data array.
+        """
+        if self.extra_data_callback is not None:
+            self.extra_data_callback(self.name, dataset_name, data,
+                                     column_names=column_names)
 
     def start(self, **kw):
         """ Start the built-in AWG (if present).

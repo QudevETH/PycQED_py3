@@ -1688,6 +1688,53 @@ class MeasurementControl(Instrument):
         }
         return result_dict
 
+    def save_extra_data(self, group_name, dataset_name, data,
+                        column_names=None):
+        """Save further data in addition to the Data table
+
+        This can, e.g., be used to save raw data in cases where the data in
+        the Data table is processed in software, or data that is provided by
+        the acquisition instrument in addition to the main measurement data.
+        Note that the method can only be used during a run of MC, i.e.,
+        while self.data_object is open.
+
+        Note that this method is provided as a callback function to
+        self.detector_function.
+
+        Args:
+            group_name (str): Name of the subgroup inside experimental data
+                group. The subgroup is automatically created if it does
+                not exist.
+            dataset_name (str): The name of the dataset in which the data
+                should be stored. If the dataset exists already, the shape
+                of the new data must be compatible with the dimensions of
+                the existing dataset such that it can be appended in axis 0.
+                Note that the name can contain slashes indicating a
+                hierarchy of subgroups with only the part behind the last
+                slash interpreted as dataset name.
+            data (np.array): the data to be stored
+            column_names (None or list of str): names of the columns of the
+                data array. If this is not None and a new dataset is
+                created, the list is stored as an attribute column_names of
+                the new dataset.
+        """
+        data_group = self._get_experimentaldata_group()
+        if group_name in data_group:
+            group = data_group[group_name]
+        else:
+            group = data_group.create_group(group_name)
+        if dataset_name not in group:
+            dset = group.create_dataset(dataset_name, data=data,
+                                        maxshape=[None] * len(data.shape))
+            if column_names is not None:
+                dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
+        else:
+            dset = group[dataset_name]
+            # FIXME: we should check whether dimensions and column names
+            #  are the same
+            dset.resize(dset.shape[0] + data.shape[0], axis=0)
+            dset[-data.shape[0]:] = data
+
     def save_optimization_settings(self):
         '''
         Saves the parameters used for optimization
@@ -2222,6 +2269,7 @@ class MeasurementControl(Instrument):
                                                 wrapped_det_control)
         self.detector_function = detector_function
         self.set_detector_function_name(detector_function.name)
+        self.detector_function.extra_data_callback = self.save_extra_data
 
     def get_detector_function(self):
         return self.detector_function
