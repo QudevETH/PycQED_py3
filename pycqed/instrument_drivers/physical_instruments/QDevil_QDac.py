@@ -28,6 +28,12 @@ class QDacSmooth(QDac):
         QDacSmooth.volt_fluxline17()
         QDacSmooth.get_voltage(16)
         QDacSmooth.ch17.v()
+
+    Recommended ways to get/read the voltage from all fluxlines/channels (this
+    will give you a voltage dict with all fluxline voltages that can also be
+    directly passed into QDacSmooth.set_smooth()):
+        QDacSmooth.get_fluxline_voltages() (outputs {"fluxline1": 0.1, ...})
+        QDacSmooht.get_channel_voltages()  (outputs {0: 0.1, ...})
     """
 
     def __init__(self, name, port, channel_map):
