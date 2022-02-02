@@ -271,7 +271,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 correlations=correlations[uhf], data_type='timetrace',
                 **kw)
             for uhf in uhfs])
-    elif df_name == 'soft_spectrum_avg_det':
+    elif df_name == 'psd_avg_det':
         return det.MultiPollDetector([
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],

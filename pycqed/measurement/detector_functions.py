@@ -1290,23 +1290,13 @@ class ScopePollDetector(PollDetector):
         self.nr_shots = nr_shots
         # will be used in MC
         if self.data_type == 'spectrum':
-            self.acq_data_len_scaling = 1  # Here shots are soft averages in the driver (MC will expect 1 spectrum)
+            self.acq_data_len_scaling = 1  # Multiple shots aren't implemented for spectrum measurements
         elif self.data_type == 'timetrace':
             self.acq_data_len_scaling = self.nr_shots  # Normal number of shots (MC will expect that many timetraces)
 
     def prepare(self, sweep_points=None):
 
         self.nr_sweep_points = len(sweep_points)  # MC might rely on this to get the correct amount of data?
-
-        print(f'len(sweep_points) = {len(sweep_points)}')
-        print(f'self.channels = {self.channels}')
-        print(f'self.nr_sweep_points = {self.nr_sweep_points}')
-        # print(f'self.integration_length = {self.integration_length}')
-        print(f'self.nr_averages = {self.nr_averages}')
-        print(f'self.nr_shots * self.nr_averages = {self.nr_shots * self.nr_averages}')
-        print(f'self.data_type = {self.data_type}')
-        print(f'self.acq_data_len_scaling = {self.acq_data_len_scaling}')
-        # print(f'self._acq_length = {self.acq_dev._acq_length}')
 
         self.acq_dev.acquisition_initialize(
             channels=self.channels,

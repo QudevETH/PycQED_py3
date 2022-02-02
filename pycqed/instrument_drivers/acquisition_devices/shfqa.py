@@ -104,7 +104,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '
-                        f'{new_lo_freq/1e6:.6f} MHz. This does NOT'
+                        f'{new_lo_freq/1e6:.6f} MHz. This does NOT '
                         f'automatically set the IF!')
 
     def prepare_poll(self):
@@ -137,8 +137,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             log.warning(f'Unequal frequency spacing not supported, the measurement will return equally spaced values.')
         # Find closest allowed center frequency
         approx_center_freq = np.mean(requested_freqs)
-        id_min = (np.abs(np.array(self.allowed_lo_freqs()) - approx_center_freq)).argmin()
-        center_freq = self.allowed_lo_freqs()[id_min]
+        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) - approx_center_freq)).argmin()
+        center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
         if min_bandwidth > self.acq_sampling_rate:  # We'll measure with that sampling rate
@@ -207,7 +207,18 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         self._get_spectroscopy_node(i, "integration_length"),
                         self.convert_time_to_n_samples(self._acq_length))
             elif self._acq_mode == 'scope':
-
+                if self._acq_data_type == 'spectrum':
+                    nr_hard_avg = 1  # Should do the averages in software, as hardware not yet implemented
+                    # Fit as many traces as possible in a single SHF call
+                    num_traces_per_run = int(np.floor(self._acq_scope_memory / self._acq_n_results))
+                    num_points_per_run = num_traces_per_run * self._acq_n_results
+                    self.daq.setInt(f"/{self._serial}/scopes/0/length", num_points_per_run)
+                elif self._acq_data_type == 'timetrace':
+                    nr_hard_avg = self._acq_averages  # Can do all avg in hardware
+                    # Concatenation of traces in one run not supported for now (would need to think about ergodicity)
+                    self.daq.setInt(f"/{self._serial}/scopes/0/length", self._acq_n_results)
+                else:
+                    raise NotImplementedError
                 scope_channel = 0  # could use 4 scope channels in the SHF (is this firmware in the FPGA?)
                 input_select = {scope_channel: f"channel{i}_signal_input"}
                 num_segments = 1  # for segmented averaging (several triggers per time trace)
@@ -222,28 +233,22 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 else:
                     self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 0)
 
-                if self._acq_averages > 1:
+                if nr_hard_avg > 1:
                     self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 1)
                 else:
                     self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 0)
-                self.daq.setInt(
-                    f"/{self._serial}/scopes/0/averaging/count",
-                    self._acq_averages,
-                )
+                self.daq.setInt(f"/{self._serial}/scopes/0/averaging/count", nr_hard_avg)
+
                 self.daq.setInt(f"/{self._serial}/scopes/0/channels/*/enable", 0)
                 for scope_channel, acq_unit_path in input_select.items():
                     self.daq.setString(
                         f"/{self._serial}/scopes/0/channels/{scope_channel}/inputselect", acq_unit_path)
                     self.daq.setInt(f"/{self._serial}/scopes/0/channels/{scope_channel}/enable", 1)
-                # FIXME: Colin 220124
-                # Should combine several traces per acquisition shot (but how many would depend on the type of
-                # measurement, e.g. for repeatability reasons when measuring timetraces)
-                self.daq.setInt(f"/{self._serial}/scopes/0/length", self._acq_n_results)
                 self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay", trigger_delay)
-                # self.daq.setString(
-                #     f"/{self._serial}/scopes/0/trigger/channel",
-                #     trigger_input, #FIXME
-                # )
+                # Note: there is only one scope, so one could trigger it from a fixed port.
+                self.scope.trigger_source(f'channel{i}_trigger_input0')
+            else:
+                raise NotImplementedError
 
     def acquisition_finalize(self):
         for ch in self.qachannels:
@@ -373,41 +378,35 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'scope':
                 if not channels == [0, 1]:  # TODO: call from TWPA object with only one channel
                     raise ValueError()
-
-                timetraces = np.array([])
-
                 scope_channel = 0  # could use 4 scope channels in the SHF (is this firmware in the FPGA?)
                 path = f"/{self._serial}/scopes/0/channels/{scope_channel}/wave"
-                # Number of SHF calls = number of shots
-                # For timetraces that corresponds to the number of shots returned in the data
-                # For power spectrum, that corresponds to the soft averages after squaring
-                num_shots = int(self._acq_loop_cnt/self._acq_averages)
-                print(f'num_shots = {num_shots}')
-                for _ in range(num_shots):
-                    self._arm_scope()
-                    data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
-                    print(f'len(data) = {len(data)}')
-                    timetraces = np.concatenate((timetraces, data))  # This is a 1-D complex time trace
-                print(f'timetraces.shape = {timetraces.shape}')
-
                 if self._acq_data_type == 'spectrum':
-                    timetraces = timetraces.reshape(num_shots, self._acq_n_results)
+                    # The SHF acquires at full memory, then we get as many traces as possible from that
+                    # (this could be avoided e.g. if a few points only are needed, in case this slows down measuring)
+                    num_traces_per_run = int(np.floor(self._acq_scope_memory / self._acq_n_results))
+                    num_runs = int(np.ceil(self._acq_averages/num_traces_per_run))
+                    timetraces = np.array([])
+                    for _ in range(num_runs):
+                        self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
+                        data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                        timetraces = np.concatenate((timetraces, data))  # This is a 1-D complex time trace
+                    timetraces = timetraces[:self._acq_averages*self._acq_n_results]
+                    timetraces = np.reshape(timetraces, (self._acq_averages, self._acq_n_results))
                     v_peak = np.fft.fft(timetraces,
                                         norm="forward")  # norm by 1/num_samples_per_trace to get the amplitude
                     v_peak_rolled = np.roll(v_peak, int(self._acq_n_results / 2))
                     v_peak_squared = np.mean(np.abs(v_peak_rolled) ** 2, axis=0)
                     power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
-                    print(f'power_spectrum.shape = {power_spectrum.shape}')
-                    # acq_freqs = np.roll(np.fft.fftfreq(self._acq_n_results, 1 / self.acq_sampling_rate),
-                    #                     int(self._acq_n_results / 2))
-                    # acq_freqs = acq_freqs + self.qachannels[i].center_freq()
-                    # power_spectrum = power_spectrum[:len(self._acq_length)]
-                    # acq_freqs = acq_freqs[:len(self._acq_length)]
                     dataset.update({(i, 0): [power_spectrum]})
                     dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
                 elif self._acq_data_type == 'timetrace':
-                    dataset.update({(i, 0): [np.real(timetraces)]})
-                    dataset.update({(i, 1): [np.imag(timetraces)]})
+                    self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
+                    timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                    # There are no emulated repetitions in this case, so can directly send the data
+                    dataset.update({(i, 0): [np.real(timetrace)]})
+                    dataset.update({(i, 1): [np.imag(timetrace)]})
+                else:
+                    raise NotImplementedError
         return dataset
 
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
