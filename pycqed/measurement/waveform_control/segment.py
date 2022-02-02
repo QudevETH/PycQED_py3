@@ -705,8 +705,9 @@ class Segment:
                     name='trigger_pulse_{}'.format(i),
                     **kw)
                 i += 1
-                trig_pulse.algorithm_time(trigger_pulse_time -
-                                          0.25/self.pulsar.clock(ch))
+                trig_pulse.algorithm_time(trigger_pulse_time
+                                          + kw.get('pulse_delay', 0)
+                                          - 0.25/self.pulsar.clock(ch))
 
                 # Add trigger element and pulse to seg.elements
                 if trig_pulse.element_name in self.elements:
