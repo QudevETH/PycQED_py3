@@ -787,6 +787,7 @@ class MultiPollDetector(PollDetector):
         # to be used in MC.get_percdone()
         self.acq_data_len_scaling = \
             self.detectors[0].acq_data_len_scaling
+        self.detector_control = self.detectors[0].detector_control
 
         # currently only has support for classifier detector data
         self.correlated = kw.get('correlated', False)
@@ -802,7 +803,7 @@ class MultiPollDetector(PollDetector):
             self.value_units += ['']
 
     @Timer()
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points=None):
         """
         Calls the prepare method of each polling detector in self.detectors
         and defines self.progress_scaling to be used in poll_data to decide
@@ -812,6 +813,8 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        if self.detector_control == 'hard' and sweep_points is None:
+            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -845,6 +848,9 @@ class MultiPollDetector(PollDetector):
             data_processed = np.concatenate([data_processed, corr_data], axis=0)
 
         return data_processed
+
+    def acquire_data_point(self):
+        return self.get_values()
 
     def get_correlations_classif_det(self, data):
         """
