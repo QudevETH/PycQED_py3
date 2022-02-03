@@ -352,8 +352,13 @@ class AcquisitionDevice():
         equal to the number of samples that acquisition length converts to
         for this device (see convert_time_to_n_samples).
 
-        :param acquisition_length: duration of time trace acquisition in seconds
-        :return: array of sweep points
+        Args:
+            acquisition_length (float): duration of time trace acquisition in seconds
+            align_acq_granularity (bool): Whether the calculated number of
+                samples should account for acquisition length granularity by
+                shortening the length if needed (default: False).
+        Returns:
+            array of sweep points
         """
         if acquisition_length is None:
             acquisition_length = self._acq_length
