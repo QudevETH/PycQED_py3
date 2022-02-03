@@ -8174,6 +8174,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict, )
 
         if self.qb_names is None:
             # get all qubits from cal_points of first timetrace
@@ -8232,8 +8234,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                basis_labels = ["ge", "ef"] \
-                    if len(ana_params['timetraces'][qbn]) > 2 else ['ge']
+                n_labels = min(len(ana_params['timetraces'][qbn]) - 1, 2)
+                basis_labels = ["ge", "ef"][:n_labels]
 
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
@@ -8249,7 +8251,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                               for b in basis_labels])
 
             # orthonormalize if required
-            if self.get_param_value("orthonormalize", False):
+            if self.get_param_value("orthonormalize", False) and len(basis):
                 # We need to consider the integration weights as a vector of
                 # real numbers to ensure the Gram-Schmidt transformation of the
                 # weights leads to a linear transformation of the integrated
@@ -8264,7 +8266,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                                 for bs in basis_labels]
 
             # scale if required
-            if self.get_param_value('scale_weights', True):
+            if self.get_param_value('scale_weights', True) and len(basis):
                 k = np.amax([(np.max(np.abs(b.real)),
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
