@@ -266,18 +266,18 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         return det.MultiPollDetector([
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
-                used_channels=used_channels[uhf], nr_shots=nr_shots,
+                nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], data_type='timetrace',
+                data_type='timetrace',
                 **kw)
             for uhf in uhfs])
     elif df_name == 'psd_avg_det':
         return det.MultiPollDetector([
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
-                used_channels=used_channels[uhf], nr_shots=nr_shots,
+                nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                correlations=correlations[uhf], data_type='spectrum',
+                data_type='spectrum',
                 **kw)
             for uhf in uhfs])
 
