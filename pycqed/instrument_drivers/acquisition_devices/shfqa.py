@@ -123,14 +123,22 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                        averages=self._acq_averages)
         self._reset_acq_poll_inds()
 
-    def compute_allowed_n_points(self, n_points):  # Minimum allowed number of points measured in one run
-        n_points = int(np.ceil(n_points / self.acq_length_granularity)) * self.acq_length_granularity  # Pad
-        if n_points > self._acq_scope_memory:
-            raise ValueError(f'Measuring {self._acq_n_results} points at once is not allowed, ',
-                             f'the maximum is {self._acq_scope_memory}.')
-        return n_points
+    def get_sweep_points_spectrum(self, acquisition_length=None, lo_freq=0):
+        """
 
-    def compute_allowed_spectrum(self, requested_freqs):
+        For now this only considers acquiring at the normal sampling rate, and without e.g. sweeping the (internal) LO
+        """
+        if acquisition_length is None:
+            acquisition_length = self._acq_length
+        acq_n_results = self.convert_time_to_n_samples(acquisition_length)
+        freqs = np.roll(np.fft.fftfreq(acq_n_results, 1/self.acq_sampling_rate), int(acq_n_results / 2))
+        freqs = freqs + lo_freq
+        return freqs
+
+    def get_params_from_spectrum(self, requested_freqs):
+        """Convenience method for retrieving a center frequency and acquisition length needed to measure a spectrum
+
+        """
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range (center freq and bandwidth)
         diff_f = np.diff(requested_freqs)
@@ -146,18 +154,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             raise NotImplementedError('Spectrum wider than the bandwidth of the SHF is not yet implemented!')
         # Compute needed acq length
         max_delta_f = min(diff_f)  # We should measure to this precision or more precise
-        min_acq_length = 1 / max_delta_f
-        min_acq_n_results = np.ceil(min_acq_length * self.acq_sampling_rate)+1  # 1st point is t=0
-        acq_n_results = self.compute_allowed_n_points(min_acq_n_results)  # Take granularity into account
-        freqs = np.roll(np.fft.fftfreq(acq_n_results, 1/self.acq_sampling_rate), int(acq_n_results / 2))
-        freqs = freqs + center_freq
-        return freqs, center_freq
-
-    def compute_allowed_timetrace(self, requested_acq_len):
-        min_acq_n_results_minus_1 = np.ceil(requested_acq_len * self.acq_sampling_rate)  # This is n_points-1 (t=0)
-        acq_n_results = self.compute_allowed_n_points(min_acq_n_results_minus_1)  # Take granularity into account
-        times = np.linspace(0, min_acq_n_results_minus_1/self.acq_sampling_rate, acq_n_results)
-        return times
+        acq_length = 1 / max_delta_f
+        # Note that this minimum needed acq_length is not strictly correct currently, and should be further rounded up
+        # to really give at least this precision in frequency. This is because the hardware cannot exactly acquire
+        # for that duration.
+        return acq_length
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
@@ -206,14 +207,14 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     self.convert_time_to_n_samples(self._acq_length))
             elif self._acq_mode == 'scope' and self._acq_data_type == 'spectrum':
                 # Fit as many traces as possible in a single SHF call
-                num_traces_per_run = int(np.floor(self._acq_scope_memory / self._acq_n_results))
+                num_points_per_run = self.convert_time_to_n_samples(self._acq_length)
+                num_traces_per_run = int(np.floor(self._acq_scope_memory / num_points_per_run))
                 self._initialize_scope(acq_unit=i, nr_hard_avg=1,  # should avg in software, (hard avg not implemented)
-                                       num_points_per_run=num_traces_per_run * self._acq_n_results)
+                                       num_points_per_run=num_traces_per_run * num_points_per_run)
             elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
                 # Concatenation of traces in one run not supported for now (would need to think about ergodicity)
-                self.daq.setInt(f"/{self._serial}/scopes/0/length", self._acq_n_results)
                 self._initialize_scope(acq_unit=i, nr_hard_avg=self._acq_averages,
-                                       num_points_per_run=self._acq_n_results)
+                                       num_points_per_run=self.convert_time_to_n_samples(self._acq_length))
             else:
                 raise NotImplementedError
 
@@ -372,29 +373,33 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'scope' and self._acq_data_type == 'spectrum':
                 if not channels == [0, 1]:  # TODO: call from TWPA object with only one channel
                     raise ValueError()
-                path = f"/{self._serial}/scopes/0/channels/{0}/wave"  # could use 4 scope channels in the SHF
+                path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
                 # The SHF acquires at full memory, then we get as many traces as possible from that
                 # (this could be avoided e.g. if a few points only are needed, in case this slows down measuring)
-                num_traces_per_run = int(np.floor(self._acq_scope_memory / self._acq_n_results))
+                num_points_per_run = self.convert_time_to_n_samples(self._acq_length)
+                num_traces_per_run = int(np.floor(self._acq_scope_memory/num_points_per_run))
                 num_runs = int(np.ceil(self._acq_averages/num_traces_per_run))
+                if self._acq_n_results != num_points_per_run:
+                    raise ValueError("This driver currently makes the simplest assumption that the number of " +
+                                     "sweep points (number of points in the spectrum) is the same as the length " +
+                                     "of the timetraces (to simply FFT time->freq). To measure a different spectrum " +
+                                     "e.g. if you need LO sweeping or downsampling, please extend this driver.")
                 timetraces = np.array([])
                 for _ in range(num_runs):
                     self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
                     data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                     timetraces = np.concatenate((timetraces, data))  # This is a 1-D complex time trace
-                timetraces = timetraces[:self._acq_averages*self._acq_n_results]
-                timetraces = np.reshape(timetraces, (self._acq_averages, self._acq_n_results))
+                timetraces = timetraces[:self._acq_averages*num_points_per_run]
+                timetraces = np.reshape(timetraces, (self._acq_averages, num_points_per_run))
                 v_peak = np.fft.fft(timetraces,
                                     norm="forward")  # norm by 1/num_samples_per_trace to get the amplitude
-                v_peak_rolled = np.roll(v_peak, int(self._acq_n_results / 2))
+                v_peak_rolled = np.roll(v_peak, int(num_points_per_run / 2))
                 v_peak_squared = np.mean(np.abs(v_peak_rolled) ** 2, axis=0)
                 power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
                 dataset.update({(i, 0): [power_spectrum]})
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
-                if not channels == [0, 1]:  # TODO: call from TWPA object with only one channel
-                    raise ValueError()
-                path = f"/{self._serial}/scopes/0/channels/{0}/wave"  # could use 4 scope channels in the SHF
+                path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
                 self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
                 timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                 # There are no emulated repetitions in this case, so can directly send the data

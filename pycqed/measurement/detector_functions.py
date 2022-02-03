@@ -1288,11 +1288,9 @@ class ScopePollDetector(PollDetector):
                  acq_dev,
                  AWG,
                  channels,
-                 used_channels,
                  nr_shots,
                  integration_length,
                  nr_averages,
-                 correlations,
                  data_type,
                  **kw):
         super().__init__(acq_dev=acq_dev, detectors=None, **kw)
@@ -1313,10 +1311,16 @@ class ScopePollDetector(PollDetector):
     def prepare(self, sweep_points=None):
 
         self.nr_sweep_points = len(sweep_points)  # MC might rely on this to get the correct amount of data?
+        if self.data_type == 'spectrum':
+            n_results = self.nr_sweep_points  # Number of points of the spectrum to be returned
+        elif self.data_type == 'timetrace':
+            n_results = 1  # Meaning 1 timetrace. Could be extended e.g. if hardware allows TV-mode avg of timetraces
+        else:
+            raise ValueError
 
         self.acq_dev.acquisition_initialize(
             channels=self.channels,
-            n_results=self.nr_sweep_points,
+            n_results=n_results,
             acquisition_length=self.integration_length,
             averages=self.nr_averages,
             loop_cnt=self.nr_shots * self.nr_averages,
