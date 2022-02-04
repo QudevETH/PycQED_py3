@@ -342,7 +342,7 @@ class AcquisitionDevice():
         """
         return n_samples / self.acq_sampling_rate
 
-    def get_sweep_points_time_trace(self, acquisition_length=None, align_acq_granularity=True):
+    def get_sweep_points_time_trace(self, acquisition_length=None, align_acq_granularity=False):
         """
         Get the measurement sweep points expected by the framework for a
         time trace acquisition with the UHFQA.
