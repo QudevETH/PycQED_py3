@@ -342,10 +342,11 @@ class AcquisitionDevice():
         """
         return n_samples / self.acq_sampling_rate
 
-    def get_sweep_points_time_trace(self, acquisition_length=None, align_acq_granularity=False):
+    def get_sweep_points_time_trace(self, acquisition_length=None,
+                                    align_acq_granularity=False):
         """
         Get the measurement sweep points expected by the framework for a
-        time trace acquisition with the UHFQA.
+        time trace acquisition with the acquisition device.
 
         The sweep points array will contain time points between 0 and
         acquisition_length. The number of sweep points in the array will be
@@ -353,7 +354,8 @@ class AcquisitionDevice():
         for this device (see convert_time_to_n_samples).
 
         Args:
-            acquisition_length (float): duration of time trace acquisition in seconds
+            acquisition_length (float): duration of time trace acquisition in
+                seconds
             align_acq_granularity (bool): Whether the calculated number of
                 samples should account for acquisition length granularity by
                 shortening the length if needed (default: False).
@@ -362,7 +364,8 @@ class AcquisitionDevice():
         """
         if acquisition_length is None:
             acquisition_length = self._acq_length
-        npoints = self.convert_time_to_n_samples(acquisition_length, align_acq_granularity)
+        npoints = self.convert_time_to_n_samples(acquisition_length,
+                                                 align_acq_granularity)
         return np.linspace(0, acquisition_length, npoints, endpoint=False)
 
     def acquisition_set_weights(self, channels, **kw):
