@@ -7,6 +7,8 @@ from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
 import logging
+import json
+import time
 log = logging.getLogger(__name__)
 
 
@@ -269,8 +271,14 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             return
         qachannel = self.qachannels[acq_unit]
         # This is now known and can be replaced in the seqc code
-        awg_program = awg_program.replace(
-            '{loop_count}', f'{self._acq_loop_cnt}')
+        if (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
+            # FIXME: this ensures that some wave is still played if the generator starts before the scope
+            # this is until we can trigger the generator from the scope
+            awg_program = awg_program.replace(
+                '{loop_count}', f'{2**20}')
+        else:
+            awg_program = awg_program.replace(
+                '{loop_count}', f'{self._acq_loop_cnt}')
         qachannel.generator.set_sequence_params(
             sequence_type="Custom", program=awg_program)
         qachannel.generator.compile()
@@ -373,7 +381,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'scope' and self._acq_data_type == 'spectrum':
                 if not channels == [0, 1]:  # TODO: call from TWPA object with only one channel
                     raise ValueError()
-                path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
                 # The SHF acquires at full memory, then we get as many traces as possible from that
                 # (this could be avoided e.g. if a few points only are needed, in case this slows down measuring)
                 num_points_per_run = self.convert_time_to_n_samples(self._acq_length)
@@ -386,7 +393,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                      "e.g. if you need LO sweeping or downsampling, please extend this driver.")
                 timetraces = np.array([])
                 for _ in range(num_runs):
-                    self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
+                    self._arm_scope()
+                    # FIXME this is blocking, to get enough data to average in the driver
+                    # (not the usual behaviour of poll)
+                    self._controller._assert_node_value(f"/{self._serial}/SCOPES/0/ENABLE", 0, timeout=self.timeout())
+                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
                     data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                     timetraces = np.concatenate((timetraces, data))  # This is a 1-D complex time trace
                 timetraces = timetraces[:self._acq_averages*num_points_per_run]
@@ -399,12 +410,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 dataset.update({(i, 0): [power_spectrum]})
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
-                path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
-                self._arm_scope()  # FIXME: this doesn't prevent receiving a copy of the last data if no trig
-                timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
-                # There are no emulated repetitions in this case, so can directly send the data
-                dataset.update({(i, 0): [np.real(timetrace)]})
-                dataset.update({(i, 1): [np.imag(timetrace)]})
+
+                self._arm_scope()
+                if self.daq.getInt(f"/{self._serial}/SCOPES/0/ENABLE")==0:
+                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
+                    timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                    # print(f"timetrace.shape = {timetrace.shape}")
+                    # print(f"timetrace = {timetrace}")
+                    # There are no emulated repetitions in this case, so can directly send the data
+                    dataset.update({(i, 0): [np.real(timetrace)]})
+                    dataset.update({(i, 1): [np.imag(timetrace)]})
             else:
                 raise NotImplementedError
         return dataset
@@ -451,3 +466,24 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             data_type=data_type, acquisition_length=acquisition_length)
         properties['scaling_factor'] = 1 # Set separately in poll()
         return properties
+
+    def snapshot(self, update=False, detailed=False):
+        # Extends the base method to request all possible details from the data server if necessary.
+        # Would that work similarly for any other ZI instrument?
+        if detailed==False:
+            return super().snapshot(update)
+        else:  # update is not used in this case
+            nodes = json.loads(self.daq.listNodesJSON('/' + self.devname))
+            shf_settings = {k: self.daq.get(k, settingsonly=False, flat=True) for k in nodes}
+            # Remove timestamp data to help diffing
+            for key, s in shf_settings.items():
+                for same_key in list(s.keys()):  # s is a dict that contains a single key, the same as in shf_settings
+                    try:
+                        s[same_key].pop('timestamp', None)
+                    except:
+                        try:
+                            for item in s[same_key]:
+                                item.pop('timestamp', None)
+                        except:  # If impossible to remove, just leave that in the output
+                            pass
+            return shf_settings
