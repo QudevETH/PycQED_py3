@@ -1034,7 +1034,7 @@ def measure_fluxline_crosstalk(
         target_fluxpulse_length=500e-9, crosstalk_fluxpulse_length=None,
         skip_qb_freq_fits=False, n_cal_points_per_state=2,
         cal_states='auto', prep_params=None, label=None, upload=True,
-        analyze=True):
+        analyze=True, delegate_plotting=True):
     """
     Applies a flux pulse on the target qubit with various amplitudes.
     Measure the phase shift due to these pulses on the crosstalk qubits which
@@ -1158,6 +1158,7 @@ def measure_fluxline_crosstalk(
             qb_names=crosstalk_qubits_names, options_dict={
                 'TwoD': True,
                 'skip_qb_freq_fits': skip_qb_freq_fits,
+                'delegate_plotting': delegate_plotting,
             })
 
 
