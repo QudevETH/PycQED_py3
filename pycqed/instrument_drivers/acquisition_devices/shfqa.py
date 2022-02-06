@@ -44,7 +44,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     acq_Q_sign = -1 # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'], #FIXME data types unused
-                     # Scope is distinct from avg in the UHF, not here. For compatibility, we allow this mode here.
+                     # Scope is distinct from avg in the UHF, not here. For
+                     # compatibility, we allow this mode here.
                      'scope': ['spectrum', 'timetrace', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
@@ -113,53 +114,71 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def prepare_poll(self):
         super().prepare_poll()
         for i in self._acq_units_used:
-            # Readout mode outputs programmed waveforms, and integrates
-            # against different custom weights for each integration channel
-            if self._acq_units_modes[i] == 'readout':
+            if self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[i] == 'readout':
+                # Readout mode outputs programmed waveforms, and integrates
+                # against different custom weights for each integration channel
                 self.qachannels[i].readout.arm(length=self._acq_n_results,
                                                averages=self._acq_averages)
-            # Spectroscopy mode outputs a sine wave at a given frequency
-            # and integrates against this same signal only
-            else:  # spectroscopy
+            elif self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[i] == 'spectroscopy':
+                # Spectroscopy mode outputs a sine wave at a given frequency
+                # and integrates against this same signal only
                 self._arm_spectroscopy(i, length=self._acq_n_results,
                                        averages=self._acq_averages)
+            elif self._acq_mode == 'scope'\
+                    and self._acq_data_type == 'spectrum':
+                pass  # FIXME currently done in poll
+            elif (self._acq_mode == 'scope'
+                  and self._acq_data_type == 'timetrace')\
+                    or self._acq_mode == 'avg':
+                # FIXME should this set the length and avg number?
+                self._arm_scope()
         self._reset_acq_poll_inds()
 
     def get_sweep_points_spectrum(self, acquisition_length=None, lo_freq=0):
         """
 
-        For now this only considers acquiring at the normal sampling rate, and without e.g. sweeping the (internal) LO
+        For now this only considers acquiring at the normal sampling rate, and
+        without e.g. sweeping the (internal) LO
         """
         if acquisition_length is None:
             acquisition_length = self._acq_length
         acq_n_results = self.convert_time_to_n_samples(acquisition_length)
-        freqs = np.roll(np.fft.fftfreq(acq_n_results, 1/self.acq_sampling_rate), int(acq_n_results / 2))
+        freqs = np.roll(np.fft.fftfreq(acq_n_results, 1/self.acq_sampling_rate),
+                        int(acq_n_results / 2))
         freqs = freqs + lo_freq
         return freqs
 
     def get_params_from_spectrum(self, requested_freqs):
-        """Convenience method for retrieving a center frequency and acquisition length needed to measure a spectrum
+        """Convenience method for retrieving a center frequency and acquisition
+        length needed to measure a spectrum
 
         """
         # For rounding reasons, we can't measure exactly on these frequencies.
-        # Here we extract the frequency spacing and the frequency range (center freq and bandwidth)
+        # Here we extract the frequency spacing and the frequency range
+        # (center freq and bandwidth)
         diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0]<1):  # SP not equally spaced (arbitrarily by < 1 Hz)
-            log.warning(f'Unequal frequency spacing not supported, the measurement will return equally spaced values.')
+        if not all(diff_f-diff_f[0]<1):  # not equally spaced (arbitrary 1 Hz)
+            log.warning(f'Unequal frequency spacing not supported, '
+                        f'the measurement will return equally spaced values.')
         # Find closest allowed center frequency
         approx_center_freq = np.mean(requested_freqs)
-        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) - approx_center_freq)).argmin()
+        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+                             approx_center_freq)).argmin()
         center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
-        if min_bandwidth > self.acq_sampling_rate:  # We'll measure with that sampling rate
-            raise NotImplementedError('Spectrum wider than the bandwidth of the SHF is not yet implemented!')
+        if min_bandwidth > self.acq_sampling_rate:
+            raise NotImplementedError('Spectrum wider than the bandwidth of '
+                                      'the SHF is not yet implemented!')
         # Compute needed acq length
-        max_delta_f = min(diff_f)  # We should measure to this precision or more precise
+        max_delta_f = min(diff_f)  # Should measure at least to this precision
         acq_length = 1 / max_delta_f
-        # Note that this minimum needed acq_length is not strictly correct currently, and should be further rounded up
-        # to really give at least this precision in frequency. This is because the hardware cannot exactly acquire
-        # for that duration.
+        # Note that this minimum needed acq_length is not strictly correct
+        # currently, and should be further rounded up to really give at least
+        # this precision in frequency. This is because the hardware cannot
+        # exactly acquire for that duration.
         return acq_length
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
@@ -191,8 +210,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             if self._acq_loop_cnts_last[i] != loop_cnt:
                 self._program_awg(i)  # reprogramm this acq unit
                 self._acq_loop_cnts_last[i] = loop_cnt
-            # TODO: should probably decide actions based on the data type, not also on the acq unit physical mode
-            if self._acq_mode == 'int_avg' and self._acq_units_modes[i] == 'readout':
+            # TODO: should probably decide actions based on the data type, not
+            #  also on the acq unit physical mode
+            if self._acq_mode == 'int_avg'\
+                    and self._acq_units_modes[i] == 'readout':
                 # Disable rerun; the AWG seqc program defines the number of
                 # iterations in the loop
                 self.qachannels[i].generator.single(1)
@@ -202,34 +223,48 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 if self._acq_length is not None:
                     self.qachannels[i].readout.integration_length(
                         self.convert_time_to_n_samples(self._acq_length))
-            elif self._acq_mode == 'int_avg' and self._acq_units_modes[i] == 'spectroscopy':
+            elif self._acq_mode == 'int_avg'\
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 self.qachannels[i].sweeper.oscillator_gain(1.0)
                 self.daq.setInt(
                     self._get_spectroscopy_node(i, "integration_length"),
                     self.convert_time_to_n_samples(self._acq_length))
-            elif self._acq_mode == 'scope' and self._acq_data_type == 'spectrum':
+            elif self._acq_mode == 'scope'\
+                    and self._acq_data_type == 'spectrum':
                 # Fit as many traces as possible in a single SHF call
-                num_points_per_run = self.convert_time_to_n_samples(self._acq_length)
-                num_traces_per_run = int(np.floor(self._acq_scope_memory / num_points_per_run))
-                self._initialize_scope(acq_unit=i, nr_hard_avg=1,  # should avg in software, (hard avg not implemented)
-                                       num_points_per_run=num_traces_per_run * num_points_per_run)
-            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
-                # Concatenation of traces in one run not supported for now (would need to think about ergodicity)
-                self._initialize_scope(acq_unit=i, nr_hard_avg=self._acq_averages,
-                                       num_points_per_run=self.convert_time_to_n_samples(self._acq_length))
+                num_points_per_trace = self.convert_time_to_n_samples(
+                    self._acq_length)
+                num_traces_per_run = int(np.floor(self._acq_scope_memory /
+                                                  num_points_per_trace))
+                num_points_per_run = num_traces_per_run * num_points_per_trace
+                # should avg in software, (hard avg not implemented)
+                self._initialize_scope(acq_unit=i, nr_hard_avg=1,
+                                       num_points_per_run=num_points_per_run)
+            elif (self._acq_mode == 'scope'
+                  and self._acq_data_type == 'timetrace')\
+                    or self._acq_mode == 'avg':
+                # Concatenation of traces in one run not supported for now
+                # (would need to think about ergodicity)
+                num_points_per_run = self.convert_time_to_n_samples(
+                    self._acq_length)
+                self._initialize_scope(acq_unit=i,
+                                       nr_hard_avg=self._acq_averages,
+                                       num_points_per_run=num_points_per_run)
             else:
                 raise NotImplementedError
 
     # Used in acquisition_initialize in modes that use the scope.
     # This might be replaceable by a couple of lines from the qcodes driver
     def _initialize_scope(self, acq_unit, nr_hard_avg, num_points_per_run):
-        num_segments = 1  # for segmented averaging (several triggers per time trace)
-        # compensation for the delay between generator output and input of the integration unit
+        num_segments = 1  # for segmented averaging (several triggers per time
+        # trace) compensation for the delay between generator output and input
+        # of the integration unit
         trigger_delay = 200e-9
         self.qachannels[acq_unit].mode('readout')
         self.qachannels[acq_unit].input('on')
         self.qachannels[acq_unit].output('on')
-        self.daq.setInt(f"/{self._serial}/scopes/0/segments/count", num_segments)
+        self.daq.setInt(f"/{self._serial}/scopes/0/segments/count",
+                        num_segments)
         if num_segments > 1:
             self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 1)
         else:
@@ -238,15 +273,22 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 1)
         else:
             self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 0)
-        self.daq.setInt(f"/{self._serial}/scopes/0/averaging/count", nr_hard_avg)
-        self.daq.setInt(f"/{self._serial}/scopes/0/length", num_points_per_run)
+        self.daq.setInt(f"/{self._serial}/scopes/0/averaging/count",
+                        nr_hard_avg)
+        self.daq.setInt(f"/{self._serial}/scopes/0/length",
+                        num_points_per_run)
 
         self.daq.setInt(f"/{self._serial}/scopes/0/channels/*/enable", 0)
         input_select = {acq_unit: f"channel{acq_unit}_signal_input"}
-        for scope_channel, acq_unit_path in input_select.items():
-            self.daq.setString(f"/{self._serial}/scopes/0/channels/{scope_channel}/inputselect", acq_unit_path)
-            self.daq.setInt(f"/{self._serial}/scopes/0/channels/{scope_channel}/enable", 1)
-        self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay", trigger_delay)
+        for scope_ch, acq_unit_path in input_select.items():
+            self.daq.setString(
+                f"/{self._serial}/scopes/0/channels/{scope_ch}/inputselect",
+                acq_unit_path)
+            self.daq.setInt(
+                f"/{self._serial}/scopes/0/channels/{scope_ch}/enable",
+                1)
+        self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay",
+                           trigger_delay)
 
     def acquisition_finalize(self):
         for ch in self.qachannels:
@@ -271,14 +313,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             return
         qachannel = self.qachannels[acq_unit]
         # This is now known and can be replaced in the seqc code
-        if (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
-            # FIXME: this ensures that some wave is still played if the generator starts before the scope
-            # this is until we can trigger the generator from the scope
-            awg_program = awg_program.replace(
-                '{loop_count}', f'{2**20}')
-        else:
-            awg_program = awg_program.replace(
-                '{loop_count}', f'{self._acq_loop_cnt}')
+        awg_program = awg_program.replace(
+            '{loop_count}', f'{self._acq_loop_cnt}')
         qachannel.generator.set_sequence_params(
             sequence_type="Custom", program=awg_program)
         qachannel.generator.compile()
@@ -314,36 +350,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 1)
         self.daq.sync()
 
-    def _arm_scope(self):  # FIXME: useful? where to use this (prepare_poll or poll, if soft avg in poll)?
-        def assert_node_changes_to_expected_value(daq, node, expected_value, sleep_time=0.005,  # TODO in qcodes
-                                                  max_repetitions=200):
-            """Polls a node until it has the the expected value. If the node didn't change to the expected
-            value within the maximum number of polls an assertion error is issued.
-            Arguments:
-              daq (instance of ziDAQServer): A ziPython API session.
-              node (str): path of the node that should change to expected value
-              expected_value (int | float | str): value the node is expected to change to
-              sleep_time (float): time in seconds to wait between requesting th value
-              max_repetitions (int): max. number of loops we wait for the node to change
-
-            Returns:
-
-              None
-            """
-            daq.sync()
-            import time
-            for _ in range(max_repetitions):
-                readback_value = daq.getInt(node)
-                if readback_value == expected_value:
-                    break
-                time.sleep(sleep_time)
-            assert readback_value == expected_value, (
-                "Node '{}' did not return {} (but returned {}) within {} sec."
-            ).format(node, expected_value, readback_value, max_repetitions * sleep_time)
+    def _arm_scope(self):
         path = f"/{self._serial}/scopes/0/enable"
         if self.daq.getInt(path) == 1:
             self.daq.setInt(path, 0)
-            assert_node_changes_to_expected_value(self.daq, path, 0)
+            self._controller._assert_node_value(path, 0, timeout=self.timeout())
         self.daq.syncSetInt(path, 1)
 
     def poll(self, *args, **kwargs):
@@ -351,11 +362,12 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # at each run, and then returns only the newer data to match the
         # normal behaviour of poll. One could implement an actual poll after
         # ZI has improved the drivers, if that turns out to be a bottleneck.
-        # sqrt(2) values are because the SHF seems to return integrated RMS voltages.
+        # sqrt(2) are because the SHF seems to return integrated RMS voltages.
         dataset = {}
         for i in self._acq_units_used:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            if self._acq_mode == 'int_avg' and self._acq_units_modes[i] == 'readout':
+            if self._acq_mode == 'int_avg'\
+                    and self._acq_units_modes[i] == 'readout':
                 res = self.qachannels[i].readout.read(integrations=channels,
                                                       blocking=False)
                 # In readout mode the data isn't rescaled yet in the SHF
@@ -367,7 +379,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                * scaling_factor]
                      for n, ch in enumerate(channels)})
                 self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
-            elif self._acq_mode == 'int_avg' and self._acq_units_modes[i] == 'spectroscopy':
+            elif self._acq_mode == 'int_avg'\
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 progress = self.daq.getInt(
                     self._get_spectroscopy_node(i, "acquired"))
                 if progress == self._acq_averages:
@@ -377,47 +390,57 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     data = [[np.real(a), np.imag(a)] for a in data]
                     scaling_factor = np.sqrt(2)
                     dataset.update({(i, ch): [a[n % 2] * scaling_factor
-                                              for a in data] for n, ch in enumerate(channels)})
-            elif self._acq_mode == 'scope' and self._acq_data_type == 'spectrum':
-                if not channels == [0, 1]:  # TODO: call from TWPA object with only one channel
+                                              for a in data]
+                                    for n, ch in enumerate(channels)})
+            elif self._acq_mode == 'scope'\
+                    and self._acq_data_type == 'spectrum':
+                if not channels == [0, 1]:  # TODO: one channel in TWPA object
                     raise ValueError()
-                # The SHF acquires at full memory, then we get as many traces as possible from that
-                # (this could be avoided e.g. if a few points only are needed, in case this slows down measuring)
-                num_points_per_run = self.convert_time_to_n_samples(self._acq_length)
-                num_traces_per_run = int(np.floor(self._acq_scope_memory/num_points_per_run))
+                # The SHF acquires at full memory, then we get as many traces
+                # as possible from that (this could be avoided e.g. if a few
+                # points only are needed, in case this slows down measuring)
+                num_points_per_run = self.convert_time_to_n_samples(
+                    self._acq_length)
+                num_traces_per_run = int(np.floor(self._acq_scope_memory /
+                                                  num_points_per_run))
                 num_runs = int(np.ceil(self._acq_averages/num_traces_per_run))
                 if self._acq_n_results != num_points_per_run:
-                    raise ValueError("This driver currently makes the simplest assumption that the number of " +
-                                     "sweep points (number of points in the spectrum) is the same as the length " +
-                                     "of the timetraces (to simply FFT time->freq). To measure a different spectrum " +
-                                     "e.g. if you need LO sweeping or downsampling, please extend this driver.")
+                    raise ValueError("This driver for now makes the simplest" +
+                                     "assumption that the number of sweep" +
+                                     "points (number of points in the" +
+                                     "spectrum) is the same as the length " +
+                                     "of the timetraces (to simply do FFT"
+                                     "time->freq). To measure a different"
+                                     "spectrum e.g. if you need LO sweeping"
+                                     "or downsampling, please extend this.")
                 timetraces = np.array([])
                 for _ in range(num_runs):
                     self._arm_scope()
-                    # FIXME this is blocking, to get enough data to average in the driver
-                    # (not the usual behaviour of poll)
-                    self._controller._assert_node_value(f"/{self._serial}/SCOPES/0/ENABLE", 0, timeout=self.timeout())
-                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
+                    # FIXME this is blocking, to get enough data to average
+                    #  in the driver (not the usual behaviour of poll)
+                    self._controller._assert_node_value(
+                        f"/{self._serial}/scopes/0/enable", 0,
+                        timeout=self.timeout())
+                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"
                     data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
-                    timetraces = np.concatenate((timetraces, data))  # This is a 1-D complex time trace
+                    # This is a 1-D complex time trace
+                    timetraces = np.concatenate((timetraces, data))
                 timetraces = timetraces[:self._acq_averages*num_points_per_run]
-                timetraces = np.reshape(timetraces, (self._acq_averages, num_points_per_run))
+                timetraces = np.reshape(timetraces, (self._acq_averages,
+                                                     num_points_per_run))
+                # 'norm' by 1/num_samples_per_trace to get the amplitude
                 v_peak = np.fft.fft(timetraces,
-                                    norm="forward")  # norm by 1/num_samples_per_trace to get the amplitude
+                                    norm="forward")
                 v_peak_rolled = np.roll(v_peak, int(num_points_per_run / 2))
                 v_peak_squared = np.mean(np.abs(v_peak_rolled) ** 2, axis=0)
                 power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
                 dataset.update({(i, 0): [power_spectrum]})
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
-            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') or self._acq_mode == 'avg':
-
-                self._arm_scope()
-                if self.daq.getInt(f"/{self._serial}/SCOPES/0/ENABLE")==0:
-                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"  # could use 4 scope channels in the SHF
+            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace')\
+                    or self._acq_mode == 'avg':
+                if self.daq.getInt(f"/{self._serial}/scopes/0/enable") == 0:
+                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"
                     timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
-                    # print(f"timetrace.shape = {timetrace.shape}")
-                    # print(f"timetrace = {timetrace}")
-                    # There are no emulated repetitions in this case, so can directly send the data
                     dataset.update({(i, 0): [np.real(timetrace)]})
                     dataset.update({(i, 1): [np.imag(timetrace)]})
             else:
