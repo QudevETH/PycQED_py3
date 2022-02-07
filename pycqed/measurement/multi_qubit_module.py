@@ -223,6 +223,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 **kw)
             for uhf in uhfs])
+    elif df_name == 'int_avg_det_spec':
+        # FIXME AWG=AWG unnecessarily slow, should find a way to only
+        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        return det.MultiPollDetector([
+            det.IntegratingAveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                real_imag=False, single_int_avg=True, **kw)
+            for uhf in uhfs])
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
@@ -537,8 +546,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         acq_weights_basis (list): shortcut for analysis parameter.
             list of basis vectors used for computing the weights.
             (see Timetrace Analysis). e.g. ["ge", "gf"] yields basis vectors e - g
-            and f - g. If None, defaults to  ["ge", "gf"] when more than 2 traces are
-            passed to the analysis and to ['ge'] if 2 traces are measured.
+            and f - g. If None, defaults to  ["ge", "ef"] when more than 2
+            traces are passed to the analysis and to ['ge'] if 2 traces are
+            measured.
         orthonormalize (bool): shortcut for analysis parameter. Whether or not to
             orthonormalize the optimal weights (see MultiQutrit Timetrace Analysis)
         update (bool): update weights
