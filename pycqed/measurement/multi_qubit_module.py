@@ -558,6 +558,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         upload: upload waveforms to AWG
         acq_length: length of timetrace to record
         exp_metadata: experimental metadata
+        analyze (bool): whether analysis should be run (default: True)
+        analysis_kwargs (dict or None): keyword arguments for the analysis class
         acq_weights_basis (list): shortcut for analysis parameter.
             list of basis vectors used for computing the weights.
             (see Timetrace Analysis). e.g. ["ge", "gf"] yields basis vectors e - g
@@ -567,10 +569,13 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         orthonormalize (bool): shortcut for analysis parameter. Whether or not to
             orthonormalize the optimal weights (see MultiQutrit Timetrace Analysis)
         update (bool): update weights
-
+        measure (bool): whether the measurement should be run (default: True)
+        operation_dict (dict or None): the operations dictionary of the (device
+            and) qubits. Will be obtained from the dev object if it is None
+            (default).
 
     Returns:
-
+        The analysis object if analze is True, and None otherwise.
     """
     # check whether timetraces can be compute simultaneously
     qubits = dev.get_qubits(qubits)
