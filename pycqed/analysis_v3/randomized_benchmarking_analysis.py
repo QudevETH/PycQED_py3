@@ -833,13 +833,13 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
         default_value='gg' if 'corr' in mobjn else 'e', **params)
     classified_msmt = any([v == 3 for v in [len(chs) for chs in movnm.values()]])
     lw = plot_mod.get_default_plot_params(
-        set=False, return_full_rc_params=True)['lines.linewidth']
+        set_params=False, return_full_rc_params=True)['lines.linewidth']
     ms = plot_mod.get_default_plot_params(
-        set=False, return_full_rc_params=True)['lines.markersize']
+        set_params=False, return_full_rc_params=True)['lines.markersize']
     llsp = plot_mod.get_default_plot_params(
-        set=False, return_full_rc_params=True)['legend.labelspacing']
+        set_params=False, return_full_rc_params=True)['legend.labelspacing']
     lcsp = plot_mod.get_default_plot_params(
-        set=False, return_full_rc_params=True)['legend.columnspacing']
+        set_params=False, return_full_rc_params=True)['legend.columnspacing']
 
     ylabel = hlp_mod.pop_param('ylabel', data_dict, node_params=params)
     if ylabel is None:
@@ -1086,7 +1086,7 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
             plot_dicts_updated[f'{pd_name} IRB'].update(updated_vals)
 
     plotsize = plot_mod.get_default_plot_params(
-        set=False, return_full_rc_params=True)['figure.figsize']
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 3*plotsize[1])
     last_pd = plot_dicts_updated[list(plot_dicts_updated)[-1]]
     last_pd.update({'legend_bbox_to_anchor': (0.35, 0.08),
@@ -1099,115 +1099,6 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
     if do_plotting:
         getattr(plot_mod, 'plot')(data_dict, keys_in=list(plot_dicts),
                                   **params)
-
-# def prepare_cz_irb_plot(data_dict_rb, data_dict_irb, keys_in, **params):
-#     plot_dicts = OrderedDict()
-#     do_plotting = params.pop('do_plotting', False)
-#     textstr = ''
-#     for keyi in keys_in:
-#         for i, data_dict in enumerate([data_dict_rb, data_dict_irb]):
-#             cp, sp, mospm, mobjn = hlp_mod.get_measurement_properties(
-#                 data_dict, props_to_extract=['cp', 'sp', 'mospm', 'mobjn'],
-#                 **params)
-#             clf_dim = sp.find_parameter(f'{mobjn}_cliffords')
-#             keys_in_std = hlp_mod.get_param('keys_in_std', data_dict,
-#                                             raise_error=False, **params)
-#             figure_name = 'IRB' + mobjn
-#             key_suffix = 'RB' if i == 0 else 'IRB'
-#             sp_name = mospm[mobjn][clf_dim]
-#             cliffords = sp.get_sweep_params_property('values', 1, sp_name)
-#
-#             # plot data
-#             plot_dicts.update(
-#                 plot_mod.prepare_1d_plot_dicts(
-#                     data_dict=data_dict, keys_in=[keyi],
-#                     figure_name=figure_name, key_suffix=key_suffix,
-#                     sp_name=sp_name, #yerr_key=keys,
-#                     ylabel=r'$\langle \sigma_z\sigma_z \rangle$ correlator',
-#                     plot_params={'color': 'C0' if i == 0 else 'C1',
-#                                  'setlabel': key_suffix},
-#                     do_plotting=False, **params))
-#
-#             if len(cp.states) != 0:
-#                 # plot cal states
-#                 plot_dicts.update(
-#                     plot_mod.prepare_cal_states_plot_dicts(
-#                         data_dict=data_dict, keys_in=[keyi],
-#                         figure_name=figure_name, sp_name=sp_name,
-#                         key_suffix=key_suffix,
-#                         plot_params={'color': 'C0' if i == 0 else 'C1',
-#                                      'setlabel': key_suffix},
-#                         do_plotting=False, **params))
-#
-#             if 'fit_dicts' in data_dict:
-#                 # plot fits
-#                 fit_dicts = data_dict['fit_dicts']
-#                 # plot fit trace
-#                 plot_dicts.update(
-#                     plot_mod.prepare_fit_plot_dicts(
-#                         data_dict=data_dict, figure_name=figure_name,
-#                         key_suffix=key_suffix,
-#                         fit_names=['rb_fit' + keyi],
-#                         plot_params={
-#                             'color': 'C0' if i == 0 else 'C1',
-#                             'setlabel': f'{key_suffix} - fit'},
-#                         do_plotting=False, **params))
-#
-#                 # plot coherence-limit
-#                 fit_res = fit_dicts['rb_fit' + keyi]['fit_res']
-#                 if hlp_mod.get_param('plot_T1_lim', data_dict,
-#                                      default_value=False, **params):
-#                     keys_out_container = hlp_mod.get_param('keys_out_container',
-#                                                            data_dict,
-#                                                            default_value=mobjn,
-#                                                            **params)
-#                     epc_T1 = hlp_mod.get_param(
-#                         f'{keys_out_container}.EPC coh_lim',
-#                         data_dict,  **params)
-#                     p_T1 = hlp_mod.get_param(
-#                         f'{keys_out_container}.depolarization parameter coh_lim',
-#                         data_dict,  **params)
-#                     clfs_fine = np.linspace(cliffords[0], cliffords[-1], 1000)
-#                     T1_limited_curve = fit_res.model.func(
-#                         clfs_fine, fit_res.best_values['Amplitude'], p_T1,
-#                         fit_res.best_values['offset'])
-#                     plot_dicts['t1Lim_' + keyi + key_suffix] = {
-#                         'fig_id': figure_name,
-#                         'plotfn': 'plot_line',
-#                         'xvals': clfs_fine,
-#                         'yvals': T1_limited_curve,
-#                         'setlabel': f'{suffix} coh-lim',
-#                         'do_legend': True,
-#                         'legend_ncol': 3,
-#                         'legend_bbox_to_anchor': (1, -0.15),
-#                         'legend_pos': 'upper right',
-#                         'linestyle': '--',
-#                         'marker': ''}
-#                 else:
-#                     epc_T1 = None
-#
-#                 # add texbox
-#                 textstr, ha, hp, va, vp = get_rb_textbox_properties(
-#                     data_dict, fit_res, epc_T1=epc_T1,
-#                     va=params.pop('va', 'bottom'),
-#                     textstr_style='irb', suffix=key_suffix,
-#                     textstr=textstr, **params)
-#         if len(textstr) != 0:
-#             plot_dicts['text_msg_' + keyi + key_suffix] = {
-#                 'fig_id': figure_name,
-#                 'plotfn': 'plot_text',
-#                 'ypos': vp,
-#                 'xpos': hp,
-#                 'horizontalalignment': ha,
-#                 'verticalalignment': va,
-#                 'box_props': None,
-#                 'text_string': textstr}
-#
-#     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict_irb,
-#                       add_param_method='update')
-#     if do_plotting:
-#         getattr(plot_mod, 'plot')(data_dict_irb, keys_in=list(plot_dicts),
-#                                      **params)
 
 
 def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):

@@ -259,7 +259,8 @@ def prepare_cal_states_plot_dicts(data_dict, figure_name=None,
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Lenght of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -413,7 +414,8 @@ def prepare_1d_plot_dicts(data_dict, figure_name, keys_in, **params):
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Length of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -546,7 +548,8 @@ def prepare_2d_plot_dicts(data_dict, figure_name, keys_in, **params):
     zunit = params.get('zunit', '')
 
     # get more plotting aspect information
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -673,7 +676,8 @@ def prepare_1d_raw_data_plot_dicts(data_dict, keys_in=None, figure_name=None,
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Lenght of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
     nrows = hlp_mod.get_param(
@@ -823,7 +827,8 @@ def prepare_2d_raw_data_plot_dicts(data_dict, keys_in=None, figure_name=None,
     xunit = sweep_info[0][1]
 
     # get more plotting aspect information
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
     nrows = hlp_mod.get_param(
