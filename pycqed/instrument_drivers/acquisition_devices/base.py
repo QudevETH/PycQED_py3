@@ -139,10 +139,10 @@ class AcquisitionDevice():
                                  f'does not exist.')
             if mode == 'int_avg' and ch[1] not in range(
                     self.n_acq_int_channels):
-                raise ValueError(f'{self.name}: Integration channel {ch[0]} '
+                raise ValueError(f'{self.name}: Integration channel {ch[1]} '
                                  f'does not exist.')
             elif mode == 'avg' and ch[1] not in range(self.n_acq_inp_channels):
-                raise ValueError(f'{self.name}: Input channel {ch[0]} does '
+                raise ValueError(f'{self.name}: Input channel {ch[1]} does '
                                  f'not exist.')
         self._acq_n_results = n_results
         self._acq_averages = averages
