@@ -22,9 +22,12 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                      # 'scope': [],
                      }
     allowed_weights_types = ['optimal', 'DSB']
+    _MODEL_IDENTIFIER = '::0x01D6::'
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, name, address=None, *args, **kwargs):
+        if address is None:
+            address = self.find_address()
+        super().__init__(name=name, address=address, *args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
         self.n_acq_units = len(self.submodules)
         self._acq_integration_weights = {}
@@ -38,6 +41,22 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
     def acq_units(self):
         units = {(ch.channum - 1): ch for ch in self.submodules.values()}
         return [units[i] for i in range(len(units))]
+
+    def find_address(self):
+        import visa
+        rm = visa.ResourceManager()
+        res = [r for r in rm.list_resources() if self._MODEL_IDENTIFIER in r]
+        if len(res) == 0:
+            raise Exception(f'{self.__class__.__name__}: Could not find a VISA '
+                            f'instrument supported by this driver. Please '
+                            f'specify the address manually.')
+        elif len(res) > 1:
+            log.warning(f'{self.__class__.__name__}: Found {len(res)} VISA '
+                        f'instruments supported by this driver: '
+                        f'{", ".join(res)}. Using {res[0]}. To use a different '
+                        f'instrument, specify the address manually.')
+        return res[0]
+
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
