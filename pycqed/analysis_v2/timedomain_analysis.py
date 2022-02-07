@@ -10102,15 +10102,18 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         pass
 
     def plot(self, **kwargs):
+        timers = [t for t in self.timers.values() if len(t)]
         plot_kws = self.get_param_value('plot_kwargs', {})
-        for t in self.timers.values():
+        for t in timers:
             try:
                 self.figs["timer_" + t.name] = t.plot(**plot_kws)
             except Exception as e:
+                if self.raise_exceptions:
+                    raise
                 log.error(f'Could not plot Timer: {t.name}: {e}')
 
         if self.get_param_value('combined_timer', True):
-            self.figs['timer_all'] = tm_mod.multi_plot(self.timers.values(),
+            self.figs['timer_all'] = tm_mod.multi_plot(timers,
                                                        **plot_kws)
 
     def bare_measurement_timer(self, ref_time=None,
@@ -10143,16 +10146,18 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
         det_metadata = self.metadata.get("Detector Metadata", None)
-        if det_metadata is not None:
+        if nr_averages is None:
+            nr_averages = self.get_param_value('nr_averages', None)
+        if det_metadata is not None and nr_averages is None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
             det = list(det_metadata.get('detectors', {}).values())[0]
-            if nr_averages is None:
-                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
+            nr_averages = det.get('nr_averages', det.get('nr_shots', None))
         if nr_averages is None:
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
+        self.nr_averages = nr_averages
         n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:

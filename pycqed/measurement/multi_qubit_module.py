@@ -223,6 +223,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 **kw)
             for uhf in uhfs])
+    elif df_name == 'int_avg_det_spec':
+        # FIXME AWG=AWG unnecessarily slow, should find a way to only
+        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        return det.MultiPollDetector([
+            det.IntegratingAveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                real_imag=False, single_int_avg=True, **kw)
+            for uhf in uhfs])
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
