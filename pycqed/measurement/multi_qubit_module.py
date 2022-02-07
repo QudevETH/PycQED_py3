@@ -539,7 +539,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
-                         update=True, measure=True, operation_dict=None):
+                         update=True, measure=True, operation_dict=None,
+                         df_kwargs=None):
     """
     Measures time traces for specified states and
     Args:
@@ -573,6 +574,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         operation_dict (dict or None): the operations dictionary of the (device
             and) qubits. Will be obtained from the dev object if it is None
             (default).
+        df_kwargs (dict or None): keyword arguments for the detector function
 
     Returns:
         The analysis object if analze is True, and None otherwise.
@@ -644,8 +646,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                                upload=upload))
                 MC.set_sweep_points(sweep_points)
+                if df_kwargs is None:
+                    df_kwargs = {}
                 df = get_multiplexed_readout_detector_functions(
-                    'inp_avg_det', qubits)
+                    'inp_avg_det', qubits, **df_kwargs)
                 MC.set_detector_function(df)
                 MC.run(name=name, exp_metadata=exp_metadata)
 
