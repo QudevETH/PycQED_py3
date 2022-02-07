@@ -110,8 +110,11 @@ class AcquisitionDevice():
                 acquisition should be performed. A channel is identified by
                 two ints in a tuple. The first int is the index of the
                 acquisition unit, the second int is a logical index within
-                the physical unit (e.g., the index of a weighted-integration
-                channel).
+                the physical unit (the exact meaning of the second int
+                depends on the acquisition mode, e.g.:
+                    - the index of the input channel, i.e., the quadrature
+                        (0=I, 1=Q), in 'avg' mode
+                    - the weighted-integration channel in 'int_avg' mode
             n_results (int): number of acquisition elements
             averages (int): number of repetitions for averaging
             loop_cnt (int): total number of repetitions (averaging & shots)
