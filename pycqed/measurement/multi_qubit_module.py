@@ -107,8 +107,14 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             with the pairs of acquisition channels from used_channels that are
             to be correlated
         add_channels (dict): keys are acquisition devices and values are
-            lists/tuples of lists/tuples with pairs of acquisition channels to
-            be used IN ADDITION to those returned by qb.get_acq_int_channels()
+            lists/tuples of lists/tuples/dicts with groups (usually pairs or
+            singletons) of acquisition channels to be used IN ADDITION to those
+            returned by  qb.get_acq_int_channels(). If a dict is used,
+            it must contain a key acq_channels specifying the list/tuple of
+            channels in the group, and can have further keys acq_length,
+            acq_classifier_params, and acq_state_prob_mtxs. Channels must be
+            specified in the format understood by the acquisition device, see
+            docstring of AcquisitionDevice.acquisition_initialize
         det_get_values_kws (dict): on used with the ClassifyingPollDetector.
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
@@ -155,6 +161,39 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             acq_state_prob_mtxs[uhf] = []
         acq_state_prob_mtxs[uhf] += [qb.acq_state_prob_mtx()]
 
+    if add_channels is None:
+        add_channels = {}
+    elif isinstance(add_channels, list):
+        add_channels = {uhf: add_channels for uhf in uhfs}
+    for uhf, add_chs in add_channels.items():
+        if isinstance(add_chs, dict):
+            add_chs = [add_chs]  # autocorrect to a list of dicts
+        if uhf not in uhfs:
+            uhfs.add(uhf)
+            uhf_instances[uhf] = qubits[0].find_instrument(uhf)
+            max_int_len[uhf] = 0
+            int_channels[uhf] = []
+            inp_channels[uhf] = []
+            acq_classifier_params[uhf] = []
+            acq_state_prob_mtxs[uhf] = []
+        for params in add_chs:
+            if isinstance(params, list):
+                params = dict(acq_channels=params)
+
+            # FIXME: the following is a hack that will work as long as all
+            #  detector functions below use either int_channels or inp_channels,
+            #  but not both: we just add the extra channels to both lists to
+            #  make sure that they will be passed to the detector function no
+            #  matter which list the particular detector function gets.
+            int_channels[uhf] += params.get('acq_channels', [])
+            inp_channels[uhf] += params.get('acq_channels', [])
+
+            max_int_len[uhf] = max(max_int_len[uhf], params.get('acq_length',
+                                                                0))
+            acq_classifier_params[uhf] += [params.get('acq_classifier_params',
+                                                      {})]
+            acq_state_prob_mtxs[uhf] += [params.get('acq_state_prob_mtx', None)]
+
     if det_get_values_kws is None:
         det_get_values_kws = {}
         det_get_values_kws_in = None
@@ -170,17 +209,6 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             'state_prob_mtx': acq_state_prob_mtxs[uhf]})
         if det_get_values_kws_in is not None:
             det_get_values_kws[uhf].update(det_get_values_kws_in)
-    if add_channels is None:
-        add_channels = {uhf: [] for uhf in uhfs}
-    elif isinstance(add_channels, list):
-        add_channels = {uhf: add_channels for uhf in uhfs}
-    else:  # is a dict
-        pass
-    for uhf in add_channels:
-        # FIXME: this currently only allows adding integration channels (not
-        #  input channels) and only on AcqDevs that are already part of the
-        #  acquisition.
-        int_channels[uhf] += add_channels[uhf]
 
     if correlations is None:
         correlations = {uhf: [] for uhf in uhfs}
