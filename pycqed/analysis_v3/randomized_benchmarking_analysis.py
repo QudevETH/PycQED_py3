@@ -1326,14 +1326,14 @@ def get_rb_textbox_properties(data_dict, fit_res, epc_T1=None,
     return textstr, ha, hp, va, vp
 
 
-def irb_gate_error(data_dict, **params):
+def irb_gate_error(data_dict, keys_container_rb, keys_container_irb, **params):
     """
     Calculates the average gate error from a set of RB-IRB measurements and
     saves it in data_dict.
     :param data_dict: OrderedDict containing the results of running rb_analysis
         node.
     :param params: keyword arguments:
-        meas_obj_names (str or list of str): name of the measurement object(s)
+        meas_obj_names (str): name of the measurement object
             for which to calculate average gate error.
             Should be correlation_object for a two-qubit RB.
         d (int): dimension of the Hilbert space
@@ -1344,35 +1344,40 @@ def irb_gate_error(data_dict, **params):
         - meas_obj_names, d, interleaved_gate must exist wither in data_dict,
         metadata, or params
     """
-    meas_obj_names = hlp_mod.get_measurement_properties(
-        data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
-        **params)
+    mobjn = hlp_mod.get_measurement_properties(
+        data_dict, props_to_extract=['mobjn'], **params)
     d = hlp_mod.get_param('d', data_dict, raise_error=True, **params)
     interleaved_gate = hlp_mod.get_param(
         'interleaved_gate', data_dict, raise_error=True, **params)
     if interleaved_gate == 4368:
         interleaved_gate = 'CZ'
 
-    for mobjn in meas_obj_names:
-        prb = hlp_mod.get_param(
-            f'{mobjn}.RB.depolarization parameter value', data_dict,
-            raise_error=True, **params)
-        prb_err = hlp_mod.get_param(
-            f'{mobjn}.RB.depolarization parameter stderr', data_dict,
-            raise_error=True, **params)
-        pirb = hlp_mod.get_param(
-            f'{mobjn}.IRB.depolarization parameter value', data_dict,
-            raise_error=True, **params)
-        pirb_err = hlp_mod.get_param(
-            f'{mobjn}.IRB.depolarization parameter stderr', data_dict,
-            raise_error=True, **params)
-        hlp_mod.add_param(f'{mobjn}.average_gate_error_{interleaved_gate} value',
-                          ((d-1)/d)*(1 - pirb/prb),
-                          data_dict, **params)
-        hlp_mod.add_param(f'{mobjn}.average_gate_error_{interleaved_gate} stderr',
-                          ((d-1)/d)*np.sqrt((pirb_err*prb)**2 +
-                                            (prb_err*pirb)**2)/(prb**2),
-                          data_dict, **params)
+    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                           default_value='', **params)
+    prb = hlp_mod.get_param(
+        f'{keys_container_rb}.depolarization parameter value', data_dict,
+        raise_error=True, **params)
+    prb_err = hlp_mod.get_param(
+        f'{keys_container_rb}.depolarization parameter stderr', data_dict,
+        raise_error=True, **params)
+    pirb = hlp_mod.get_param(
+        f'{keys_container_irb}.depolarization parameter value', data_dict,
+        raise_error=True, **params)
+    pirb_err = hlp_mod.get_param(
+        f'{keys_container_irb}.depolarization parameter stderr', data_dict,
+        raise_error=True, **params)
+
+    if not len(keys_out_container) or keys_out_container is None:
+        keys_out_container = f'{mobjn}.average_gate_error_{interleaved_gate}'
+    if mobjn not in keys_out_container:
+        keys_out_container = f'{mobjn}.{keys_out_container}'
+    hlp_mod.add_param(f'{keys_out_container}.value',
+                      ((d-1)/d)*(1 - pirb/prb),
+                      data_dict, **params)
+    hlp_mod.add_param(f'{keys_out_container}.stderr',
+                      ((d-1)/d)*np.sqrt((pirb_err*prb)**2 +
+                                        (prb_err*pirb)**2)/(prb**2),
+                      data_dict, **params)
 
 
 def calc_rb_coherence_limited_fidelity(T1, T2, pulse_length, gate_decomp='HZ'):
