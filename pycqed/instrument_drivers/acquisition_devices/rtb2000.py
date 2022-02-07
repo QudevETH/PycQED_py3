@@ -13,7 +13,7 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
     #  x = np.array(ch.trace.setpoints[0]) ?
 
     n_acq_units = 4
-    n_acq_channels = 10  # for emulated weighted integration
+    n_acq_int_channels = 10  # for emulated weighted integration
     acq_weights_n_samples = 4096  # TODO could be extended
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw',
@@ -36,7 +36,7 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
 
     @property
     def acq_units(self):
-        units = {(ch.channum - 1): ch for ch in self.submodules}
+        units = {(ch.channum - 1): ch for ch in self.submodules.values()}
         return [units[i] for i in range(len(units))]
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
@@ -49,8 +49,8 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
         # oscilloscope settings
         self.acquisition_type('AVER')
         self.num_acquisitions(averages)
-        # self.timebase_position(5e-05)
-        self.timebase_scale(acquisition_length)
+        self.timebase_scale(acquisition_length / 12)  # total length on 12 div
+        self.timebase_position(acquisition_length / 2)  # center at half length
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
         self._last_traces = []
@@ -81,19 +81,24 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                 int_channels = [ch[1] for ch in self._acquisition_nodes if
                                 ch[0] == i]
                 for ch in int_channels:  # each weighted integration channel
-                    weights = self._acq_integration_weights[(i, ch)]
+                    weights = self._acq_integration_weights.get((i, ch), [[]])
                     # To have consistent data format for storing in the HDF,
                     # fill with nan values. This allows hybrid operation
                     # together with devices that support more segments.
-                    integration_result = np.nan(self._acq_n_results)
+                    integration_result = np.nan * np.zeros(self._acq_n_results)
                     # Currently treating it as 4 real-valued acq_units,
                     # so there is no imaginary part, i.e., no weights[1].
                     integration_result[0] = np.matrix.dot(
-                        res, weights[0][:len(res)])
+                        res[:len(weights[0])], weights[0][:len(res)])
                     dataset[(i, ch)] = [integration_result]
-                self.save_extra_data(f'traces/{i}', last_traces[i])
+                self.save_extra_data(f'traces/{i}', np.atleast_2d(last_traces[i]))
         self._last_traces.append(last_traces)
         return dataset
+
+    def acquisition_progress(self):
+        n_acq = self.completed_acquisitions()
+        n_acq *= self._acq_n_results
+        return n_acq
 
     def _acquisition_set_weight(self, channel, weight):
         self._acq_integration_weights[channel] = weight
