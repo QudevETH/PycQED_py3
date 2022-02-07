@@ -13,7 +13,9 @@ class QDacSmooth(QDac):
 
     The voltages can be set in a different number of ways. Below is a
     list of recommended ways in which fluxline/channel 17 (with "index" 16)
-    can be set to 0.1V:
+    can be set to 0.1V. These examples rely on the channel with index 16 being
+    called "fluxline17" in channel_map (e.g. channel_map =
+    {..., 16: "fluxline17", ...}).
         QDacSmooth.parameters["volt_fluxline17"](0.1)
         QDacSmooth.volt_fluxline17(0.1)
         QDacSmooth.set_smooth({"volt_fluxline17": 0.1})
@@ -34,7 +36,7 @@ class QDacSmooth(QDac):
     will give you a voltage dict with all fluxline voltages that can also be
     directly passed into QDacSmooth.set_smooth()):
         QDacSmooth.get_fluxline_voltages() (outputs {"fluxline1": 0.1, ...})
-        QDacSmooht.get_channel_voltages()  (outputs {0: 0.1, ...})
+        QDacSmooth.get_channel_voltages()  (outputs {0: 0.1, ...})
     """
 
     def __init__(self, name, port, channel_map):
@@ -136,11 +138,15 @@ class QDacSmooth(QDac):
 
     def get_fluxline_voltages(self):
         """
-        Convenience method to retrieve the fluxline voltages.
+        Convenience method to retrieve the fluxline voltages. This will give you
+        a voltage dict with all fluxline voltages that can also be directly
+        passed into QDacSmooth.set_smooth().
 
         Returns:
             dict: Keys are the channel names provided by the user in
-            channel_map, and the values are the currently set fluxline voltages.
+            channel_map, and the values are the fluxline voltages that are
+            currently set.
+            E.g. {"fluxline1": 0.1, "fluxline2": -1.4, "fluxline3": 0.3, ...}
         """
         return {ch_name: self.channels[chan].v()
                 for ch_name, chan in zip(self.channel_map.values(),
@@ -148,11 +154,14 @@ class QDacSmooth(QDac):
 
     def get_channel_voltages(self):
         """
-        Convenience method to retrieve the channel voltages.
+        Convenience method to retrieve the channel voltages. This will give you
+        a voltage dict with all channel voltages that can also be directly
+        passed into QDacSmooth.set_smooth().
 
         Returns:
             dict: Keys are the channel numbers (starting at 0), and the values
-            are the currently set fluxline voltages.
+            are the fluxline voltages that are currently set.
+            E.g. {0: 0.1, 1: -1.4, 2: 0.3, ...}
         """
         return {chan: self.channels[chan].v()
                 for chan in range(self.num_chans)}
