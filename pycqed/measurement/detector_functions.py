@@ -1342,7 +1342,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
             correlation_channel = -1
 
-            for ch in range(self.acq_dev.n_acq_channels):
+            for ch in range(self.acq_dev.n_acq_int_channels):
                 ch = (0, ch)
                 # Find the first unused channel to set up as correlation
                 if ch not in used_channels:

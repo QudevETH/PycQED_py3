@@ -21,8 +21,10 @@ class AcquisitionDevice():
 
     Attributes:
         n_acq_units (int): number of physical acquisition units (*)
-        n_acq_channels (int): number of integration channels per acquisition
-            unit (*)
+        n_acq_int_channels (int): number of integration channels per
+            acquisition unit (*)
+        n_acq_inp_channels (int): number of input channels (quadratures)
+            per acquisition unit (*)
         acq_length_granularity (int): indicates that the number of samples
             in an acquired signal must be a multiple of this number (*)
         acq_sampling_rate (float): sampling rate of the acquisition units in
@@ -42,7 +44,8 @@ class AcquisitionDevice():
     """
 
     n_acq_units = 1
-    n_acq_channels = 1
+    n_acq_int_channels = 1
+    n_acq_inp_channels = 2  # I&Q by default, can be overridden by children
     acq_length_granularity = 1
     acq_sampling_rate = None
     acq_weights_n_samples = None
@@ -134,9 +137,13 @@ class AcquisitionDevice():
             if ch[0] not in range(self.n_acq_units):
                 raise ValueError(f'{self.name}: Acquisition unit {ch[0]} '
                                  f'does not exist.')
-            if ch[1] not in range(self.n_acq_channels):
-                raise ValueError(f'{self.name}: Acquisition channel {ch[0]} '
+            if mode == 'int_avg' and ch[1] not in range(
+                    self.n_acq_int_channels):
+                raise ValueError(f'{self.name}: Integration channel {ch[0]} '
                                  f'does not exist.')
+            elif mode == 'avg' and ch[1] not in range(self.n_acq_inp_channels):
+                raise ValueError(f'{self.name}: Input channel {ch[0]} does '
+                                 f'not exist.')
         self._acq_n_results = n_results
         self._acq_averages = averages
         self._acq_loop_cnt = loop_cnt
