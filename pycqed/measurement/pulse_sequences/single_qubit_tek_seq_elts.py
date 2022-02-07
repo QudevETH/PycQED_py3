@@ -539,9 +539,8 @@ def ramsey_active_reset(times, qb_name, operation_dict, cal_points, n=1,
         for pulse in sequence:
             if 'name' not in pulse:
                 continue
-            if pulse['pulse_delay'] > pulse_length:
-                pulse["element_name"] = f"Ramsey_x2_{i}_element"
-                i += 1
+            pulse["element_name"] = f"Ramsey_x2_{i}_element"
+            i += 1
 
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 

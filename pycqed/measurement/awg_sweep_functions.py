@@ -166,6 +166,9 @@ class SegmentHardSweep(swf.Hard_Sweep):
 
 
 class SegmentSoftSweep(swf.Soft_Sweep):
+    # The following allows adding the class as placeholder in a
+    # multi_sweep_function
+    unit = ''
 
     def __init__(self, hard_sweep_func, sequence_list,
                  param_name='None', param_unit='',

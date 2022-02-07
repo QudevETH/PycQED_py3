@@ -968,7 +968,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             cmap = plt.get_cmap('Reds')
 
         if ax is None:
-            fig, ax = plt.subplots(1, figsize=(8, 6))
+            fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
 
@@ -1363,14 +1363,14 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                 y = stats.norm.pdf(fit_plot_values, means[i],
                                    kwargs['std'][i]).flatten()
                 ax.plot(fit_plot_values, y * np.max(cts) / np.max(y),
-                        color=c, linewidth=3)
+                        color=c)
 
         ax.set_xlabel(kwargs.get("xlabel", 'integration unit 1, $u_1$'))
         ax.set_ylabel('Counts, $n$')
         ax.set_yscale(kwargs.get('scale', "log"))
         ylim = kwargs.get('ylim',
                           ax.get_ylim() if kwargs.get('scale', "log") == "linear"
-                          else [0.1] +[ax.get_ylim()[1]])
+                          else [0.7] +[ax.get_ylim()[1]])
         ax.set_ylim(ylim)
         if kwargs.get('legend', False):
             ax.legend()
@@ -1507,6 +1507,11 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
         readout_names: used as y-axis labels for the default figure
         thresholds: dictionary with qubit names as keys and threshold values as
             values. If not specified, 'shots_thresholded' must be passed in.
+        thresholding_flip (dict): dictionary with qubit names as keys and
+            boolean values, indicated whether thresholding should be flipped
+            for that qubit to interpret values above the threshold as ground
+            state and values below as excited state. Defaults to False for
+            qubits not contained in the dict. (default: {})
         shots_thresholded (dict): single shots thresholded keyed by qubit name.
         shot_filter: 1D boolean array: filters the shots before averaging
             (eg. to remove f-level detected states)
@@ -1525,6 +1530,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
         self.n_readouts = options_dict['n_readouts']
         self.kept_shots = 0
         self.thresholds = options_dict.get('thresholds', None)
+        self.thresholding_flip = options_dict.get('thresholding_flip', {})
 
         if self.thresholds is None and \
             self.options_dict.get('shots_thresholded', None) is None:
@@ -1601,7 +1607,11 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             for qubit, channel in self.channel_map.items():
                 shots_cont = np.array(
                     self.raw_data_dict['measured_data'][channel]).T.flatten()
-                shots_thresh[qubit] = (shots_cont > self.thresholds[qubit])
+                if self.thresholding_flip.get(qubit, False):
+                    shots_thresh[qubit] = (
+                            shots_cont <= self.thresholds[qubit])
+                else:
+                    shots_thresh[qubit] = (shots_cont > self.thresholds[qubit])
             self.proc_data_dict['shots_thresholded'] = shots_thresh
         else:
             shots_thresh = self.get_param_value('shots_thresholded')

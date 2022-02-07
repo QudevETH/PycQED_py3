@@ -19,6 +19,7 @@ Welcome to PycQED's documentation!
    conventions/git
    writing_documentation
    demo_notebooks
+   glossary
 
 
 Auto-generated documentation
