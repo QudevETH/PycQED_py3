@@ -962,7 +962,7 @@ class AveragingPollDetector(PollDetector):
     Polling detector used for acquiring averaged timetraces.
     """
 
-    def __init__(self, acq_dev, AWG=None, channels=(0, 1),
+    def __init__(self, acq_dev, AWG=None, channels=((0, 0), (0, 1)),
                  nr_averages=1024, acquisition_length=2.275e-6, **kw):
         """
         Init of the AveragingPollDetector class.
