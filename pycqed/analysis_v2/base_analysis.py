@@ -840,7 +840,8 @@ class BaseDataAnalysis(object):
         axes_keys_to_pop = []
         for ax_key, ax in self.axs.items():
             for ax_to_pop in axes_to_pop:
-                if ax is ax_to_pop:
+                if (hasattr(ax, '__iter__') and ax_to_pop in ax)\
+                        or ax is ax_to_pop:
                     axes_keys_to_pop.append(ax_key)
                     break
         for ax_key in axes_keys_to_pop:
