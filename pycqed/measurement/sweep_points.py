@@ -125,8 +125,8 @@ class SweepPoints(list):
         while len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
             self.add_sweep_dimension()
         assert self.length(dimension) in [0, len(values)], \
-            'Number of values has to match the length of existing sweep ' \
-            'points.'
+            f'Number of values ({len(values)}) has to match the length of ' \
+            f'existing sweep points ({self.length(dimension)}).'
         self[dimension].update({param_name: (values, unit, label)})
 
     def add_sweep_dimension(self):
@@ -356,12 +356,14 @@ class SweepPoints(list):
         if len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
             return 0
         n = 0
-        for p in self[dimension].values():
+        for p, v in self[dimension].items():
             if n == 0:
-                n = len(p[0])
-            elif n != len(p[0]):
+                ref_p = p
+                n = len(v[0])
+            elif n != len(v[0]):
                 raise ValueError('The lengths of the sweep points are not '
-                                 'consistent.')
+                                 f'consistent for sweep param ({ref_p},{p}):'
+                                 f' ({n}, {len(v[0])}).')
         return n
 
     def update(self, sweep_points):
