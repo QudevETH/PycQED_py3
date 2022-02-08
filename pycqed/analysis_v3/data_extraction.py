@@ -17,8 +17,31 @@ pp_mod.search_modules.add(sys.modules[__name__])
 
 def get_timestamps(data_dict=None, t_start=None, t_stop=None,
                    label='', data_file_path=None, **params):
-    # if i put data_dict = OrderedDict() in the input params, somehow this
-    # function sees the data_dict i have in my notebook. How???
+    """
+    Get timestamps (YYYYMMDD_hhmmss) of HDF files from a specified location.
+
+    Args:
+        data_dict (dict or OrderedDict): the extracted timestamps will be
+            stored here
+        t_start (str): timestamp of the form YYYYMMDD_hhmmss. This timestamp
+            is returned if t_stop is None, and otherwise it is the first
+            timestamp of the range [t_start, t_stop]
+        t_stop (str): timestamp of the form YYYYMMDD_hhmmss. The last timestamp
+            to be extracted, starting at t_start
+        label (str): if specified, only those timestamps are returned for which
+            this label is contained in the filename
+        data_file_path (str): full path to a datafile for which the timestamp
+            will be returned
+
+    Keyword args (**params)
+        passed to analysis_tools.py/latest_data and
+            analysis_tools.py/get_timestamps_in_range
+
+    Returns
+        data dict containing the timestamps
+    """
+    # If I put data_dict = OrderedDict() in the input params, somehow this
+    # function sees the data_dict I have in my notebook. How???
     if data_dict is None:
         data_dict = OrderedDict()
 
@@ -50,14 +73,33 @@ def get_timestamps(data_dict=None, t_start=None, t_stop=None,
 
 
 def extract_data_hdf(data_dict=None, timestamps=None,
-                     params_dict=OrderedDict(), numeric_params=OrderedDict(),
+                     params_dict=OrderedDict(), numeric_params=None,
                      append_data=False, replace_data=False, **params):
     """
-    Extracts the data specified in
-        params_dict
-        pumeric_params
-    from each timestamp in timestamps and stores it into
-    data_dict
+    Extracts the data specified in params_dict and pumeric_params
+    from each timestamp in timestamps and stores it into data_dict
+
+    Args:
+        data_dict (dict): place where extracted data will be stored, under the
+            keys of params_dict
+        timestamps (list): list of timestamps from where to extract data. If
+            not specified, they will be taken from data_dict, and, if not found
+            there, from get_timestamps
+        params_dict (dict): if the form {storing_key: path_to_data}, where
+            storing_key will be created in data_dict for storing the data
+            indicated by path_to_data as a parameter name or a
+            path + parameter name inside an HDF file.
+        numeric_params (list or tuple): passed to get_params_from_hdf_file, see
+            docstring there.
+        append_data (bool): passed to add_measured_data_hdf, see docstring there
+        replace_data (bool): passed to add_measured_data_hdf, see docstring
+            there
+
+    Keyword args (**params)
+        passed to get_timestamps and add_measured_data_dict
+
+    Returns
+        data_dict containing the extracted data
     """
     if data_dict is None:
         data_dict = OrderedDict()
@@ -181,7 +223,25 @@ def combine_metadata_list(data_dict, update_value=True, append_value=True,
 
 def add_measured_data_hdf(data_dict, folder=None, append_data=False,
                           replace_data=False, **params):
+    """
+    Extracts the dataset from the "Experimental Data" data of an HDF file and
+    stores it in data_dict under "measured_data".
 
+    Args:
+        data_dict (dict): extracted dataset will be stored here under the key
+            "measured_data"
+        folder (str): full path to an hdf file
+        append_data (bool): if True, and "measured_data" exists in data_dict,
+            the new dataset will be appended
+        replace_data (bool): if True, and "measured_data" exists in data_dict,
+            it will be replaced by the new dataset
+
+    Keyword args (**params)
+        passed to helper_functions.py/add_param, see docstring there
+
+    Returns
+        data_dict containing the extracted dataset
+    """
     if folder is None:
         folder = hlp_mod.get_param('folders', data_dict, raise_error=True,
                                    **params)
@@ -216,6 +276,36 @@ def add_measured_data_hdf(data_dict, folder=None, append_data=False,
 
 
 def add_measured_data_dict(data_dict, **params):
+    """
+    Adds to the data_dict the acquisition channels with the corresponding data
+    array taken from "measured_data," which must exist in data_dict.
+
+    Args:
+        data_dict (dict): the measured data dict will be stored here
+
+    Keyword args (**params)
+        passed to helper_functions.py/get_param, helper_functions.py/pop_param,
+        and helper_functions.py/add_param, see docstrings there
+
+        This function expects to find the following parameters:
+         - exp_metadata must exist in data_dict
+         - value_names must exist in exp_metadata
+         - meas_obj_value_names_map must exist in data_dict
+
+        Other possible keywargs
+         - TwoD (bool; default: False) whether the measurement had two
+            sweep dimensions
+         - compression_factor (int; default: 1) sequence compression factor
+            (see Sequence.compress_2D_sweep)
+         - percentage_done (int; default: 100) for interrupted measurements;
+            indicates percentage of the total data that was acquired
+
+    Returns
+        data_dict containing the following entries:
+            - acquisition channels (keys of the meas_obj_value_names_map) with
+                the corresponding raw data
+            - sweep points (if not already in data_dict)
+    """
     metadata = hlp_mod.get_param('exp_metadata', data_dict, raise_error=True)
     TwoD = hlp_mod.get_param('TwoD', data_dict, default_value=False,
                              **params)
@@ -277,7 +367,7 @@ def add_measured_data_dict(data_dict, **params):
             sp = hlp_mod.get_measurement_properties(data_dict,
                                                     props_to_extract=['sp'],
                                                     raise_error=False)
-            if len(sp):  # above call returns [] is sp not found
+            if len(sp):  # above call returns [] if sp not found
                 sp_new = sp_mod.SweepPoints([sp.get_sweep_dimension(0)])
                 sp_new.add_sweep_dimension()
                 for param_name, props_tup in sp.get_sweep_dimension(1).items():
