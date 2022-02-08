@@ -147,7 +147,8 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'color': 'r',
                 'marker': 'o',
                 'line_kws': {'markersize': plot_mod.get_default_plot_params(
-                    set_params=False).get('lines.markersize', 2) + 2},
+                    set_params=False, return_full_rc_params=True).get(
+                    'lines.markersize', 2) + 2},
                 'linestyle': '',
                 'legend_ncol': 2,
                 'legend_bbox_to_anchor': (1.02, -0.2),
@@ -177,7 +178,8 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'color': 'm',
                 'marker': 'o',
                 'line_kws': {'markersize': plot_mod.get_default_plot_params(
-                    set_params=False).get('lines.markersize', 2) + 2},
+                    set_params=False, return_full_rc_params=True).get(
+                    'lines.markersize', 2) + 2},
                 'linestyle': '',
                 'do_legend': True,
                 'legend_bbox_to_anchor': (1.02, -0.2),#'right',
