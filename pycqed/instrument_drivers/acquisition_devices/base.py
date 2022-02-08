@@ -208,12 +208,12 @@ class AcquisitionDevice():
         repetitions for averaging), i.e., 100% progress corresponds to the
         this method reporting self._acq_n_results * self._acq_loop_cnt.
 
-        The method always returns 0 indicating that no intermediate progress
+        The method always returns None indicating that no intermediate progress
         information is available. If the child class does not overwrite the
         method with a concrete implementation, progress will be stuck during
         hard sweeps and will only be updated by MC after the hard sweep.
         """
-        return 0
+        return None
 
     def prepare_poll_before_AWG_start(self):
         """Final preparations for an acquisition before starting AWGs.

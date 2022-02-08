@@ -693,16 +693,27 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     try:
                         n_acq = [acq_dev.acquisition_progress()
                                  for acq_dev in self.acq_devs]
-                        if any([n > 0 for n in n_acq]):
+                        if any([n is None for n in n_acq]):
+                            progress = None
+                        else:
                             # the following calculation works both if
                             # self.progress_scaling is a vector/list or a scalar
                             progress = np.mean(np.multiply(
                                 n_acq, 1 / np.array(self.progress_scaling)))
+                    except Exception as e:
+                        # np.nan indicates that progress reporting is in
+                        # principle supported, but failed
+                        progress = np.nan
+                        log.debug(f'poll_data: Could not determine progress: '
+                                  f'{e}')
+                    try:
+                        if progress is not None:
+                            # progress reporting is supported by AcqDevs
                             self.progress_callback(progress)
                     except NoProgressError:
                         raise
                     except Exception as e:
-                        # printing progress is optional
+                        # Just log it since printing progress is optional.
                         log.debug(f'poll_data: Could not print progress: {e}')
                     t_callback = t_now
 
