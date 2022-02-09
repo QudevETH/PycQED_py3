@@ -32,7 +32,7 @@ try:
 except Exception:
     ZI_HDAWG_core = type(None)
 try:
-    from zhinst.qcodes import SHFQA
+    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
 except Exception:
     SHFQA = type(None)
 
@@ -1532,8 +1532,10 @@ class SHFQAPulsar:
     _supportedAWGtypes = (SHFQA,)
 
     _shfqa_sequence_string_template = (
-        "// hardcoded value until we figure out user registers\n"
-        "var loop_cnt = {loop_count};\n"
+        f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
+        f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+        f" // only needed in sweeper mode\n"
+        "{prep_string}"
         "\n"
         "repeat (loop_cnt) {{\n"
         "  {playback_string}\n"
@@ -1753,6 +1755,7 @@ class SHFQAPulsar:
                     if cw == 'metadata':
                         acq = chid_to_hash.get('acq', False)
                         if acq == 'sweeper':
+                        if 'sweeper' in acq:
                             is_spectroscopy = True
                     hi = chid_to_hash.get(chids[0], None)
                     hq = chid_to_hash.get(chids[1], None)
@@ -1799,6 +1802,55 @@ class SHFQAPulsar:
                 waves_to_upload[h] = w[:max_len]
 
             if is_spectroscopy:
+                if obj.use_hardware_sweeper():
+                    for element in awg_sequence:
+                        # This is a light copy of the readout mode below,
+                        # not sure how to make this more general without a
+                        # use case.
+                        awg_sequence_element = deepcopy(awg_sequence[element])
+                        if awg_sequence_element is None:
+                            playback_strings.append(f'// Segment {element}')
+                            continue
+                        playback_strings.append(f'// Element {element}')
+
+                        metadata = awg_sequence_element.pop('metadata', {})
+                        # if list(awg_sequence_element.keys()) != ['no_codeword']:
+                        #     raise NotImplementedError('SHFQA sequencer does '
+                        #         'currently not support codewords!')
+                        # chid_to_hash = awg_sequence_element['no_codeword']
+                        acq = metadata.get('acq', False)
+                        break  # FIXME: assumes there is only one segment
+                    prep_string = "const OSC0 = 0;\n"\
+                        "setTrigger(0);\n"\
+                        f"configFreqSweep(OSC0, {acq['f_start']}, " \
+                        f"{acq['f_step']});\n"
+                    playback_strings.append(
+                        f"for(var i = 0; i < {acq['n_step']}; i++)"+" {\n"
+                        "    // self-triggering mode\n\n"
+                        "    // define time from setting the oscillator "
+                        "frequency to sending the spectroscopy trigger\n"
+                        "    playZero(400);\n    \n"
+                        "    // set the oscillator frequency depending "
+                        "on the loop variable i\n"
+                        "    setSweepStep(OSC0, i);\n    \n"
+                        "    waitDigTrigger(1);\n"
+                        "    resetOscPhase();\n\n"
+                        "    // define time to the next iteration\n"
+                        "    playZero(acq_len + 144);\n\n"
+                        "    // trigger the integration unit and pulsed "
+                        "playback in pulsed mode\n"
+                        "    setTrigger(1);\n    setTrigger(0);\n"
+                        "  }")
+                    # provide sequence data to SHFQA object for upload in
+                    # acquisition_initialize
+                    obj.set_awg_program(
+                        i,
+                        self._shfqa_sequence_string_template.format(
+                            prep_string=prep_string,
+                            playback_string='\n  '.join(playback_strings)),
+                        waves_to_upload)
+
+                #FIXME: is this still useful if we give waves_to_upload above?
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
@@ -1835,7 +1887,8 @@ class SHFQAPulsar:
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
-                trig = '0x1' if 'seqtrigger' in str(acq).split(',') else '0x0'
+                trig = '0x1' if (isinstance(acq, dict) and
+                                 acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [
                     f'waitDigTrigger(1);',
                     f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
@@ -1864,8 +1917,9 @@ class SHFQAPulsar:
             obj.set_awg_program(
                 i,
                 self._shfqa_sequence_string_template.format(
-                    loop_count='{loop_count}',  # will be replaced by SHFQA driver
-                    playback_string='\n  '.join(playback_strings)),
+                    # loop_count='{loop_count}',  # will be replaced by SHFQA driver
+                    playback_string='\n  '.join(playback_strings),
+                    prep_string=''),
                 waves_to_upload)
 
         if any(grp_has_waveforms.values()):

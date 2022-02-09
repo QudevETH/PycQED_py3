@@ -1196,13 +1196,13 @@ class QuDev_transmon(Qubit):
 
         Returns: the Sweep_function object
         """
-        if self.instr_ro_lo() is not None:
+        if self.instr_ro_lo() is not None:  # external LO
             return swf.Offset_Sweep(
                 self.instr_ro_lo.get_instr().frequency,
                 -self.ro_mod_freq(),
                 name='Readout frequency',
                 parameter_name='Readout frequency')
-        else:
+        else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
                 self.acq_unit(), self.ro_mod_freq())
 
@@ -1249,7 +1249,13 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            self.int_avg_det.set_real_imag(False)
+            MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):

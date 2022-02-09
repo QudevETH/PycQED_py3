@@ -240,12 +240,14 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
+        # This is used in QE to force a hard sweep if the sf is hard
+        kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=uhf_instances[uhf],
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                real_imag=False, single_int_avg=True, **kw)
+                real_imag=False, **kw)
             for uhf in uhfs], AWG=trigger_dev if len(uhfs) > 1 else None)
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([

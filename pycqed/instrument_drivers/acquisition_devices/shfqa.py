@@ -13,6 +13,20 @@ import time
 log = logging.getLogger(__name__)
 
 
+class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
+    def __init__(self, acq_dev, acq_unit, parameter_name='None'):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+        self.acq_dev = acq_dev
+        self.acq_unit = acq_unit
+
+    def set_parameter(self, value):
+        pass  # FIXME  add comment why
+        # # FIXME: at some point, we need to test whether the freqs are supported
+        # #  by the sweeper
+
+
 class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
 
@@ -54,6 +68,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     res_logging_indices = {'raw': 1,  # raw integrated+averaged results
                            'digitized': 3,  # thresholded results (0 or 1)
                            }
+    USER_REG_LOOP_COUNT = 0
+    USER_REG_ACQ_LEN = 1
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -83,6 +99,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
+        self.add_parameter(
+            'use_hardware_sweeper',
+            initial_value=False,
+            parameter_class=ManualParameter,
+            docstring='Bool indicating whether the hardware sweeper should '
+                      'be used in spectroscopy mode',
+            vals=validators.Bool())
 
     @property
     def devname(self):
@@ -157,15 +180,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         return freqs
 
     def get_params_from_spectrum(self, requested_freqs):
-        """Convenience method for retrieving a center frequency and acquisition
-        length needed to measure a spectrum
+        """Convenience method for retrieving parameters needed to measure a
+        spectrum
 
         """
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
         diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0]<1):  # not equally spaced (arbitrary 1 Hz)
+        if not all(diff_f-diff_f[0] < 1e-3):
+            # not equally spaced (arbitrary 1 mHz)
             log.warning(f'Unequal frequency spacing not supported, '
                         f'the measurement will return equally spaced values.')
         # Find closest allowed center frequency
@@ -179,13 +203,14 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             raise NotImplementedError('Spectrum wider than the bandwidth of '
                                       'the SHF is not yet implemented!')
         # Compute needed acq length
-        max_delta_f = min(diff_f)  # Should measure at least to this precision
-        acq_length = 1 / max_delta_f
-        # Note that this minimum needed acq_length is not strictly correct
-        # currently, and should be further rounded up to really give at least
-        # this precision in frequency. This is because the hardware cannot
-        # exactly acquire for that duration.
-        return acq_length
+        delta_f = np.mean(diff_f)
+        # Note that this might underestimate the necessary acq_length to get
+        # the correct freq precision (because of rounding, hardware
+        # limitations, etc.)
+        acq_length = 1 / delta_f
+        # center freq and delta_f are used by the hardware sweeper,
+        # acq_length by the software PSD using timetraces
+        return center_freq, delta_f, acq_length
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
@@ -207,6 +232,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 # meaning that the output generator must be always running.
                 # Here it is effectively disabled by oscillator_gain(0)
                 self.qachannels[i].sweeper.oscillator_gain(0)  # spectroscopy mode
+                # FIXME: check whether this will be fine with the hw sweeper
+
+        self.daq.setInt(f"/{self.devname}/qachannels/0/generator/userregs/0",
+                        self._acq_loop_cnt)
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
@@ -230,11 +259,24 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     self.qachannels[i].readout.integration_length(
                         self.convert_time_to_n_samples(self._acq_length))
             elif self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 'spectroscopy':
+                    and self._acq_units_modes[i] == 'spectroscopy'\
+                    and not self.use_hardware_sweeper():
                 self.qachannels[i].sweeper.oscillator_gain(1.0)
                 self.daq.setInt(
                     self._get_spectroscopy_node(i, "integration_length"),
                     self.convert_time_to_n_samples(self._acq_length))
+                self.qachannels[i].sweeper.trigger_source(
+                    f'channel{i}_trigger_input0')
+            elif self._acq_mode == 'int_avg'\
+                    and self._acq_units_modes[i] == 'spectroscopy'\
+                    and self.use_hardware_sweeper():
+                # FIXME: check whether this will be fine with the hw sweeper
+                self.qachannels[i].sweeper.oscillator_gain(1.0)
+                self.daq.setInt(
+                    self._get_spectroscopy_node(i, "integration_length"),
+                    self.convert_time_to_n_samples(self._acq_length))
+                self.qachannels[i].sweeper.trigger_source(
+                    f'channel{i}_sequencer_trigger0')
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
                 # Fit as many traces as possible in a single SHF call
@@ -301,6 +343,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         else:
             self.scope.trigger_source(
                 f'channel{self.seqtrigger}_sequencer_trigger0')
+        # Always single acq. Would continuous mode be useful in some cases?
+        self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
 
 
     def acquisition_finalize(self):
@@ -351,19 +395,37 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             'integration_length': 'length',
             'data': 'result/data/wave',
             'acquired': 'result/acquired',
+            'mode': 'result/mode',
         }
         return f"/{self.devname}/qachannels/{acq_unit}/spectroscopy/" \
                f"{lookup.get(node, node)}"
 
     def _arm_spectroscopy(self, acq_unit, length, averages):
+        #FIXME: many things to put in acq_init
+
+        # if self.use_hardware_sweeper():
+        #     raise NotImplementedError('Hard Sweep not implemented')
+        # else:
+        self.daq.setString(
+            self._get_spectroscopy_node(acq_unit, "mode"), 'cyclic') #TV mode
         self.daq.setInt(
             self._get_spectroscopy_node(acq_unit, "length"), length)
         self.daq.setInt(
             self._get_spectroscopy_node(acq_unit, "averages"), averages)
+        self.daq.setInt(f"/{self.devname}/qachannels/0/generator/userregs/1",
+                        self.convert_time_to_n_samples(self._acq_length))
+        self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 0)
+        self.daq.sync()
         self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 1)
         self.daq.sync()
+        self.daq.setInt(f"/{self.devname}/qachannels/"
+                        f"{acq_unit}/generator/single", 1)
+        self.daq.setInt(f"/{self.devname}/qachannels/" #FIXME
+                    f"{acq_unit}/spectroscopy/envelope/enable", 0)
 
     def _arm_scope(self):
+        # FIXME: is it normal that 'single' gets reset after each acq???
+        self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
         path = f"/{self._serial}/scopes/0/enable"
         if self.daq.getInt(path) == 1:
             self.daq.setInt(path, 0)
@@ -393,11 +455,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                * scaling_factor]
                      for n, ch in enumerate(channels)})
                 self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
+            elif self.use_hardware_sweeper():  # spectroscopy hard sweep
+                raise NotImplementedError('Hard Sweep not implemented')
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy':
                 progress = self.daq.getInt(
                     self._get_spectroscopy_node(i, "acquired"))
-                if progress == self._acq_averages:
+                if progress >= self._acq_loop_cnt * self._acq_n_results:
                     node = self._get_spectroscopy_node(i, "data")
                     data = self.daq.get(node, flat=True).get(node, [])
                     data = [a.get('vector', a) for a in data]
@@ -461,9 +525,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 raise NotImplementedError
         return dataset
 
-    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+    def set_sweep_freqs(self, acq_unit, freqs):
+        # FIXME: find nicer method name and write docstring
+        raise NotImplementedError('set_sweep_freqs not implemented')
 
+    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
+        if self.use_hardware_sweeper():
+            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
+                                            parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -482,7 +552,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
             if self.awg_active[i]:
-                if ch.mode() == 'readout':
+                if ch.mode() == 'readout' or self.use_hardware_sweeper():
                     ch.generator.run()
                 else:
                     # No AWG needs to be started in spectroscopy mode.

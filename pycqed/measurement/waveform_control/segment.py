@@ -64,6 +64,10 @@ class Segment:
                 - 'seqtrigger': let the sequencer output an auxiliary trigger
                   when starting the the acquisition
                 - 'default' (default value): normal acquisition elements
+                FIXME: update this arg in the docstring
+            fast_mode (bool):  If True, copying pulses is avoided. In this
+                case, the pulse_pars_list passed to Segment will be modified
+                (default: False).
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
