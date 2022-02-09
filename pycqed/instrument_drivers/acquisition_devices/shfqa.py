@@ -20,9 +20,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     from Zurich Instruments AG.
 
     Attributes:
-        allowed_lo_freqs (list of floats): List of values that the centre frequency
-            (LO) is allowed to take. As of now this is limited to steps
-            of 100 MHz
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
         _acq_scope_memory: #FIXME is this the correct number?
@@ -76,6 +73,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             'allowed_lo_freqs',
             initial_value=np.arange(1e9, 8.1e9, 100e6),
             parameter_class=ManualParameter,
+            docstring='List of values that the centre frequency (LO) is '
+                      'allowed to take. As of now this is limited to steps '
+                      'of 100 MHz.',
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
