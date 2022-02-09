@@ -1115,7 +1115,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
-        self._set_real_imag(real_imag)
+        self.set_real_imag(real_imag)
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
@@ -1138,7 +1138,7 @@ class IntegratingAveragingPollDetector(PollDetector):
                     new_value_units.append(vu)
             return new_value_names, new_value_units
 
-    def _set_real_imag(self, real_imag=False):
+    def set_real_imag(self, real_imag=False):
         """
         Function so that real_imag can be changed after initialization.
         """
