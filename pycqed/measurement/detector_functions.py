@@ -662,9 +662,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         # Acquire data
         accumulated_time = 0
         self.timer.checkpoint("PollDetector.poll_data.loop.start")
-        # FIXME: why only check acq_devs[0].timeout()?
-        while accumulated_time < self.acq_devs[0].timeout() and \
-                not all(np.concatenate(list(gotem.values()))):
+        while not all(np.concatenate(list(gotem.values()))):
             dataset = {}
             for acq_dev in self.acq_devs:
                 if not all(gotem[acq_dev.name]):
@@ -718,20 +716,6 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     t_callback = t_now
 
         self.timer.checkpoint("PollDetector.poll_data.loop.end")
-
-        if not all(np.concatenate(list(gotem.values()))):
-            if self.AWG is not None:
-                self.AWG.stop()
-            for acq_dev in self.acq_devs:
-                acq_dev.acquisition_finalize()
-                for n, c in enumerate(acq_paths[acq_dev.name]):
-                    if n in data[acq_dev.name]:
-                        n_swp = len(data[acq_dev.name][n])
-                        tot_swp = self.det_from_acq_dev[
-                            acq_dev.name].nr_sweep_points
-                        log.info(f"\t: Channel {n}: Got {n_swp} of {tot_swp} "
-                                 f"samples")
-            raise TimeoutError("Error: Didn't get all results!")
 
         data_raw = {acq_dev.name: np.array([data[acq_dev.name][key]
                     for key in sorted(data[acq_dev.name].keys())])
