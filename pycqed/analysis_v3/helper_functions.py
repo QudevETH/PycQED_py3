@@ -224,7 +224,7 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
         d, {'instr_param_val': f'Instrument settings.{instr_name}.{param_name}'},
         folder=folder)
 
-    if d['instr_param_val'] == 0:
+    if 'instr_param_val' not in d:
         raise KeyError(f'Parameter {param_name} not found for instrument '
                        f'{instr_name}.')
     return d['instr_param_val']
