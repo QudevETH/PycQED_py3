@@ -621,6 +621,7 @@ class PollDetector(Hard_Detector):
             self.AWG.stop()
 
         for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
             acq_dev.prepare_poll()
 
         if self.AWG is not None:

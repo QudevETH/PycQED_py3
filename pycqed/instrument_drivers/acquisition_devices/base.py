@@ -150,6 +150,7 @@ class AcquisitionDevice():
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
         sweeps). No actions by default, can be overridden in child classes.
         """
+        self.timer = None
         pass
 
     def _reset_n_acquired(self):

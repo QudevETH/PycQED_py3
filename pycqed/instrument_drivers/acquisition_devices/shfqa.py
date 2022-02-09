@@ -6,6 +6,7 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
+from pycqed.utilities.timer import Timer, Checkpoint
 import logging
 import json
 import time
@@ -65,6 +66,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
+        self.timer = None
 
         self.awg_active = [False] * self.n_acq_units
         self._awg_programs = {}
@@ -357,6 +359,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             self._controller._assert_node_value(path, 0, timeout=self.timeout())
         self.daq.syncSetInt(path, 1)
 
+    @Timer()
     def poll(self, *args, **kwargs):
         # 220118 For now, poll reads all data available from the data server
         # at each run, and then returns only the newer data to match the
