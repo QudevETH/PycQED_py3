@@ -76,15 +76,6 @@ class AcquisitionDevice():
         self._acq_units_used = []
         self.timer = None
         self.extra_data_callback = None
-        if 'timeout' not in self.parameters:
-            # The underlying qcodes driver has not created a parameter
-            # timeout. In that case, we add the parameter here.
-            self.add_parameter(
-                'timeout',
-                unit='s',
-                initial_value=30,
-                parameter_class=ManualParameter,
-                vals=validators.Ints())
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
