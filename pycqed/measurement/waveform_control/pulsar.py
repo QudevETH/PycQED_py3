@@ -1839,7 +1839,11 @@ class SHFQAPulsar:
                     f'waitDigTrigger(1);',
                     f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
                 ]
-
+                if trig == '0x1':
+                    playback_strings += [
+                        f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
+                        f'setTrigger(0x0);'
+                    ]
                 return playback_strings
 
             qachannel.mode('readout')
