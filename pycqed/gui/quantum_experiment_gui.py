@@ -75,22 +75,8 @@ class QuantumExperimentGUI:
         # As matplotlib is not thread-safe, this might cause a crash
         sys.modules.get('matplotlib').use('Agg')
         qt.QtWidgets.QApplication.restoreOverrideCursor()
-        self.main_window.show()
+        self.main_window.showMaximized()
         self.app.exec_()
-
-
-class AutoAdjustWidthScrollcontentWidget(qt.QtWidgets.QWidget):
-    def __init__(self, main_window, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.main_window = main_window
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        screen_width = self.window().screen().availableGeometry().width()
-        if self.width() > screen_width:
-            self.main_window.resize(screen_width, self.main_window.height())
-        else:
-            self.main_window.resize(self.width(), self.main_window.height())
 
 
 class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
@@ -109,7 +95,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         # button, qubit selection dropdown)
         self.scroll = qt.QtWidgets.QScrollArea()
         self.setCentralWidget(self.scroll)
-        self.mainWidget = AutoAdjustWidthScrollcontentWidget(self)
+        self.mainWidget = qt.QtWidgets.QWidget()
         self.scroll.setWidget(self.mainWidget)
         self.mainWidget.setLayout(qt.QtWidgets.QVBoxLayout())
 
@@ -227,6 +213,8 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
         self.set_layout()
         self.connect_widgets()
+        # self.active_threads is used as manual thread counter, because
+        # self.threadpool.activeThreadCount() behaves inconsistently
         self.active_threads = 0
         self.threadpool = qt.QtCore.QThreadPool.globalInstance()
 
@@ -325,8 +313,14 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             elif type == 'stretch':
                 self.mainWidget.layout().addStretch()
 
-        screen_height = self.window().screen().availableGeometry().height()
-        self.resize(self.width(), screen_height)
+        # configure sensible default size for non-maximized view
+        screen_geometry = self.window().screen().availableGeometry()
+        title_bar_height = self.style().pixelMetric(
+            qt.QtWidgets.QStyle.PixelMetric.PM_TitleBarHeight)
+        # manual subtraction of 10 pixels is heuristic countermeasure to the
+        # suboptimal placement of window by the window manager
+        self.resize(
+            self.width(), screen_geometry.height() - title_bar_height - 10)
         self.scroll.setWidgetResizable(True)
 
     def handle_experiment_choice(self):
@@ -783,8 +777,6 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         self.open_in_explorer_button.setEnabled(False)
         # handle buttons associated with methods of experiment. They should
         # only be available if no thread is running
-        # self.active_threads is used as manual thread counter, because
-        # self.threadpool.activeThreadCount() behaves inconsistently
         if not self.active_threads > 0:
             if experiment_successful:
                 self.run_measurement_button.setEnabled(True)
