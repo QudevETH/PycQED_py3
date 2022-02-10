@@ -56,9 +56,13 @@ class Segment:
                   special acquisition mode need to ensure that other parts of
                   pycqed (e.g., sweep_function) get configured in a
                   compatible manner.
+                - multiple non-default modes can be combined as a
+                  comma-separated str, e.g., 'sweeper,seqtrigger'
                 Allowed modes currently include:
                 - 'sweeper': use sweeper mode if available (for RO frequency
                   sweeps, e.g., resonator spectroscopy)
+                - 'seqtrigger': let the sequencer output an auxiliary trigger
+                  when starting the the acquisition
                 - 'default' (default value): normal acquisition elements
             kw (dict): Keyword arguments:
 

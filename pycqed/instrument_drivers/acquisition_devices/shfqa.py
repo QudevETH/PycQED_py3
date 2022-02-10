@@ -23,6 +23,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
         _acq_scope_memory: #FIXME is this the correct number?
+        seqtrigger (int): Number of the acquisition unit whose internal
+            sequencer trigger should trigger the scope. If None, the scope is
+            triggered by the external trigger of acq unit 0.
     """
     acq_length_granularity = 16 #FIXME should this be set to some value?
 
@@ -63,6 +66,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
+        self.seqtrigger = None
         self.timer = None
 
         self.awg_active = [False] * self.n_acq_units
@@ -291,6 +295,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 1)
         self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay",
                            trigger_delay)
+        if self.seqtrigger is None:
+            self.scope.trigger_source(
+                'channel0_trigger_input0')
+        else:
+            self.scope.trigger_source(
+                f'channel{self.seqtrigger}_sequencer_trigger0')
+
 
     def acquisition_finalize(self):
         for ch in self.qachannels:

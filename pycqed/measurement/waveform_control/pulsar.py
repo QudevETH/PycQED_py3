@@ -1814,7 +1814,7 @@ class SHFQAPulsar:
                 daq.sync()
                 continue
 
-            def play_element(element, playback_strings):
+            def play_element(element, playback_strings, acq_unit):
                 awg_sequence_element = deepcopy(awg_sequence[element])
                 if awg_sequence_element is None:
                     current_segment = element
@@ -1835,16 +1835,20 @@ class SHFQAPulsar:
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
+                trig = '0x1' if 'seqtrigger' in str(acq).split(',') else '0x0'
                 playback_strings += [
                     f'waitDigTrigger(1);',
                     f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
                 ]
                 if trig == '0x1':
+                    if obj.seqtrigger is None:
+                        obj.seqtrigger = acq_unit
                     playback_strings += [
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
                         f'setTrigger(0x0);'
                     ]
                 return playback_strings
+
 
             qachannel.mode('readout')
             self._filter_segment_functions[obj.name] = None
@@ -1852,9 +1856,9 @@ class SHFQAPulsar:
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "
                          "ignoring it")
+            obj.seqtrigger = None
             for element in awg_sequence:
-                playback_strings = play_element(element, playback_strings)
-
+                playback_strings = play_element(element, playback_strings, i)
             # provide sequence data to SHFQA object for upload in
             # acquisition_initialize
             obj.set_awg_program(
