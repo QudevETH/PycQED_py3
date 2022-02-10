@@ -753,7 +753,22 @@ class MultiPollDetector(PollDetector):
     """
     Combines several polling detectors into a single detector.
     """
-    def __init__(self, detectors, **kw):
+    class MultiAWGWrapper:
+        def __init__(self, master_awg, awgs=()):
+            self.master_awg = master_awg
+            self.awgs = list(set(awgs))
+
+        def start(self, **kw):
+            for awg in self.awgs:
+                awg.start(**kw)
+            self.master_awg.start(**kw)
+
+        def stop(self):
+            for awg in self.awgs:
+                awg.stop()
+            self.master_awg.stop()
+
+    def __init__(self, detectors, AWG=None, **kw):
         """
         Init of the PollDetector base class.
 
@@ -764,17 +779,22 @@ class MultiPollDetector(PollDetector):
         Keyword args: passed to parent class
         """
         super().__init__(detectors=detectors, **kw)
-        self.AWG = None
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
 
+        if AWG is not None:  # treat as master AWG
+            self.AWG = self.MultiAWGWrapper(AWG,
+                                            [d.AWG for d in self.detectors])
+        else:
+            self.AWG = None
         for d in self.detectors:
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
             self.live_plot_allowed += [d.live_plot_allowed]
-            if d.AWG is not None:
+            if d.AWG is not None\
+                    and not isinstance(self.AWG, self.MultiAWGWrapper):
                 if self.AWG is None:
                     self.AWG = d.AWG
                 elif self.AWG != d.AWG:
