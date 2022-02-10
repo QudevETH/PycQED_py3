@@ -110,7 +110,11 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                     integration_result[0] = np.matrix.dot(
                         res[:len(weights[0])], weights[0][:len(res)])
                     dataset[(i, ch)] = [integration_result]
-                self.save_extra_data(f'traces/{i}', np.atleast_2d(last_traces[i]))
+                self.save_extra_data(
+                    f'{i}/traces', np.atleast_2d(last_traces[i]))
+                self.save_extra_data(
+                    f'{i}/times',
+                    np.array(self.acq_units[i].trace.setpoints[0]))
         self._last_traces.append(last_traces)
         return dataset
 
