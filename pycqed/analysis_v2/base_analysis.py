@@ -19,7 +19,7 @@ from pycqed.analysis.analysis_toolbox import get_color_order as gco
 from pycqed.analysis.analysis_toolbox import get_color_list
 from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
-    flex_color_plot_vs_x, rainbow_text)
+    flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import datetime
 import json
@@ -400,7 +400,10 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    def get_param_value(self, param_name, default_value=None, metadata_index=0):
+    def _get_param_value(self, param_name, default_value=None, metadata_index=0):
+        log.warning('Deprecation warning: please use new function '
+                    'self.get_param_value(). This function is intended to be '
+                    'used only in case of crashes with new function.')
         # no stored metadata
         if not hasattr(self, "metadata") or self.metadata is None:
             return self.options_dict.get(param_name, default_value)
@@ -414,6 +417,37 @@ class BaseDataAnalysis(object):
         else:
             return self.options_dict.get(param_name, self.metadata.get(
                 param_name, default_value))
+
+    def get_param_value(self, param_name, default_value=None, index=0,
+                        search_attrs=('options_dict', 'metadata', 'raw_data_dict')):
+        """
+        Gets a value from a set of searchable hashable attributes.
+        :param param_name: name of the parameter to be searched
+        :param default_value: value in case parameter is not found
+        :param index: in case the searchable attribute of interest is a list of
+        hashable (e.g. list of raw_data_dicts), index of the list in which one
+        should search the parameter
+        :param search_attrs (list, tuple): attributes to be searched by the
+        function. Priority is given to first entry, i.e. if a parameter
+        "timestamp" is both in the options_dict and in the metadata,
+        search_attrs =('options_dict', 'raw_data_dict') will return the
+        timestamp of the options dict while ('raw_data_dict', 'options_dict')
+        will return the timestamp of the raw data dict.
+        :return:
+        """
+        def recursive_search(param, p):
+            if hasattr(self, p):
+                d = getattr(self, p)
+                if isinstance(d, (list, tuple)):
+                    d = d[index]
+                if param in d:
+                    return d[param]
+            if p == search_attrs[-1]:
+                return default_value
+            else:
+                return recursive_search(param, search_attrs[search_attrs.index(p) +
+                                                         1])
+        return recursive_search(param_name, search_attrs[0])
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
         raw_data_dict = []
@@ -530,19 +564,32 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
+            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # point.
+            tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
                 TwoD = True
                 hsp = np.unique(mc_points[0])
                 ssp, counts = np.unique(mc_points[1:], return_counts=True)
-                if counts[0] != len(hsp):
+                if (len(hsp) * len(ssp)) > len(mc_points[0]):
+                    tuple_measurement = True
+                    hsp = mc_points[0]
+                    ssp = mc_points[1]
+                elif counts[0] > len(hsp):
                     # ssro data
                     n_shots = counts[0] // len(hsp)
                     hsp = np.tile(hsp, n_shots)
                 # if needed, decompress the data (assumes hsp and ssp are indices)
                 if compression_factor != 1:
-                    hsp = hsp[:int(len(hsp) / compression_factor)]
-                    ssp = np.arange(len(ssp) * compression_factor)
+                    if not tuple_measurement:
+                        hsp = hsp[:int(len(hsp) / compression_factor)]
+                        ssp = np.arange(len(ssp) * compression_factor)
+                    else:
+                        log.warning(f"Tuple measurement does not support "
+                                    f"compression_factor and it will be ignored.")
+                    
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
@@ -556,7 +603,7 @@ class BaseDataAnalysis(object):
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
                     if 'active' in prep_params.get('preparation_type', 'wait'):
-                        reset_reps = prep_params.get('reset_reps', 1)
+                        reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
                     elif "preselection" in prep_params.get('preparation_type',
                                                            'wait'):
@@ -611,6 +658,8 @@ class BaseDataAnalysis(object):
                             tmp_data[i_seq * meas_hsl
                                     :(i_seq + 1) * meas_hsl] = data_seq
                         measured_data = np.reshape(tmp_data, (ssl, hsl)).T
+                    elif tuple_measurement:
+                        measured_data = np.reshape(data[i], (hsl)).T
                     else:
                         measured_data = np.reshape(data[i], (ssl, hsl)).T
                     if soft_sweep_mask is not None:
@@ -791,7 +840,8 @@ class BaseDataAnalysis(object):
         axes_keys_to_pop = []
         for ax_key, ax in self.axs.items():
             for ax_to_pop in axes_to_pop:
-                if ax is ax_to_pop:
+                if (hasattr(ax, '__iter__') and ax_to_pop in ax)\
+                        or ax is ax_to_pop:
                     axes_keys_to_pop.append(ax_key)
                     break
         for ax_key in axes_keys_to_pop:
@@ -1432,10 +1482,11 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
-
+        plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
 
+        plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
         plot_linestyle = pdict.get('linestyle', '-')
         plot_marker = pdict.get('marker', 'o')
@@ -1494,7 +1545,7 @@ class BaseDataAnalysis(object):
             axs.set_xlim(xmin, xmax)
 
         if plot_title is not None:
-            axs.figure.text(0.5, 1, plot_title,
+            axs.figure.text(0.5, 1 + plot_title_pad, plot_title,
                             horizontalalignment='center',
                             verticalalignment='bottom',
                             transform=axs.transAxes)
@@ -1625,6 +1676,15 @@ class BaseDataAnalysis(object):
 
         self.plot_color2D(flex_color_plot_vs_x, pdict, axs)
 
+    def plot_contourf(self, pdict, axs):
+        """
+        This wraps contourf_plot which excepts data of shape
+            x -> 2D array
+            y -> 2D array
+            z -> 2D array (same shape as x and y)
+        """
+        self.plot_color2D(contourf_plot, pdict, axs)
+
     def plot_color2D_grid_idx(self, pfunc, pdict, axs, idx):
         pfunc(pdict, np.ravel(axs)[idx])
 
@@ -1678,6 +1738,7 @@ class BaseDataAnalysis(object):
         plot_yvals = pdict['yvals']
         plot_cbar = pdict.get('plotcbar', True)
         plot_cmap = pdict.get('cmap', 'viridis')
+        plot_cmap_levels = pdict.get('cmap_levels', None)
         plot_aspect = pdict.get('aspect', None)
         plot_zrange = pdict.get('zrange', None)
         plot_yrange = pdict.get('yrange', None)
@@ -1745,6 +1806,7 @@ class BaseDataAnalysis(object):
                 out = pfunc(ax=axs,
                             xwidth=xwidth,
                             clim=fig_clim, cmap=plot_cmap,
+                            levels=plot_cmap_levels,
                             xvals=traces['xvals'][tt],
                             yvals=traces['yvals'][tt],
                             zvals=traces['zvals'][tt],
@@ -1821,7 +1883,10 @@ class BaseDataAnalysis(object):
             if plot_nolabel and plot_nolabel_units:
                 no_label = False
             self.plot_colorbar(axs=axs, pdict=pdict,
-                               no_label=no_label)
+                               no_label=no_label,
+                               cax=pdict.get('cax', None),
+                               orientation=pdict.get('orientation',
+                                                     'vertical'))
 
     def label_color2D(self, pdict, axs):
         plot_transpose = pdict.get('transpose', False)
@@ -1863,19 +1928,22 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        if not isinstance(axs, Axes3D):
+            cmap = axs.cmap
+        else:
+            cmap = pdict.get('colormap')
         if cax is None:
             if not isinstance(axs, Axes3D):
                 axs.ax_divider = make_axes_locatable(axs)
                 axs.cax = axs.ax_divider.append_axes(
-                    'right', size=plot_cbarwidth, pad=plot_cbarpad)
-                cmap = axs.cmap
+                    'right' if orientation == 'vertical' else 'top',
+                    size=plot_cbarwidth, pad=plot_cbarpad)
             else:
                 plot_cbarwidth = str_to_float(plot_cbarwidth)
                 plot_cbarpad = str_to_float(plot_cbarpad)
                 axs.cax, _ = mpl.colorbar.make_axes(
                     axs, shrink=1 - plot_cbarwidth - plot_cbarpad, pad=plot_cbarpad,
                     orientation=orientation)
-                cmap = pdict.get('colormap')
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
@@ -1889,6 +1957,9 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
+        if orientation == 'horizontal':
+            axs.cax.xaxis.set_label_position("top")
+            axs.cax.xaxis.tick_top()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1938,6 +2009,7 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
+        fontsize=pdict.get("fontsize", None)
         color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
@@ -1952,14 +2024,16 @@ class BaseDataAnalysis(object):
                          strings=plot_text_string, colors=color,
                          ax=axs, orientation=orientation,
                          verticalalignment=verticalalignment,
-                         horizontalalignment=horizontalalignment)
+                         horizontalalignment=horizontalalignment,
+                         fontsize=fontsize)
         else:
             # pfunc is expected to be ax.text
             pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
                   transform=axs.transAxes,
                   verticalalignment=verticalalignment,
                   horizontalalignment=horizontalalignment,
-                  bbox=box_props)
+                  bbox=box_props,
+                  fontsize=fontsize)
 
     def plot_vlines(self, pdict, axs):
         """

@@ -31,8 +31,8 @@ class Save:
             But if data_dict0 = {key: data_dict1}, then it will not work.
     """
     def __init__(self, data_dict, savedir=None, save_processed_data=True,
-                 save_figures=True, filename=None, extension='hdf5',
-                 filter_keys=None, add_timestamp=False, **save_figs_params):
+                 save_figures=True, filename=None, file_suffix=None,
+                 extension='hdf5', filter_keys=None, add_timestamp=False, **save_figs_params):
 
         opt = np.get_printoptions()
         np.set_printoptions(threshold=sys.maxsize)
@@ -55,9 +55,12 @@ class Save:
                     savedir = savedir[-1]
             self.savedir = savedir
 
-            if filename is None:
-                filename = 'AnalysisResults'
-            filename = self.savedir.split('\\')[-1] + f'_{filename}.{extension}'
+            if file_suffix is None:
+                file_suffix = 'AnalysisResults'
+            if filename is not None:
+                filename = filename + f'.{extension}'
+            else:
+                filename = self.savedir.split('\\')[-1] + f'_{file_suffix}.{extension}'
             if add_timestamp:
                 filename = '{:%Y%m%d_%H%M%S}--{}'.format(
                     datetime.datetime.now(), filename)

@@ -34,6 +34,10 @@ class QuantumExperiment(CircuitBuilder):
     """
     _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
                         'channel_map', 'meas_objs'}
+    # The following string can be overwritten by child classes to provide a
+    # default value for the kwarg experiment_name. None means that the name
+    # of the first sequences will be used.
+    default_experiment_name = None
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  meas_objs=None, classified=False, MC=None,
@@ -186,7 +190,8 @@ class QuantumExperiment(CircuitBuilder):
         # child class as an attribute. Otherwise, the default None will
         # trigger guess_label to use the sequence name.
         self.experiment_name = kw.pop(
-            'experiment_name', getattr(self, 'experiment_name', None))
+            'experiment_name', getattr(self, 'experiment_name',
+                                       self.default_experiment_name))
         self.timestamp = None
         self.analysis = None
 
@@ -207,7 +212,8 @@ class QuantumExperiment(CircuitBuilder):
 
         # determine data type
         if "log" in self.df_name or not \
-                self.df_kwargs.get('averaged', True):
+                self.df_kwargs.get("det_get_values_kws",
+                                   {}).get('averaged', True):
             data_type = "singleshot"
         else:
             data_type = "averaged"
@@ -571,6 +577,19 @@ class QuantumExperiment(CircuitBuilder):
                 sweep_func_2nd_dim = self.sweep_functions[1](
                     sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
+                # Check whether it is a nested sweep function whose first
+                # sweep function is a SegmentSoftSweep class as placeholder.
+                swfs = getattr(self.sweep_functions[1], 'sweep_functions',
+                               [None])
+                if (swfs[0] == awg_swf.SegmentSoftSweep):
+                    # Replace the SegmentSoftSweep placeholder by a properly
+                    # configured instance of SegmentSoftSweep.
+                    if len(swfs) > 1:
+                        # make sure that units are compatible
+                        unit = getattr(swfs[1], 'unit', unit)
+                    swfs[0] = awg_swf.SegmentSoftSweep(
+                        sweep_func_1st_dim, self.sequences,
+                        sweep_param_name, unit)
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
@@ -625,7 +644,7 @@ class QuantumExperiment(CircuitBuilder):
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
         self.df = mqm.get_multiplexed_readout_detector_functions(
-            self.meas_objs, **self.df_kwargs)[self.df_name]
+            self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
@@ -827,10 +846,9 @@ class QuantumExperiment(CircuitBuilder):
         # avoid returning a list of Nones (if show_and_close is True)
         return [v for v in figs_and_axs if v is not None] or None
 
-
-
     def __repr__(self):
-        return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
+        return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
+               f"qubits={getattr(self, 'qubits', None)})"
 
     def spawn_waveform_viewer(self, **kwargs):
         if self.waveform_viewer is None:

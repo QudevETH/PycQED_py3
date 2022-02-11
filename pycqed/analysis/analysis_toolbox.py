@@ -108,7 +108,7 @@ def get_last_n_timestamps(n, contains=''):
 def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 return_timestamp=False, return_path=True, raise_exc=True,
                 folder=None, n_matches=None, return_all=False,
-                match_whole_words=None):
+                match_whole_words=None, verbose=False):
     """
         Finds the latest taken data with <contains> in its name.
         Returns the full path of the data directory and/or the timestamp.
@@ -139,6 +139,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                 underscores treated as word separators).
                 (default: use the value latest_data_match_whole_words
                 specified in the module)
+            verbose: If True, print results as soon as they are found (bool,
+                default: True)
         Returns: (list of) path and/or timestamps. Return format depends on the
             choice of return_timestamp, return_path, list_timestamps, return_all.
     """
@@ -208,6 +210,8 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
                     measdirs.append(d)
                     paths.append(os.path.join(search_dir, daydir, d))
                     timestamps.append(timestamp)
+                    if verbose:
+                        print(paths[-1])
             if newer_than is not None and timestamp is not None:
                 if not is_older(newer_than, timestamp,
                                 or_equal=or_equal):
@@ -314,6 +318,19 @@ def get_instr_setting_value_from_file(file_path, instr_name, param_name,
 
 
 def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
+    """
+    Construct the qubit channel map based on an HDF file.
+
+    Args:
+        qb_names (list): list of qubit names
+        file_path (str): path to the HDF file
+        value_names (list): list of detector function value names
+        h5mode (str): HDF opening mode
+
+    Returns
+        qubit channel map as a dict with qubit names as keys and the list of
+        value names corresponding to each qubit as values
+    """
     data_file = h5py.File(measurement_filename(file_path), h5mode)
     try:
         instr_settings = data_file['Instrument settings']
@@ -329,14 +346,19 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             ro_type = 'w'
 
         for qbn in qb_names:
-            uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
+            uhf = eval(instr_settings[qbn].attrs['instr_acq'])
+            acq_unit = eval(instr_settings[qbn].attrs.get('acq_unit', 'None'))
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
             if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
+            if acq_unit is None:
+                vn_string = uhf+'_'+ro_type
+            else:
+                vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
             channel_map[qbn] = [vn for vn in value_names for nr in qbchs
-                                if uhf+'_'+ro_type+nr in vn]
+                                if vn_string+nr in vn]
 
         all_values_empty = np.all([len(v) == 0 for v in channel_map.values()])
         if len(channel_map) == 0 or all_values_empty:
@@ -345,25 +367,6 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
         data_file.close()
         return channel_map
 
-    except Exception as e:
-        data_file.close()
-        raise e
-
-
-def get_qb_thresholds_from_file(qb_names, file_path, th_scaling=1, h5mode='r'):
-    data_file = h5py.File(measurement_filename(file_path), h5mode)
-    try:
-        instr_settings = data_file['Instrument settings']
-        thresholds = {}
-        for qbn in qb_names:
-            ro_channel = eval(instr_settings[qbn].attrs['acq_I_channel'])
-            instr_uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
-            thresholds[qbn] = eval(instr_settings[instr_uhf].attrs[
-                                       f'qas_0_thresholds_{ro_channel}_level'])
-            if thresholds[qbn] is not None:
-                thresholds[qbn] *= th_scaling
-        data_file.close()
-        return thresholds
     except Exception as e:
         data_file.close()
         raise e
@@ -378,7 +381,8 @@ def get_plot_title_from_folder(folder):
     return default_plot_title
 
 
-def compare_instrument_settings_timestamp(timestamp_a, timestamp_b):
+def compare_instrument_settings_timestamp(timestamp_a, timestamp_b,
+                                          folder=None):
     '''
     Takes two analysis objects as input and prints the differences between
     the instrument settings. Currently it only compares settings existing in
@@ -387,10 +391,11 @@ def compare_instrument_settings_timestamp(timestamp_a, timestamp_b):
     '''
 
     h5mode = 'r'
-    h5filepath = measurement_filename(get_folder(timestamp_a))
+    h5filepath = measurement_filename(get_folder(timestamp_a, folder=folder))
     analysis_object_a = h5py.File(h5filepath, h5mode)
     try:
-        h5filepath = measurement_filename(get_folder(timestamp_b))
+        h5filepath = measurement_filename(get_folder(timestamp_b,
+                                                     folder=folder))
         analysis_object_b = h5py.File(h5filepath, h5mode)
         try:
             sets_a = analysis_object_a['Instrument settings']
@@ -585,23 +590,23 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 ######################################################################
 
 def get_folder(timestamp=None, older_than=None, label='',
-               suppress_printing=True, **kw):
+               suppress_printing=True, folder=None, **kw):
     if timestamp is not None:
-        folder = data_from_time(timestamp)
+        folder_ts = data_from_time(timestamp, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s" using timestamp "%s"' % (
-                folder, timestamp))
+                folder_ts, timestamp))
     elif older_than is not None:
-        folder = latest_data(label, older_than=older_than)
+        folder_ts = latest_data(label, older_than=older_than, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s"using older_than "%s"' % (
-                folder, older_than))
+                folder_ts, older_than))
     else:
-        folder = latest_data(label)
+        folder_ts = latest_data(label, folder=folder)
         if not suppress_printing:
             print('loaded file from folder "%s" using label "%s"' % (
-                folder, label))
-    return folder
+                folder_ts, label))
+    return folder_ts
 
 
 def smooth(x, window_len=11, window='hanning'):

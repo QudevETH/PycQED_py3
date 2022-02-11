@@ -36,7 +36,36 @@ class Segment:
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
 
-    def __init__(self, name, pulse_pars_list=[]):
+    def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
+                 **kw):
+        """
+        Initiate instance of Segment class.
+
+        Args:
+            name: Name of segment
+            pulse_pars_list: list of pulse parameters in the form
+                of dictionaries
+            acquisition_mode (str): This will be copied into the acq key of
+                the element metadata of acquisition elements to inform Pulsar
+                that waveforms need to be programmed in a way that is
+                compatible with the given acquisition mode. Note:
+                - Pulsar may fall back to the default acquisition mode if
+                  the given mode is not available or not needed on the used
+                  hardware.
+                - If applicable, higher layer code of experiments that use a
+                  special acquisition mode need to ensure that other parts of
+                  pycqed (e.g., sweep_function) get configured in a
+                  compatible manner.
+                Allowed modes currently include:
+                - 'sweeper': use sweeper mode if available (for RO frequency
+                  sweeps, e.g., resonator spectroscopy)
+                - 'default' (default value): normal acquisition elements
+            kw (dict): Keyword arguments:
+
+                * ``resolve_overlapping_elements``: flag that, if true, lets the
+                  segment automatically resolve overlapping elements by combining
+                  them in a single element.
+        """
         self.name = name
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
@@ -68,11 +97,16 @@ class Segment:
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
         self.acquisition_elements = set()
+        self.acquisition_mode = acquisition_mode
         self.timer = Timer(self.name)
         self.pulse_pars = []
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
+
+        self.resolve_overlapping_elements = \
+            kw.pop('resolve_overlapping_elements',
+                   self.pulsar.resolve_overlapping_elements())
 
     def add(self, pulse_pars):
         """
@@ -165,6 +199,8 @@ class Segment:
         self.resolve_mirror()
         self.resolve_Z_gates()
         self.add_flux_crosstalk_cancellation_channels()
+        if self.resolve_overlapping_elements:
+            self.resolve_overlap()
         self.extra_pulses = []
         self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
@@ -192,7 +228,12 @@ class Segment:
             if all(ch_mask) and len(ch_mask) != 0:
                 p = deepcopy(p)
                 p.pulse_obj.element_name = f'default_ese_{self.name}'
-                self.resolved_pulses.append(p)
+                if p.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p)
+                else:
+                    log.warning('enforce_single_element cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(p.pulse_obj.channels)}')
             elif any(ch_mask):
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask = [not x for x in ch_mask]
@@ -599,7 +640,7 @@ class Segment:
         For each element:
             For each AWG the element is played on, this method:
                 * adds the element to the elements_on_AWG dictionary
-                * instatiates a trigger pulse on the triggering channel of the
+                * instantiates a trigger pulse on the triggering channel of the
                   AWG, placed in a suitable element on the triggering AWG,
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
@@ -777,7 +818,8 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    def _test_overlap(self, allow_overlap=False, tol=1e-12):
+    def _test_overlap(self, allow_overlap=False, tol=1e-12,
+                      track_and_ignore=False):
         """
         Tests for all AWGs if any of their elements overlap.
 
@@ -785,7 +827,13 @@ class Segment:
             an execption is raised in case of overlapping elements.
             Otherwise, only a warning is shown (useful for plotting while
             debugging overlaps).
+        :param track_and_ignore: flag that allows the code to continue
+            in case an overlap is detected. The code keeps track of these
+            elements by adding them to self.overlapping_elements
         """
+
+        self.gen_elements_on_awg()
+        overlapping_elements = []
 
         for awg in self.elements_on_awg:
             el_list = []
@@ -813,16 +861,109 @@ class Segment:
 
                 el_new_start = el_list[i + 1][0]
 
-                if (el_prev_end - el_new_start) > tol :
-                    print(el_prev_end, el_new_start)
-                    msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) and ' \
-                    f'{el_list[i + 1][2]} (' \
-                        f'starts at {el_new_start*1e6:.4f}us) overlap ' \
-                          f'on {awg}'
-                    if allow_overlap:
-                        log.warning(msg)
+                if (el_prev_end - el_new_start) > tol:
+                    if track_and_ignore:
+                        # add set of two overlapping elements to list
+                        overlapping_elements.append({prev_el,
+                                                          el_list[i + 1][2]})
+                        # test whether any of the following elements also
+                        # overlaps with previous element
+                        for j in range(i+2, len(el_list)):
+                            if el_prev_end - el_list[j][0] > tol:
+                                overlapping_elements.append(
+                                    {prev_el, el_list[j][2]})
+                            else:
+                                # once a successive element does not
+                                # overlap, non of the following
+                                # elements overlap either
+                                break
                     else:
-                        raise ValueError(msg)
+                        msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) ' \
+                              f'and {el_list[i + 1][2]} (' \
+                              f'starts at {el_new_start*1e6:.4f}us) overlap ' \
+                              f'on {awg}'
+                        if allow_overlap:
+                            log.warning(msg)
+                        else:
+                            raise ValueError(msg)
+
+        if track_and_ignore:
+            return overlapping_elements
+
+    def resolve_overlap(self):
+        """
+        Routine to resolve overlapping elements. Will be exectued if
+        self.resolve_overlapping_elements is True. This code
+        first goes through the list of overlapping elements that are
+        pairwise overlapping and clusters them into lists
+        of overlapping elements, where two different lists of overlapping
+        elements have no overlapping elements with
+        one another. At the end the code combines all elements of each
+        list into a new element.
+        """
+
+        self.gen_elements_on_awg()
+        overlapping_elements = self._test_overlap(track_and_ignore=True)
+
+        if len(overlapping_elements) == 0:
+            return
+
+        # add first two overlapping elements to list
+        joint_overlapping_elements = [overlapping_elements[0]]
+
+        new_cluster = True
+        for i in range(len(overlapping_elements) - 1):
+            # making use of overlapping elements being sorted
+            # check whether the next set of elements from
+            # overlapping_elements shares an element name with
+            # the previous entry in joint_overlapping_elements
+            if len(joint_overlapping_elements[-1] & \
+                   overlapping_elements[i + 1]) != 0:
+                joint_overlapping_elements[-1] = \
+                    joint_overlapping_elements[-1] | \
+                    overlapping_elements[i + 1]
+                new_cluster = False
+
+            # if the new element from overlapping_elements overlaps
+            # with none of the previously added elements in
+            # joint_overlapping_elements (i.e. if new_cluster=True)
+            # add it as a new cluster.
+            if new_cluster:
+                joint_overlapping_elements.append(overlapping_elements[i + 1])
+            new_cluster = True
+
+        for i in range(len(joint_overlapping_elements)):
+            self._combine_elements(joint_overlapping_elements[i],
+                                   'overlapping_el_{}_{}'.format(i, self.name))
+
+
+    def _combine_elements(self, elements, combined_el_name):
+        """
+        Routine to properly combine elements in the segment.
+        :param elements: list or set of elements in the segment to be combined
+        :param combined_el_name: name of the combined element
+        :return:
+        """
+
+        new_pulse_list = []
+
+        for el in elements:
+            new_pulse_list += self.elements.pop(el)
+            # remove it from element_start_end
+            self.element_start_end.pop(el)
+
+        # update pulse objects with new name of element
+        for p in new_pulse_list:
+            p.element_name = combined_el_name
+        # add new element
+        self.elements[combined_el_name] = new_pulse_list
+        # update new elements_on_awg
+        self.gen_elements_on_awg()
+
+        # update element_start_end
+        for awg in self.pulsar.awgs:
+            self.element_start_length(combined_el_name, awg)
+
 
     def _test_trigger_awg(self):
         """
@@ -892,12 +1033,20 @@ class Segment:
             mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
             if mirror_correction is None:
                 mirror_correction = {}
-            for k in p.pulse_obj.__dict__:
-                if 'amplitude' in k:
-                    amp = -getattr(p.pulse_obj, k)
-                    if k in mirror_correction:
-                        amp += mirror_correction[k]
-                    setattr(p.pulse_obj, k, amp)
+            if "fp" in p.pulse_obj.__dict__:
+                for kk in p.pulse_obj.fp.__dict__:
+                    if 'amplitude' in kk:
+                        amp = - p.pulse_obj.flux_amplitude
+                        if kk in mirror_correction:
+                            amp += mirror_correction[kk]
+                        setattr(p.pulse_obj.fp, kk, amp)
+            else:
+                for k in p.pulse_obj.__dict__:
+                    if 'amplitude' in k:
+                        amp = -getattr(p.pulse_obj, k)
+                        if k in mirror_correction:
+                            amp += mirror_correction[k]
+                        setattr(p.pulse_obj, k, amp)
 
     def resolve_Z_gates(self):
         """
@@ -926,8 +1075,8 @@ class Segment:
             self.element_start_end[element] = {}
 
         # find element start, end and length
-        t_start = float('inf')
-        t_end = -float('inf')
+        t_start = np.inf
+        t_end = -np.inf
 
         for pulse in self.elements[element]:
             for ch in pulse.masked_channels():
@@ -938,6 +1087,17 @@ class Segment:
             t_start = min(pulse.algorithm_time(), t_start)
             t_end = max(pulse.algorithm_time() + pulse.length, t_end)
 
+        # if element is not on the awg provided, the function
+        # shall return None. This is useful for
+        # self._combine_elements which in some instances wants to
+        # update start and length for an element on all AWGs
+        # without taking care of whether the element is actually
+        # on that AWG. One could think of splitting these two
+        # aspects of the self.element_start_length.
+        if t_start == np.inf or t_end == -np.inf:
+            log.debug(f'Asked to find start of element {element} on AWG '
+                      f'{awg}, but element not on AWG.')
+            return
         # make sure that element start is a multiple of element
         # start granularity
         # we allow rounding up of the start time by half a sample, otherwise

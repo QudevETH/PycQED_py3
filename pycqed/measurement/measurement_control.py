@@ -159,12 +159,7 @@ class MeasurementControl(Instrument):
 
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
-            self.main_QtPlot = QtPlot(
-                window_title='Main plotmon of {}'.format(self.name),
-                figsize=(600, 400))
-            self.secondary_QtPlot = QtPlot(
-                window_title='Secondary plotmon of {}'.format(self.name),
-                figsize=(600, 400))
+            self.open_plotmon_windows()
 
         self.plotting_interval(plotting_interval)
 
@@ -242,6 +237,12 @@ class MeasurementControl(Instrument):
                     calls itself recursively.
         '''
 
+        def try_finish():
+            try:
+                self.detector_function.finish()
+            except Exception:
+                pass  # no need to raise an exception if cleanup fails
+
         self.timer = Timer("MeasurementControl")
         # reset properties that are used by get_percdone
         self._last_percdone_value = 0
@@ -314,8 +315,10 @@ class MeasurementControl(Instrument):
                     raise ValueError('Mode "{}" not recognized.'
                                      .format(self.mode))
             except KeyboardFinish as e:
+                try_finish()
                 print(e)
             except KeyboardInterrupt as e:
+                try_finish()
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
@@ -324,6 +327,7 @@ class MeasurementControl(Instrument):
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
+                try_finish()
                 # We store the exception instead of raising it directly.
                 # After creating the results dict and storing end time +
                 # metadata, the exception will be either logged (if an
@@ -806,6 +810,37 @@ class MeasurementControl(Instrument):
         else:
             return self.live_plot_enabled()
 
+    def open_plotmon_windows(self, name=None, close_previous_windows=True):
+        """Opens the windows of the main and secondary plotting monitor.
+
+        This method is called in the init if live_plot_enabled is True,
+        and it can also be called by the user, e.g., if the windows have
+        been closed by accident.
+
+        Args:
+            name (str): A name to be shown in the title bar of the windows.
+                Defaults to None, in which case the name of the MC object is
+                used.
+            close_previous_windows (bool): Specifies whether the previously
+                used plotmon windows should be closed before creating the
+                new ones. Default: True.
+        """
+        if close_previous_windows:
+            for plotmon in ['main_QtPlot', 'secondary_QtPlot']:
+                try:
+                    getattr(self, plotmon).win.close()
+                except Exception:
+                    # Either the window did not exist, or an error occured.
+                    # This can be ignored: in the worst case, an unused
+                    # window will stay open.
+                    pass
+        if name is None:
+            name = self.name
+        self.main_QtPlot = QtPlot(
+            window_title=f'Main plotmon of {name}', figsize=(600, 400))
+        self.secondary_QtPlot = QtPlot(
+            window_title=f'Secondary plotmon of {name}', figsize=(600, 400))
+
     def _get_plotmon_axes_info(self):
         '''
         Returns a dict indexed by value_names, which contains information
@@ -1082,6 +1117,8 @@ class MeasurementControl(Instrument):
                     # supported by 2D plotmon), we have to fall back to
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
+                        if len(new_sweep_vals[i]) == 1:  # single sweep point
+                            continue  # the following check is not needed
                         # Check if the new_sweep_vals are not equidistant
                         # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])

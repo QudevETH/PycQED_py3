@@ -14,13 +14,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath('../..'))
+sys.path.append(os.path.abspath("./ext"))
 
 # Custom variable __sphinx_build__ which can be used to check inside the code
 # if the documentation is being built.
 import builtins
 builtins.__sphinx_build__ = True
-
-
 
 # -- Project information -----------------------------------------------------
 
@@ -40,11 +39,10 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx_rtd_theme',
     'myst_parser',
+    'autodoc_instrument',
 ]
 
 source_suffix = ['.rst', '.md']
-
-autosummary_generate = True
 
 numfig = True
 
@@ -62,6 +60,16 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
+# -- Autodoc and autosummary -------------------------------------------------
+
+# Do not prepend module names to avoid long, overflowing titles
+add_module_names = False
+
+autosummary_generate = True
+
+autodoc_default_options = {
+    'undoc-members': True,
+}
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -75,3 +83,8 @@ html_static_path = ['_static']
 
 # Hide "View page source" link
 html_show_sourcelink = False
+
+
+# -- autodoc_instrument extensin ---------------------------------------------
+
+autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")

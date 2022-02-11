@@ -56,7 +56,8 @@ def legend_unique_labels(ax, **kwargs):
 
 
 def get_default_plot_params(set_params=True, figure_width='1col',
-                            figure_height=None, params=None, **kw):
+                            figure_height=None, params=None,
+                            return_full_rc_params=False, **kw):
     """
     Generates the rcParams that produce nice paper-style figures.
     Optionally updates the rcParams if set_pars == True.
@@ -67,6 +68,8 @@ def get_default_plot_params(set_params=True, figure_width='1col',
         representing a fraction of 1 column PRX style.
     :param figure_height: height of the figure in inches. If None, uses
         the function default_figure_height defined above.
+    :param return_full_rc_params: whether to return the rc_params created in
+        this function (False) or plt.rcParams (True)
     :param params: keyword arguments
     :return: rcParams dictionary
     """
@@ -106,11 +109,15 @@ def get_default_plot_params(set_params=True, figure_width='1col',
     if set_params:
         plt.rcParams.update(plt.rcParamsDefault)
         plt.rcParams.update(rc_params)
-    return plt.rcParams
+    if return_full_rc_params:
+        return plt.rcParams
+    else:
+        return rc_params
 
 
 def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
-                           ha='left', va='top'):
+                           startletter="a", ha='left', va='top',
+                           fmt="({})", **kwargs):
     """
     Adds letters to top left corner of subplots corresponding to axes from fig.
     :param fig: figure object
@@ -119,8 +126,11 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
         This might not always work well. xoffset is added to this position.
     :param yoffset: the y location of the letter is the top margin of the axis.
         This might not always work well. yoffset is added to this position.
+    :param startletter: letter (string) of the alphabet for the first subplot.
     :param ha: horizontal alignment of letters
     :param va: vertical alignment of letters
+    :param fmt: string format for the numbering. Defaults to '({})' yielding
+        (a), (b), ...
     :return: fig, axes
 
     Attention!
@@ -128,13 +138,17 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
 
     """
     # ax_geom = get_axes_geometry_from_figure(fig)
-    letters = [f'({chr(x+97)})' for x in range(len(np.array(axes).flatten()))]
+    alphabet = 'abcdefghijklmnopqrstuvwxyz'
+    s = alphabet.index(startletter)
+    letters = [fmt.format(alphabet[x + s]) for x in range(len(np.array(axes).flatten()))]
     for i, ax in enumerate(np.array(axes).flatten()):
         letter = letters[i]
-        ax.text(ax.bbox.transformed(fig.transFigure.inverted()).x0 + xoffset,
-                ax.bbox.transformed(fig.transFigure.inverted()).y1 + yoffset,
+        xo = xoffset[i] if np.ndim(xoffset) != 0 else xoffset
+        yo = yoffset[i] if np.ndim(yoffset) != 0 else yoffset
+        ax.text(ax.bbox.transformed(fig.transFigure.inverted()).x0 + xo,
+                ax.bbox.transformed(fig.transFigure.inverted()).y1 + yo,
                 letter,
-                ha=ha, va=va, transform=fig.transFigure)
+                ha=ha, va=va, transform=fig.transFigure, **kwargs)
     return fig, axes
 
 
@@ -245,7 +259,8 @@ def prepare_cal_states_plot_dicts(data_dict, figure_name=None,
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Lenght of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -399,7 +414,8 @@ def prepare_1d_plot_dicts(data_dict, figure_name, keys_in, **params):
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Length of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -532,7 +548,8 @@ def prepare_2d_plot_dicts(data_dict, figure_name, keys_in, **params):
     zunit = params.get('zunit', '')
 
     # get more plotting aspect information
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     plotsize = (plotsize[0], 1.5*plotsize[1])
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
@@ -659,7 +676,8 @@ def prepare_1d_raw_data_plot_dicts(data_dict, keys_in=None, figure_name=None,
     if len(data_labels) != len(data_to_proc_dict):
         raise ValueError('Lenght of "data_labels" does not equal the number '
                          'of traces to plot')
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
     nrows = hlp_mod.get_param(
@@ -809,7 +827,8 @@ def prepare_2d_raw_data_plot_dicts(data_dict, keys_in=None, figure_name=None,
     xunit = sweep_info[0][1]
 
     # get more plotting aspect information
-    plotsize = get_default_plot_params(set=False)['figure.figsize']
+    plotsize = get_default_plot_params(
+        set_params=False, return_full_rc_params=True)['figure.figsize']
     ncols = hlp_mod.get_param(
         'ncols', params, default_value=2 if len(data_to_proc_dict) > 2 else 1)
     nrows = hlp_mod.get_param(

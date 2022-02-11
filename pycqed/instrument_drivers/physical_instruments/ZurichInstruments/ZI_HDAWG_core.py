@@ -42,11 +42,9 @@ Changelog:
 """
 
 import logging
-import os
 import time
-import ctypes
 import json
-from zlib import crc32
+import copy
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibase
 
@@ -109,8 +107,8 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
         Checks that the correct options are installed on the instrument.
         """
         options = self.gets('features/options').split('\n')
-        # if 'PC' not in options:
-        #    raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
+        if 'PC' not in options:
+            raise zibase.ziOptionsError('Device {} is missing the PC option!'.format(self.devname))
 
     def _check_awg_nr(self, awg_nr):
         """
@@ -149,6 +147,9 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
 
         log.warning('{}: loading default settings (FIXME: still incomplete)'
                     .format(self.devname))
+
+        # Setting the clock to external
+        self.assure_ext_clock()
 
         # clear output
 
@@ -203,68 +204,10 @@ class ZI_HDAWG_core(zibase.ZI_base_instrument):
     # AWGS/0/SEQUENCER/MEMORYUSAGE
     # AWGS/0/WAVEFORM/MEMORYUSAGE
 
-    def check_errors(self, errors_to_ignore=None):
-        errors = json.loads(self.getv('raw/error/json/errors'))
-
-        # If this is the first time we are called, log the detected errors, but don't raise
-        # any exceptions
-        if self._errors is None:
-            raise_exceptions = False
-            self._errors = {}
-        else:
-            raise_exceptions = True
-
-        # Asserted in case errors were found
-        found_errors = False
-
-        # Combine errors_to_ignore with commandline
-        _errors_to_ignore = self._errors_to_ignore
-        if errors_to_ignore is not None:
-            _errors_to_ignore += errors_to_ignore
-
-        # Go through the errors and update our structure, raise exceptions if anything changed
-        for m in errors['messages']:
-            code     = m['code']
-            count    = m['count']
-            severity = m['severity']
-            message  = m['message']
-
-            if not raise_exceptions:
-                self._errors[code] = {
-                    'count'   : count,
-                    'severity': severity,
-                    'message' : message}
-                log.warning(f'{self.devname}: Code {code}: "{message}" ({severity})')
-            else:
-                # Check if there are new errors
-                if code not in self._errors or count > self._errors[code]['count']:
-                    if code in _errors_to_ignore:
-                        log.info(f'{self.devname}: {message} ({code}/{severity})')
-                    else:
-                        log.error(f'{self.devname}: {message} ({code}/{severity})')
-                        found_errors = True
-
-                if code in self._errors:
-                    self._errors[code]['count'] = count
-                else:
-                    self._errors[code] = {
-                        'count'   : count,
-                        'severity': severity,
-                        'message' : message}
-
-        if found_errors:
-            log.error('Errors detected during run-time!')
-
-    def clear_errors(self):
-        self.seti('raw/error/clear', 1)
-
     def get_idn(self) -> dict:
         idn_dict = super().get_idn()
         idn_dict['slave_firmware'] = self.geti('system/slaverevision')
         return idn_dict
-
-    def clock_freq(self):
-        return 2.4e9
 
     ##########################################################################
     # 'public' functions: generic AWG/waveform support

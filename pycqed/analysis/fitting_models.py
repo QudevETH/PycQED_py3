@@ -220,24 +220,31 @@ def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
     return qubit_freq[0] if return_float else qubit_freq
 
 def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
-                              dac_sweet_spot=0.0, V_per_phi0=None,
-                              dac_flux_coefficient=None,
-                              phi_park=None,
-                      branch='smallest'):
-    '''
+                          dac_sweet_spot=0.0, V_per_phi0=None,
+                          dac_flux_coefficient=None, phi_park=None,
+                          branch='smallest', n_periods=(-1, 2)):
+    """
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
-    This function implements the inverse of "Qubit_dac_to_freq"
+    This function implements the inverse of "Qubit_dac_to_freq_res"
 
-    frequency (Hz)
-    Ej_max (Hz): Maximum josephson energy
-    E_c (Hz): charging energy of the qubit
-    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
-    asym (dimensionless asymmetry param) = abs((EJ1-EJ2)/(EJ1+EJ2))
-    couping (Hz): coupling to resonator
-    fr (Hz): frequency of resonator
-    dac_sweet_spot (V): voltage at which the sweet-spot is found
-    branch (enum: 'positive' 'negative' or "smallest")
-    '''
+    frequency (array): qubit frequency (Hz).
+    Ej_max (float): Maximum josephson energy (Hz).
+    E_c (float): charging energy of the qubit (Hz).
+    V_per_phi0 (float): volt per phi0 (convert voltage to flux).
+    asym: dimensionless asymmetry param: abs((EJ1-EJ2)/(EJ1+EJ2))
+    coupling: coupling to resonator (Hz).
+    fr (float): frequency of resonator (Hz)
+    dac_sweet_spot: voltage at which the sweet-spot is found (V)
+    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+        if "positive": returns voltages corresponding to the positive flux
+            branch (right to the upper sweetspot).
+        if "negative": returns voltages corresponding to the negative flux
+            (left to the upper sweetspot).
+        if "smallest": equivalent to branch = 0.
+        if volt_guess (integer):
+            returns voltages in the period closest to volt_guess
+
+    """
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
     if dac_sweet_spot is None and phi_park is None:
@@ -260,14 +267,16 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
 
     r = E_j / Ej_max
     if np.any(r > 1):
+        r_str = '[' + ', '.join([f'{x}' for x in r[r>1]]) + ']'
         log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
-                    f'indices {np.argwhere(r > 1)}.Truncating to 1.')
+                    f'indices {np.argwhere(r > 1)}: {r_str} '
+                    f'Truncating to 1.')
         r[r>1] = 1
     phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
 
     if dac_flux_coefficient is not None:
         log.warning('"dac_flux_coefficient" deprecated. Please use the '
-                        'physically meaningful "V_per_phi0" instead.')
+                    'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
 
     dac_voltage_pos = phi * V_per_phi0 / np.pi + dac_sweet_spot
@@ -277,17 +286,17 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     elif branch == 'negative':
         dac_voltage = dac_voltage_neg
     elif branch == 'smallest':
-        if np.ndim(phi) != 0:
-            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
-            idxs0 = np.argmin(np.abs(dac_voltage), 0)
-            idxs1 = np.arange(len(dac_voltage_pos))
-            dac_voltage = dac_voltage[idxs0, idxs1]
-        else:
-            dac_voltage = dac_voltage_pos \
-                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
-                else dac_voltage_neg
-    else:
+        branch = 0
+    elif not isinstance(branch, (int,float)):
         raise ValueError('branch {} not recognized'.format(branch))
+
+    if isinstance(branch, (int, float)):
+        dac_voltage = np.array([dac_voltage_pos + n * V_per_phi0 for n in range(
+            *n_periods)] + [dac_voltage_neg + n * V_per_phi0 for n in range(
+            *n_periods)])
+        idxs0 = np.argmin(np.abs(dac_voltage - branch), 0)
+        idxs1 = np.arange(len(dac_voltage_pos))
+        dac_voltage = dac_voltage[idxs0, idxs1]
 
     return dac_voltage[0] if return_float else dac_voltage
 
@@ -1564,6 +1573,141 @@ def TwoErrorFunc_guess(model, delays, data):
                                sigma=sigma_guess,
                                offset = offset_guess)
     return params
+
+
+def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
+    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
+
+    Args:
+        alpha (float): Correction factor that is applied to the amplitude of 
+            the Q signal.
+        phi_skew (float): Phase correction of the Q signal relative to the I 
+            signal in degree.
+        g (float, optional): Amplitude ratio between the LO power splitter 
+            outputs. It is defined as amplitude(LO_I)/amplitude(LO_Q).
+            Defaults to 1.0.
+        phi (float, optional): Phase between the two ports of the LO power 
+            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). 
+            Defaults to 0 degree.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+
+    Returns:
+        float: maximum sideband amplitude for the specified parameters in dBV
+
+    Model Schematic:
+        Note: In the schematic phases are shown as radiant quantities while 
+              the function expects phases expressed in degree.
+         I >------------------------------ I  R ----+
+                                            LO      |
+                                            |       |
+        LO >------\-/-----------------------+       |
+                   X  (90° power splitter)          +----> RF
+                --/-\--- 1/g*exp(i*phi) ----+       |
+                                            |       |
+                                            LO      |
+         Q >--- alpha*exp(i*phi_skew) ---- I  R ----+
+    """
+    return 20*np.log10(np.abs(1 - alpha/g 
+                                  * np.exp(-1j*np.deg2rad(phi + phi_skew)))
+                       ) + offset
+
+
+def mixer_imbalance_sideband_guess(model, **kwargs):
+    """Prepare and return parameters for the model :py:func:'.mixer_imbalance_sideband.'
+
+    Args:
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
+
+    Returns:
+        :py:class:'lmfit.parameters': Parameters
+    """
+    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('phi', value=0, min=-180, max=180)
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
+    return model.make_params(**kwargs)
+
+
+def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
+    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
+
+    Args:
+        vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
+        vq (:obj:'float'): DC bias voltage applied on the Q input of the mixer.
+        li (float, optional): Amplitude of the LO leakage of the I port mixer. 
+            Also see note below. Defaults to 0.0.
+        lq (float, optional): Amplitude of the LO leakage of the Q port mixer. 
+            Also see note below. Defaults to 0.0.
+        theta_i (int, optional): Phase in radiant of the LO leakage of the I 
+            port mixer. Also see note below. Defaults to 0.0 rad.
+        theta_q (int, optional): Phase in radiant of the LO leakage of the Q 
+            port mixer. Also see note below. Defaults to 0.0 rad.
+        offset (float, optional): Offset in dBV accounting for losses in the 
+            signal chain. Defaults to 0.0 dBV.
+
+    Returns:
+        :obj:'float': maximum amplitude of the LO leakage for given parameters
+
+    Important Note:
+        As can be seen from the model schematic and the implementation the 
+        pair of arguments li and theta_i as well as lq and theta_q each define 
+        a complex number that will be added within the model. Therefore they 
+        are not uniquely defined from the models value and one should prefer 
+        to set one of the two pairs constant when fitting the model to data to 
+        prevent unneccesary overhead in the fitting routine.
+    
+    Model Schematic:
+        Note: We are only interested in the amplitudes of signals that are of 
+              LO frequency.
+
+         I >-- +V_I (DC) ----------- I  R --- +V_I ---------------+-----+
+                                      LO                          |     |
+                                      |                           |     |
+        LO >------------\-/-----------+--- li*exp(i*theta_i) -----+     |
+                         X                                              +--> RF
+                      --/-\-----------+--- -i*lq*exp(i*theta_q) --+     |
+                                      |                           |     |
+                                      LO                          |     |
+         Q >-- +V_Q (DC) ----------- I  R --- -iV_Q --------------+-----+
+    """
+    return 20*np.log10(np.abs(vi
+                            + li * np.exp(1j*theta_i)
+                            - 1j * vq
+                            - 1j * lq * np.exp(1j*theta_q)
+                            )) + offset
+
+
+def mixer_lo_leakage_guess(model, **kwargs):
+    """Prepare and return parameters  for the model :py:func:'.mixer_lo_leakage'.
+
+    Args:
+        model (:py:class:'lmfit.model'): The model that the parameter hints 
+            will be added to and that is used to generate the parameters using 
+            the :py:meth:'lmfit.model.make_params' method.
+        **kwargs: Arbitrary keyword arguments that will be passed to 
+            :py:meth:'lmfit.model.make_params' when creating the parameters.
+
+    Returns:
+        :py:class:'lmfit.parameters': Parameters
+
+    Note:
+        The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
+        descibed in the documentation of :py:func:'.mixer_lo_leakage'.
+    """
+    pi_half = np.pi/2
+    model.set_param_hint('li', value=0.0, min=0, max=1)
+    model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
+    model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
+    model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
+                         max=pi_half, vary=False
+                         )
+    model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
+    return model.make_params(**kwargs)
+
 
 #################################
 #     User defined Models       #
