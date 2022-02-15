@@ -521,8 +521,8 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.sequences) > 1:
             # compress 2D sweep
             if self.compression_seg_lim is not None:
-                if self.sweep_functions == (awg_swf.SegmentHardSweep,
-                                            awg_swf.SegmentSoftSweep):
+                if self.sweep_functions == [awg_swf.SegmentHardSweep,
+                                            awg_swf.SegmentSoftSweep]:
                     self.sequences, self.mc_points[0], \
                     self.mc_points[1], cf = \
                         self.sequences[0].compress_2D_sweep(self.sequences,
