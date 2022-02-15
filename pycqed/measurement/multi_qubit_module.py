@@ -679,13 +679,25 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                         cp.create_segments(operation_dict,
                                                            **prep_params))
                 # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
+                if len(set(qb.instr_acq() for qb in qubits)) == 1:
+                    single_acq_dev = qubits[0].instr_acq.get_instr()
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload, start_pulsar=True,
+                        start_exclude_awgs=[single_acq_dev.name]))
+                else:
+                    single_acq_dev = None
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload))
+
                 MC.set_sweep_points(sweep_points)
                 df = get_multiplexed_readout_detector_functions(
                     'inp_avg_det', qubits)
+                if single_acq_dev is not None:
+                    df.AWG = single_acq_dev
                 MC.set_detector_function(df)
                 MC.run(name=name, exp_metadata=exp_metadata)
+                if single_acq_dev is not None:
+                    ps.Pulsar.get_instance().stop()
 
     if analyze:
         tps = [a_tools.latest_data(

@@ -147,12 +147,15 @@ class arbitrary_variable_swf(swf.Hard_Sweep):
 
 class SegmentHardSweep(swf.Hard_Sweep):
 
-    def __init__(self, sequence, upload=True, parameter_name='None', unit=''):
+    def __init__(self, sequence, upload=True, parameter_name='None', unit='',
+                 start_pulsar=False, start_exclude_awgs=()):
         super().__init__()
         self.sequence = sequence
         self.upload = upload
         self.parameter_name = parameter_name
         self.unit = unit
+        self.start_pulsar = start_pulsar
+        self.start_exclude_awgs = start_exclude_awgs
 
     def prepare(self, awgs_to_upload='all', **kw):
         if self.upload:
@@ -160,6 +163,8 @@ class SegmentHardSweep(swf.Hard_Sweep):
             ps.Pulsar.get_instance().program_awgs(self.sequence,
                                                   awgs=awgs_to_upload)
             time.sleep(0.1)
+            if self.start_pulsar:
+                ps.Pulsar.get_instance().start(exclude=self.start_exclude_awgs)
 
     def set_parameter(self, value):
         pass
