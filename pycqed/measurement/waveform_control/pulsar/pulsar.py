@@ -162,9 +162,11 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
 
         Pulsar._instance = self
 
-    @staticmethod
-    def get_instance():
-        return Pulsar._instance
+    # TODO: Should Pulsar be a singleton ? Is it really necessary to have such
+    # a method ?
+    @classmethod
+    def get_instance(cls):
+        return cls._instance
 
     def _use_sequence_cache_parser(self, val):
         if val and not self.use_sequence_cache():
