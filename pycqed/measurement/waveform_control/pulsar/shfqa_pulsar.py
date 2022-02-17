@@ -1,9 +1,24 @@
-class SHFQAPulsar:
-    """
-    Defines the Zurich Instruments SHFQA specific functionality for the Pulsar
-    class
-    """
-    _supportedAWGtypes = (SHFQA,)
+import logging
+import numpy as np
+from copy import deepcopy
+
+import qcodes.utils.validators as vals
+from qcodes.instrument.parameter import ManualParameter
+try:
+    from zhinst.qcodes import SHFQA
+except Exception:
+    SHFQA = type(None)
+
+from .pulsar import PulsarAWGInterface
+
+
+log = logging.getLogger(__name__)
+
+
+class SHFQAPulsar(PulsarAWGInterface):
+    """ZI SHFQA specific functionality for the Pulsar class."""
+
+    awg_classes = [SHFQA]
 
     _shfqa_sequence_string_template = (
         "// hardcoded value until we figure out user registers\n"
@@ -25,9 +40,6 @@ class SHFQAPulsar:
                 (values, as string) to be used for this AWG. Names for missing
                 ids default to `f'{awg.name}_{chid}'`.
         """
-
-        if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
-            return super()._create_awg_parameters(awg, channel_name_map)
 
         name = awg.name
 
@@ -206,10 +218,6 @@ class SHFQAPulsar:
         # This could be further optimized in the future. Moreover, we currently
         # ignore channels_to_upload in spectroscopy mode, i.e., we always
         # re-upload in spectroscopy mode. This could be optimized in the future.
-        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
-            return super()._program_awg(
-                obj, awg_sequence, waveforms, repeat_pattern,
-                channels_to_upload=channels_to_upload, **kw)
 
         grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
         for i, qachannel in enumerate(obj.qachannels):
@@ -340,8 +348,7 @@ class SHFQAPulsar:
 
     def _is_awg_running(self, obj):
         """Checks whether the sequencer of AWG `obj` is running"""
-        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
-            return super()._is_awg_running(obj)
+
         is_running = []
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
@@ -356,20 +363,17 @@ class SHFQAPulsar:
 
     def _clock(self, obj, cid=None):
         """Returns the sample clock of the SHFQA: 2 GHz."""
-        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
-            return super()._clock(obj)
+
         return 2.0e9
 
     def _get_segment_filter_userregs(self, obj):
         """Segment filter currently not supported on SHFQA"""
-        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+
         return []
 
     def sigout_on(self, ch, on=True):
         """Turn channel outputs on or off."""
+
         awg = self.find_instrument(self.get(ch + '_awg'))
-        if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
-            return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
         awg.qachannels[int(chid[-2]) - 1].output(True)

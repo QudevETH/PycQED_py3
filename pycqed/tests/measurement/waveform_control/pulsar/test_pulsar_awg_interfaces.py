@@ -1,4 +1,5 @@
 from unittest import TestCase
+from typing import List, Type
 
 from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.measurement.waveform_control.pulsar.pulsar import PulsarAWGInterface
@@ -8,7 +9,9 @@ from pycqed.measurement.waveform_control.pulsar.shfqa_pulsar import SHFQAPulsar
 from pycqed.measurement.waveform_control.pulsar.uhfqc_pulsar import UHFQCPulsar
 
 
-registered_interfaces = [AWG5014Pulsar, HDAWG8Pulsar, SHFQAPulsar, UHFQCPulsar]
+registered_interfaces:List[Type[PulsarAWGInterface]] = [
+    AWG5014Pulsar, HDAWG8Pulsar, SHFQAPulsar, UHFQCPulsar
+]
 
 
 class TestPulsar(TestCase):
@@ -19,5 +22,8 @@ class TestPulsar(TestCase):
             self.assertIn(interface, PulsarAWGInterface._pulsar_interfaces)
 
     def test_instantiate(self):
+
+        pulsar = Pulsar("pulsar")
+
         for interface in registered_interfaces:
-            instance = interface()
+            instance = interface(pulsar)

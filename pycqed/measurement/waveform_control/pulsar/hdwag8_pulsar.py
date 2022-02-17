@@ -1,9 +1,30 @@
-class HDAWG8Pulsar:
-    """
-    Defines the Zurich Instruments HDAWG8 specific functionality for the Pulsar
-    class
-    """
-    _supportedAWGtypes = (ZI_HDAWG_core,)
+import logging
+import numpy as np
+from copy import deepcopy
+
+import qcodes.utils.validators as vals
+from qcodes.instrument.parameter import ManualParameter
+try:
+    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
+        ZI_HDAWG_core import ZI_HDAWG_core
+except Exception:
+    ZI_HDAWG_core = type(None)
+try:
+    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
+        ZI_base_instrument import merge_waveforms
+except Exception:
+    pass
+
+from .pulsar import PulsarAWGInterface
+
+
+log = logging.getLogger(__name__)
+
+
+class HDAWG8Pulsar(PulsarAWGInterface):
+    """ZI HDAWG8 specific functionality for the Pulsar class."""
+
+    awg_classes = [ZI_HDAWG_core]
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -20,8 +41,6 @@ class HDAWG8Pulsar:
         self._hdawg_waveform_cache = dict()
 
     def _create_awg_parameters(self, awg, channel_name_map):
-        if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._create_awg_parameters(awg, channel_name_map)
 
         name = awg.name
 
@@ -341,11 +360,6 @@ class HDAWG8Pulsar:
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      channels_to_upload='all', channels_to_program='all'):
-        if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._program_awg(
-                obj, awg_sequence, waveforms, repeat_pattern,
-                channels_to_upload=channels_to_upload,
-                channels_to_program=channels_to_program)
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, obj.name) for chid in chids}
@@ -639,30 +653,21 @@ class HDAWG8Pulsar:
         obj.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
 
     def _is_awg_running(self, obj):
-        if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._is_awg_running(obj)
-
         return any([obj.get('awgs_{}_enable'.format(awg_nr)) for awg_nr in
                     self._hdawg_active_awgs(obj)])
 
     def _clock(self, obj, cid):
-        if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._clock(obj, cid)
         return obj.clock_freq()
 
     def _hdawg_active_awgs(self, obj):
         return [0,1,2,3]
 
     def _get_segment_filter_userregs(self, obj):
-        if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
         return [(f'awgs_{i}_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{obj.USER_REG_LAST_SEGMENT}')
                 for i in range(4) if obj._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))
-        if not isinstance(awg, HDAWG8Pulsar._supportedAWGtypes):
-            return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
         awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

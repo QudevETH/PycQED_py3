@@ -1,75 +1,121 @@
-# Originally by Wolfgang Pfaff
-# Modified by Adriaan Rol 9/2015
-# Modified by Ants Remm 5/2017
-# Modified by Michael Kerschbaum 5/2019
 import os
 import shutil
 import ctypes
 import numpy as np
 import logging
+import time
+from abc import ABC, abstractmethod
+from typing import List, Set, Tuple
+
 from qcodes.instrument.base import Instrument
-from qcodes.instrument.parameter import (
-    ManualParameter, InstrumentRefParameter)
+from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
-import time
-from copy import deepcopy
 
-from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
-    VirtualAWG5014
-try:
-    from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
-except Exception:
-    Tektronix_AWG5014 = type(None)
-try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
-        UHFQA_core import UHFQA_core
-except Exception:
-    UHFQA_core = type(None)
-try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
-        ZI_HDAWG_core import ZI_HDAWG_core
-except Exception:
-    ZI_HDAWG_core = type(None)
-try:
-    from zhinst.qcodes import SHFQA
-except Exception:
-    SHFQA = type(None)
-
-try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
-        ZI_base_instrument import merge_waveforms
-except Exception:
-    pass
 
 log = logging.getLogger(__name__)
 
 
-class PulsarAWGInterface:
-    """Base interface for AWGs used by the :class:`Pulsar` class."""
+class PulsarAWGInterface(ABC):
+    """Base interface for AWGs used by the :class:`Pulsar` class.
 
-    def create_awg_parameters(self):
+    To support another type of AWG in the pulsar class, one needs to subclass
+    this interface class, and override the methods it defines. In addition, make
+    sure to override the supported ``awg_classes``.
+
+    Attributes:
+        awg: AWG added to the pulsar.
+        pulsar: Pulsar to which the PulsarAWGInterface is added.
+    """
+
+    awg_classes:List[type] = []
+    """List of AWG classes for which the interface is meant.
+
+    Derived classes should override this class attribute.
+    """
+
+    _pulsar_interfaces = []
+    """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
+
+    def __init__(self, awg, pulsar:'Pulsar'):
+        super().__init__()
+
+        self.awg = awg
+        self.pulsar = pulsar
+
+
+    def __init_subclass__(cls, **kwargs):
+        """Hook to auto-register a new pulsar AWG interface class.
+
+        See https://www.python.org/dev/peps/pep-0487/#subclass-registration.
+        """
+
+        super().__init_subclass__(**kwargs)
+        if not cls.awg_classes:
+            raise NotImplementedError("Subclasses of PulsarAWGInterface "
+                                      "should override 'awg_classes'.")
+        cls._pulsar_interfaces.append(cls)
+
+    @abstractmethod
+    def create_awg_parameters(self, channel_name_map:dict):
+        """Create parameters in the pulsar specific to the added AWG.
+
+        Args:
+            channel_name_map: Mapping from channel ids (keys, as string) to
+                channels names (values, as string) to be used for this AWG.
+                Names for missing ids default to ``{awg.name}_{chid}``.
+
+        TODO: This seems to add a lot of parameters to the pulsar. Try to see if
+        some parameters are common accross all subclasses and add them here?
+        TODO: This is most likely supposed to happen in __init__.
+        """
         pass
 
-    def program_awg(self):
+    @abstractmethod
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all"):
+        """Upload the waveforms to the AWG.
+
+        Args:
+            awg_sequence: AWG sequence data (not waveforms) as returned from
+                ``Sequence.generate_waveforms_sequences``. The key-structure of
+                the nested dictionary is like this:
+                ``awg_sequence[elname][cw][chid]``, where ``elname`` is the
+                element name, cw is the codeword, or the string
+                ``"no_codeword"`` and ``chid`` is the channel id. The values are
+                hashes of waveforms to be played.
+            waveforms: A dictionary of waveforms, keyed by their hash.
+            repeat_pattern: Not used for now
+            channels_to_upload: list of channel names to upload or ``"all"``.
+        """
+
+    @abstractmethod
+    def is_awg_running(self) -> bool:
+        """Checks whether the sequencer of the AWG is running."""
         pass
 
-    def is_awg_running(self):
+    @abstractmethod
+    def clock_frequency(self) -> float:
+        """Returns the sample clock frequency [Hz] of the AWG."""
         pass
 
-    def clock(self):
+    @abstractmethod
+    def sigout_on(self, ch, on:bool=True):
+        """Turn channel outputs on or off."""
         pass
 
-    def sigout_on(self):
+    @abstractmethod
+    def get_segment_filter_userregs(self) -> List[Tuple[str, str]]:
+        """Returns the list of segment filter userregs.
+
+        Returns:
+            List of tuples ``(first, last)`` where ``first`` and ``last`` are
+            formatted strings. TODO: More accurate description.
+        """
         pass
 
-    def get_segment_filter_userregs(self):
-        pass
 
-
-
-
-class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
+class Pulsar(Instrument):
     """A meta-instrument responsible for all communication with the AWGs.
 
     Contains information about all the available awg-channels in the setup.
@@ -82,13 +128,20 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
     * ZI UHFQC
     * ZI SHFQA
 
-    Args:
-        name: Instrument name.
-        master_awg: Name of the AWG that triggers all the other AWG-s and
-                    should be started last (after other AWG-s are already
-                    waiting for a trigger.
+    Attributes:
+        awgs: Names of AWGs in pulsar.
     """
+
     def __init__(self, name:str='Pulsar', master_awg:str=None):
+        """Pulsar constructor.
+
+        Args:
+            name: Instrument name.
+            master_awg: Name of the AWG that triggers all the other AWG-s and
+                should be started last (after other AWG-s are already
+                waiting for a trigger.
+        """
+
         super().__init__(name)
 
         self._sequence_cache = dict()
@@ -144,7 +197,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
-        self.awgs = set() # AWG names
+        self.awgs:Set[str] = set() # AWG names
         self.last_sequence = None
         self.last_elements = None
         self._awgs_with_waveforms = set()
@@ -218,6 +271,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         if channel_name_map is None:
             channel_name_map = {}
 
+        # Sanity checks
         for channel_name in channel_name_map.values():
             if channel_name in self.channels:
                 raise KeyError("Channel named '{}' already defined".format(
@@ -233,13 +287,6 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         self.num_channel_groups[awg.name] = len(set(
             ['---'.join(v) for k, v in self.channel_groups.items()
              if self.get('{}_awg'.format(k)) == awg.name]))
-        # try:
-        #     super()._create_awg_parameters(awg, channel_name_map)
-        # except AttributeError as e:
-        #     fail = e
-        # if fail is not None:
-        #     raise TypeError('Unsupported AWG instrument: {}. '
-        #                     .format(awg.name) + str(fail))
 
         self.awgs.add(awg.name)
         # Make sure that the registers for filter_segments are set in the

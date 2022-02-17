@@ -1,12 +1,28 @@
-class AWG5014Pulsar:
-    """
-    Defines the Tektronix AWG5014 specific functionality for the Pulsar class
-    """
-    _supportedAWGtypes = (Tektronix_AWG5014, VirtualAWG5014, )
+import numpy as np
+import logging
+from qcodes.instrument.parameter import ManualParameter
+import qcodes.utils.validators as vals
+import time
+
+try:
+    from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
+except Exception:
+    Tektronix_AWG5014 = type(None)
+from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
+    VirtualAWG5014
+
+from .pulsar import PulsarAWGInterface
+
+
+log = logging.getLogger(__name__)
+
+
+class AWG5014Pulsar(PulsarAWGInterface):
+    """Tektronix AWG5014 specific functionality for the Pulsar class."""
+
+    awg_classes = [Tektronix_AWG5014, VirtualAWG5014]
 
     def _create_awg_parameters(self, awg, channel_name_map):
-        if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
-            return super()._create_awg_parameters(awg, channel_name_map)
 
         self.add_parameter('{}_reuse_waveforms'.format(awg.name),
                            initial_value=True, vals=vals.Bool(),
@@ -211,9 +227,6 @@ class AWG5014Pulsar:
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):
-        if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._program_awg(obj, awg_sequence, waveforms,
-                                        repeat_pattern, **kw)
 
         pars = {
             'ch{}_m{}_low'.format(ch + 1, m + 1)
@@ -308,14 +321,9 @@ class AWG5014Pulsar:
         return awg_file
 
     def _is_awg_running(self, obj):
-        if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._is_awg_running(obj)
-
         return obj.get_state() != 'Idle'
 
     def _clock(self, obj, cid=None):
-        if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._clock(obj, cid)
         return obj.clock_freq()
 
     @staticmethod
@@ -370,14 +378,10 @@ class AWG5014Pulsar:
         return channel_cfg
 
     def _get_segment_filter_userregs(self, obj):
-        if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
         return []
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))
-        if not isinstance(awg, AWG5014Pulsar._supportedAWGtypes):
-            return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
         if f"{chid}_state" in awg.parameters:
             awg.set(f"{chid}_state", on)

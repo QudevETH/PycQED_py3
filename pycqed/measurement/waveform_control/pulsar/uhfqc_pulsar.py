@@ -1,9 +1,25 @@
-class UHFQCPulsar:
-    """
-    Defines the Zurich Instruments UHFQC specific functionality for the Pulsar
-    class
-    """
-    _supportedAWGtypes = (UHFQA_core,)
+from copy import deepcopy
+import logging
+import numpy as np
+
+import qcodes.utils.validators as vals
+from qcodes.instrument.parameter import ManualParameter
+try:
+    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
+        UHFQA_core import UHFQA_core
+except Exception:
+    UHFQA_core = type(None)
+
+from .pulsar import PulsarAWGInterface
+
+
+log = logging.getLogger(__name__)
+
+
+class UHFQCPulsar(PulsarAWGInterface):
+    """ZI UHFQC specific functionality for the Pulsar class."""
+
+    awg_classes = [UHFQA_core]
 
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -27,8 +43,6 @@ class UHFQCPulsar:
     )
 
     def _create_awg_parameters(self, awg, channel_name_map):
-        if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
-            return super()._create_awg_parameters(awg, channel_name_map)
 
         name = awg.name
 
@@ -169,9 +183,6 @@ class UHFQCPulsar:
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):
-        if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._program_awg(obj, awg_sequence, waveforms,
-                                        repeat_pattern, **kw)
 
         if not self._zi_waves_cleared:
             _zi_clear_waves()
@@ -390,25 +401,18 @@ class UHFQCPulsar:
         obj.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
 
     def _is_awg_running(self, obj):
-        if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._is_awg_running(obj)
         return obj.awgs_0_enable() != 0
 
     def _clock(self, obj, cid=None):
-        if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._clock(obj)
         return obj.clock_freq()
 
     def _get_segment_filter_userregs(self, obj):
-        if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
         return [(f'awgs_0_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_0_userregs_{obj.USER_REG_LAST_SEGMENT}')]
 
     def sigout_on(self, ch, on=True):
+        """Turn channel outputs on or off."""
+
         awg = self.find_instrument(self.get(ch + '_awg'))
-        if not isinstance(awg, UHFQCPulsar._supportedAWGtypes):
-            return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
         awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
-
