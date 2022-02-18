@@ -25,6 +25,12 @@ class UHFQCPulsar(PulsarAWGInterface):
     MIN_LENGTH = 16 / 1.8e9
     # TODO: Check if other values commented out can be removed
     INTER_ELEMENT_DEADTIME = 8 / 1.8e9 # 80 / 2.4e9 # 0 / 2.4e9
+    CHANNEL_AMPLITUDE_BOUNDS = {
+        "analog": (0.075, 1.5),
+    }
+    CHANNEL_OFFSET_BOUNDS = {
+        "analog": (-1.5, 1.5),
+    }
 
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -51,67 +57,35 @@ class UHFQCPulsar(PulsarAWGInterface):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
+        name = self.awg.name
 
-
-
-
-        self.add_parameter('{}_trigger_source'.format(awg.name),
-                           initial_value='Dig1',
-                           vals=vals.Enum('Dig1', 'Dig2', 'DIO'),
-                           parameter_class=ManualParameter,
-                           docstring='Defines for which trigger source \
-                                      the AWG should wait, before playing \
-                                      the next waveform. Allowed values \
-                                      are: "Dig1", "Dig2", "DIO"')
+        pulsar.add_parameter(f"{name}_trigger_source",
+                             initial_value="Dig1",
+                             vals=vals.Enum("Dig1", "Dig2", "DIO"),
+                             parameter_class=ManualParameter,
+                             docstring="Defines for which trigger source the "
+                                       "AWG should wait, before playing the "
+                                       "next waveform. Allowed values are: "
+                                       "'Dig1', 'Dig2', 'DIO'.")
 
         group = []
         for ch_nr in range(2):
-            id = 'ch{}'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._uhfqc_create_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
+            id = f"ch{ch_nr + 1}"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
         # all channels are considered as a single group
-        for name in group:
-            self.channel_groups[name] = group
+        for ch_name in group:
+            pulsar.channel_groups[ch_name] = group
 
-    def _uhfqc_create_channel_parameters(self, id, name, awg):
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
-        self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._uhfqc_setter(awg, id, 'amp'),
-                            get_cmd=self._uhfqc_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(0.075, 1.5),
-                            initial_value=0.75)
-        self.add_parameter('{}_offset'.format(name),
-                            label='{} offset'.format(name), unit='V',
-                            set_cmd=self._uhfqc_setter(awg, id, 'offset'),
-                            get_cmd=self._uhfqc_getter(awg, id, 'offset'),
-                            vals=vals.Numbers(-1.5, 1.5),
-                            initial_value=0)
-        self.add_parameter('{}_distortion'.format(name),
-                            label='{} distortion mode'.format(name),
-                            initial_value='off',
-                            vals=vals.Enum('off', 'precalculate'),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_distortion_dict'.format(name),
-                            label='{} distortion dictionary'.format(name),
-                            vals=vals.Dict(),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_charge_buildup_compensation'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Bool(), initial_value=False)
-        self.add_parameter('{}_compensation_pulse_scale'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Numbers(0., 1.), initial_value=0.5)
-        self.add_parameter('{}_compensation_pulse_delay'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_gaussian_filter_sigma'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
+    def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
+        super().create_channel_parameters(id, ch_name, ch_type)
+
+        # TODO: Other AWGs do not define an initial value for these. Check if
+        # this is a good behavior
+        self.pulsar.parameters[f"{ch_name}_amp"].set(0.75)
+        self.pulsar.parameters[f"{ch_name}_offset"].set(0)
 
     @staticmethod
     def _uhfqc_setter(obj, id, par):

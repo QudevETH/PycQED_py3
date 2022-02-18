@@ -23,6 +23,14 @@ class SHFQAPulsar(PulsarAWGInterface):
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
     INTER_ELEMENT_DEADTIME = 0 # TODO: unverified!
+    CHANNEL_AMPLITUDE_BOUNDS = {
+        "analog": (0.001, 1),
+    }
+    # TODO: SHFQA had no parameter for offset, should we delete it for this
+    # subclass, or just force it to 0 ?
+    CHANNEL_OFFSET_BOUNDS = {
+        "analog": (0, 0),
+    }
 
     _shfqa_sequence_string_template = (
         "// hardcoded value until we figure out user registers\n"
@@ -37,81 +45,44 @@ class SHFQAPulsar(PulsarAWGInterface):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
+        name = self.awg.name
 
         # Repeat pattern support is not yet implemented for the SHFQA, thus we
         # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{self.awg.name}_minimize_sequencer_memory"]
+        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
 
-
-
-
-
-        self.add_parameter('{}_trigger_source'.format(self.awg.name),
-                           initial_value='Dig1',
-                           vals=vals.Enum('Dig1',),
-                           parameter_class=ManualParameter,
-                           docstring='Defines for which trigger source \
-                                      the AWG should wait, before playing \
-                                      the next waveform. Only allowed value \
-                                      is "Dig1" for now.')
+        pulsar.add_parameter(f"{name}_trigger_source",
+                             initial_value="Dig1",
+                             vals=vals.Enum("Dig1",),
+                             parameter_class=ManualParameter,
+                             docstring="Defines for which trigger source the "
+                                       "AWG should wait, before playing the "
+                                       "next waveform. Only allowed value is "
+                                       "'Dig1 for now.")
 
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(4):
             group = []
-            for q in ['i', 'q']:
-                id = f'ch{ch_nr + 1}{q}'
-                name = channel_name_map.get(id, self.awg.name + '_' + id)
-                self._shfqa_create_channel_parameters(id, name, self.awg)
-                self.channels.add(name)
-                group.append(name)
-            for name in group:
-                self.channel_groups.update({name: group})
+            for q in ["i", "q"]:
+                id = f"ch{ch_nr + 1}{q}"
+                ch_name = channel_name_map.get(id, f"{name}_{id}")
+                self.create_channel_parameters(id, ch_name)
+                pulsar.channels.add(ch_name)
+                group.append(ch_name)
+            for ch_name in group:
+                pulsar.channel_groups.update({ch_name: group})
 
-    def _shfqa_create_channel_parameters(self, id, name, awg):
-        """Create parameters in the pulsar specific to one added channel
+    def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
+        """See :meth:`PulsarAWGInterface.create_channel_parameters`.
 
-        Args:
-            id:
-                Channel id. For the SHFQA, valid channel ids are ch#i and ch#q,
-                where # is a number from 1 to 4. This defines the harware port
-                used.
-            name:
-                Name of the channel to address it by in rest of the codebase.
-            awg:
-                Instance of the AWG this channel is on.
-
+        For the SHFQA, valid channel ids are ch#i and ch#q, where # is a number
+        from 1 to 4. This defines the harware port used.
         """
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
-        self.add_parameter('{}_amp'.format(name),
-                           label='{} amplitude'.format(name), unit='V',
-                           set_cmd=self._shfqa_setter(awg, id, 'amp'),
-                           get_cmd=self._shfqa_getter(awg, id, 'amp'),
-                           vals=vals.Numbers(0.001, 1),
-                           initial_value=1)
-        self.add_parameter('{}_distortion'.format(name),
-                           label='{} distortion mode'.format(name),
-                           initial_value='off',
-                           vals=vals.Enum('off', 'precalculate'),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_distortion_dict'.format(name),
-                           label='{} distortion dictionary'.format(name),
-                           vals=vals.Dict(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_charge_buildup_compensation'.format(name),
-                           parameter_class=ManualParameter,
-                           vals=vals.Bool(), initial_value=False)
-        self.add_parameter('{}_compensation_pulse_scale'.format(name),
-                           parameter_class=ManualParameter,
-                           vals=vals.Numbers(0., 1.), initial_value=0.5)
-        self.add_parameter('{}_compensation_pulse_delay'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter(
-            '{}_compensation_pulse_gaussian_filter_sigma'.format(name),
-            initial_value=0, unit='s',
-            parameter_class=ManualParameter)
+
+        super().create_channel_parameters(id, ch_name, ch_type)
+
+        # TODO: Not all AWGs provide an initial value. Should it be the case?
+        self.pulsar[f"{ch_name}_amp"].set(1)
 
     @staticmethod
     def _shfqa_setter(obj, id, par):

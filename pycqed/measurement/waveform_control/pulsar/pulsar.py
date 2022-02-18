@@ -5,7 +5,8 @@ import numpy as np
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import List, Set, Tuple
+from functools import partial
+from typing import Dict, List, Set, Tuple
 
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
@@ -46,6 +47,19 @@ class PulsarAWGInterface(ABC):
     INTER_ELEMENT_DEADTIME:float = 0.0
     """TODO: Document + provide unit."""
 
+    CHANNEL_AMPLITUDE_BOUNDS:Dict[str, Tuple[float, float]] = {}
+    """Dictionary containing the amplitude boudaries for each type of channels.
+
+    The keys are the channel types (``"analog"`` or ``"marker"``) and the values
+    are tuples of floats ``(min, max)``.
+    """
+
+    CHANNEL_OFFSET_BOUNDS:Dict[str, Tuple[float, float]] = {}
+    """Dictionary containing the offset boudaries for each type of channels.
+
+    Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
+    """
+
     _pulsar_interfaces = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
@@ -76,6 +90,9 @@ class PulsarAWGInterface(ABC):
 
         This function is called in ``__init__()``, and does not need to be
         called directly.
+
+        Subclasses must override this and make sure to call
+        :meth:`create_channel_parameters` for each added channel.
 
         Arguments:
             channel_name_map: Mapping from channel ids (keys, as string) to
@@ -136,6 +153,87 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{name}_compensation_pulse_min_length",
                              initial_value=0, unit='s',
                              parameter_class=ManualParameter)
+
+    @abstractmethod
+    def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
+        """Create parameters in the pulsar specific to one added channel.
+
+        Arguments:
+            id: Channel id. Typically ``ch{index}`` where index is a 1-based
+                channel index. For marker channels, usually ``ch{ch_nr + 1}m``.
+            ch_name: Name of the channel to address it in rest of the codebase.
+            ch_type: Type of channel: ``"analog"`` or ``"marker"``.
+
+        TODO: Some AWG define channels and marker channels. This function should
+        be able to handle all cases.
+        """
+
+        # Sanity check
+        if ch_type not in ["analog", "marker"]:
+            raise ValueError(f"Invalid {ch_type=}.")
+
+        pulsar = self.pulsar
+        awg = self.awg
+
+        pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
+        pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
+        pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
+        pulsar.add_parameter(f"{ch_name}_amp",
+                             label=f"{ch_name} amplitude", unit='V',
+                             set_cmd=partial(self.awg_setter, id, "amp"),
+                             get_cmd=partial(self.awg_getter, id, "amp"),
+                             vals=vals.Numbers(
+                                 *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
+        pulsar.add_parameter(f"{ch_name}_offset", unit='V',
+                             set_cmd=partial(self.awg_setter, id, "offset"),
+                             get_cmd=partial(self.awg_getter, id, "offset"),
+                             vals=vals.Numbers(
+                                 *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
+
+        if ch_type == "analog":
+            pulsar.add_parameter(f"{ch_name}_distortion",
+                                 label=f"{ch_name} distortion mode",
+                                 initial_value="off",
+                                 vals=vals.Enum("off", "precalculate"),
+                                 parameter_class=ManualParameter)
+            pulsar.add_parameter(f"{ch_name}_distortion_dict",
+                                 vals=vals.Dict(),
+                                 parameter_class=ManualParameter)
+            pulsar.add_parameter(f"{ch_name}_charge_buildup_compensation",
+                                 parameter_class=ManualParameter,
+                                 vals=vals.Bool(), initial_value=False)
+            pulsar.add_parameter(f"{ch_name}_compensation_pulse_scale",
+                                 parameter_class=ManualParameter,
+                                 vals=vals.Numbers(0., 1.), initial_value=0.5)
+            pulsar.add_parameter(f"{ch_name}_compensation_pulse_delay",
+                                 initial_value=0, unit='s',
+                                 parameter_class=ManualParameter)
+            pulsar.add_parameter(
+                f"{ch_name}_compensation_pulse_gaussian_filter_sigma",
+                initial_value=0, unit='s', parameter_class=ManualParameter)
+
+        else: # ch_type == "marker"
+            # So far no additional parameters specific to marker channels
+            pass
+
+    @abstractmethod
+    def awg_getter(self, id:str, param:str):
+        """Helper function to get AWG parameters.
+
+        Arguments:
+            id: Channel id for which to get the parameter value.
+            param: Parameter to get.
+        """
+
+    @abstractmethod
+    def awg_setter(self, id:str, param:str, value):
+        """Helper function to set AWG parameters.
+
+        Arguments:
+            id: Channel id for which to set the parameter value.
+            param: Parameter to set.
+            value: Value to set the parameter.
+        """
 
     @abstractmethod
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,

@@ -25,93 +25,56 @@ class AWG5014Pulsar(PulsarAWGInterface):
     ELEMENT_START_GRANULARITY = 4 / 1.2e9
     MIN_LENGTH = 256 / 1.2e9  # Cannot be triggered faster than 210 ns.
     INTER_ELEMENT_DEADTIME = 0.0
+    CHANNEL_AMPLITUDE_BOUNDS = {
+        "analog": (0.01, 2.25),
+        "marker": (-5.4, 5.4),
+    }
+    CHANNEL_OFFSET_BOUNDS = {
+        "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
+        "marker": (-2.7, 2.7),
+    }
 
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-
-
-
-
+        name = self.awg.name
 
         group = []
         for ch_nr in range(4):
-            id = 'ch{}'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._awg5014_create_analog_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
-            id = 'ch{}m1'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._awg5014_create_marker_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
-            id = 'ch{}m2'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._awg5014_create_marker_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
+            id = f"ch{ch_nr + 1}"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
+            id = f"ch{ch_nr + 1}m1"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
+            id = f"ch{ch_nr + 1}m2"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
         # all channels are considered as a single group
-        for name in group:
-            self.channel_groups.update({name: group})
+        for ch_name in group:
+            pulsar.channel_groups.update({ch_name: group})
 
-    def _awg5014_create_analog_channel_parameters(self, id, name, awg):
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
-        self.add_parameter('{}_offset_mode'.format(name),
-                           parameter_class=ManualParameter,
-                           vals=vals.Enum('software', 'hardware'))
-        offset_mode_func = self.parameters['{}_offset_mode'.format(name)]
-        self.add_parameter('{}_offset'.format(name),
-                           label='{} offset'.format(name), unit='V',
-                           set_cmd=self._awg5014_setter(awg, id, 'offset',
-                                                        offset_mode_func),
-                           get_cmd=self._awg5014_getter(awg, id, 'offset',
-                                                        offset_mode_func),
-                           vals=vals.Numbers())
-        self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._awg5014_setter(awg, id, 'amp'),
-                            get_cmd=self._awg5014_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(0.01, 2.25))
-        self.add_parameter('{}_distortion'.format(name),
-                            label='{} distortion mode'.format(name),
-                            initial_value='off',
-                            vals=vals.Enum('off', 'precalculate'),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_distortion_dict'.format(name),
-                            label='{} distortion dictionary'.format(name),
-                            vals=vals.Dict(),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_charge_buildup_compensation'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Bool(), initial_value=False)
-        self.add_parameter('{}_compensation_pulse_scale'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Numbers(0., 1.), initial_value=0.5)
-        self.add_parameter('{}_compensation_pulse_delay'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_gaussian_filter_sigma'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
+    def create_channel_parameters(self, id: str, ch_name: str, ch_type):
+        super().create_channel_parameters(id, ch_name, ch_type)
 
-    def _awg5014_create_marker_channel_parameters(self, id, name, awg):
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'marker')
-        self.add_parameter('{}_offset'.format(name),
-                           label='{} offset'.format(name), unit='V',
-                           set_cmd=self._awg5014_setter(awg, id, 'offset'),
-                           get_cmd=self._awg5014_getter(awg, id, 'offset'),
-                           vals=vals.Numbers(-2.7, 2.7))
-        self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._awg5014_setter(awg, id, 'amp'),
-                            get_cmd=self._awg5014_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(-5.4, 5.4))
+        pulsar = self.pulsar
+
+        if ch_type == "analog":
+
+            pulsar.add_parameter(f"{ch_name}_offset_mode",
+                                 parameter_class=ManualParameter,
+                                 vals=vals.Enum('software', 'hardware'))
+
+        else: # ch_type == "marker"
+            # So far no additional parameters specific to marker channels
+            pass
 
     @staticmethod
     def _awg5014_setter(obj, id, par, offset_mode_func=None):

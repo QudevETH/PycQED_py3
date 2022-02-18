@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 from copy import deepcopy
+from functools import partial
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -30,6 +31,14 @@ class HDAWG8Pulsar(PulsarAWGInterface):
     MIN_LENGTH = 16 / 2.4e9
     # TODO: Check if other values commented out should be removed
     INTER_ELEMENT_DEADTIME = 8 / 2.4e9 # 80 / 2.4e9 # 0 / 2.4e9
+    CHANNEL_AMPLITUDE_BOUNDS = {
+        "analog": (0.01, 5.0),
+        "marker": (0.01, 5.0),
+    }
+    CHANNEL_OFFSET_BOUNDS = {
+        "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
+        "marker": tuple(), # TODO: Check if there are indeed no bounds for the offset
+    }
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -49,136 +58,95 @@ class HDAWG8Pulsar(PulsarAWGInterface):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
+        name = self.awg.name
 
         # Override _min_length parameter created in base class
         # TODO: Check if this makes sense, it is a constant for the other AWGs
         # Furthermore, it does not really make sense to manually set the minimum
         # length which is a property of the instrument...
-        del pulsar.parameters[f"{self.awg.name}_min_length"]
-        pulsar.add_parameter(f"{self.awg.name}_min_length",
+        del pulsar.parameters[f"{name}_min_length"]
+        pulsar.add_parameter(f"{name}_min_length",
                              initial_value=self.MIN_LENGTH,
                             parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{self.awg.name}_use_placeholder_waves",
+
+        pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
-
-
-
-        self.add_parameter('{}_trigger_source'.format(awg.name),
-                           initial_value='Dig1',
-                           vals=vals.Enum('Dig1', 'DIO', 'ZSync'),
-                           parameter_class=ManualParameter,
-                           docstring='Defines for which trigger source \
-                                      the AWG should wait, before playing \
-                                      the next waveform. Allowed values \
-                                      are: "Dig1", "DIO", "ZSync"')
-        self.add_parameter('{}_prepend_zeros'.format(awg.name),
-                           initial_value=None,
-                           vals=vals.MultiType(vals.Enum(None), vals.Ints(),
-                                               vals.Lists(vals.Ints())),
-                           parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_trigger_source",
+                             initial_value="Dig1",
+                             vals=vals.Enum("Dig1", "DIO", "ZSync"),
+                             parameter_class=ManualParameter,
+                             docstring="Defines for which trigger source the "
+                                       "AWG should wait, before playing the "
+                                       "next waveform. Allowed values are: "
+                                       "'Dig1', 'DIO', 'ZSync'.")
+        pulsar.add_parameter(f"{name}_prepend_zeros",
+                             initial_value=None,
+                             vals=vals.MultiType(vals.Enum(None), vals.Ints(),
+                                                 vals.Lists(vals.Ints())),
+                             parameter_class=ManualParameter)
 
         group = []
         for ch_nr in range(8):
-            id = 'ch{}'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._hdawg_create_analog_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
-            id = 'ch{}m'.format(ch_nr + 1)
-            name = channel_name_map.get(id, awg.name + '_' + id)
-            self._hdawg_create_marker_channel_parameters(id, name, awg)
-            self.channels.add(name)
-            group.append(name)
+            id = f"ch{ch_nr + 1}"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
+            id = f"ch{ch_nr + 1}m"
+            ch_name = channel_name_map.get(id, f"{name}_{id}")
+            self.create_channel_parameters(id, ch_name)
+            pulsar.channels.add(ch_name)
+            group.append(ch_name)
             # channel pairs plus the corresponding marker channels are
             # considered as groups
             if (ch_nr + 1) % 2 == 0:
-                for name in group:
-                    self.channel_groups.update({name: group})
+                for ch_name in group:
+                    pulsar.channel_groups.update({ch_name: group})
                 group = []
 
-    def _hdawg_create_analog_channel_parameters(self, id, name, awg):
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
-        self.add_parameter('{}_offset'.format(name),
-                           label='{} offset'.format(name), unit='V',
-                           set_cmd=self._hdawg_setter(awg, id, 'offset'),
-                           get_cmd=self._hdawg_getter(awg, id, 'offset'),
-                           vals=vals.Numbers())
-        self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._hdawg_setter(awg, id, 'amp'),
-                            get_cmd=self._hdawg_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(0.01, 5.0))
-        self.add_parameter(
-            '{}_amplitude_scaling'.format(name),
-            set_cmd=self._hdawg_setter(awg, id, 'amplitude_scaling'),
-            get_cmd=self._hdawg_getter(awg, id, 'amplitude_scaling'),
-            vals=vals.Numbers(min_value=-1.0, max_value=1.0),
-            initial_value=1.0,
-            docstring=f"Scales the AWG output of channel {name} with a given "
-                      f"factor between -1 and +1."
-        )
-        self.add_parameter('{}_distortion'.format(name),
-                            label='{} distortion mode'.format(name),
-                            initial_value='off',
-                            vals=vals.Enum('off', 'precalculate'),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_distortion_dict'.format(name),
-                            label='{} distortion dictionary'.format(name),
-                            vals=vals.Dict(),
-                            parameter_class=ManualParameter)
-        self.add_parameter('{}_charge_buildup_compensation'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Bool(), initial_value=False)
-        self.add_parameter('{}_compensation_pulse_scale'.format(name),
-                            parameter_class=ManualParameter,
-                            vals=vals.Numbers(0., 1.), initial_value=0.5)
-        self.add_parameter('{}_compensation_pulse_delay'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_gaussian_filter_sigma'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_internal_modulation'.format(name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        if (int(id[2:]) - 1) % 2  == 0:  # first channel of a pair
-            awg_nr = int((int(id[2:]) - 1) / 2)
-            param_name = '{}_mod_freq'.format(name)
-            self.add_parameter(
-                param_name,
-                unit='Hz',
-                initial_value=None,
-                set_cmd=self._hdawg_mod_setter(awg, awg_nr),
-                get_cmd=self._hdawg_mod_getter(awg, awg_nr),
-                docstring=f"Carrier frequency of internal modulation for the "
-                          f"channel pair starting with {name}. Positive "
-                          f"(negative) sign corresponds to upper (lower) side "
-                          f"band. Setting the frequency to None disables "
-                          f"internal modulation."
+    def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
+        super().create_channel_parameters(id, ch_name, ch_type)
+
+        pulsar = self.pulsar
+
+        if ch_type == "analog":
+
+            pulsar.add_parameter(
+                f"{ch_name}_amplitude_scaling",
+                set_cmd=partial(self.awg_setter, id, "amplitude_scaling"),
+                get_cmd=partial(self.awg_getter, id, "amplitude_scaling"),
+                vals=vals.Numbers(min_value=-1.0, max_value=1.0),
+                initial_value=1.0,
+                docstring=f"Scales the AWG output of channel by a given factor."
             )
-            # qcodes will not set the initial value if it is None, so we set
-            # it manually here to ensure that internal modulation gets
-            # switched off in the init.
-            self.set(param_name, None)
+            pulsar.add_parameter(f"{ch_name}_internal_modulation",
+                                 initial_value=False, vals=vals.Bool(),
+                                 parameter_class=ManualParameter)
 
+            # first channel of a pair
+            if (int(id[2:]) - 1) % 2  == 0:
+                awg_nr = (int(id[2:]) - 1) // 2
+                param_name = f"{ch_name}_mod_freq",
+                pulsar.add_parameter(
+                    param_name,
+                    unit='Hz',
+                    initial_value=None,
+                    set_cmd=self._hdawg_mod_setter(self.awg, awg_nr),
+                    get_cmd=self._hdawg_mod_getter(self.awg, awg_nr),
+                    docstring="Carrier frequency of internal modulation for "
+                              "a channel pair. Positive (negative) sign "
+                              "corresponds to upper (lower) side band. Setting "
+                              "it to None disables internal modulation."
+                )
+                # qcodes will not set the initial value if it is None, so we set
+                # it manually here to ensure that internal modulation gets
+                # switched off in the init.
+                pulsar.set(param_name, None)
 
-    def _hdawg_create_marker_channel_parameters(self, id, name, awg):
-        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
-        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
-        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'marker')
-        self.add_parameter('{}_offset'.format(name),
-                           label='{} offset'.format(name), unit='V',
-                           set_cmd=self._hdawg_setter(awg, id, 'offset'),
-                           get_cmd=self._hdawg_getter(awg, id, 'offset'),
-                           vals=vals.Numbers())
-        self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._hdawg_setter(awg, id, 'amp'),
-                            get_cmd=self._hdawg_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(0.01, 5.0))
+        else: # ch_type == "marker"
+            # So far no additional parameters specific to marker channels
+            pass
 
     @staticmethod
     def _hdawg_setter(obj, id, par):
