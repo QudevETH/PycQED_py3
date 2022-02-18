@@ -6,7 +6,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Type, Union
 
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
@@ -29,7 +29,7 @@ class PulsarAWGInterface(ABC):
         awg: AWG added to the pulsar.
     """
 
-    AWG_CLASSES:List[type] = []
+    AWG_CLASSES:List[Type[Instrument]] = []
     """List of AWG classes for which the interface is meant.
 
     Derived classes should override this class attribute.
@@ -60,17 +60,14 @@ class PulsarAWGInterface(ABC):
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
 
-    _pulsar_interfaces = []
+    _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
-    def __init__(self, pulsar:'Pulsar', awg:Instrument, channel_name_map:dict):
+    def __init__(self, pulsar:'Pulsar', awg:Instrument):
         super().__init__()
 
         self.awg = awg
         self.pulsar = pulsar
-
-        self.create_awg_parameters(channel_name_map)
-
 
     def __init_subclass__(cls, **kwargs):
         """Hook to auto-register a new pulsar AWG interface class.
@@ -84,12 +81,20 @@ class PulsarAWGInterface(ABC):
                                       "should override 'AWG_CLASSES'.")
         cls._pulsar_interfaces.append(cls)
 
+    @classmethod
+    def get_interface_class(cls, awg:Union[Instrument, type]):
+
+        for interface in cls._pulsar_interfaces:
+            for awg_class in interface.AWG_CLASSES:
+                if isinstance(awg, awg_class) or awg == awg_class:
+                    return interface
+
+        raise ValueError("Could not find a suitable pulsar AWG interface for "
+                        f"{awg=}.")
+
     @abstractmethod
     def create_awg_parameters(self, channel_name_map:dict):
         """Create parameters in the pulsar specific to the added AWG.
-
-        This function is called in ``__init__()``, and does not need to be
-        called directly.
 
         Subclasses must override this and make sure to call
         :meth:`create_channel_parameters` for each added channel.
@@ -163,9 +168,6 @@ class PulsarAWGInterface(ABC):
                 channel index. For marker channels, usually ``ch{ch_nr + 1}m``.
             ch_name: Name of the channel to address it in rest of the codebase.
             ch_type: Type of channel: ``"analog"`` or ``"marker"``.
-
-        TODO: Some AWG define channels and marker channels. This function should
-        be able to handle all cases.
         """
 
         # Sanity check
@@ -452,7 +454,11 @@ class Pulsar(Instrument):
         if awg.name in self.awgs:
             raise KeyError("AWG '{}' already added to pulsar".format(awg.name))
 
-        super()._create_awg_parameters(awg, channel_name_map)
+        # Add awg and channels parameters to pulsar
+        awg_interface_class = PulsarAWGInterface.get_interface_class(awg)
+        awg_interface = awg_interface_class(self, awg)
+        awg_interface.create_awg_parameters(channel_name_map)
+
         # Reconstruct the set of unique channel groups from the
         # self.channel_groups dictionary, which stores for each channel a list
         # of all channels in the same group.
