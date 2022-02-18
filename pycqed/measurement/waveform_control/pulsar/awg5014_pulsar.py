@@ -194,7 +194,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                         chid_to_hash.get(grp + 'm1', None),
                         chid_to_hash.get(grp + 'm2', None))
                 grp_has_waveforms[grp] |= (wave != (None, None, None))
-                wfname = self._hash_to_wavename((maxlen, wave))
+                wfname = self.pulsar._hash_to_wavename((maxlen, wave))
                 grp_wfs = [np.pad(waveforms.get(h, [0]),
                                   (0, maxlen - len(waveforms.get(h, [0]))),
                                   'constant', constant_values=0) for h in wave]

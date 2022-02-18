@@ -17,12 +17,13 @@ except Exception:
     pass
 
 from .pulsar import PulsarAWGInterface
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class HDAWG8Pulsar(PulsarAWGInterface):
+class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [ZI_HDAWG_core]
@@ -306,9 +307,8 @@ class HDAWG8Pulsar(PulsarAWGInterface):
         use_placeholder_waves = self.get(f'{obj.name}_use_placeholder_waves')
 
         if not use_placeholder_waves:
-            if not self._zi_waves_cleared:
-                _zi_clear_waves()
-                self._zi_waves_cleared = True
+            if not self.zi_waves_cleared:
+                self._zi_clear_waves()
 
         for awg_nr in self._hdawg_active_awgs(obj):
             defined_waves = (set(), dict()) if use_placeholder_waves else set()

@@ -11,12 +11,13 @@ except Exception:
     UHFQA_core = type(None)
 
 from .pulsar import PulsarAWGInterface
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(PulsarAWGInterface):
+class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA_core]
@@ -118,9 +119,9 @@ class UHFQCPulsar(PulsarAWGInterface):
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):
 
-        if not self._zi_waves_cleared:
-            _zi_clear_waves()
-            self._zi_waves_cleared = True
+        if not self.zi_waves_cleared:
+            self._zi_clear_waves()
+
         waves_to_upload = {h: waveforms[h]
                                for codewords in awg_sequence.values()
                                    if codewords is not None
