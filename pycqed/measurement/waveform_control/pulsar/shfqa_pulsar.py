@@ -18,7 +18,11 @@ log = logging.getLogger(__name__)
 class SHFQAPulsar(PulsarAWGInterface):
     """ZI SHFQA specific functionality for the Pulsar class."""
 
-    awg_classes = [SHFQA]
+    AWG_CLASSES = [SHFQA]
+    GRANULARITY = 4
+    ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
+    MIN_LENGTH = 4 / 2.0e9
+    INTER_ELEMENT_DEADTIME = 0 # TODO: unverified!
 
     _shfqa_sequence_string_template = (
         "// hardcoded value until we figure out user registers\n"
@@ -29,71 +33,20 @@ class SHFQAPulsar(PulsarAWGInterface):
         "}}\n"
     )
 
-    def _create_awg_parameters(self, awg, channel_name_map):
-        """Create parameters in the pulsar specific to the added AWG
+    def create_awg_parameters(self, channel_name_map: dict):
+        super().create_awg_parameters(channel_name_map)
 
-        Args:
-           awg:
-                Instance of the AWG to be added to the pulsar.
-            channel_name_map: dict
-                Mapping from channel ids (keys, as string) to channels names
-                (values, as string) to be used for this AWG. Names for missing
-                ids default to `f'{awg.name}_{chid}'`.
-        """
+        pulsar = self.pulsar
 
-        name = awg.name
+        # Repeat pattern support is not yet implemented for the SHFQA, thus we
+        # remove this parameter added in super().create_awg_parameters()
+        del pulsar.parameters[f"{self.awg.name}_minimize_sequencer_memory"]
 
-        self.add_parameter('{}_reuse_waveforms'.format(awg.name),
-                           initial_value=True, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        # Repeat pattern support is not yet implemented for the SHFQA
-        # self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
-        #                    initial_value=True, vals=vals.Bool(),
-        #                    parameter_class=ManualParameter,
-        #                    docstring="Minimizes the sequencer "
-        #                              "memory by repeating specific sequence "
-        #                              "patterns (eg. readout) passed in "
-        #                              "'repeat dictionary'")
-        self.add_parameter('{}_enforce_single_element'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Group all the pulses on this AWG into "
-                                     "a single element. Useful for making sure "
-                                     "that the master AWG has only one waveform"
-                                     " per segment.")
-        self.add_parameter('{}_granularity'.format(awg.name),
-                           get_cmd=lambda: 4)  # from manual
-        self.add_parameter('{}_element_start_granularity'.format(awg.name),
-                           initial_value=4 / 2.0e9,
-                           parameter_class=ManualParameter)  # unverified!
-        self.add_parameter('{}_min_length'.format(awg.name),
-                           get_cmd=lambda: 4 / 2.0e9)  # from manual
-        self.add_parameter('{}_inter_element_deadtime'.format(awg.name),
-                           # get_cmd=lambda: 80 / 2.4e9)
-                           get_cmd=lambda: 0 / 2.0e9)  # unverified!
-                           # get_cmd=lambda: 0 / 2.4e9)
-        self.add_parameter('{}_precompile'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           label='{} precompile segments'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_delay'.format(awg.name),
-                           initial_value=0, label='{} delay'.format(name),
-                           unit='s', parameter_class=ManualParameter,
-                           docstring='Global delay applied to this '
-                                     'channel. Positive values move pulses'
-                                     ' on this channel forward in time')
-        self.add_parameter('{}_trigger_channels'.format(awg.name),
-                           initial_value=[],
-                           label='{} trigger channel'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_active'.format(awg.name), initial_value=True,
-                           label='{} active'.format(awg.name),
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_min_length'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_trigger_source'.format(awg.name),
+
+
+
+
+        self.add_parameter('{}_trigger_source'.format(self.awg.name),
                            initial_value='Dig1',
                            vals=vals.Enum('Dig1',),
                            parameter_class=ManualParameter,
@@ -107,8 +60,8 @@ class SHFQAPulsar(PulsarAWGInterface):
             group = []
             for q in ['i', 'q']:
                 id = f'ch{ch_nr + 1}{q}'
-                name = channel_name_map.get(id, awg.name + '_' + id)
-                self._shfqa_create_channel_parameters(id, name, awg)
+                name = channel_name_map.get(id, self.awg.name + '_' + id)
+                self._shfqa_create_channel_parameters(id, name, self.awg)
                 self.channels.add(name)
                 group.append(name)
             for name in group:

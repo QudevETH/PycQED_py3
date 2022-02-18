@@ -19,7 +19,12 @@ log = logging.getLogger(__name__)
 class UHFQCPulsar(PulsarAWGInterface):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
-    awg_classes = [UHFQA_core]
+    AWG_CLASSES = [UHFQA_core]
+    GRANULARITY = 16
+    ELEMENT_START_GRANULARITY = 8 / 1.8e9
+    MIN_LENGTH = 16 / 1.8e9
+    # TODO: Check if other values commented out can be removed
+    INTER_ELEMENT_DEADTIME = 8 / 1.8e9 # 80 / 2.4e9 # 0 / 2.4e9
 
     _uhf_sequence_string_template = (
         "const WINT_EN   = 0x03ff0000;\n"
@@ -42,59 +47,14 @@ class UHFQCPulsar(PulsarAWGInterface):
         "}}\n"
     )
 
-    def _create_awg_parameters(self, awg, channel_name_map):
+    def create_awg_parameters(self, channel_name_map):
+        super().create_awg_parameters(channel_name_map)
 
-        name = awg.name
+        pulsar = self.pulsar
 
-        self.add_parameter('{}_reuse_waveforms'.format(awg.name),
-                           initial_value=True, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
-                           initial_value=True, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Minimizes the sequencer "
-                                     "memory by repeating specific sequence "
-                                     "patterns (eg. readout) passed in "
-                                     "'repeat dictionary'")
-        self.add_parameter('{}_enforce_single_element'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Group all the pulses on this AWG into "
-                                     "a single element. Useful for making sure "
-                                     "that the master AWG has only one waveform"
-                                     " per segment.")
-        self.add_parameter('{}_granularity'.format(awg.name),
-                           get_cmd=lambda: 16)
-        self.add_parameter('{}_element_start_granularity'.format(awg.name),
-                           initial_value=8/(1.8e9),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_min_length'.format(awg.name),
-                           get_cmd=lambda: 16 /(1.8e9))
-        self.add_parameter('{}_inter_element_deadtime'.format(awg.name),
-                           # get_cmd=lambda: 80 / 2.4e9)
-                           get_cmd=lambda: 8 / (1.8e9))
-                           # get_cmd=lambda: 0 / 2.4e9)
-        self.add_parameter('{}_precompile'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           label='{} precompile segments'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_delay'.format(awg.name),
-                           initial_value=0, label='{} delay'.format(name),
-                           unit='s', parameter_class=ManualParameter,
-                           docstring='Global delay applied to this '
-                                     'channel. Positive values move pulses'
-                                     ' on this channel forward in time')
-        self.add_parameter('{}_trigger_channels'.format(awg.name),
-                           initial_value=[],
-                           label='{} trigger channel'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_active'.format(awg.name), initial_value=True,
-                           label='{} active'.format(awg.name),
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_min_length'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
+
+
+
         self.add_parameter('{}_trigger_source'.format(awg.name),
                            initial_value='Dig1',
                            vals=vals.Enum('Dig1', 'Dig2', 'DIO'),

@@ -21,27 +21,41 @@ class PulsarAWGInterface(ABC):
 
     To support another type of AWG in the pulsar class, one needs to subclass
     this interface class, and override the methods it defines. In addition, make
-    sure to override the supported ``awg_classes``.
+    sure to override the supported ``AWG_CLASSES``.
 
     Attributes:
-        awg: AWG added to the pulsar.
         pulsar: Pulsar to which the PulsarAWGInterface is added.
+        awg: AWG added to the pulsar.
     """
 
-    awg_classes:List[type] = []
+    AWG_CLASSES:List[type] = []
     """List of AWG classes for which the interface is meant.
 
     Derived classes should override this class attribute.
     """
 
+    GRANULARITY:int = 0
+    """Granularity of the AWG."""
+
+    ELEMENT_START_GRANULARITY:float = 0.0
+    """TODO: Document + provide unit."""
+
+    MIN_LENGTH:float = 0.0
+    """TODO: Document + provide unit."""
+
+    INTER_ELEMENT_DEADTIME:float = 0.0
+    """TODO: Document + provide unit."""
+
     _pulsar_interfaces = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
-    def __init__(self, awg, pulsar:'Pulsar'):
+    def __init__(self, pulsar:'Pulsar', awg:Instrument, channel_name_map:dict):
         super().__init__()
 
         self.awg = awg
         self.pulsar = pulsar
+
+        self.create_awg_parameters(channel_name_map)
 
 
     def __init_subclass__(cls, **kwargs):
@@ -51,25 +65,77 @@ class PulsarAWGInterface(ABC):
         """
 
         super().__init_subclass__(**kwargs)
-        if not cls.awg_classes:
+        if not cls.AWG_CLASSES:
             raise NotImplementedError("Subclasses of PulsarAWGInterface "
-                                      "should override 'awg_classes'.")
+                                      "should override 'AWG_CLASSES'.")
         cls._pulsar_interfaces.append(cls)
 
     @abstractmethod
     def create_awg_parameters(self, channel_name_map:dict):
         """Create parameters in the pulsar specific to the added AWG.
 
-        Args:
+        This function is called in ``__init__()``, and does not need to be
+        called directly.
+
+        Arguments:
             channel_name_map: Mapping from channel ids (keys, as string) to
                 channels names (values, as string) to be used for this AWG.
                 Names for missing ids default to ``{awg.name}_{chid}``.
 
-        TODO: This seems to add a lot of parameters to the pulsar. Try to see if
-        some parameters are common accross all subclasses and add them here?
-        TODO: This is most likely supposed to happen in __init__.
+        TODO: A lot of added parameters in subclasses use magic numbers. They
+        should define meaningful class constants instead.
+        TODO: Parameters declaration should be ordered better for readability.
         """
-        pass
+
+        pulsar = self.pulsar
+        name = self.awg.name
+
+        pulsar.add_parameter(f"{name}_reuse_waveforms",
+                             initial_value=True, vals=vals.Bool(),
+                             parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
+                             initial_value=True, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Minimizes the sequencer memory by "
+                                       "repeating specific sequence patterns "
+                                       "(eg. readout) passed in "
+                                       "'repeat dictionary'.")
+        pulsar.add_parameter(f"{name}_enforce_single_element",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Group all the pulses on this AWG into "
+                                       "a single element. Useful for making "
+                                       "sure the master AWG has only one "
+                                       "waveform per segment.")
+        pulsar.add_parameter(f"{name}_granularity",
+                             get_cmd=lambda: self.GRANULARITY)
+        pulsar.add_parameter(f"{name}_element_start_granularity",
+                             initial_value=self.ELEMENT_START_GRANULARITY,
+                             parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_min_length",
+                             get_cmd=lambda: self.MIN_LENGTH)
+        pulsar.add_parameter(f"{name}_inter_element_deadtime",
+                             get_cmd=lambda: self.INTER_ELEMENT_DEADTIME)
+        pulsar.add_parameter(f"{name}_precompile",
+                             initial_value=False, vals=vals.Bool(),
+                             label=f"{name} precompile segments",
+                             parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_delay",
+                             initial_value=0, unit="s",
+                             parameter_class=ManualParameter,
+                             docstring="Global delay applied to this channel. "
+                                       "Positive values move pulses on this "
+                                       "channel forward in time.")
+        pulsar.add_parameter(f"{name}_trigger_channels",
+                             initial_value=[],
+                             parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_active",
+                             initial_value=True,
+                             vals=vals.Bool(),
+                             parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_compensation_pulse_min_length",
+                             initial_value=0, unit='s',
+                             parameter_class=ManualParameter)
 
     @abstractmethod
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
@@ -121,6 +187,10 @@ class Pulsar(Instrument):
     Contains information about all the available awg-channels in the setup.
     Starting, stopping and programming and changing the parameters of the AWGs
     should be done through Pulsar.
+
+    TODO: All the parameters for added AWGs are named as formatted strings
+    containing the names of the AWGs. We could instead use one instrument
+    submodule per AWG to make names less verbose.
 
     Supported AWGs:
     * Tektronix AWG5014
@@ -228,6 +298,8 @@ class Pulsar(Instrument):
 
     def reset_sequence_cache(self):
         self._sequence_cache = {}
+        # TODO: If this cache contains stuff for each AWG, it may make more
+        # sense to store it in PulsarAWGInterface instead ?
         # The following dicts are used in _program_awgs to store information
         # about the last sequence programmed to each AWGs. The keys of the
         # dicts are AWG names and/or channel names. See the code and
@@ -258,7 +330,6 @@ class Pulsar(Instrument):
         with open(filename, 'w') as f:
             f.write(current_id)
 
-    # channel handling
     def define_awg_channels(self, awg, channel_name_map=None):
         """
         The AWG object must be created before creating channels for that AWG
@@ -267,7 +338,11 @@ class Pulsar(Instrument):
             awg: AWG object to add to the pulsar.
             channel_name_map: A dictionary that maps channel ids to channel
                               names. (default {})
+
+        TODO: This is the key method to add more AWGs. Refactor it according to
+        new interface class.
         """
+
         if channel_name_map is None:
             channel_name_map = {}
 
@@ -279,7 +354,6 @@ class Pulsar(Instrument):
         if awg.name in self.awgs:
             raise KeyError("AWG '{}' already added to pulsar".format(awg.name))
 
-        fail = None
         super()._create_awg_parameters(awg, channel_name_map)
         # Reconstruct the set of unique channel groups from the
         # self.channel_groups dictionary, which stores for each channel a list
@@ -289,11 +363,12 @@ class Pulsar(Instrument):
              if self.get('{}_awg'.format(k)) == awg.name]))
 
         self.awgs.add(awg.name)
-        # Make sure that the registers for filter_segments are set in the
-        # new AWG.
+        # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
 
-    def find_awg_channels(self, awg):
+    def find_awg_channels(self, awg:str) -> List[str]:
+        """Return a list of channels associated to an AWG."""
+
         channel_list = []
         for channel in self.channels:
             if self.get('{}_awg'.format(channel)) == awg:
@@ -301,7 +376,8 @@ class Pulsar(Instrument):
 
         return channel_list
 
-    def AWG_obj(self, **kw):
+    # TODO: Rename to conform to naming conventions
+    def AWG_obj(self, awg:str, channel:str):
         """
         Return the AWG object corresponding to a channel or an AWG name.
 
@@ -312,27 +388,30 @@ class Pulsar(Instrument):
         Returns: An instance of Instrument class corresponding to the AWG
                  requested.
         """
-        awg = kw.get('awg', None)
-        chan = kw.get('channel', None)
-        if awg is not None and chan is not None:
+
+        if awg is not None and channel is not None:
             raise ValueError('Both `awg` and `channel` arguments passed to '
                              'Pulsar.AWG_obj()')
-        elif awg is None and chan is not None:
-            name = self.get('{}_awg'.format(chan))
-        elif awg is not None and chan is None:
+        elif awg is None and channel is not None:
+            name = self.get('{}_awg'.format(channel))
+        elif awg is not None and channel is None:
             name = awg
         else:
             raise ValueError('Either `awg` or `channel` argument needs to be '
                              'passed to Pulsar.AWG_obj()')
         return Instrument.find_instrument(name)
 
+    # TODO: Ordering of parameters in method is inconsistent
     def clock(self, channel=None, awg=None):
+        """Returns the clock rate of channel or AWG.
+
+        Arguments:
+            channel: name of the channel.
+            awg: AWG.
+
+        Returns: clock rate in samples per second.
         """
-        Returns the clock rate of channel or AWG 'instrument_ref'
-        Args:
-            isntrument_ref: name of the channel or AWG
-        Returns: clock rate in samples per second
-        """
+
         if channel is not None and awg is not None:
             raise ValueError('Both channel and awg arguments passed to '
                              'Pulsar.clock()')
@@ -370,6 +449,9 @@ class Pulsar(Instrument):
         """
         Adds an awg to the set of AWGs with waveforms programmed, or returns
         set of said AWGs.
+
+        TODO: Should either be a private method, or it should also perform
+        checks to make sure awg is already part of pulsar.
         """
         if awg == None:
             return self._awgs_with_waveforms
@@ -377,23 +459,27 @@ class Pulsar(Instrument):
             self._awgs_with_waveforms.add(awg)
             self._set_filter_segments(self._filter_segments, [awg])
 
-    def start(self, exclude=None, stop_first=True):
-        """
-        Start the active AWGs. If multiple AWGs are used in a setup where the
+    def start(self, exclude:List[str]=None, stop_first:bool=True):
+        """Start the active AWGs.
+
+        If multiple AWGs are used in a setup where the
         slave AWGs are triggered by the master AWG, then the slave AWGs must be
         running and waiting for trigger when the master AWG is started to
         ensure synchronous playback.
-        :param exclude: (list of str) names of AWGs to exclude
-        :param stop_first: (bool, default: True) whether all used AWGs
-            should be stopped before starting the AWGs.
+
+        Arguments:
+            exclude: Names of AWGs to exclude
+            stop_first: Whether all used AWGs should be stopped before starting
+                the AWGs.
         """
+
         if exclude is None:
             exclude = []
 
         # Start only the AWGs which have at least one channel programmed, i.e.
         # where at least one channel has state = 1.
         awgs_with_waveforms = self.awgs_with_waveforms()
-        used_awgs = set(self.active_awgs()) & awgs_with_waveforms
+        used_awgs = self.active_awgs() & awgs_with_waveforms
 
         if stop_first:
             for awg in used_awgs:
@@ -426,9 +512,7 @@ class Pulsar(Instrument):
                 self.master_awg.get_instr().start()
 
     def stop(self):
-        """
-        Stop all active AWGs.
-        """
+        """Stop all active AWGs."""
 
         awgs_with_waveforms = set(self.awgs_with_waveforms())
         used_awgs = set(self.active_awgs()) & awgs_with_waveforms
@@ -663,26 +747,18 @@ class Pulsar(Instrument):
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):
-        """
-        Program the AWG with a sequence of segments.
+        """Program the AWG with a sequence of segments.
 
         Args:
             obj: the instance of the AWG to program
             sequence: the `Sequence` object that determines the segment order,
                       repetition and trigger wait
-            el_wfs: A dictionary from element name to a dictionary from channel
-                    id to the waveform.
             loop: Boolean flag, whether the segments should be looped over.
                   Default is `True`.
+
+        TODO this should not be part of this class but of Pulsar AWG interfaces.
         """
-        # fail = None
-        # try:
-        #     super()._program_awg(obj, awg_sequence, waveforms)
-        # except AttributeError as e:
-        #     fail = e
-        # if fail is not None:
-        #     raise TypeError('Unsupported AWG instrument: {} of type {}. '
-        #                     .format(obj.name, type(obj)) + str(fail))
+
         if repeat_pattern is not None:
             super()._program_awg(obj, awg_sequence, waveforms,
                                  repeat_pattern=repeat_pattern, **kw)
@@ -925,6 +1001,8 @@ class Pulsar(Instrument):
 
     def _set_filter_segments(self, val, awgs='with_waveforms'):
         if val is None:
+            # TODO: This should be class constants, and could also be used as
+            # default value for the filter_segments parameter
             val = (0, 32767)
         self._filter_segments = val
         if awgs == 'with_waveforms':

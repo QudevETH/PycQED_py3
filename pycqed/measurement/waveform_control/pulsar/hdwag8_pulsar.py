@@ -24,7 +24,12 @@ log = logging.getLogger(__name__)
 class HDAWG8Pulsar(PulsarAWGInterface):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
-    awg_classes = [ZI_HDAWG_core]
+    AWG_CLASSES = [ZI_HDAWG_core]
+    GRANULARITY = 16
+    ELEMENT_START_GRANULARITY = 8 / 2.4e9
+    MIN_LENGTH = 16 / 2.4e9
+    # TODO: Check if other values commented out should be removed
+    INTER_ELEMENT_DEADTIME = 8 / 2.4e9 # 80 / 2.4e9 # 0 / 2.4e9
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -40,63 +45,25 @@ class HDAWG8Pulsar(PulsarAWGInterface):
         super().__init__(name)
         self._hdawg_waveform_cache = dict()
 
-    def _create_awg_parameters(self, awg, channel_name_map):
+    def create_awg_parameters(self, channel_name_map):
+        super().create_awg_parameters(channel_name_map)
 
-        name = awg.name
+        pulsar = self.pulsar
 
-        self.add_parameter('{}_reuse_waveforms'.format(awg.name),
-                           initial_value=True, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_use_placeholder_waves'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Minimizes the sequencer "
-                                     "memory by repeating specific sequence "
-                                     "patterns (eg. readout) passed in "
-                                     "'repeat dictionary'")
-        self.add_parameter('{}_enforce_single_element'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Group all the pulses on this AWG into "
-                                     "a single element. Useful for making sure "
-                                     "that the master AWG has only one waveform"
-                                     " per segment.")
-        self.add_parameter('{}_granularity'.format(awg.name),
-                           get_cmd=lambda: 16)
-        self.add_parameter('{}_element_start_granularity'.format(awg.name),
-                           initial_value=8/(2.4e9),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_min_length'.format(awg.name),
-                           initial_value=16 /(2.4e9),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_inter_element_deadtime'.format(awg.name),
-                           # get_cmd=lambda: 80 / 2.4e9)
-                           get_cmd=lambda: 8 / (2.4e9))
-                           # get_cmd=lambda: 0 / 2.4e9)
-        self.add_parameter('{}_precompile'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           label='{} precompile segments'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_delay'.format(awg.name),
-                           initial_value=0, label='{} delay'.format(name),
-                           unit='s', parameter_class=ManualParameter,
-                           docstring='Global delay applied to this '
-                                     'channel. Positive values move pulses'
-                                     ' on this channel forward in time')
-        self.add_parameter('{}_trigger_channels'.format(awg.name),
-                           initial_value=[],
-                           label='{} trigger channel'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_active'.format(awg.name), initial_value=True,
-                           label='{} active'.format(awg.name),
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_min_length'.format(name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
+        # Override _min_length parameter created in base class
+        # TODO: Check if this makes sense, it is a constant for the other AWGs
+        # Furthermore, it does not really make sense to manually set the minimum
+        # length which is a property of the instrument...
+        del pulsar.parameters[f"{self.awg.name}_min_length"]
+        pulsar.add_parameter(f"{self.awg.name}_min_length",
+                             initial_value=self.MIN_LENGTH,
+                            parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{self.awg.name}_use_placeholder_waves",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter)
+
+
+
         self.add_parameter('{}_trigger_source'.format(awg.name),
                            initial_value='Dig1',
                            vals=vals.Enum('Dig1', 'DIO', 'ZSync'),

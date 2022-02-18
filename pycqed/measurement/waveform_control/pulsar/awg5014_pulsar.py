@@ -20,58 +20,20 @@ log = logging.getLogger(__name__)
 class AWG5014Pulsar(PulsarAWGInterface):
     """Tektronix AWG5014 specific functionality for the Pulsar class."""
 
-    awg_classes = [Tektronix_AWG5014, VirtualAWG5014]
+    AWG_CLASSES = [Tektronix_AWG5014, VirtualAWG5014]
+    GRANULARITY = 4
+    ELEMENT_START_GRANULARITY = 4 / 1.2e9
+    MIN_LENGTH = 256 / 1.2e9  # Cannot be triggered faster than 210 ns.
+    INTER_ELEMENT_DEADTIME = 0.0
 
-    def _create_awg_parameters(self, awg, channel_name_map):
+    def create_awg_parameters(self, channel_name_map):
+        super().create_awg_parameters(channel_name_map)
 
-        self.add_parameter('{}_reuse_waveforms'.format(awg.name),
-                           initial_value=True, vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Minimizes the sequencer "
-                                     "memory by repeating specific sequence "
-                                     "patterns (eg. readout) passed in "
-                                     "'repeat dictionary'")
-        self.add_parameter('{}_enforce_single_element'.format(awg.name),
-                           initial_value=False, vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           docstring="Group all the pulses on this AWG into "
-                                     "a single element. Useful for making sure "
-                                     "that the master AWG has only one waveform"
-                                     " per segment.")
-        self.add_parameter('{}_granularity'.format(awg.name),
-                           get_cmd=lambda: 4)
-        self.add_parameter('{}_element_start_granularity'.format(awg.name),
-                           initial_value=4/(1.2e9),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_min_length'.format(awg.name),
-                           get_cmd=lambda: 256/(1.2e9)) # Can not be triggered
-                                                        # faster than 210 ns.
-        self.add_parameter('{}_inter_element_deadtime'.format(awg.name),
-                           get_cmd=lambda: 0)
-        self.add_parameter('{}_precompile'.format(awg.name),
-                           initial_value=False,
-                           label='{} precompile segments'.format(awg.name),
-                           parameter_class=ManualParameter, vals=vals.Bool())
-        self.add_parameter('{}_delay'.format(awg.name), initial_value=0,
-                           label='{} delay'.format(awg.name), unit='s',
-                           parameter_class=ManualParameter,
-                           docstring="Global delay applied to this channel. "
-                                     "Positive values move pulses on this "
-                                     "channel forward in  time")
-        self.add_parameter('{}_trigger_channels'.format(awg.name),
-                           initial_value=[],
-                           label='{} trigger channels'.format(awg.name),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_active'.format(awg.name), initial_value=True,
-                           label='{} active'.format(awg.name),
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter)
-        self.add_parameter('{}_compensation_pulse_min_length'.format(awg.name),
-                           initial_value=0, unit='s',
-                           parameter_class=ManualParameter)
+        pulsar = self.pulsar
+
+
+
+
 
         group = []
         for ch_nr in range(4):
