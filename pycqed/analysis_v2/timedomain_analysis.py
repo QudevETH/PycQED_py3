@@ -7048,6 +7048,8 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][qbn][
                 'qscale_stderr'] = optimal_qscale_stderr
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
         super().prepare_plots()
 
