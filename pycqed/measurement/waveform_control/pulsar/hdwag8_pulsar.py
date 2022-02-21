@@ -40,6 +40,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
         "marker": tuple(), # TODO: Check if there are indeed no bounds for the offset
     }
+    IMPLEMENTED_ACCESSORS = ["offset", "amp", "amplitude_scaling"]
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -149,68 +150,65 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # So far no additional parameters specific to marker channels
             pass
 
-    @staticmethod
-    def _hdawg_setter(obj, id, par):
-        if par == 'offset':
-            if id[-1] != 'm':  # analog channel
-                def s(val):
-                    obj.set('sigouts_{}_offset'.format(int(id[2])-1), val)
-            else:  # marker channel (offset cannot be set)
-                s = None
-        elif par == 'amp':
-            if id[-1] != 'm':  # analog channel
-                def s(val):
-                    obj.set('sigouts_{}_range'.format(int(id[2])-1), 2*val)
-            else:  # marker channel (scaling cannot be set)
-                s = None
-        elif par == 'amplitude_scaling' and id[-1] != 'm':
+    def awg_setter(self, id:str, param:str, value):
+
+        # Sanity checks
+        super().awg_getter(id, param, value)
+
+        channel_type = "analog" if id[-1] != "m" else "marker"
+
+        if param == "offset":
+            ch = int(id[2]) - 1
+            if channel_type == "analog":
+                self.awg.set(f"sigouts_{ch}_offset", value)
+            else:
+                raise NotImplementedError("Cannot set offset on marker channels.")
+        elif param == "amp":
+            if channel_type == "analog":
+                self.awg.set(f"sigouts_{ch}_range", 2 * value)
+            else:
+                raise NotImplementedError("Cannot set amp on marker channels.")
+        elif param == "amplitude_scaling" and channel_type == "analog":
             # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
-            awg = int((int(id[2:]) - 1) / 2)
+            awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
-            def s(val):
-                obj.set(f'awgs_{awg}_outputs_{output}_amplitude', val)
-                log.debug(f'awgs_{awg}_outputs_{output}_amplitude: {val}')
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return s
+            self.awg.set(f"awgs_{awg}_outputs_{output}_amplitude", value)
 
-    def _hdawg_getter(self, obj, id, par):
-        if par == 'offset':
-            if id[-1] != 'm':  # analog channel
-                def g():
-                    return obj.get('sigouts_{}_offset'.format(int(id[2])-1))
-            else:  # marker channel (offset always 0)
-                return lambda: 0
-        elif par == 'amp':
-            if id[-1] != 'm':  # analog channel
-                def g():
-                    if self.pulsar.awgs_prequeried:
-                        return obj.parameters['sigouts_{}_range' \
-                            .format(int(id[2])-1)].get_latest()/2
-                    else:
-                        return obj.get('sigouts_{}_range' \
-                            .format(int(id[2])-1))/2
-            else:  # marker channel
-                return lambda: 1
-        elif par == 'amplitude_scaling' and id[-1] != 'm':  # analog channel
+    def awg_getter(self, id:str, param:str):
+
+        # Sanity checks
+        super().awg_getter(id, param)
+
+        channel_type = "analog" if id[-1] != "m" else "marker"
+
+        if param == "offset":
+            ch = int(id[2]) - 1
+            if channel_type == "analog":
+                self.awg.get(f"sigouts_{ch}_offset")
+            else:
+                return 0
+        elif param == "amp":
+            if channel_type == "analog":
+                if self.pulsar.awgs_prequeried:
+                    self.awg.parameters[f"sigouts_{ch}_range"].get_latest() / 2
+                else:
+                    self.awg.get(f"sigouts_{ch}_range") / 2
+            else:
+                return 1
+        elif param == "amplitude_scaling" and channel_type == "analog":
             # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
-            awg = int((int(id[2:]) - 1) / 2)
+            awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
-            def g():
-                return obj.get(f'awgs_{awg}_outputs_{output}_amplitude')
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g
+            self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
 
-    @staticmethod
-    def _hdawg_mod_setter(obj, awg_nr):
+    def _hdawg_mod_setter(self, awg_nr):
         def s(val):
-            log.debug(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
+            log.debug(f'{self.awg.name}_awgs_{awg_nr} modulation freq: {val}')
             if val == None:
-                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
-                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
+                self.awg.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
+                self.awg.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
             else:
                 # FIXME: this currently only works for real-valued baseband
                 # signals (zero Q component), and it assumes that the the I
@@ -229,8 +227,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
                 # etc. Mode 1 (2) means that the AWG Output is multiplied with
                 # Sine Generator signal 0 (1) of this sub-awg
-                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
-                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
+                self.awg.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
+                self.awg.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
                 # For the oscillator, we can use any index, as long as the
                 # respective osc is not needed for anything else. Since we
                 # currently use oscs only here, the following index
@@ -240,21 +238,20 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 osc_nr = awg_nr * 4
                 # set up the two sines of the channel pair with the same
                 # oscillator and with 90 phase shift
-                obj.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
-                obj.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
-                obj.set(f'sines_{awg_nr * 2}_phaseshift', 0)
+                self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
+                self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
+                self.awg.set(f'sines_{awg_nr * 2}_phaseshift', 0)
                 # positive (negative) phase shift is needed for upper (
                 # lower) sideband
-                obj.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
+                self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
                 # configure the oscillator frequency
-                obj.set(f'oscs_{osc_nr}_freq', freq)
+                self.awg.set(f'oscs_{osc_nr}_freq', freq)
         return s
 
-    @staticmethod
-    def _hdawg_mod_getter(obj, awg_nr):
+    def _hdawg_mod_getter(self, awg_nr):
         def g():
-            m0 = obj.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
-            m1 = obj.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
+            m0 = self.awg.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
+            m1 = self.awg.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
             if m0 == 0 and m1 == 0:
                 # If modulation mode is 0 for both outputs, internal
                 # modulation is switched off (indicated by a modulation
@@ -263,12 +260,12 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             elif m0 == 1 and m1 == 2:
                 # these calcuations invert the calculations in
                 # _hdawg_mod_setter, see therein for explaining comments
-                osc0 = obj.get(f'sines_{awg_nr * 2}_oscselect')
-                osc1 = obj.get(f'sines_{awg_nr * 2 + 1}_oscselect')
+                osc0 = self.awg.get(f'sines_{awg_nr * 2}_oscselect')
+                osc1 = self.awg.get(f'sines_{awg_nr * 2 + 1}_oscselect')
                 if osc0 == osc1:
-                    sideband = np.sign(obj.get(
+                    sideband = np.sign(self.awg.get(
                         f'sines_{awg_nr * 2 + 1}_phaseshift'))
-                    return sideband * obj.get(f'oscs_{osc0}_freq')
+                    return sideband * self.awg.get(f'oscs_{osc0}_freq')
             # If we have not returned a result at this point, the current
             # AWG settings do not correspond to a configuration made by
             # _hdawg_mod_setter.

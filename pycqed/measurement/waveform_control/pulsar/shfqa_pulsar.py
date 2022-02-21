@@ -31,6 +31,7 @@ class SHFQAPulsar(PulsarAWGInterface):
     CHANNEL_OFFSET_BOUNDS = {
         "analog": (0, 0),
     }
+    IMPLEMENTED_ACCESSORS = ["amp"]
 
     _shfqa_sequence_string_template = (
         "// hardcoded value until we figure out user registers\n"
@@ -85,32 +86,29 @@ class SHFQAPulsar(PulsarAWGInterface):
         self.pulsar[f"{ch_name}_amp"].set(1)
 
     @staticmethod
-    def _shfqa_setter(obj, id, par):
-        """Generate a function to set the output amplitude of a channel.
-                Converts the input in volts to dBm."""
-        if par == 'amp':
-            def s(val):
-                obj.qachannels[int(id[2]) - 1].output_range(
-                    20 * (np.log10(val) + 0.5)
-                )
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return s
+    def awg_setter(self, id:str, param:str, value):
 
-    def _shfqa_getter(self, obj, id, par):
-        """Generate a function to get the output amplitude of a channel.
-                Converts the output in dBm to volts."""
-        if par == 'amp':
-            def g():
-                if self.pulsar.awgs_prequeried:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range\
-                        .get_latest()
-                else:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range()
-                return 10**(dbm/20 - 0.5)
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g
+        # Sanity checks
+        super().awg_setter(id, param, value)
+
+        ch = int(id[2]) - 1
+
+        if param == "amp":
+            self.awg.qachannels[ch].output_range(20 * (np.log10(value) + 0.5))
+
+    def awg_getter(self, id:str, param:str):
+
+        # Sanity checks
+        super().awg_getter(id, param)
+
+        ch = int(id[2]) - 1
+
+        if param == "amp":
+            if self.pulsar.awgs_prequeried:
+                dbm = self.awg.qachannels[ch].output_range.get_latest()
+            else:
+                dbm = self.awg.qachannels[ch].output_range()
+            return 10 ** (dbm /20 - 0.5)
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      channels_to_upload='all', **kw):

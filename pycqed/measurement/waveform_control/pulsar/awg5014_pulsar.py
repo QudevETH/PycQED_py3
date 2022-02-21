@@ -76,79 +76,66 @@ class AWG5014Pulsar(PulsarAWGInterface):
             # So far no additional parameters specific to marker channels
             pass
 
-    @staticmethod
-    def _awg5014_setter(obj, id, par, offset_mode_func=None):
-        if id in ['ch1', 'ch2', 'ch3', 'ch4']:
-            if par == 'offset':
-                def s(val):
-                    if offset_mode_func() == 'software':
-                        obj.set('{}_offset'.format(id), val)
-                    elif offset_mode_func() == 'hardware':
-                        obj.set('{}_DC_out'.format(id), val)
-                    else:
-                        raise ValueError('Invalid offset mode for AWG5014: '
-                                        '{}'.format(offset_mode_func()))
-            elif par == 'amp':
-                def s(val):
-                    obj.set('{}_amp'.format(id), 2*val)
-            else:
-                raise NotImplementedError('Unknown parameter {}'.format(par))
-        else:
-            id_raw = id[:3] + '_' + id[3:]  # convert ch1m1 to ch1_m1
-            if par == 'offset':
-                def s(val):
-                    h = obj.get('{}_high'.format(id_raw))
-                    l = obj.get('{}_low'.format(id_raw))
-                    obj.set('{}_high'.format(id_raw), val + h - l)
-                    obj.set('{}_low'.format(id_raw), val)
-            elif par == 'amp':
-                def s(val):
-                    l = obj.get('{}_low'.format(id_raw))
-                    obj.set('{}_high'.format(id_raw), l + val)
-            else:
-                raise NotImplementedError('Unknown parameter {}'.format(par))
-        return s
+    def awg_getter(self, id:str, param:str):
 
-    def _awg5014_getter(self, obj, id, par, offset_mode_func=None):
-        if id in ['ch1', 'ch2', 'ch3', 'ch4']:
-            if par == 'offset':
-                def g():
-                    if offset_mode_func() == 'software':
-                        return obj.get('{}_offset'.format(id))
-                    elif offset_mode_func() == 'hardware':
-                        return obj.get('{}_DC_out'.format(id))
-                    else:
-                        raise ValueError('Invalid offset mode for AWG5014: '
-                                         '{}'.format(offset_mode_func()))
+        # Sanity checks
+        super().awg_getter(id, param)
 
-            elif par == 'amp':
-                def g():
-                    if self.pulsar.awgs_prequeried:
-                        return obj.parameters['{}_amp'.format(id)] \
-                                   .get_latest()/2
-                    else:
-                        return obj.get('{}_amp'.format(id))/2
-            else:
-                raise NotImplementedError('Unknown parameter {}'.format(par))
+        if id in ['ch1', 'ch2', 'ch3', 'ch4']:
+            offset_mode = self.pulsar.parameters[f"{id}_offset_mode"].get()
+            if param == 'offset':
+                if offset_mode == 'software':
+                    return self.awg.get(f"{id}_offset")
+                elif offset_mode == 'hardware':
+                    return self.awg.get(f"{id}_DC_out")
+                else:
+                    raise ValueError(f"Invalid {offset_mode=} mode for AWG5014.")
+            elif param == 'amp':
+                if self.pulsar.awgs_prequeried:
+                    return self.awg.parameters[f"{id}_amp"].get_latest() / 2
+                else:
+                    return self.awg.get(f"{id}_amp") / 2
         else:
-            id_raw = id[:3] + '_' + id[3:]  # convert ch1m1 to ch1_m1
-            if par == 'offset':
-                def g():
-                    return obj.get('{}_low'.format(id_raw))
-            elif par == 'amp':
-                def g():
-                    if self.pulsar.awgs_prequeried:
-                        h = obj.get('{}_high'.format(id_raw))
-                        l = obj.get('{}_low'.format(id_raw))
-                    else:
-                        h = obj.parameters['{}_high'.format(id_raw)]\
-                            .get_latest()
-                        l = obj.parameters['{}_low'.format(id_raw)]\
-                            .get_latest()
-                    return h - l
-            else:
-                raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g
+            # Convert ch1m1 to ch1_m1
+            id_raw = id[:3] + '_' + id[3:]
+            if param == 'offset':
+                return self.awg.get(f"{id_raw}_low")
+            elif param == 'amp':
+                if self.pulsar.awgs_prequeried:
+                    h = self.awg.parameters[f"{id_raw}_high"].get_latest()
+                    l = self.awg.parameters[f"{id_raw}_low"].get_latest()
+                else:
+                    h = self.awg.get(f"{id_raw}_high")
+                    l = self.awg.get(f"{id_raw}_low")
+                return h - l
+
+    def awg_setter(self, id:str, param:str, value):
+
+        # Sanity checks
+        super().awg_setter(id, param, value)
+
+        if id in ['ch1', 'ch2', 'ch3', 'ch4']:
+            offset_mode = self.pulsar.parameters[f"{id}_offset_mode"].get()
+            if param == 'offset':
+                if offset_mode == 'software':
+                    self.awg.set(f"{id}_offset", value)
+                elif offset_mode == 'hardware':
+                    self.awg.set(f"{id}_DC_out", value)
+                else:
+                    raise ValueError(f"Invalid {offset_mode=} mode for AWG5014.")
+            elif param == 'amp':
+                self.awg.set(f"{id}_amp", 2 * value)
+        else:
+            # Convert ch1m1 to ch1_m1
+            id_raw = id[:3] + '_' + id[3:]
+            if param == 'offset':
+                h = self.awg.get(f"{id_raw}_high")
+                l = self.awg.get(f"{id_raw}_low")
+                self.awg.set(f"{id_raw}_high", value + h - l)
+                self.awg.set(f"{id_raw}_low", value)
+            elif param == 'amp':
+                l = self.awg.get(f"{id_raw}_low")
+                self.awg.set(f"{id_raw}_high", l + value)
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):

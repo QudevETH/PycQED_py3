@@ -64,6 +64,11 @@ class PulsarAWGInterface(ABC):
     DEFAULT_SEGMENT = (0, 32767)
     """TODO"""
 
+    IMPLEMENTED_ACCESSORS:List[str] = ["offset", "amp"]
+    """List of parameters that can be set or retrieved by :meth:`awg_setter`
+    and :meth:`awg_getter`.
+    """
+
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
@@ -233,6 +238,9 @@ class PulsarAWGInterface(ABC):
             param: Parameter to get.
         """
 
+        if param not in self.IMPLEMENTED_ACCESSORS:
+            raise NotImplementedError(f"Unknown parameter '{param}'.")
+
     @abstractmethod
     def awg_setter(self, id:str, param:str, value):
         """Helper function to set AWG parameters.
@@ -242,6 +250,9 @@ class PulsarAWGInterface(ABC):
             param: Parameter to set.
             value: Value to set the parameter.
         """
+
+        if param not in self.IMPLEMENTED_ACCESSORS:
+            raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
     def program_awg(self, awg_sequence:dict, waveforms:dict, repeat_pattern=None,

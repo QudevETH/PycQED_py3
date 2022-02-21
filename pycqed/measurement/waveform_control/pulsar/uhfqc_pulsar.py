@@ -88,33 +88,34 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.pulsar.parameters[f"{ch_name}_amp"].set(0.75)
         self.pulsar.parameters[f"{ch_name}_offset"].set(0)
 
-    @staticmethod
-    def _uhfqc_setter(obj, id, par):
-        if par == 'offset':
-            def s(val):
-                obj.set('sigouts_{}_offset'.format(int(id[2])-1), val)
-        elif par == 'amp':
-            def s(val):
-                obj.set('sigouts_{}_range'.format(int(id[2])-1), val)
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return s
+    def awg_setter(self, id:str, param:str, value):
 
-    def _uhfqc_getter(self, obj, id, par):
-        if par == 'offset':
-            def g():
-                return obj.get('sigouts_{}_offset'.format(int(id[2])-1))
-        elif par == 'amp':
-            def g():
-                if self.pulsar.awgs_prequeried:
-                    return obj.parameters['sigouts_{}_range' \
-                        .format(int(id[2])-1)].get_latest()/2
-                else:
-                    return obj.get('sigouts_{}_range' \
-                        .format(int(id[2])-1))/2
-        else:
-            raise NotImplementedError('Unknown parameter {}'.format(par))
-        return g
+        # Sanity checks
+        super().awg_setter(id, param, value)
+
+        ch = int(id[2]) - 1
+
+        if param == "offset":
+            self.awg.set(f"sigouts_{ch}_offset", value)
+        elif param == "amp":
+            # TODO: Range is divided by 2 in getter, should it be multiplied by
+            # 2 here ?
+            self.awg.set(f"sigouts_{ch}_range", value)
+
+    def awg_getter(self, id:str, param:str):
+
+        # Sanity checks
+        super().awg_getter(id, param)
+
+        ch = int(id[2]) - 1
+
+        if param == "offset":
+            return self.awg.get(f"sigouts_{ch}_offset")
+        elif param == "amp":
+            if self.pulsar.awgs_prequeried:
+                return self.awg.parameters[f"sigouts_{ch}_range"].get_latest() / 2
+            else:
+                return self.awg.get(f"sigouts_{ch}_range") / 2
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
                      **kw):
