@@ -347,8 +347,6 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                  f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
 
     def sigout_on(self, ch, on=True):
-        """Turn channel outputs on or off."""
 
-        awg = self.find_instrument(self.get(ch + '_awg'))
         chid = self.get(ch + '_id')
-        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+        self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

@@ -263,8 +263,7 @@ class SHFQAPulsar(PulsarAWGInterface):
         return 2.0e9
 
     def sigout_on(self, ch, on=True):
-        """Turn channel outputs on or off."""
-
-        awg = self.find_instrument(self.get(ch + '_awg'))
         chid = self.get(ch + '_id')
-        awg.qachannels[int(chid[-2]) - 1].output(True)
+
+        # TODO: Should it be blablabla.output(on) instead of output(True) ?
+        self.awg.qachannels[int(chid[-2]) - 1].output(True)

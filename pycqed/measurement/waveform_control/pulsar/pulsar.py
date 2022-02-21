@@ -676,6 +676,13 @@ class Pulsar(Instrument):
         for awg in used_awg_interfaces:
             awg.stop()
 
+    def sigout_on(self, ch, on:bool=True):
+        """Turn channel outputs on or off."""
+
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        self.awg_interfaces[awg.name].sigout_on(ch, on)
+        pass
+
     def program_awgs(self, sequence:Sequence, awgs:Union[List[str], str]='all'):
         try:
             self._program_awgs(sequence, awgs)

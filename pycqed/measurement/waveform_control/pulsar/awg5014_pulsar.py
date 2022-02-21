@@ -290,17 +290,15 @@ class AWG5014Pulsar(PulsarAWGInterface):
         return channel_cfg
 
     def sigout_on(self, ch, on=True):
-        awg = self.find_instrument(self.get(ch + '_awg'))
         chid = self.get(ch + '_id')
-        if f"{chid}_state" in awg.parameters:
-            awg.set(f"{chid}_state", on)
+        if f"{chid}_state" in self.awg.parameters:
+            self.awg.set(f"{chid}_state", on)
         else:  # it is a marker channel
             # We cannot switch on the marker channel explicitly. It is on if
             # the corresponding analog channel is on. Raise a warning if
             # the state (of the analog channel) is different from the
             # requested state (of the marker channel).
-            if bool(awg.get(f"{chid[:3]}_state")) != bool(on):
+            if bool(self.awg.get(f"{chid[:3]}_state")) != bool(on):
                 log.warning(f'Pulsar: Cannot set the state of a marker '
                             f'channel. Call sigout_on for the corresponding '
                             f'analog channel {chid[:3]} instead.')
-        return

@@ -600,6 +600,5 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 for i in range(4) if self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
-        awg = self.find_instrument(self.get(ch + '_awg'))
         chid = self.get(ch + '_id')
-        awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+        self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
