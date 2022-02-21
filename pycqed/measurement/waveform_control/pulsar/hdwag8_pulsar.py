@@ -52,8 +52,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         "}}\n"
     )
 
-    def __init__(self, name):
-        super().__init__(name)
+    def __init__(self, pulsar, awg):
+        super().__init__(pulsar, awg)
         self._hdawg_waveform_cache = dict()
 
     def create_awg_parameters(self, channel_name_map):
@@ -92,12 +92,12 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         for ch_nr in range(8):
             id = f"ch{ch_nr + 1}"
             ch_name = channel_name_map.get(id, f"{name}_{id}")
-            self.create_channel_parameters(id, ch_name)
+            self.create_channel_parameters(id, ch_name, "analog")
             pulsar.channels.add(ch_name)
             group.append(ch_name)
             id = f"ch{ch_nr + 1}m"
             ch_name = channel_name_map.get(id, f"{name}_{id}")
-            self.create_channel_parameters(id, ch_name)
+            self.create_channel_parameters(id, ch_name, "marker")
             pulsar.channels.add(ch_name)
             group.append(ch_name)
             # channel pairs plus the corresponding marker channels are

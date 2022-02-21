@@ -67,7 +67,7 @@ class SHFQAPulsar(PulsarAWGInterface):
             for q in ["i", "q"]:
                 id = f"ch{ch_nr + 1}{q}"
                 ch_name = channel_name_map.get(id, f"{name}_{id}")
-                self.create_channel_parameters(id, ch_name)
+                self.create_channel_parameters(id, ch_name, "analog")
                 pulsar.channels.add(ch_name)
                 group.append(ch_name)
             for ch_name in group:

@@ -73,7 +73,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         for ch_nr in range(2):
             id = f"ch{ch_nr + 1}"
             ch_name = channel_name_map.get(id, f"{name}_{id}")
-            self.create_channel_parameters(id, ch_name)
+            self.create_channel_parameters(id, ch_name, "analog")
             pulsar.channels.add(ch_name)
             group.append(ch_name)
         # all channels are considered as a single group

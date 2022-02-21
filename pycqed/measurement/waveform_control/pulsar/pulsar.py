@@ -11,7 +11,6 @@ from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
 
-from ..sequence import Sequence
 from .zi_pulsar_mixin import ZIPulsarMixin
 
 
@@ -663,7 +662,15 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
-    def program_awgs(self, sequence:Sequence, awgs:Union[List[str], str]='all'):
+    def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
+        """Program the AWGs to play a sequence.
+
+        Arguments:
+            sequence: See
+                :class:`pycqed.measurement.waveform_control.sequence.Sequence`.
+            awgs: List of AWGs names, or ``"all"``
+        """
+
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
@@ -674,7 +681,7 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
             self._program_awgs(sequence, awgs)
 
-    def _program_awgs(self, sequence:Sequence, awgs:Union[List[str], str]='all'):
+    def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
         self.last_sequence = sequence
@@ -925,7 +932,7 @@ class Pulsar(Instrument):
                              awgs='with_waveforms'):
         self._filter_segments = val
         if awgs == 'with_waveforms':
-            awgs = self.awgs_with_waveforms()
+            awgs = self.awgs_with_waveforms
         elif awgs == 'all':
             awgs = self.awgs
         for awg in awgs:
@@ -971,8 +978,7 @@ class Pulsar(Instrument):
         return None
 
     @staticmethod
-    def _channels_in_awg_sequences(awg_sequences:Dict[str, Sequence]) \
-        -> Dict[str, Set[str]]:
+    def _channels_in_awg_sequences(awg_sequences) -> Dict[str, Set[str]]:
         """Identifies all channels used in the given awg keyed sequence.
 
         Arguments:

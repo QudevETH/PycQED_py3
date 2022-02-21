@@ -11,17 +11,12 @@ log = logging.getLogger(__name__)
 class ZIPulsarMixin:
     """Mixin containing utility functions needed by ZI AWG pulsar interfaces.
 
-    Attributes:
-        pulsar_ref_mixin: Pulsar instrument. The name is such that this
-            attribute does not collide with that of ``PulsarAWGInterface``.
+    Classes deriving from this mixin must have a ``pulsar`` attribute.
     """
 
     zi_waves_cleared = False
     """Flag set when waves are cleared."""
 
-
-    def __init__(self, pulsar):
-        self.pulsar_ref_mixin = pulsar
 
     @staticmethod
     def _zi_wave_dir():
