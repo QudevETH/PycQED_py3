@@ -78,12 +78,12 @@ class ZIPulsarMixin:
                 if analog is not None:
                     wa = self.pulsar_ref_mixin._hash_to_wavename(analog)
                     if wa not in defined_waves:
-                        wave_definition.append(f"wave {wa} = "{wa}";")
+                        wave_definition.append(f'wave {wa} = "{wa}";')
                         defined_waves.add(wa)
                 if marker is not None:
                     wm = self.pulsar_ref_mixin._hash_to_wavename(marker)
                     if wm not in defined_waves:
-                        wave_definition.append(f"wave {wm} = "{wm}";")
+                        wave_definition.append(f'wave {wm} = "{wm}";')
                         defined_waves.add(wm)
                 if analog is not None and marker is not None:
                     if wc not in defined_waves:
@@ -119,7 +119,7 @@ class ZIPulsarMixin:
             for ch in channels:
                 if k.startswith(f"{ch}_"):
                     playback_string.append(
-                        f"wave {k} = vect({",".join([f"{a}" for a in v])})")
+                        f'wave {k} = vect({",".join([f"{a}" for a in v])})')
         playback_string.append(
             f"for (cvar i_sweep = 0; i_sweep < {loop_len}; i_sweep += 1) {{")
         for k, v in sweep_params.items():

@@ -106,7 +106,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 return obj.get('sigouts_{}_offset'.format(int(id[2])-1))
         elif par == 'amp':
             def g():
-                if self._awgs_prequeried_state:
+                if self.pulsar.awgs_prequeried:
                     return obj.parameters['sigouts_{}_range' \
                         .format(int(id[2])-1)].get_latest()/2
                 else:
@@ -318,7 +318,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if not (ch_has_waveforms['ch1'] or ch_has_waveforms['ch2']):
             return
-        self.awgs_with_waveforms(obj.name)
+        self.pulsar.add_awg_with_waveforms(obj.name)
 
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
@@ -338,12 +338,12 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
     def _is_awg_running(self, obj):
         return obj.awgs_0_enable() != 0
 
-    def _clock(self, obj, cid=None):
-        return obj.clock_freq()
+    def clock(self):
+        return self.awg.clock_freq()
 
-    def _get_segment_filter_userregs(self, obj):
-        return [(f'awgs_0_userregs_{obj.USER_REG_FIRST_SEGMENT}',
-                 f'awgs_0_userregs_{obj.USER_REG_LAST_SEGMENT}')]
+    def get_segment_filter_userregs(self):
+        return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
+                 f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
 
     def sigout_on(self, ch, on=True):
         """Turn channel outputs on or off."""

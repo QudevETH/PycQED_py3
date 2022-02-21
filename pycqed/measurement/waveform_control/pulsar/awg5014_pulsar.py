@@ -123,7 +123,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
             elif par == 'amp':
                 def g():
-                    if self._awgs_prequeried_state:
+                    if self.pulsar.awgs_prequeried:
                         return obj.parameters['{}_amp'.format(id)] \
                                    .get_latest()/2
                     else:
@@ -137,7 +137,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                     return obj.get('{}_low'.format(id_raw))
             elif par == 'amp':
                 def g():
-                    if self._awgs_prequeried_state:
+                    if self.pulsar.awgs_prequeried:
                         h = obj.get('{}_high'.format(id_raw))
                         l = obj.get('{}_low'.format(id_raw))
                     else:
@@ -209,7 +209,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 obj.set('{}_state'.format(grp), grp_has_waveforms[grp])
             return None
 
-        self.awgs_with_waveforms(obj.name)
+        self.pulsar.add_awg_with_waveforms(obj.name)
 
         nrep_l = [1] * len(wfname_l)
         goto_l = [0] * len(wfname_l)
@@ -237,7 +237,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         hardware_offsets = 0
         for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
-            cname = self._id_channel(grp, obj.name)
+            cname = self.pulsar._id_channel(grp, obj.name)
             offset_mode = self.get('{}_offset_mode'.format(cname))
             if offset_mode == 'hardware':
                 hardware_offsets = 1
@@ -248,8 +248,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
     def _is_awg_running(self, obj):
         return obj.get_state() != 'Idle'
 
-    def _clock(self, obj, cid=None):
-        return obj.clock_freq()
+    def clock(self):
+        return self.awg.clock_freq()
 
     @staticmethod
     def _awg5014_group_ids(cid):
@@ -301,9 +301,6 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 cid = self.get('{}_id'.format(channel))
                 channel_cfg['CHANNEL_STATE_' + cid[2]] = 1
         return channel_cfg
-
-    def _get_segment_filter_userregs(self, obj):
-        return []
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))

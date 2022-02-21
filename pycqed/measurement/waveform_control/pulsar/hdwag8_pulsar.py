@@ -185,7 +185,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         elif par == 'amp':
             if id[-1] != 'm':  # analog channel
                 def g():
-                    if self._awgs_prequeried_state:
+                    if self.pulsar.awgs_prequeried:
                         return obj.parameters['sigouts_{}_range' \
                             .format(int(id[2])-1)].get_latest()/2
                     else:
@@ -287,7 +287,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         if chid[-1]=='m':
             return 1
 
-        name = self._id_channel(chid, awg)
+        name = self.pulsar._id_channel(chid, awg)
         if self.get(f"{name}_internal_modulation"):
             return 2
         else:
@@ -335,7 +335,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             chids = [ch1id, ch1mid, ch2id, ch2mid]
 
             channels = [
-                self._id_channel(chid, obj.name) for chid in [ch1id, ch2id]]
+                self.pulsar._id_channel(chid, obj.name) for chid in [ch1id, ch2id]]
             if all([self.get(
                 f'{chan}_internal_modulation') for chan in channels]):
                 internal_mod = True
@@ -549,7 +549,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 obj.set('sigouts_{}_on'.format(ch), True)
 
         if any(ch_has_waveforms.values()):
-            self.awgs_with_waveforms(obj.name)
+            self.pulsar.add_awg_with_waveforms(obj.name)
 
     def _hdawg_update_waveforms(self, obj, awg_nr, wave_idx, wave_hashes,
                                 waveforms):
@@ -591,16 +591,16 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         return any([obj.get('awgs_{}_enable'.format(awg_nr)) for awg_nr in
                     self._hdawg_active_awgs(obj)])
 
-    def _clock(self, obj, cid):
-        return obj.clock_freq()
+    def clock(self):
+        return self.awg.clock_freq()
 
     def _hdawg_active_awgs(self, obj):
         return [0,1,2,3]
 
-    def _get_segment_filter_userregs(self, obj):
-        return [(f'awgs_{i}_userregs_{obj.USER_REG_FIRST_SEGMENT}',
-                 f'awgs_{i}_userregs_{obj.USER_REG_LAST_SEGMENT}')
-                for i in range(4) if obj._awg_program[i] is not None]
+    def get_segment_filter_userregs(self):
+        return [(f'awgs_{i}_userregs_{self.awg.USER_REG_FIRST_SEGMENT}',
+                 f'awgs_{i}_userregs_{self.awg.USER_REG_LAST_SEGMENT}')
+                for i in range(4) if self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))

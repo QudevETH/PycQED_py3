@@ -102,7 +102,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 Converts the output in dBm to volts."""
         if par == 'amp':
             def g():
-                if self._awgs_prequeried_state:
+                if self.pulsar.awgs_prequeried:
                     dbm = obj.qachannels[int(id[2]) - 1].output_range\
                         .get_latest()
                 else:
@@ -267,7 +267,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 waves_to_upload)
 
         if any(grp_has_waveforms.values()):
-            self.awgs_with_waveforms(obj.name)
+            self.pulsar.add_awg_with_waveforms(obj.name)
 
 
     def _is_awg_running(self, obj):
@@ -285,15 +285,8 @@ class SHFQAPulsar(PulsarAWGInterface):
                 is_running.append(daq.getInt(path) != 0)
         return any(is_running)
 
-    def _clock(self, obj, cid=None):
-        """Returns the sample clock of the SHFQA: 2 GHz."""
-
+    def clock(self):
         return 2.0e9
-
-    def _get_segment_filter_userregs(self, obj):
-        """Segment filter currently not supported on SHFQA"""
-
-        return []
 
     def sigout_on(self, ch, on=True):
         """Turn channel outputs on or off."""
