@@ -137,8 +137,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 l = self.awg.get(f"{id_raw}_low")
                 self.awg.set(f"{id_raw}_high", l + value)
 
-    def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     **kw):
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all", channels_to_program="all"):
 
         pars = {
             'ch{}_m{}_low'.format(ch + 1, m + 1)
@@ -153,7 +153,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
         }
         old_vals = {}
         for par in pars:
-            old_vals[par] = obj.get(par)
+            old_vals[par] = self.awg.get(par)
 
         packed_waveforms = {}
         wfname_l = []
@@ -185,18 +185,18 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 grp_wfs = [np.pad(waveforms.get(h, [0]),
                                   (0, maxlen - len(waveforms.get(h, [0]))),
                                   'constant', constant_values=0) for h in wave]
-                packed_waveforms[wfname] = obj.pack_waveform(*grp_wfs)
+                packed_waveforms[wfname] = self.awg.pack_waveform(*grp_wfs)
                 wfname_l[-1].append(wfname)
                 if any([wf[0] != 0 for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
-                                f'entry on {obj.name}.')
+                                f'entry on {self.awg.name}.')
 
         if not any(grp_has_waveforms.values()):
             for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
-                obj.set('{}_state'.format(grp), grp_has_waveforms[grp])
+                self.awg.set('{}_state'.format(grp), grp_has_waveforms[grp])
             return None
 
-        self.pulsar.add_awg_with_waveforms(obj.name)
+        self.pulsar.add_awg_with_waveforms(self.awg.name)
 
         nrep_l = [1] * len(wfname_l)
         goto_l = [0] * len(wfname_l)
@@ -206,29 +206,29 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         filename = 'pycqed_pulsar.awg'
 
-        awg_file = obj.generate_awg_file(packed_waveforms, np.array(wfname_l).transpose().copy(),
+        awg_file = self.awg.generate_awg_file(packed_waveforms, np.array(wfname_l).transpose().copy(),
                                          nrep_l, wait_l, goto_l, logic_jump_l,
-                                         self._awg5014_chan_cfg(obj.name))
-        obj.send_awg_file(filename, awg_file)
-        obj.load_awg_file(filename)
+                                         self._awg5014_chan_cfg(self.awg.name))
+        self.awg.send_awg_file(filename, awg_file)
+        self.awg.load_awg_file(filename)
 
         for par in pars:
-            obj.set(par, old_vals[par])
+            self.awg.set(par, old_vals[par])
 
         time.sleep(.1)
         # Waits for AWG to be ready
-        obj.is_awg_ready()
+        self.awg.is_awg_ready()
 
         for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
-            obj.set('{}_state'.format(grp), 1*grp_has_waveforms[grp])
+            self.awg.set('{}_state'.format(grp), 1*grp_has_waveforms[grp])
 
         hardware_offsets = 0
         for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
-            cname = self.pulsar._id_channel(grp, obj.name)
+            cname = self.pulsar._id_channel(grp, self.awg.name)
             offset_mode = self.get('{}_offset_mode'.format(cname))
             if offset_mode == 'hardware':
                 hardware_offsets = 1
-            obj.DC_output(hardware_offsets)
+            self.awg.DC_output(hardware_offsets)
 
         return awg_file
 

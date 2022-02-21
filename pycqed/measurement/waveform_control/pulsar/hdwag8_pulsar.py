@@ -291,17 +291,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             return 1
 
 
-    def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     channels_to_upload='all', channels_to_program='all'):
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all", channels_to_program="all"):
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
-        divisor = {chid: self.get_divisor(chid, obj.name) for chid in chids}
+        divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
         def with_divisor(h, ch):
             return (h if divisor[ch] == 1 else (h, divisor[ch]))
 
         ch_has_waveforms = {chid: False for chid in chids}
 
-        use_placeholder_waves = self.get(f'{obj.name}_use_placeholder_waves')
+        use_placeholder_waves = self.get(f'{self.awg.name}_use_placeholder_waves')
 
         if not use_placeholder_waves:
             if not self.zi_waves_cleared:
@@ -321,8 +321,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             if use_filter:
                 playback_strings += ['var i_seg = -1;']
                 wave_definitions += [
-                    f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
-                    f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+                    f'var first_seg = getUserReg({self.awg.USER_REG_FIRST_SEGMENT});',
+                    f'var last_seg = getUserReg({self.awg.USER_REG_LAST_SEGMENT});',
                 ]
 
             ch1id = 'ch{}'.format(awg_nr * 2 + 1)
@@ -332,7 +332,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             chids = [ch1id, ch1mid, ch2id, ch2mid]
 
             channels = [
-                self.pulsar._id_channel(chid, obj.name) for chid in [ch1id, ch2id]]
+                self.pulsar._id_channel(chid, self.awg.name) for chid in [ch1id, ch2id]]
             if all([self.get(
                 f'{chan}_internal_modulation') for chan in channels]):
                 internal_mod = True
@@ -404,7 +404,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                             if max(placeholder_wave_lengths) != \
                                min(placeholder_wave_lengths):
                                 log.warning(f"Waveforms of unequal length on"
-                                            f"{obj.name}, vawg{awg_nr}, "
+                                            f"{self.awg.name}, vawg{awg_nr}, "
                                             f"{current_segment}, {element}.")
                             wave_definitions += self._zi_wave_definition(
                                 wave,
@@ -439,7 +439,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if not internal_mod:
                         if first_element_of_segment:
                             prepend_zeros = self.parameters[
-                                f'{obj.name}_prepend_zeros']()
+                                f'{self.awg.name}_prepend_zeros']()
                             if prepend_zeros is None:
                                 prepend_zeros = self.prepend_zeros()
                             elif isinstance(prepend_zeros, list):
@@ -447,16 +447,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                         else:
                             prepend_zeros = 0
                         playback_strings += self._zi_playback_string(
-                            name=obj.name, device='hdawg', wave=wave,
+                            name=self.awg.name, device='hdawg', wave=wave,
                             codeword=(nr_cw != 0),
                             prepend_zeros=prepend_zeros,
                             placeholder_wave=use_placeholder_waves,
                             allow_filter=metadata.get('allow_filter', False))
                     elif not use_placeholder_waves:
                         pb_string, interleave_string = \
-                            self._zi_interleaved_playback_string(name=obj.name,
-                            device='hdawg', counter=counter, wave=wave,
-                            codeword=(nr_cw != 0))
+                            self._zi_interleaved_playback_string(
+                                name=self.awg.name, device='hdawg',
+                                counter=counter, wave=wave,
+                                codeword=(nr_cw != 0)
+                            )
                         counter += 1
                         playback_strings += pb_string
                         interleaves += interleave_string
@@ -472,17 +474,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
                 # prevent ZI_base_instrument.start() from starting this sub AWG
-                obj._awg_program[awg_nr] = None
+                self.awg._awg_program[awg_nr] = None
                 continue
             # tell ZI_base_instrument that it should not compile a
             # program on this sub AWG (because we already do it here)
-            obj._awg_needs_configuration[awg_nr] = False
+            self.awg._awg_needs_configuration[awg_nr] = False
             # tell ZI_base_instrument.start() to start this sub AWG
             # (The base class will start sub AWGs for which _awg_program
             # is not None. Since we set _awg_needs_configuration to False,
             # we do not need to put the actual program here, but anything
             # different from None is sufficient.)
-            obj._awg_program[awg_nr] = True
+            self.awg._awg_program[awg_nr] = True
 
             # Having determined whether the sub AWG should be started or
             # not, we can now skip in case no channels need to be uploaded.
@@ -511,54 +513,52 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 run_compiler = True
             else:
                 cached_lookup = self._hdawg_waveform_cache.get(
-                    f'{obj.name}_{awg_nr}_wave_idx_lookup', None)
+                    f'{self.awg.name}_{awg_nr}_wave_idx_lookup', None)
                 try:
                     np.testing.assert_equal(wave_idx_lookup, cached_lookup)
                     run_compiler = False
                 except AssertionError:
-                    log.debug(f'{obj.name}_{awg_nr}: Waveform reuse pattern '
+                    log.debug(f'{self.awg.name}_{awg_nr}: Waveform reuse pattern '
                               f'has changed. Forcing recompilation.')
                     run_compiler = True
 
             if run_compiler:
                 # We have to retrieve the following parameter to set it
                 # again after programming the AWG.
-                prev_dio_valid_polarity = obj.get(
+                prev_dio_valid_polarity = self.awg.get(
                     'awgs_{}_dio_valid_polarity'.format(awg_nr))
 
-                obj.configure_awg_from_string(awg_nr, awg_str, timeout=600)
+                self.awg.configure_awg_from_string(awg_nr, awg_str, timeout=600)
 
-                obj.set('awgs_{}_dio_valid_polarity'.format(awg_nr),
+                self.awg.set('awgs_{}_dio_valid_polarity'.format(awg_nr),
                         prev_dio_valid_polarity)
                 if use_placeholder_waves:
-                    self._hdawg_waveform_cache[f'{obj.name}_{awg_nr}'] = {}
+                    self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'] = {}
                     self._hdawg_waveform_cache[
-                        f'{obj.name}_{awg_nr}_wave_idx_lookup'] = \
+                        f'{self.awg.name}_{awg_nr}_wave_idx_lookup'] = \
                         wave_idx_lookup
 
             if use_placeholder_waves:
                 for idx, wave_hashes in defined_waves[1].items():
-                    self._hdawg_update_waveforms(obj, awg_nr, idx,
-                                                 wave_hashes, waveforms)
+                    self._update_waveforms(awg_nr, idx, wave_hashes, waveforms)
 
         if self.sigouts_on_after_programming():
             for ch in range(8):
-                obj.set('sigouts_{}_on'.format(ch), True)
+                self.awg.set('sigouts_{}_on'.format(ch), True)
 
         if any(ch_has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(obj.name)
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
 
-    def _hdawg_update_waveforms(self, obj, awg_nr, wave_idx, wave_hashes,
-                                waveforms):
+    def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.use_sequence_cache():
             if wave_hashes == self._hdawg_waveform_cache[
-                    f'{obj.name}_{awg_nr}'].get(wave_idx, None):
+                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
                 log.debug(
-                    f'{obj.name} awgs{awg_nr}: {wave_idx} same as in cache')
+                    f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
                 return
             log.debug(
-                f'{obj.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
-            self._hdawg_waveform_cache[f'{obj.name}_{awg_nr}'][
+                f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
@@ -582,7 +582,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        obj.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
+        self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
 
     def is_awg_running(self):
         return any([self.awg.get('awgs_{}_enable'.format(awg_nr))

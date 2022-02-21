@@ -257,7 +257,7 @@ class PulsarAWGInterface(ABC):
     @abstractmethod
     def program_awg(self, awg_sequence:dict, waveforms:dict, repeat_pattern=None,
                     channels_to_upload:Union[List[str], str]="all",
-                    channels_to_program:Union[List[str], str]='all'):
+                    channels_to_program:Union[List[str], str]="all"):
         """Upload the waveforms to the AWG.
 
         Args:

@@ -117,8 +117,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             else:
                 return self.awg.get(f"sigouts_{ch}_range") / 2
 
-    def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     **kw):
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all", channels_to_program="all"):
 
         if not self.zi_waves_cleared:
             self._zi_clear_waves()
@@ -140,8 +140,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                           for e in awg_sequence.values()])
         if use_filter:
             wave_definitions += [
-                f'var first_seg = getUserReg({obj.USER_REG_FIRST_SEGMENT});',
-                f'var last_seg = getUserReg({obj.USER_REG_LAST_SEGMENT});',
+                f'var first_seg = getUserReg({self.awg.USER_REG_FIRST_SEGMENT});',
+                f'var last_seg = getUserReg({self.awg.USER_REG_LAST_SEGMENT});',
             ]
 
         ch_has_waveforms = {'ch1': False, 'ch2': False}
@@ -165,8 +165,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             playback_strings += self._zi_playback_string_loop_start(
                 metadata, ['ch1', 'ch2'])
             if list(awg_sequence_element.keys()) != ['no_codeword']:
-                raise NotImplementedError('UHFQC sequencer does currently\
-                                                       not support codewords!')
+                raise NotImplementedError("UHFQC sequencer does currently not "
+                                          "support codewords!")
             chid_to_hash = awg_sequence_element['no_codeword']
 
             wave = (chid_to_hash.get('ch1', None), None,
@@ -182,7 +182,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # calling play_element with allow_filter=False: repeat patterns,
             # see below.)
             playback_strings += self._zi_playback_string(
-                name=obj.name, device='uhf', wave=wave, acq=acq,
+                name=self.awg.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
             # The following line only has an effect if the metadata specifies
@@ -193,7 +193,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             ch_has_waveforms['ch2'] |= wave[2] is not None
             return playback_strings, wave_definitions
 
-        self._filter_segment_functions[obj.name] = None
+        self._filter_segment_functions[self.awg.name] = None
         if repeat_pattern is None:
             if use_filter:
                 playback_strings += ['var i_seg = -1;']
@@ -243,7 +243,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         if i < first_seg or i > last_seg:
                             n_tot -= cnt
                     return n_tot
-                self._filter_segment_functions[obj.name] = filter_count
+                self._filter_segment_functions[self.awg.name] = filter_count
                 # _set_filter_segments will pass the correct number of
                 # repetitions via a user register to the SeqC variable last_seg
                 repeat_pattern = ('last_seg', 1)
@@ -319,7 +319,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if not (ch_has_waveforms['ch1'] or ch_has_waveforms['ch2']):
             return
-        self.pulsar.add_awg_with_waveforms(obj.name)
+        self.pulsar.add_awg_with_waveforms(self.awg.name)
 
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
@@ -328,13 +328,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         # Necessary hack to pass the UHFQC drivers sanity check
         # in acquisition_initialize()
-        obj._awg_program_features['loop_cnt'] = True
-        obj._awg_program_features['avg_cnt']  = False
+        self.awg._awg_program_features['loop_cnt'] = True
+        self.awg._awg_program_features['avg_cnt']  = False
         # Hack needed to have
-        obj._awg_needs_configuration[0] = False
-        obj._awg_program[0] = True
+        self.awg._awg_needs_configuration[0] = False
+        self.awg._awg_program[0] = True
 
-        obj.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
+        self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
 
     def is_awg_running(self):
         return self.awg.awgs_0_enable() != 0

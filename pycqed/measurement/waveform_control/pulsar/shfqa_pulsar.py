@@ -110,39 +110,16 @@ class SHFQAPulsar(PulsarAWGInterface):
                 dbm = self.awg.qachannels[ch].output_range()
             return 10 ** (dbm /20 - 0.5)
 
-    def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     channels_to_upload='all', **kw):
-        """Upload the waveforms to the SHFQA.
-
-        Args:
-            obj:
-                AWG instance
-            awg_sequence:
-                AWG sequence data (not waveforms) as returned from
-                `Sequence.generate_waveforms_sequences`. The key-structure
-                of the nested dictionary is like this:
-                `awg_sequence[elname][cw][chid]`,
-                where elname is the elment name, cw is the codeword, or the
-                string `'no_codeword'` and chid is the channel id. The values
-                are hashes of waveforms to be played
-            waveforms:
-                A dictionary of waveforms, keyed by their hash.
-            repeat_pattern:
-                Not used for now
-            channels_to_upload:
-                list of channel names to upload or 'all'
-
-        Keyword args:
-            No keyword arguments are used.
-        """
-        # Note: For now, we only check for channels_to_upload and always
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all", channels_to_program="all"):
+        # TODO: For now, we only check for channels_to_upload and always
         # re-program when re-uploading (i.e., we ignore channels_to_program).
         # This could be further optimized in the future. Moreover, we currently
         # ignore channels_to_upload in spectroscopy mode, i.e., we always
         # re-upload in spectroscopy mode. This could be optimized in the future.
 
         grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
-        for i, qachannel in enumerate(obj.qachannels):
+        for i, qachannel in enumerate(self.awg.qachannels):
             grp = f'ch{i+1}'
             chids = [f'ch{i+1}i', f'ch{i+1}q']
 
@@ -175,24 +152,24 @@ class SHFQAPulsar(PulsarAWGInterface):
                         np.pad(wq, [(0, wlen - len(wq))], mode='constant')*1j
                     waves_to_upload[(hi, hq)] = w
             if not grp_has_waveforms[grp]:
-                log.debug(f'{obj.name}: no waveforms on group {i}')
-                obj.awg_active[i] = False
+                log.debug(f'{self.awg.name}: no waveforms on group {i}')
+                self.awg.awg_active[i] = False
                 continue
-            obj.awg_active[i] = True
+            self.awg.awg_active[i] = True
 
             # Having determined whether the group should be started or
             # not, we can now skip in case no channels need to be uploaded.
             if channels_to_upload != 'all' and not any(
                     [ch in channels_to_upload for ch in chids]):
-                log.debug(f'{obj.name}: skip programming group {i}')
+                log.debug(f'{self.awg.name}: skip programming group {i}')
                 continue
-            log.debug(f'{obj.name}: programming group {i}')
+            log.debug(f'{self.awg.name}: programming group {i}')
 
             hash_to_index_map = {h: i for i, h in enumerate(waves_to_upload)}
 
             if is_spectroscopy and len(waves_to_upload) > 1:
                 log.error(f"Can not have multiple elements in spectroscopy mode"
-                          f"on {obj.name}, channel {i+1}")
+                          f"on {self.awg.name}, channel {i+1}")
                 continue
 
             for h, w in waves_to_upload.items():
@@ -206,8 +183,8 @@ class SHFQAPulsar(PulsarAWGInterface):
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
-                daq = obj._controller._controller.connection._daq
-                path = f"/{obj.get_idn()['serial']}/qachannels/{i}/" \
+                daq = self.awg._controller._controller.connection._daq
+                path = f"/{self.awg.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
                     daq.setVector(path + "/wave", w.astype("complex128"))
@@ -247,7 +224,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 return playback_strings
 
             qachannel.mode('readout')
-            self._filter_segment_functions[obj.name] = None
+            self._filter_segment_functions[self.awg.name] = None
 
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "
@@ -257,7 +234,7 @@ class SHFQAPulsar(PulsarAWGInterface):
 
             # provide sequence data to SHFQA object for upload in
             # acquisition_initialize
-            obj.set_awg_program(
+            self.awg.set_awg_program(
                 i,
                 self._shfqa_sequence_string_template.format(
                     loop_count='{loop_count}',  # will be replaced by SHFQA driver
@@ -265,7 +242,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 waves_to_upload)
 
         if any(grp_has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(obj.name)
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
 
 
     def is_awg_running(self):
