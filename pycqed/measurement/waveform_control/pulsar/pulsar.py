@@ -292,12 +292,10 @@ class PulsarAWGInterface(ABC):
     @abstractmethod
     def clock(self) -> float:
         """Returns the sample clock frequency [Hz] of the AWG."""
-        pass
 
     @abstractmethod
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
-        pass
 
     @abstractmethod
     def get_segment_filter_userregs(self) -> List[Tuple[str, str]]:
@@ -307,7 +305,6 @@ class PulsarAWGInterface(ABC):
             List of tuples ``(first, last)`` where ``first`` and ``last`` are
             formatted strings. TODO: More accurate description.
         """
-        pass
 
     def set_filter_segments(self, val):
         """TODO: Document"""
@@ -534,30 +531,14 @@ class Pulsar(Instrument):
 
         return channel_list
 
-    # TODO: Rename to conform to naming conventions
-    def AWG_obj(self, awg:str, channel:str):
-        """
-        Return the AWG object corresponding to a channel or an AWG name.
+    def get_channel_awg(self, channel:str) -> Instrument:
+        """Return the AWG corresponding to a channel.
 
         Args:
-            awg: Name of the AWG Instrument.
-            channel: Name of the channel
-
-        Returns: An instance of Instrument class corresponding to the AWG
-                 requested.
+            channel: Name of the channel.
         """
 
-        if awg is not None and channel is not None:
-            raise ValueError('Both `awg` and `channel` arguments passed to '
-                             'Pulsar.AWG_obj()')
-        elif awg is None and channel is not None:
-            name = self.get('{}_awg'.format(channel))
-        elif awg is not None and channel is None:
-            name = awg
-        else:
-            raise ValueError('Either `awg` or `channel` argument needs to be '
-                             'passed to Pulsar.AWG_obj()')
-        return Instrument.find_instrument(name)
+        return Instrument.find_instrument(self.get(f"{channel}_awg"))
 
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
@@ -681,7 +662,6 @@ class Pulsar(Instrument):
 
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
-        pass
 
     def program_awgs(self, sequence:Sequence, awgs:Union[List[str], str]='all'):
         try:
