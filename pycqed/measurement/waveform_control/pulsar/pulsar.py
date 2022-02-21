@@ -288,7 +288,6 @@ class PulsarAWGInterface(ABC):
     @abstractmethod
     def is_awg_running(self) -> bool:
         """Checks whether the sequencer of the AWG is running."""
-        pass
 
     @abstractmethod
     def clock(self) -> float:

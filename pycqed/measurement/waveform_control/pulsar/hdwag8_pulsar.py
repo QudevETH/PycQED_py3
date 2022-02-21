@@ -307,7 +307,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             if not self.zi_waves_cleared:
                 self._zi_clear_waves()
 
-        for awg_nr in self._hdawg_active_awgs(obj):
+        for awg_nr in self._hdawg_active_awgs():
             defined_waves = (set(), dict()) if use_placeholder_waves else set()
             codeword_table = {}
             wave_definitions = []
@@ -584,14 +584,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         wf_raw_combined = merge_waveforms(a1, a2, mc)
         obj.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
 
-    def _is_awg_running(self, obj):
-        return any([obj.get('awgs_{}_enable'.format(awg_nr)) for awg_nr in
-                    self._hdawg_active_awgs(obj)])
+    def is_awg_running(self):
+        return any([self.awg.get('awgs_{}_enable'.format(awg_nr))
+                    for awg_nr in self._hdawg_active_awgs()])
 
     def clock(self):
         return self.awg.clock_freq()
 
-    def _hdawg_active_awgs(self, obj):
+    def _hdawg_active_awgs(self):
         return [0,1,2,3]
 
     def get_segment_filter_userregs(self):

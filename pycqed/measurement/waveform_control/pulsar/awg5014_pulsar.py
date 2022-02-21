@@ -232,8 +232,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         return awg_file
 
-    def _is_awg_running(self, obj):
-        return obj.get_state() != 'Idle'
+    def is_awg_running(self):
+        return self.awg.get_state() != "Idle"
 
     def clock(self):
         return self.awg.clock_freq()

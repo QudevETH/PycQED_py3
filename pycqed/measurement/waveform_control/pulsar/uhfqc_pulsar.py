@@ -336,8 +336,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         obj.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
 
-    def _is_awg_running(self, obj):
-        return obj.awgs_0_enable() != 0
+    def is_awg_running(self):
+        return self.awg.awgs_0_enable() != 0
 
     def clock(self):
         return self.awg.clock_freq()

@@ -268,17 +268,16 @@ class SHFQAPulsar(PulsarAWGInterface):
             self.pulsar.add_awg_with_waveforms(obj.name)
 
 
-    def _is_awg_running(self, obj):
-        """Checks whether the sequencer of AWG `obj` is running"""
+    def is_awg_running(self):
 
         is_running = []
         for awg_nr in range(4):
-            qachannel = obj.qachannels[awg_nr]
+            qachannel = self.awg.qachannels[awg_nr]
             if qachannel.mode() == 'readout':
                 is_running.append(qachannel.generator.is_running)
             else:  # spectroscopy
-                daq = obj._controller._controller.connection._daq
-                path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
+                daq = self.awg._controller._controller.connection._daq
+                path = f"/{self.awg.get_idn()['serial']}/qachannels/{awg_nr}/" \
                        f"spectroscopy/result/enable"
                 is_running.append(daq.getInt(path) != 0)
         return any(is_running)
