@@ -24,6 +24,7 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
 from pycqed.utilities.general import temporary_value
+import pycqed.utilities.general as gen
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement import optimization as opti
@@ -1216,7 +1217,7 @@ class QuDev_transmon(Qubit):
                                        sweep_function_2D=None,
                                        trigger_separation=3e-6,
                                        upload=True, analyze=True,
-                                       close_fig=True, label=None):
+                                       close_fig=True, label=None, hard=False):
         """ Varies the frequency of the microwave source to the resonator and
         measures the transmittance """
         if np.any(freqs < 500e6):
@@ -1235,9 +1236,30 @@ class QuDev_transmon(Qubit):
             if self.instr_ro_lo() is None:
                 ro_pars['mod_frequency'] = 0
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
+
             for seg in seq.segments.values():
-                seg.acquisition_mode = 'sweeper'
+                if hard:
+                    # FIXME: SHF specific
+                    self.instr_acq.get_instr().use_hardware_sweeper(True)
+                    center_freq, delta_f, _ = self.instr_acq.get_instr()\
+                        .get_params_from_spectrum(freqs)
+                    self.ro_freq(center_freq)
+                    gen.configure_qubit_mux_readout([self], {(self.instr_acq(),
+                        self.acq_unit()): center_freq})  # Just to set the center freq
+                    seg.acquisition_mode = dict(
+                        sweeper='hardware',
+                        f_start=freqs[0] - center_freq,
+                        f_step=delta_f,
+                        n_step=len(freqs),
+                        seqtrigger=True,
+                    )
+                else:
+                    self.instr_acq.get_instr().use_hardware_sweeper(False)
+                    seg.acquisition_mode = dict(
+                        sweeper='software'
+                    )
             self.instr_pulsar.get_instr().program_awgs(seq)
+            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
 
         MC = self.instr_mc.get_instr()
         MC.set_sweep_function(self.swf_ro_freq_lo())
@@ -1255,6 +1277,7 @@ class QuDev_transmon(Qubit):
             # The following ensures that we use a hard detector if the acq
             # dev provided a sweep function for a hardware IF sweep.
             self.int_avg_det.set_real_imag(False)
+            self.int_avg_det.AWG = self.int_avg_det_spec.AWG
             MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
