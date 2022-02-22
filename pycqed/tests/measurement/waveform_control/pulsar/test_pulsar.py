@@ -2,6 +2,8 @@ from unittest import TestCase
 import random
 
 from pycqed.measurement.waveform_control.pulsar import Pulsar
+from pycqed.measurement.waveform_control.sequence import Sequence
+from pycqed.measurement.waveform_control.segment import Segment
 
 from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
     VirtualAWG5014
@@ -41,9 +43,23 @@ class TestPulsar(TestCase):
 
         self.assertEqual(awg, self.awg)
 
-    def  test_define_awg_channels(self):
+    def test_define_awg_channels(self):
         awg = VirtualAWG5014("awg_test_get_interface_class")
         self.pulsar.define_awg_channels(awg)
 
         self.assertIn(awg.name, self.pulsar.awgs)
         self.assertIn(awg.name, self.pulsar.awg_interfaces)
+
+    def test_program_awgs(self):
+
+        pulses = [{
+            "name": f"pulse",
+            "pulse_type": "VirtualPulse",
+            "pulse_delay": 0,
+            "ref_pulse": "previous_pulse",
+            "ref_point": "end",
+        }]
+
+        segment = Segment("segment", pulses)
+        sequence = Sequence("sequence", segments=[segment])
+        self.pulsar.program_awgs(sequence)

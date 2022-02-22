@@ -696,7 +696,7 @@ class Pulsar(Instrument):
             awgs = self.active_awgs()
 
         # initializes the set of AWGs with waveforms
-        self.awgs_with_waveforms -= awgs
+        self._awgs_with_waveforms -= awgs
 
 
         # Setting the property will prequery all AWG clock and amplitudes

@@ -34,6 +34,10 @@ class AWG5014Pulsar(PulsarAWGInterface):
         "marker": (-2.7, 2.7),
     }
 
+    def __init__(self, pulsar, awg):
+        super().__init__(pulsar, awg)
+        self._it_to_ch_name = {}
+
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
 
@@ -63,6 +67,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
     def create_channel_parameters(self, id: str, ch_name: str, ch_type):
         super().create_channel_parameters(id, ch_name, ch_type)
+        self._it_to_ch_name[id] = ch_name
 
         pulsar = self.pulsar
 
@@ -82,7 +87,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
         super().awg_getter(id, param)
 
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
-            offset_mode = self.pulsar.parameters[f"{id}_offset_mode"].get()
+            ch_name = self._it_to_ch_name[id]
+            offset_mode = self.pulsar.parameters[f"{ch_name}_offset_mode"].get()
             if param == 'offset':
                 if offset_mode == 'software':
                     return self.awg.get(f"{id}_offset")
@@ -115,7 +121,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
         super().awg_setter(id, param, value)
 
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
-            offset_mode = self.pulsar.parameters[f"{id}_offset_mode"].get()
+            ch_name = self._it_to_ch_name[id]
+            offset_mode = self.pulsar.parameters[f"{ch_name}_offset_mode"].get()
             if param == 'offset':
                 if offset_mode == 'software':
                     self.awg.set(f"{id}_offset", value)
