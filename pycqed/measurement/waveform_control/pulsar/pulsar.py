@@ -23,7 +23,12 @@ class PulsarAWGInterface(ABC):
 
     To support another type of AWG in the pulsar class, one needs to subclass
     this interface class, and override the methods it defines. In addition, make
-    sure to override the supported ``AWG_CLASSES``.
+    sure to override the supported :attr:`AWG_CLASSES`.
+
+    Warning:
+        Pulsar interfaces must be imported in ``pulsar/__init__.py`` to make
+        sure they are properly registered in
+        ``PulsarAWGInterface._pulsar_interfaces``.
 
     Attributes:
         pulsar: Pulsar to which the PulsarAWGInterface is added.
@@ -518,7 +523,6 @@ class Pulsar(Instrument):
 
         self.awgs.add(awg.name)
         # Make sure that registers for filter_segments are set in the new AWG.
-        # TODO: Replace with call to interface class
         self.filter_segments(self.filter_segments())
 
     def find_awg_channels(self, awg:str) -> List[str]:
