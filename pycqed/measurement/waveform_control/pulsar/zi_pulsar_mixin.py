@@ -71,12 +71,12 @@ class ZIPulsarMixin:
             for analog, marker, wc in [(wave[0], wave[1], w1),
                                        (wave[2], wave[3], w2)]:
                 if analog is not None:
-                    wa = self.pulsar_ref_mixin._hash_to_wavename(analog)
+                    wa = self.pulsar._hash_to_wavename(analog)
                     if wa not in defined_waves:
                         wave_definition.append(f'wave {wa} = "{wa}";')
                         defined_waves.add(wa)
                 if marker is not None:
-                    wm = self.pulsar_ref_mixin._hash_to_wavename(marker)
+                    wm = self.pulsar._hash_to_wavename(marker)
                     if wm not in defined_waves:
                         wave_definition.append(f'wave {wm} = "{wm}";')
                         defined_waves.add(wm)
@@ -150,17 +150,17 @@ class ZIPulsarMixin:
             if analog is None and marker is None:
                 wavenames.append(None)
             elif analog is None and marker is not None:
-                wavenames.append(self.pulsar_ref_mixin._hash_to_wavename(marker))
+                wavenames.append(self.pulsar._hash_to_wavename(marker))
             elif analog is not None and marker is None:
-                wavenames.append(self.pulsar_ref_mixin._hash_to_wavename(analog))
+                wavenames.append(self.pulsar._hash_to_wavename(analog))
             else:
-                wavenames.append(self.pulsar_ref_mixin._hash_to_wavename((analog, marker)))
+                wavenames.append(self.pulsar._hash_to_wavename((analog, marker)))
         return wavenames
 
     def _zi_write_waves(self, waveforms):
         wave_dir = self._zi_wave_dir()
         for h, wf in waveforms.items():
-            filename = os.path.join(wave_dir, self.pulsar_ref_mixin._hash_to_wavename(h)+".csv")
+            filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
             if os.path.exists(filename):
                 continue
             fmt = "%.18e" if wf.dtype == np.float else "%d"
