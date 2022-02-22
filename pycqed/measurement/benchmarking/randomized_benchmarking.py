@@ -142,6 +142,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              sweep_points=sweep_points, **kw)
 
             self.experiment_name += f'_{gate_decomposition}'
+            if purity:
+                self.experiment_name += '_purity'
             self.identical_pulses = kw.get('nr_seeds', None) is not None and all([
                 task.get('nr_seeds', None) is None for task in task_list])
             self.gate_decomposition = gate_decomposition
