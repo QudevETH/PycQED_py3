@@ -63,9 +63,8 @@ class Detector_Function(object):
         try:
             # Go through all the attributes of itself, pass them to
             # savable_attribute_value, and store them in det_metadata
-            # det_metadata = {k: self.savable_attribute_value(v, self.name)
-            #                 for k, v in self.__dict__.items()}
-            det_metadata = {}
+            det_metadata = {k: self.savable_attribute_value(v, self.name)
+                            for k, v in self.__dict__.items()}
 
             # Change the 'detectors' entry from a list of dicts to a dict with
             # keys uhfName_detectorName
