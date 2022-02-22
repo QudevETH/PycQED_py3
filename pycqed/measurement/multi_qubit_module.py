@@ -296,7 +296,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     elif df_name == 'timetrace_avg_ss_det':
         return det.MultiPollDetector([
             det.ScopePollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='timetrace',
@@ -305,7 +305,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     elif df_name == 'psd_avg_det':
         return det.MultiPollDetector([
             det.ScopePollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='spectrum',

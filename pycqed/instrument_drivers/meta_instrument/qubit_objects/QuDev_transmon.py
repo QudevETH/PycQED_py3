@@ -1229,7 +1229,6 @@ class QuDev_transmon(Qubit):
                 label = 'resonator_scan_2d' + self.msmt_suffix
             else:
                 label = 'resonator_scan' + self.msmt_suffix
-
         self.prepare(drive=None)
         if upload:
             ro_pars = self.get_ro_pars()
@@ -1243,9 +1242,8 @@ class QuDev_transmon(Qubit):
                     self.instr_acq.get_instr().use_hardware_sweeper(True)
                     center_freq, delta_f, _ = self.instr_acq.get_instr()\
                         .get_params_from_spectrum(freqs)
-                    self.ro_freq(center_freq)
-                    gen.configure_qubit_mux_readout([self], {(self.instr_acq(),
-                        self.acq_unit()): center_freq})  # Just to set the center freq
+                    self.instr_acq.get_instr().qachannels[0].center_freq(
+                        center_freq)
                     seg.acquisition_mode = dict(
                         sweeper='hardware',
                         f_start=freqs[0] - center_freq,
