@@ -734,6 +734,11 @@ class Segment:
         self.gen_elements_on_awg()
 
         # First, add trigger pulses that are requested in pulse parameters
+        # FIXME We need to test and possibly debug the case where multiple
+        #  pulses requests triggers on the same channel at the same time.
+        #  This situation will, e.g., arise when performing readout of
+        #  multiple qubits on the same VC707 at the same time (which is not
+        #  done currently).
         trigger_pulses = []
         for p in self.resolved_pulses:
             pobj = p.pulse_obj
