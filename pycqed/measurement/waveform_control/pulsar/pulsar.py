@@ -10,6 +10,7 @@ from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
+from pycqed.utilities.timer import WatchdogTimer, WatchdogException
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
@@ -597,6 +598,11 @@ class Pulsar(Instrument):
         running and waiting for trigger when the master AWG is started to
         ensure synchronous playback.
 
+        TODO: master_awg does not need to be a pulsar interface. The PQSC
+        instrument is currently used on some setups. It would make sense to also
+        implement a pulsar interface for the PQSC, such that one can use the
+        master AWG similarly to any other AWG in the pulsar.
+
         Arguments:
             exclude: Names of AWGs to exclude
             stop_first: Whether all used AWGs should be stopped before starting
@@ -615,37 +621,33 @@ class Pulsar(Instrument):
             for awg in used_awgs:
                 awg.stop()
 
-        used_awgs = [awg for awg in used_awgs if awg not in exclude]
+        # Exclude AWGs that should not be started
+        used_awgs = [awg for awg in used_awgs if awg.awg.name not in exclude]
 
-        if self.master_awg():
-            master_awg = self.awg_interfaces[self.master_awg()]
-        else:
-            master_awg = None
+        # Stop master AWG
+        if self.master_awg() and self.master_awg() not in exclude:
+            self.master_awg.get_instr().stop()
 
-        if master_awg is None:
-            for awg in used_awgs:
+        # Start slave AWGs
+        for awg in used_awgs:
+            if awg.awg.name != self.master_awg():
                 awg.start()
-        else:
-            if self.master_awg() not in exclude:
-                self.master_awg.get_instr().stop()
-            for awg in used_awgs:
-                if awg != master_awg:
-                    awg.start()
-            tstart = time.time()
-            for awg in used_awgs:
-                if awg == master_awg:
-                    continue
-                good = False
-                while not (good or time.time() > tstart + 10):
-                    if awg.is_awg_running():
-                        good = True
-                    else:
-                        time.sleep(0.1)
-                if not good:
-                    raise Exception('AWG {} did not start in 10s'
-                                    .format(awg))
-            if self.master_awg() not in exclude:
-                self.master_awg.get_instr().start()
+
+        # Check that all slave AWGs start within 10s
+        awgs_to_check = [awg for awg in used_awgs
+                         if awg.awg.name != self.master_awg()]
+        try:
+            with WatchdogTimer(10) as timer:
+                timer.check()
+                awgs_to_check = [awg for awg in awgs_to_check
+                                 if not awg.is_awg_running()]
+                time.sleep(0.1)
+        except WatchdogException:
+            raise WatchdogException(f"AWGs {awgs_to_check} did not start in 10s.")
+
+        # Start master AWG
+        if self.master_awg() not in exclude:
+            self.master_awg.get_instr().start()
 
     def stop(self):
         """Stop all active AWGs."""
