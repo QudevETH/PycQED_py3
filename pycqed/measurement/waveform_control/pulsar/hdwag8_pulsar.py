@@ -129,13 +129,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # first channel of a pair
             if (int(id[2:]) - 1) % 2  == 0:
                 awg_nr = (int(id[2:]) - 1) // 2
-                param_name = f"{ch_name}_mod_freq",
+                param_name = f"{ch_name}_mod_freq"
                 pulsar.add_parameter(
                     param_name,
                     unit='Hz',
                     initial_value=None,
-                    set_cmd=self._hdawg_mod_setter(self.awg, awg_nr),
-                    get_cmd=self._hdawg_mod_getter(self.awg, awg_nr),
+                    set_cmd=self._hdawg_mod_setter(awg_nr),
+                    get_cmd=self._hdawg_mod_getter(awg_nr),
                     docstring="Carrier frequency of internal modulation for "
                               "a channel pair. Positive (negative) sign "
                               "corresponds to upper (lower) side band. Setting "
@@ -153,7 +153,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     def awg_setter(self, id:str, param:str, value):
 
         # Sanity checks
-        super().awg_getter(id, param, value)
+        super().awg_setter(id, param, value)
 
         channel_type = "analog" if id[-1] != "m" else "marker"
 
