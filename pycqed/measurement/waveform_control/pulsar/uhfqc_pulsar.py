@@ -100,6 +100,11 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         elif param == "amp":
             # TODO: Range is divided by 2 in getter, should it be multiplied by
             # 2 here ?
+            # According to ZI node docs: "For a load impedance of 50 Ohm the
+            # displayed voltage is half the output voltage to reflect the
+            # voltage seen at the load."
+            # If this is relevant here we could also read this impedance param,
+            # and adjust the value accordingly.
             self.awg.set(f"sigouts_{ch}_range", value)
 
     def awg_getter(self, id:str, param:str):

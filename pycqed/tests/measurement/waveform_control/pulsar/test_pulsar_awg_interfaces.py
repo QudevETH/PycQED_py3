@@ -44,26 +44,22 @@ class TestPulsarAWGInterface(TestCase):
         self.pulsar = Pulsar(f"pulsar_{id}")
 
         self.awg5014 = VirtualAWG5014(f"awg5014_{id}")
-        self.awg5014_interface = AWG5014Pulsar(self.pulsar, self.awg5014)
 
         self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8188",
                                     interface="1GbE", server="emulator")
-        self.hdawg_interface = HDAWG8Pulsar(self.pulsar, self.hdawg)
 
         # TODO: SHFQ currently has no virtual driver, so we do not unit test it.
         # self.shfqa = SHFQA(f"shfqa_{id}", device="dev8188",
         #                    interface="1GbE", server="emulator")
-        # self.shfqa_interface = SHFQAPulsar(self.pulsar, self.shfqa)
 
         self.uhfqc = UHFQA_core(f"uhfqc_{id}", device='dev2268',
                                 interface='1GbE', server="emulator")
-        self.uhfqc_interface = UHFQCPulsar(self.pulsar, self.uhfqc)
 
-        self.awgs:List[Tuple[Instrument, PulsarAWGInterface]] = [
-            (self.awg5014, self.awg5014_interface),
-            (self.hdawg, self.hdawg_interface),
-            # (self.shfqa, self.shfqa_interface),
-            (self.uhfqc, self.uhfqc_interface),
+        self.awgs:List[Tuple[Instrument, Type[PulsarAWGInterface]]] = [
+            (self.awg5014, AWG5014Pulsar),
+            (self.hdawg, HDAWG8Pulsar),
+            # (self.shfqa, SHFQAPulsar),
+            (self.uhfqc, UHFQCPulsar),
         ]
 
     def test_interfaces_are_registered(self):
@@ -71,13 +67,11 @@ class TestPulsarAWGInterface(TestCase):
             self.assertIn(interface, PulsarAWGInterface._pulsar_interfaces)
 
     def test_instantiate(self):
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+                awg_interface = interface_class(self.pulsar, awg)
 
-        pulsar = Pulsar("pulsar_test_instantiate")
-
-        for interface in registered_interfaces:
-            with self.subTest(interface.__name__):
-                awg = Mock()
-                instance = interface(pulsar, awg)
+                self.assertEqual(awg, awg_interface.awg)
 
     def test_get_interface_class(self):
         # Assert know class
@@ -95,8 +89,9 @@ class TestPulsarAWGInterface(TestCase):
 
     def test_create_awg_parameters(self):
 
-        for awg, awg_interface in self.awgs:
-            with self.subTest(awg_interface.__class__.__name__):
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+                awg_interface = interface_class(self.pulsar, awg)
                 awg_interface.create_awg_parameters({})
 
                 # Common params defined in PulsarAWGInterface.create_awg_parameters()
@@ -120,8 +115,9 @@ class TestPulsarAWGInterface(TestCase):
 
     def test_create_channel_parameters(self):
 
-        for awg, awg_interface in self.awgs:
-            with self.subTest(awg_interface.__class__.__name__):
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+                awg_interface = interface_class(self.pulsar, awg)
 
                 for ch_type, suffix in [("analog", ""), ("marker", "m")]:
 
@@ -166,11 +162,12 @@ class TestPulsarAWGInterface(TestCase):
 
     def test_program_awg(self):
 
-        for awg, awg_interface in self.awgs:
-            with self.subTest(awg_interface.__class__.__name__):
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
 
                 # Register AWG in pulsar
                 self.pulsar.define_awg_channels(awg)
+                awg_interface = self.pulsar.awg_interfaces[awg.name]
 
                 # Generate sequence
                 pulses = [{
@@ -193,3 +190,22 @@ class TestPulsarAWGInterface(TestCase):
                     awg_sequences[awg.name],
                     waveforms,
                 )
+
+    def test_awg_getter_setter(self):
+
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+
+                # Register AWG in pulsar
+                self.pulsar.define_awg_channels(awg)
+                awg_interface = self.pulsar.awg_interfaces[awg.name]
+
+                for param in awg_interface.IMPLEMENTED_ACCESSORS:
+                    awg_interface.awg_setter("ch1", param, 0.0123)
+                    v = awg_interface.awg_getter("ch1", param)
+
+                    # TODO: Fix the underlying behavior of the UHFQC
+                    if param == "amp" and "uhfqc" in awg.name:
+                        continue
+
+                    self.assertEqual(v, 0.0123)
