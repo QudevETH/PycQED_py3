@@ -156,18 +156,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().awg_setter(id, param, value)
 
         channel_type = "analog" if id[-1] != "m" else "marker"
+        ch = int(id[2]) - 1
 
         if param == "offset":
-            ch = int(id[2]) - 1
             if channel_type == "analog":
                 self.awg.set(f"sigouts_{ch}_offset", value)
             else:
-                raise NotImplementedError("Cannot set offset on marker channels.")
+                pass # raise NotImplementedError("Cannot set offset on marker channels.")
         elif param == "amp":
             if channel_type == "analog":
                 self.awg.set(f"sigouts_{ch}_range", 2 * value)
             else:
-                raise NotImplementedError("Cannot set amp on marker channels.")
+                pass # raise NotImplementedError("Cannot set amp on marker channels.")
         elif param == "amplitude_scaling" and channel_type == "analog":
             # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
             awg = (int(id[2:]) - 1) // 2
@@ -181,19 +181,19 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().awg_getter(id, param)
 
         channel_type = "analog" if id[-1] != "m" else "marker"
+        ch = int(id[2]) - 1
 
         if param == "offset":
-            ch = int(id[2]) - 1
             if channel_type == "analog":
-                self.awg.get(f"sigouts_{ch}_offset")
+                return self.awg.get(f"sigouts_{ch}_offset")
             else:
                 return 0
         elif param == "amp":
             if channel_type == "analog":
                 if self.pulsar.awgs_prequeried:
-                    self.awg.parameters[f"sigouts_{ch}_range"].get_latest() / 2
+                    return self.awg.parameters[f"sigouts_{ch}_range"].get_latest() / 2
                 else:
-                    self.awg.get(f"sigouts_{ch}_range") / 2
+                    return self.awg.get(f"sigouts_{ch}_range") / 2
             else:
                 return 1
         elif param == "amplitude_scaling" and channel_type == "analog":
@@ -201,7 +201,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
-            self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
+            return self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
 
     def _hdawg_mod_setter(self, awg_nr):
         def s(val):
@@ -276,16 +276,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         return g
 
     def get_divisor(self, chid, awg):
-        '''
-        Divisor is 1 for non modulated channels and 2 for modulated non
-        marker channels.
-        '''
-
-        if chid[-1]=='m':
-            return 1
+        """Divisor is 2 for modulated non-marker channels, 1 for other cases."""
 
         name = self.pulsar._id_channel(chid, awg)
-        if self.get(f"{name}_internal_modulation"):
+        if chid[-1]!='m' and self.pulsar.get(f"{name}_internal_modulation"):
             return 2
         else:
             return 1
@@ -301,7 +295,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         ch_has_waveforms = {chid: False for chid in chids}
 
-        use_placeholder_waves = self.get(f'{self.awg.name}_use_placeholder_waves')
+        use_placeholder_waves = self.pulsar.get(f"{self.awg.name}_use_placeholder_waves")
 
         if not use_placeholder_waves:
             if not self.zi_waves_cleared:
@@ -331,13 +325,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             ch2mid = 'ch{}m'.format(awg_nr * 2 + 2)
             chids = [ch1id, ch1mid, ch2id, ch2mid]
 
-            channels = [
-                self.pulsar._id_channel(chid, self.awg.name) for chid in [ch1id, ch2id]]
-            if all([self.get(
-                f'{chan}_internal_modulation') for chan in channels]):
+            channels = [self.pulsar._id_channel(chid, self.awg.name)
+                        for chid in [ch1id, ch2id]]
+            if all([self.pulsar.get(f"{chan}_internal_modulation")
+                    for chan in channels]):
                 internal_mod = True
-            elif not any([self.get(
-                f'{chan}_internal_modulation') for chan in channels]):
+            elif not any([self.pulsar.get(f"{chan}_internal_modulation")
+                for chan in channels]):
                 internal_mod = False
             else:
                 raise NotImplementedError('Internal modulation can only be'
@@ -438,10 +432,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                         continue
                     if not internal_mod:
                         if first_element_of_segment:
-                            prepend_zeros = self.parameters[
-                                f'{self.awg.name}_prepend_zeros']()
+                            prepend_zeros = self.pulsar.parameters.get(
+                                f"{self.awg.name}_prepend_zeros")
                             if prepend_zeros is None:
-                                prepend_zeros = self.prepend_zeros()
+                                prepend_zeros = self.pulsar.prepend_zeros()
                             elif isinstance(prepend_zeros, list):
                                 prepend_zeros = prepend_zeros[awg_nr]
                         else:
@@ -542,7 +536,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 for idx, wave_hashes in defined_waves[1].items():
                     self._update_waveforms(awg_nr, idx, wave_hashes, waveforms)
 
-        if self.sigouts_on_after_programming():
+        if self.pulsar.sigouts_on_after_programming():
             for ch in range(8):
                 self.awg.set('sigouts_{}_on'.format(ch), True)
 
@@ -600,5 +594,5 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 for i in range(4) if self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
-        chid = self.get(ch + '_id')
+        chid = self.pulsar.get(ch + '_id')
         self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

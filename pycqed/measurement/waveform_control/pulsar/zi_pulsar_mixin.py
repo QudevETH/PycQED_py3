@@ -177,7 +177,7 @@ class ZIPulsarMixin:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self._zi_waves_to_wavenames(wave)
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        trig_source = self.get("{}_trigger_source".format(name))
+        trig_source = self.pulsar.get("{}_trigger_source".format(name))
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
@@ -226,7 +226,7 @@ class ZIPulsarMixin:
             if not acq:
                 playback_string.append(f"prefetch({wname},{wname});")
 
-        trig_source = self.get("{}_trigger_source".format(name))
+        trig_source = self.pulsar.get("{}_trigger_source".format(name))
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))

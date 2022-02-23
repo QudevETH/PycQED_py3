@@ -1,9 +1,12 @@
 import random
 from unittest import TestCase
-from typing import List, Type
+from typing import List, Tuple, Type
 from unittest.mock import Mock
+from qcodes.instrument import Instrument
 
 from pycqed.measurement.waveform_control.pulsar import Pulsar
+from pycqed.measurement.waveform_control.sequence import Sequence
+from pycqed.measurement.waveform_control.segment import Segment
 from pycqed.measurement.waveform_control.pulsar.pulsar import PulsarAWGInterface
 from pycqed.measurement.waveform_control.pulsar.awg5014_pulsar import AWG5014Pulsar
 from pycqed.measurement.waveform_control.pulsar.hdwag8_pulsar import HDAWG8Pulsar
@@ -23,7 +26,8 @@ registered_interfaces:List[Type[PulsarAWGInterface]] = [
 ]
 
 
-def assert_has_parameters(tester:TestCase, instrument, parameters: List[str]):
+def assert_has_parameters(tester:TestCase, instrument:Instrument,
+                          parameters:List[str]):
 
     for p in parameters:
         tester.assertIn(p, instrument.parameters)
@@ -55,7 +59,7 @@ class TestPulsarAWGInterface(TestCase):
                                 interface='1GbE', server="emulator")
         self.uhfqc_interface = UHFQCPulsar(self.pulsar, self.uhfqc)
 
-        self.awgs = [
+        self.awgs:List[Tuple[Instrument, PulsarAWGInterface]] = [
             (self.awg5014, self.awg5014_interface),
             (self.hdawg, self.hdawg_interface),
             # (self.shfqa, self.shfqa_interface),
@@ -159,3 +163,33 @@ class TestPulsarAWGInterface(TestCase):
                         all_parameters = parameters + marker_parameters
 
                     assert_has_parameters(self, self.pulsar, all_parameters)
+
+    def test_program_awg(self):
+
+        for awg, awg_interface in self.awgs:
+            with self.subTest(awg_interface.__class__.__name__):
+
+                # Register AWG in pulsar
+                self.pulsar.define_awg_channels(awg)
+
+                # Generate sequence
+                pulses = [{
+                    "name": f"pulse",
+                    "pulse_type": "SquarePulse",
+                    "pulse_delay": 0,
+                    "ref_pulse": "previous_pulse",
+                    "ref_point": "end",
+                    "length": 5e-8,
+                    "amplitude": 0.05,
+                    "channels": [f"{awg.name}_ch1"],
+                    "channel": f"{awg.name}_ch1",
+                }]
+                segment = Segment("segment", pulses)
+                sequence = Sequence("sequence", segments=[segment])
+                waveforms, awg_sequences = sequence.generate_waveforms_sequences()
+
+                # Actual function to test
+                awg_interface.program_awg(
+                    awg_sequences[awg.name],
+                    waveforms,
+                )

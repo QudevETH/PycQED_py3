@@ -193,7 +193,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             ch_has_waveforms['ch2'] |= wave[2] is not None
             return playback_strings, wave_definitions
 
-        self._filter_segment_functions[self.awg.name] = None
+        self._filter_segment_functions = None
         if repeat_pattern is None:
             if use_filter:
                 playback_strings += ['var i_seg = -1;']
@@ -243,7 +243,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         if i < first_seg or i > last_seg:
                             n_tot -= cnt
                     return n_tot
-                self._filter_segment_functions[self.awg.name] = filter_count
+                self._filter_segment_functions = filter_count
                 # _set_filter_segments will pass the correct number of
                 # repetitions via a user register to the SeqC variable last_seg
                 repeat_pattern = ('last_seg', 1)
@@ -343,10 +343,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         return self.awg.clock_freq()
 
     def get_segment_filter_userregs(self):
-        return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
-                 f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
+        # TODO: It seems that UHFQA_core does not have
+        # USER_REG_FIRST_SEGMENT nor USER_REG_LAST_SEGMENT
+        # return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
+        #          f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
+        return []
 
     def sigout_on(self, ch, on=True):
 
-        chid = self.get(ch + '_id')
+        chid = self.pulsar.get(ch + '_id')
         self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

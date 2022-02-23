@@ -75,7 +75,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
             pulsar.add_parameter(f"{ch_name}_offset_mode",
                                  parameter_class=ManualParameter,
-                                 vals=vals.Enum('software', 'hardware'))
+                                 initial_value="software",
+                                 vals=vals.Enum("software", "hardware"))
 
         else: # ch_type == "marker"
             # So far no additional parameters specific to marker channels
@@ -215,7 +216,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         awg_file = self.awg.generate_awg_file(packed_waveforms, np.array(wfname_l).transpose().copy(),
                                          nrep_l, wait_l, goto_l, logic_jump_l,
-                                         self._awg5014_chan_cfg(self.awg.name))
+                                         self.get_channel_config())
         self.awg.send_awg_file(filename, awg_file)
         self.awg.load_awg_file(filename)
 
@@ -232,7 +233,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
         hardware_offsets = 0
         for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
             cname = self.pulsar._id_channel(grp, self.awg.name)
-            offset_mode = self.get('{}_offset_mode'.format(cname))
+            offset_mode = self.pulsar.get('{}_offset_mode'.format(cname))
             if offset_mode == 'hardware':
                 hardware_offsets = 1
             self.awg.DC_output(hardware_offsets)
@@ -259,16 +260,20 @@ class AWG5014Pulsar(PulsarAWGInterface):
         """
         return [cid[:3], cid[:3] + 'm1', cid[:3] + 'm2']
 
-    def _awg5014_chan_cfg(self, awg):
+    def get_channel_config(self):
         channel_cfg = {}
-        for channel in self.channels:
-            if self.get('{}_awg'.format(channel)) != awg:
-                continue
-            cid = self.get('{}_id'.format(channel))
-            amp = self.get('{}_amp'.format(channel))
-            off = self.get('{}_offset'.format(channel))
-            if self.get('{}_type'.format(channel)) == 'analog':
-                offset_mode = self.get('{}_offset_mode'.format(channel))
+
+        relevant_channels = [
+            c for c in self.pulsar.channels
+            if self.pulsar.get(f"{c}_awg") == self.awg.name
+        ]
+
+        for channel in relevant_channels:
+            cid = self.pulsar.get(f"{channel}_id")
+            amp = self.pulsar.get(f"{channel}_amp")
+            off = self.pulsar.get(f"{channel}_offset")
+            if self.pulsar.get(f"{channel}_type") == 'analog':
+                offset_mode = self.pulsar.get(f"{channel}_offset_mode")
                 channel_cfg['ANALOG_METHOD_' + cid[2]] = 1
                 channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = amp * 2
                 if offset_mode == 'software':
@@ -288,12 +293,11 @@ class AWG5014Pulsar(PulsarAWGInterface):
                     off + amp
             channel_cfg['CHANNEL_STATE_' + cid[2]] = 0
 
-        for channel in self.channels:
-            if self.get('{}_awg'.format(channel)) != awg:
-                continue
-            if self.get('{}_active'.format(awg)):
-                cid = self.get('{}_id'.format(channel))
+        for channel in relevant_channels:
+            if self.pulsar.get(f"{self.awg.name}_active"):
+                cid = self.pulsar.get(f"{channel}_id")
                 channel_cfg['CHANNEL_STATE_' + cid[2]] = 1
+
         return channel_cfg
 
     def sigout_on(self, ch, on=True):

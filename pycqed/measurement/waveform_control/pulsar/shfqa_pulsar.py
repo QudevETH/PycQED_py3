@@ -224,7 +224,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 return playback_strings
 
             qachannel.mode('readout')
-            self._filter_segment_functions[self.awg.name] = None
+            self._filter_segment_functions = None
 
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "

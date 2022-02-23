@@ -51,13 +51,22 @@ class TestPulsar(TestCase):
         self.assertIn(awg.name, self.pulsar.awg_interfaces)
 
     def test_program_awgs(self):
+        """We run this test with a single AWG, just to check that the Pulsar
+        method itself has no errors.
+
+        Each AWG interface are tested in ``test_pulsar_awg_interfaces.py``.
+        """
 
         pulses = [{
             "name": f"pulse",
-            "pulse_type": "VirtualPulse",
+            "pulse_type": "SquarePulse",
             "pulse_delay": 0,
             "ref_pulse": "previous_pulse",
             "ref_point": "end",
+            "length": 5e-8,
+            "amplitude": 0.05,
+            "channels": [f"{self.awg.name}_ch1"],
+            "channel": f"{self.awg.name}_ch1",
         }]
 
         segment = Segment("segment", pulses)

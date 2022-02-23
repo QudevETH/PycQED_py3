@@ -18,6 +18,9 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 log = logging.getLogger(__name__)
 
 
+_DEFAULT_SEGMENT = (0, 32767)
+
+
 class PulsarAWGInterface(ABC):
     """Base interface for AWGs used by the :class:`Pulsar` class.
 
@@ -66,7 +69,7 @@ class PulsarAWGInterface(ABC):
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
 
-    DEFAULT_SEGMENT = (0, 32767)
+    DEFAULT_SEGMENT = _DEFAULT_SEGMENT
     """TODO"""
 
     IMPLEMENTED_ACCESSORS:List[str] = ["offset", "amp"]
@@ -568,7 +571,7 @@ class Pulsar(Instrument):
         if self.awgs_prequeried:
             return self._clocks[awg]
         else:
-            self.awg_interfaces[awg].clock()
+            return self.awg_interfaces[awg].clock()
 
     def active_awgs(self) -> Set[str]:
         """Get the set of names of registered active AWGs.
@@ -936,6 +939,9 @@ class Pulsar(Instrument):
 
     def _set_filter_segments(self, val:Tuple[int, int]=None,
                              awgs='with_waveforms'):
+        if val is None:
+            val = _DEFAULT_SEGMENT
+
         self._filter_segments = val
         if awgs == 'with_waveforms':
             awgs = self.awgs_with_waveforms
