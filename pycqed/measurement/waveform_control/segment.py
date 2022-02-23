@@ -1593,7 +1593,12 @@ class Segment:
                     a.set_ylabel('Voltage (V)')
             ax[-1, col_ind].set_xlabel('time ($\mu$s)')
             fig.suptitle(f'{self.name}', y=1.01)
-            fig.align_ylabels()
+            try:
+                fig.align_ylabels()
+            except AttributeError as e:
+                # sometimes this fails e.g. if the axes on which the pulses
+                # are plotted is an inset ax.
+                log.warning('Could not align y labels in Figure.')
             plt.tight_layout()
             if savefig:
                 if save_kwargs is None:
