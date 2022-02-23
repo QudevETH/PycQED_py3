@@ -657,7 +657,7 @@ class Segment:
         """
         i = 1
         def add_trigger_pulses(trigger_pulses):
-            if not len(trigger_pulses):
+            if len(trigger_pulses) == 0:
                 return
 
             nonlocal i
