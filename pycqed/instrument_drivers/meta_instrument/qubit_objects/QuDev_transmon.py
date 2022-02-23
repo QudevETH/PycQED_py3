@@ -130,7 +130,8 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
-                                 initial_value=None, vals=vals.Strings())
+                                 initial_value=None, vals=vals.MultiType(
+                                     vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
@@ -174,6 +175,13 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter(
+            'RO', 'ro_trigger_channels', 'trigger_channels',
+            vals=vals.MultiType(vals.Enum(None), vals.Strings(),
+                                vals.Lists(vals.Strings())))
+        self.add_pulse_parameter(
+            'RO', 'ro_trigger_pars', 'trigger_pars',
+            vals=vals.MultiType(vals.Enum(None), vals.Dict()))
         self.add_pulse_parameter('RO', 'ro_flux_amplitude', 'flux_amplitude',
                                  initial_value=0, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_extend_start', 'flux_extend_start',
@@ -4709,8 +4717,9 @@ class QuDev_transmon(Qubit):
         pulsar = self.instr_pulsar.get_instr()
         offset_list = []
         if set_ro_offsets:
-            offset_list += [('ro_I_channel', 'ro_I_offset'),
-                           ('ro_Q_channel', 'ro_Q_offset')]
+            offset_list += [('ro_I_channel', 'ro_I_offset')]
+            if self.ro_Q_channel() is not None:
+                offset_list += [('ro_Q_channel', 'ro_Q_offset')]
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
