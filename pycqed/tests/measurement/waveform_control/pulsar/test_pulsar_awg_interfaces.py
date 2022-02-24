@@ -1,7 +1,7 @@
 import random
+import time
 from unittest import TestCase
 from typing import List, Tuple, Type
-from unittest.mock import Mock
 from qcodes.instrument import Instrument
 
 from pycqed.measurement.waveform_control.pulsar import Pulsar
@@ -43,7 +43,8 @@ class TestPulsarAWGInterface(TestCase):
         id = random.randint(1, 1000000)
         self.pulsar = Pulsar(f"pulsar_{id}")
 
-        self.awg5014 = VirtualAWG5014(f"awg5014_{id}")
+        self.awg5014 = VirtualAWG5014(f"awg5014_{id}", timeout=20,
+                                      address='TCPIP0::192.168.1.4')
 
         self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8188",
                                     interface="1GbE", server="emulator")
@@ -209,3 +210,51 @@ class TestPulsarAWGInterface(TestCase):
                         continue
 
                     self.assertEqual(v, 0.0123)
+
+    def test_start_stop_is_running(self):
+        """Test starting/stopping/is_running on the AWGs.
+
+        Some AWGs (e.g. HDAWG) will not start if they have no waveforms to play,
+        thus we need to upload them to make sure the methods work.
+        """
+
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+
+                # TODO AWG5014 fails because virtual instrument not implemented
+                # correctly, missing visa_log and other attributes.
+                if "awg5014" in awg.name:
+                    continue
+
+                # Register AWG in pulsar
+                self.pulsar.define_awg_channels(awg)
+                awg_interface = self.pulsar.awg_interfaces[awg.name]
+
+                # Generate sequence
+                pulses = [{
+                    "name": f"pulse",
+                    "pulse_type": "SquarePulse",
+                    "pulse_delay": 0,
+                    "ref_pulse": "previous_pulse",
+                    "ref_point": "end",
+                    "length": 5e-8,
+                    "amplitude": 0.05,
+                    "channels": [f"{awg.name}_ch1"],
+                    "channel": f"{awg.name}_ch1",
+                }]
+                segment = Segment("segment", pulses)
+                sequence = Sequence("sequence", segments=[segment])
+                waveforms, awg_sequences = sequence.generate_waveforms_sequences()
+
+                awg_interface.program_awg(
+                    awg_sequences[awg.name],
+                    waveforms,
+                )
+
+                # Test start
+                awg_interface.start()
+                self.assertTrue(awg_interface.is_awg_running())
+
+                # Test stop
+                awg_interface.stop()
+                self.assertFalse(awg_interface.is_awg_running())
