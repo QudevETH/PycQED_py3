@@ -544,7 +544,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
-        if self.use_sequence_cache():
+        if self.pulsar.use_sequence_cache():
             if wave_hashes == self._hdawg_waveform_cache[
                     f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
                 log.debug(

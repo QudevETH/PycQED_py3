@@ -927,6 +927,8 @@ class Pulsar(Instrument):
     def _get_inter_element_spacing(self):
         if self._inter_element_spacing != 'auto':
             return self._inter_element_spacing
+        elif not self.awgs:
+            return 0
         else:
             return max([self.get(f"{awg}_inter_element_deadtime")
                         for awg in self.awgs])
