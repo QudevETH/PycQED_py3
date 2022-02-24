@@ -582,12 +582,6 @@ class Pulsar(Instrument):
 
         return {awg for awg in self.awgs if self.get('{}_active'.format(awg))}
 
-    @property
-    def awgs_with_waveforms(self) -> Set[str]:
-        """Returns the set of AWGs with waveforms programmed."""
-
-        return self._awgs_with_waveforms
-
     def add_awg_with_waveforms(self, awg:str):
         """Adds an awg to the set of AWGs with waveforms programmed."""
 
@@ -621,7 +615,7 @@ class Pulsar(Instrument):
 
         # Start only the AWGs which have at least one channel programmed, i.e.
         # where at least one channel has state = 1.
-        used_awg_names = self.active_awgs() & self.awgs_with_waveforms
+        used_awg_names = self.active_awgs() & self._awgs_with_waveforms
         used_awgs = [self.awg_interfaces[name] for name in used_awg_names]
 
         if stop_first:
@@ -659,7 +653,7 @@ class Pulsar(Instrument):
     def stop(self):
         """Stop all active AWGs."""
 
-        used_awgs = set(self.active_awgs()) & self.awgs_with_waveforms
+        used_awgs = set(self.active_awgs()) & self._awgs_with_waveforms
         used_awg_interfaces = [self.awg_interfaces[name] for name in used_awgs]
 
         for awg in used_awg_interfaces:
@@ -944,7 +938,7 @@ class Pulsar(Instrument):
 
         self._filter_segments = val
         if awgs == 'with_waveforms':
-            awgs = self.awgs_with_waveforms
+            awgs = self._awgs_with_waveforms
         elif awgs == 'all':
             awgs = self.awgs
         for awg in awgs:
