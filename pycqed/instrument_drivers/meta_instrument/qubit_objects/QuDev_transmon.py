@@ -2001,12 +2001,15 @@ class QuDev_transmon(Qubit):
             parameter_name=self.name + ' drive frequency'))
         MC.set_sweep_points_2D(freqs)
 
-        d = det.UHFQC_integrated_average_detector(
-            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(),
-            nr_averages=self.acq_averages(),
+        d = det.IntegratingAveragingPollDetector(
+            acq_dev=self.instr_acq.get_instr(),
+            AWG=self.instr_pulsar.get_instr(),
             channels=self.int_avg_det.channels,
+            nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffix=['_probe', '_measure'])
+            data_type='raw',
+            values_per_point=2,
+            values_per_point_suffix=['_probe', '_measure'])
         MC.set_detector_function(d)
         MC.run_2D(label)
 
