@@ -258,3 +258,19 @@ class TestPulsarAWGInterface(TestCase):
                 # Test stop
                 awg_interface.stop()
                 self.assertFalse(awg_interface.is_awg_running())
+
+    def test_clock(self):
+
+        EXPECTED_FREQUENCIES = {
+            AWG5014Pulsar: 1.2e9,
+            HDAWG8Pulsar: 2.4e9,
+            SHFQAPulsar: 2.0e9,
+            UHFQCPulsar: 1.8e9,
+        }
+
+        for awg, interface_class in self.awgs:
+            with self.subTest(interface_class):
+                awg_interface = interface_class(self.pulsar, awg)
+
+                freq = awg_interface.clock()
+                self.assertEqual(freq, EXPECTED_FREQUENCIES[interface_class])
