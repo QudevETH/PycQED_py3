@@ -107,6 +107,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                       'be used in spectroscopy mode',
             vals=validators.Bool())
 
+        self.add_parameter(
+            'acq_trigger_delay',
+            initial_value=200e-9,
+            parameter_class=ManualParameter,
+            docstring='Delay between the pulse generation and acquisition. '
+                      'This is used both in the scope and the integration '
+                      'units for consistency.',
+            vals=validators.Numbers())
+
     @property
     def devname(self):
         return self.get_idn()['serial']
@@ -223,7 +232,18 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self._acq_units_modes = {i: self.qachannels[i].mode()  # Caching
                                  for i in self._acq_units_used}
 
+        #Set the scope trigger to the same delay as the other modes
+        self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay",
+                           self.acq_trigger_delay())
+
         for i in range(self.n_acq_units):
+            #Set trigger delay to the same value for all modes. This is
+            # necessary e.g. to get consistent acquisition weights.
+            self.daq.setDouble(f"/{self._serial}/qachannels/"
+                               f"{i}/readout/integration/delay",
+                               self.acq_trigger_delay())
+            self.daq.setDouble(f"/{self._serial}/qachannels/"
+                            f"{i}/spectroscopy/delay",self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
             self.qachannels[i].readout.stop()  # readout mode
@@ -234,9 +254,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 self.qachannels[i].sweeper.oscillator_gain(0)  # spectroscopy mode
                 # FIXME: check whether this will be fine with the hw sweeper
 
-        self.daq.setInt(f"/{self.devname}/qachannels/0/generator/userregs/0",
-                        self._acq_loop_cnt)
-
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
             # This is needed because the SHF currently lacks user
@@ -245,6 +262,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             if self._acq_loop_cnts_last[i] != loop_cnt:
                 self._program_awg(i)  # reprogramm this acq unit
                 self._acq_loop_cnts_last[i] = loop_cnt
+            self.daq.setInt(f"/{self.devname}/qachannels/"  # Used in seqc code
+                            f"{i}/generator/userregs/0", self._acq_loop_cnt)
             # TODO: should probably decide actions based on the data type, not
             #  also on the acq unit physical mode
             if self._acq_mode == 'int_avg'\
@@ -307,7 +326,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         num_segments = 1  # for segmented averaging (several triggers per time
         # trace) compensation for the delay between generator output and input
         # of the integration unit
-        trigger_delay = 200e-9
         self.qachannels[acq_unit].mode('readout')
         self.qachannels[acq_unit].input('on')
         self.qachannels[acq_unit].output('on')
@@ -335,8 +353,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             self.daq.setInt(
                 f"/{self._serial}/scopes/0/channels/{scope_ch}/enable",
                 1)
-        self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay",
-                           trigger_delay)
         if self.seqtrigger is None:
             self.scope.trigger_source(
                 'channel0_trigger_input0')
@@ -412,16 +428,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             self._get_spectroscopy_node(acq_unit, "length"), length)
         self.daq.setInt(
             self._get_spectroscopy_node(acq_unit, "averages"), averages)
-        self.daq.setInt(f"/{self.devname}/qachannels/0/generator/userregs/1",
+        self.daq.setInt(f"/{self.devname}/qachannels/"  # Used in seqc code
+                        f"{acq_unit}/generator/userregs/1",
                         self.convert_time_to_n_samples(self._acq_length))
+        self.daq.setInt(f"/{self.devname}/qachannels/"
+                        f"{acq_unit}/generator/single", 1)
+
         self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 0)
         self.daq.sync()
         self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 1)
         self.daq.sync()
-        self.daq.setInt(f"/{self.devname}/qachannels/"
-                        f"{acq_unit}/generator/single", 1)
-        self.daq.setInt(f"/{self.devname}/qachannels/" #FIXME
-                    f"{acq_unit}/spectroscopy/envelope/enable", 0)
 
     def _arm_scope(self):
         # FIXME: is it normal that 'single' gets reset after each acq???

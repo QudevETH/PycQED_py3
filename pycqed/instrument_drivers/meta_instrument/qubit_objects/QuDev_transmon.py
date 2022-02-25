@@ -1242,8 +1242,8 @@ class QuDev_transmon(Qubit):
                     self.instr_acq.get_instr().use_hardware_sweeper(True)
                     center_freq, delta_f, _ = self.instr_acq.get_instr()\
                         .get_params_from_spectrum(freqs)
-                    self.instr_acq.get_instr().qachannels[0].center_freq(
-                        center_freq)
+                    self.instr_acq.get_instr().qachannels[self.acq_unit()]\
+                        .center_freq(center_freq)
                     seg.acquisition_mode = dict(
                         sweeper='hardware',
                         f_start=freqs[0] - center_freq,
