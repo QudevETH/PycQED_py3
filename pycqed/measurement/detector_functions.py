@@ -958,10 +958,10 @@ class MultiPollDetector(PollDetector):
 class AveragingPollDetector(PollDetector):
 
     """
-    Poling detector used for acquiring averaged timetraces.
+    Polling detector used for acquiring averaged timetraces.
     """
 
-    def __init__(self, acq_dev, AWG=None, channels=(0, 1),
+    def __init__(self, acq_dev, AWG=None, channels=((0, 0), (0, 1)),
                  nr_averages=1024, acquisition_length=2.275e-6, **kw):
         """
         Init of the AveragingPollDetector class.
@@ -971,8 +971,9 @@ class AveragingPollDetector(PollDetector):
             :param AWG: instance of AcquisitionDevice. Must be provided when a
                 single polling detector is passed to detectors.
             channels (tuple or list): Channels on which the acquisition should
-                be performed. See more details in the docstring of
-                AcquisitionDevice.acquisition_initialize.
+                be performed. Each channel is identified by a tuple of
+                acquisition unit and quadrature index (0=I, 1=Q). See also
+                the docstring of AcquisitionDevice.acquisition_initialize.
             nr_averages (int): number of acquisition averages as a power of 2.
             acquisition_length (float): acquisition duration in seconds
 
@@ -1340,7 +1341,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
             correlation_channel = -1
 
-            for ch in range(self.acq_dev.n_acq_channels):
+            for ch in range(self.acq_dev.n_acq_int_channels):
                 ch = (0, ch)
                 # Find the first unused channel to set up as correlation
                 if ch not in used_channels:

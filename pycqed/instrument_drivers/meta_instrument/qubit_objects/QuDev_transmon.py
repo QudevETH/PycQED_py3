@@ -838,19 +838,20 @@ class QuDev_transmon(Qubit):
         vfc['dac_sweet_spot'] = -flux * vfc['V_per_phi0']
         return vfc
 
-    def get_acq_channels(self, n_channels=None):
-        """
-        Get the list of tuples with the qubit acquisition channels.
+    def get_acq_int_channels(self, n_channels=None):
+        """Get a list of tuples with the qubit's integration channels.
 
         Args:
-            n_channels (int): number of integration channels; can be
-                1: for ro_weights_type == 'optimal
-                2: for ro_weights_type in ['SSB', 'DSB', 'DSB2',
-                 'optimal_qutrit', 'manual']
+            n_channels (int): number of integration channels; if this is None,
+                it will be chosen as follows:
+                2 for ro_weights_type in ['SSB', 'DSB', 'DSB2',
+                    'optimal_qutrit', 'manual']
+                1 otherwise (in particular for ro_weights_type in
+                    ['optimal', 'square_rot'])
 
         Returns
             list with n_channels tuples, where the first entry in each tuple is
-            the acq_unit and the second is an integration channel
+            the acq_unit and the second is an integration channel index
         """
         if n_channels is None:
             n_channels = 2 if (self.acq_weights_type() in [
@@ -858,6 +859,23 @@ class QuDev_transmon(Qubit):
                                and self.acq_Q_channel() is not None) else 1
         return [(self.acq_unit(), self.acq_I_channel()),
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
+
+    def get_acq_inp_channels(self):
+        """Get a list of tuples with the qubit's acquisition input channels.
+
+        For now, this method assumes that all quadratures available on the
+        acquisition unit should be recorded, i.e., two for devices that
+        provide I&Q signals, and one otherwise.
+
+        TODO: In the future, a parameter could be added to the qubit object
+            to allow recording only one out of two available quadratures.
+
+        Returns
+            list of tuples, where the first entry in each tuple is
+            the acq_unit and the second is an input channel index
+        """
+        n_channels = self.instr_acq.get_instr().n_acq_inp_channels
+        return [(self.acq_unit(), i) for i in range(n_channels)]
 
     def update_detector_functions(self):
         """
@@ -888,19 +906,19 @@ class QuDev_transmon(Qubit):
             - self.scope_fft_det: UHFQC_scope_detector
                 Used for acquisition with the scope module of the UHF.
         """
-        channels = self.get_acq_channels()
+        int_channels = self.get_acq_int_channels()
 
         self.int_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_shots(),
+            channels=int_channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.int_avg_classif_det = det.ClassifyingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_averages(),
+            channels=int_channels, nr_shots=self.acq_averages(),
             integration_length=self.acq_length(),
             get_values_function_kwargs={
                 'classifier_params': [self.acq_classifier_params()],
@@ -910,35 +928,35 @@ class QuDev_transmon(Qubit):
         self.int_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_averages=self.acq_averages(),
+            channels=int_channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.dig_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_averages=self.acq_averages(),
+            channels=int_channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.inp_avg_det = det.AveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels,
+            channels=self.get_acq_inp_channels(),
             nr_averages=self.acq_averages(),
             acquisition_length=self.acq_length())
 
         self.dig_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_shots(),
+            channels=int_channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_acq.get_instr(),
-            channels=self.get_acq_channels(n_channels=2),
+            channels=int_channels,
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
@@ -1078,7 +1096,7 @@ class QuDev_transmon(Qubit):
         if f_mod is None:
             f_mod = self.ro_mod_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
-            channels=self.get_acq_channels(n_channels=2),
+            channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
             weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
