@@ -1,4 +1,4 @@
-image: python:3.6-buster
+image: python:3.9-buster
 
 variables:
   # Change cache directories to be inside the project directory since we can
@@ -52,4 +52,4 @@ pages:
     # The documentation will only be built for the listed branches
     - qudev_master
     - Proj/*
-  
+    - doc/*
