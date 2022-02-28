@@ -554,7 +554,6 @@ class SingleQubitXEB(MultiTaskingExperiment):
             self.exp_metadata['identical_pulses'] = self.identical_pulses
             self.exp_metadata['init_rotation'] = self.init_rotation
 
-            self.add_processing_pipeline(**kw)
             self.autorun(**kw)
 
         except Exception as x:
@@ -709,7 +708,6 @@ class TwoQubitXEB(MultiTaskingExperiment):
 
             self.exp_metadata['identical_pulses'] = self.identical_pulses
 
-            self.add_processing_pipeline(**kw)
             self.autorun(**kw)
 
         except Exception as x:
