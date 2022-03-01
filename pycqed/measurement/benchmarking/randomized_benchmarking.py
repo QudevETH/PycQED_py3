@@ -59,19 +59,29 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             - tomo_pulses (list, default: ['I', 'X90', 'Y90']) list of op codes
                 to use as tomography pulses if purity==True
 
-            The following keyword arguments will be used to construct
-            sweep points:
-            - nr_seeds
-            - cliffords
+            The following keyword arguments, if passed, will be used to
+            construct sweep points:
+            - cliffords: numpy array of sequence lengths (specified as
+                total number of Cliffords in a sequence)
+            - nr_seeds: int specifying how many random sequences of each length
+                to measure
+                - the sweep points values that will be constructed from this
+                parameter will be an array or random numbers with nr_seeds
+                columns and len(cliffords) rows, which represent the seeds for
+                the random number generator used to sample a random RB
+                sequence. In the block creation function, the random seeds in
+                this 2D array are used to generate a random RB sequence (via
+                to randomized_benchmarking_sequence(_new)).
+                See also the class attribute kw_for_sweep_points.
 
         The following keys in a task are interpreted by this class in
         addition to the ones recognized by the parent classes:
-            - seeds
-            - cliffords
+            - cliffords (see description above)
+            - seeds (see description above)
 
         Assumptions:
          - If nr_seeds and cliffords are specified in kw and they do not exist
-          in the task_list, THEN ALL TASKS WILL RECEIVE THE SAME PULSES!!!
+          in the task_list, then all tasks will receive the same pulses!
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - in rb_block, it assumes only one parameter is being swept in the
@@ -94,8 +104,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                 raise ValueError('If one of nr_seeds or cliffords is specified '
                                  'as a global parameter, the other must also '
                                  'be specified. This enables identical pulses '
-                                 'on all tasks IF YOU ALSO REMOVE THEM '
-                                 'FROM TASK_LIST.')
+                                 'on all tasks if you also remove them from the'
+                                 'task list.')
 
             self.sweep_type = sweep_type
             if self.sweep_type is None:
@@ -111,12 +121,11 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
 
             self.purity = purity
             self.interleaved_gate = interleaved_gate
-            if self.interleaved_gate is not None and self.purity:
-                raise ValueError('There is no interleaved purity benchmarking '
-                                 'measurement. Please either set '
-                                 '"interleaved_gate=None" or "purity=False."')
 
             if self.interleaved_gate is not None:
+                # kw_for_sweep_points must be changed to add the random seeds
+                # for the IRB sequences. These are added as an extra sweep
+                # parameter in dimension 1
                 self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
@@ -129,6 +138,9 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T)]
             elif self.purity:
+                # kw_for_sweep_points must be changed to repeat each seed 3
+                # times (same seed, i.e. same sequence, for the 3 tomography
+                # pulses)
                 self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
@@ -293,10 +305,9 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
                 cl_seq, gate_decomp=self.gate_decomposition)
             if self.purity:
                 idx = sp1d_idx if self.sweep_type['seeds'] == 0 else sp2d_idx
-                pulse_op_codes_list += [pulse_list +
-                                        [self.tomo_pulses[idx % 3]]]
-            else:
-                pulse_op_codes_list += [pulse_list]
+                pulse_list += [self.tomo_pulses[idx % 3]]
+            pulse_op_codes_list += [pulse_list]
+
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
                                  pulse_op_codes_list[0 if self.identical_pulses
@@ -477,7 +488,7 @@ class SingleQubitXEB(MultiTaskingExperiment):
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
                 If nr_seqs is specified and it does not exist in the task_list,
-                THEN ALL QUBITS WILL RECEIVE THE SAME PULSES provided they have
+                then all qubits will receive the same pulses provided they have
                 the same cycles array.
             cycles (list/array): integers specifying the number of
                 [Ry - Rz(theta)] cycles to apply.
