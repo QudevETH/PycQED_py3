@@ -1682,7 +1682,7 @@ class SHFQAPulsar:
                 Converts the input in volts to dBm."""
         if par == 'amp':
             def s(val):
-                obj.qachannels[int(id[2]) - 1].output_range(
+                obj.qachannels[int(id[2]) - 1].output.range(
                     20 * (np.log10(val) + 0.5)
                 )
         else:
@@ -1695,10 +1695,10 @@ class SHFQAPulsar:
         if par == 'amp':
             def g():
                 if self._awgs_prequeried_state:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range\
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range\
                         .get_latest()
                 else:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range()
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range()
                 return 10**(dbm/20 - 0.5)
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
@@ -1934,7 +1934,7 @@ class SHFQAPulsar:
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
             if qachannel.mode() == 'readout':
-                is_running.append(qachannel.generator.is_running)
+                is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
                 daq = obj._controller._controller.connection._daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
@@ -1960,7 +1960,7 @@ class SHFQAPulsar:
         if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
-        awg.qachannels[int(chid[-2]) - 1].output(True)
+        awg.qachannels[int(chid[-2]) - 1].output.on(True)
 
 
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):

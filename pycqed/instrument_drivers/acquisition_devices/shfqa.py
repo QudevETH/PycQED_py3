@@ -5,13 +5,13 @@ from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
-from zhinst.qcodes import SHFQA as SHFQA_core
+from zhinst.qcodes.driver.devices.shfqa import SHFQA as SHFQA_core
+from zhinst.qcodes.driver.devices import DEVICE_CLASS_BY_MODEL
 from pycqed.utilities.timer import Timer, Checkpoint
 import logging
 import json
 import time
 log = logging.getLogger(__name__)
-
 
 class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
     def __init__(self, acq_dev, acq_unit, parameter_name='None'):
@@ -77,7 +77,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.n_acq_units = len(self.qachannels)
         self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
         self._acq_loop_cnts_last = [None] * self.n_acq_units
-        self.n_acq_int_channels = len(self.qachannels[0].readout.integrations)
+        self.n_acq_int_channels = len(self.qachannels[0]
+                                      .readout.integration.weights)
+        print(f"self.n_acq_int_channels = {self.n_acq_int_channels} (is "
+              f"this ok???")
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
@@ -124,7 +127,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def daq(self):
         """Returns the ZI data server (DAQ).
         """
-        return self._controller._controller._connection.daq
+        return self._session._tk_object._daq_server
 
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
@@ -141,8 +144,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
-        self.qachannels[acq_unit].center_freq(lo_freq)
-        new_lo_freq = self.qachannels[acq_unit].center_freq()
+        self.qachannels[acq_unit].centerfreq(lo_freq)
+        new_lo_freq = self.qachannels[acq_unit].centerfreq()
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '
@@ -156,7 +159,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     and self._acq_units_modes[i] == 'readout':
                 # Readout mode outputs programmed waveforms, and integrates
                 # against different custom weights for each integration channel
-                self.qachannels[i].readout.arm(length=self._acq_n_results,
+                self.qachannels[i].readout.configure_result_logger(length=self._acq_n_results,
                                                averages=self._acq_averages)
             elif self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'spectroscopy':
@@ -233,16 +236,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                  for i in self._acq_units_used}
 
         #Set the scope trigger to the same delay as the other modes
-        self.daq.setDouble(f"/{self._serial}/scopes/0/trigger/delay",
+        self.daq.setDouble(f"/{self.devname}/scopes/0/trigger/delay",
                            self.acq_trigger_delay())
 
         for i in range(self.n_acq_units):
             #Set trigger delay to the same value for all modes. This is
             # necessary e.g. to get consistent acquisition weights.
-            self.daq.setDouble(f"/{self._serial}/qachannels/"
+            self.daq.setDouble(f"/{self.devname}/qachannels/"
                                f"{i}/readout/integration/delay",
                                self.acq_trigger_delay())
-            self.daq.setDouble(f"/{self._serial}/qachannels/"
+            self.daq.setDouble(f"/{self.devname}/qachannels/"
                             f"{i}/spectroscopy/delay",self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
@@ -251,7 +254,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 # In spectroscopy mode there seems to be no stop() functionality
                 # meaning that the output generator must be always running.
                 # Here it is effectively disabled by oscillator_gain(0)
-                self.qachannels[i].sweeper.oscillator_gain(0)  # spectroscopy mode
+                self.qachannels[i].oscs[0].gain(0)  # spectroscopy mode
                 # FIXME: check whether this will be fine with the hw sweeper
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
@@ -272,29 +275,29 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 # iterations in the loop
                 self.qachannels[i].generator.single(1)
                 if data_type is not None:
-                    self.qachannels[i].readout.result_source(
+                    self.qachannels[i].readout.result.source(
                         self.res_logging_indices[data_type])
                 if self._acq_length is not None:
-                    self.qachannels[i].readout.integration_length(
+                    self.qachannels[i].readout.integration.length(
                         self.convert_time_to_n_samples(self._acq_length))
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy'\
                     and not self.use_hardware_sweeper():
-                self.qachannels[i].sweeper.oscillator_gain(1.0)
+                self.qachannels[i].oscs[0].gain(1.0)
                 self.daq.setInt(
                     self._get_spectroscopy_node(i, "integration_length"),
                     self.convert_time_to_n_samples(self._acq_length))
-                self.qachannels[i].sweeper.trigger_source(
+                self.qachannels[i].spectroscopy.trigger.channel(
                     f'channel{i}_trigger_input0')
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy'\
                     and self.use_hardware_sweeper():
                 # FIXME: check whether this will be fine with the hw sweeper
-                self.qachannels[i].sweeper.oscillator_gain(1.0)
+                self.qachannels[i].oscs[0].gain(1.0)
                 self.daq.setInt(
                     self._get_spectroscopy_node(i, "integration_length"),
                     self.convert_time_to_n_samples(self._acq_length))
-                self.qachannels[i].sweeper.trigger_source(
+                self.qachannels[i].spectroscopy.trigger.channel(
                     f'channel{i}_sequencer_trigger0')
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
@@ -327,37 +330,37 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode('readout')
-        self.qachannels[acq_unit].input('on')
-        self.qachannels[acq_unit].output('on')
-        self.daq.setInt(f"/{self._serial}/scopes/0/segments/count",
+        self.qachannels[acq_unit].input.on(True)
+        self.qachannels[acq_unit].output.on(True)
+        self.daq.setInt(f"/{self.devname}/scopes/0/segments/count",
                         num_segments)
         if num_segments > 1:
-            self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 1)
+            self.daq.setInt(f"/{self.devname}/scopes/0/segments/enable", 1)
         else:
-            self.daq.setInt(f"/{self._serial}/scopes/0/segments/enable", 0)
+            self.daq.setInt(f"/{self.devname}/scopes/0/segments/enable", 0)
         if nr_hard_avg > 1:
-            self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 1)
+            self.daq.setInt(f"/{self.devname}/scopes/0/averaging/enable", 1)
         else:
-            self.daq.setInt(f"/{self._serial}/scopes/0/averaging/enable", 0)
-        self.daq.setInt(f"/{self._serial}/scopes/0/averaging/count",
+            self.daq.setInt(f"/{self.devname}/scopes/0/averaging/enable", 0)
+        self.daq.setInt(f"/{self.devname}/scopes/0/averaging/count",
                         nr_hard_avg)
-        self.daq.setInt(f"/{self._serial}/scopes/0/length",
+        self.daq.setInt(f"/{self.devname}/scopes/0/length",
                         num_points_per_run)
 
-        self.daq.setInt(f"/{self._serial}/scopes/0/channels/*/enable", 0)
+        self.daq.setInt(f"/{self.devname}/scopes/0/channels/*/enable", 0)
         input_select = {acq_unit: f"channel{acq_unit}_signal_input"}
         for scope_ch, acq_unit_path in input_select.items():
             self.daq.setString(
-                f"/{self._serial}/scopes/0/channels/{scope_ch}/inputselect",
+                f"/{self.devname}/scopes/0/channels/{scope_ch}/inputselect",
                 acq_unit_path)
             self.daq.setInt(
-                f"/{self._serial}/scopes/0/channels/{scope_ch}/enable",
+                f"/{self.devname}/scopes/0/channels/{scope_ch}/enable",
                 1)
         if self.seqtrigger is None:
-            self.scope.trigger_source(
+            self.scope.trigger.channel(
                 'channel0_trigger_input0')
         else:
-            self.scope.trigger_source(
+            self.scope.trigger.channel(
                 f'channel{self.seqtrigger}_sequencer_trigger0')
         # Always single acq. Would continuous mode be useful in some cases?
         self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
@@ -365,7 +368,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def acquisition_finalize(self):
         for ch in self.qachannels:
-            ch.sweeper.oscillator_gain(0)
+            ch.oscs[0].gain(0)
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
         """Receive sequence data from Pulsar.
@@ -388,16 +391,20 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # This is now known and can be replaced in the seqc code
         awg_program = awg_program.replace(
             '{loop_count}', f'{self._acq_loop_cnt}')
-        qachannel.generator.set_sequence_params(
-            sequence_type="Custom", program=awg_program)
-        qachannel.generator.compile()
+        qachannel.generator.load_sequencer_program(
+            # sequence_type="Custom", program=awg_program)
+            sequencer_program = awg_program)
+        # qachannel.generator.compile()
         waves_to_upload = self._waves_to_upload.get(acq_unit, None)
         if waves_to_upload is not None:
             # upload waveforms
-            qachannel.generator.reset_queue()
+            # qachannel.generator.reset_queue()
             for wf in waves_to_upload.values():
-                qachannel.generator.queue_waveform(wf.copy())
-            qachannel.generator.upload_waveforms()
+                # Is there a way to still cache them before uploading / would
+                # that be needed?
+                # qachannel.generator.queue_waveform(wf.copy())
+                qachannel.generator.write_to_waveform_memory(wf.copy())
+            # qachannel.generator.upload_waveforms()
             self._waves_to_upload[acq_unit] = None  # upload only once
 
     def _get_spectroscopy_node(self, acq_unit, node):
@@ -442,7 +449,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def _arm_scope(self):
         # FIXME: is it normal that 'single' gets reset after each acq???
         self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
-        path = f"/{self._serial}/scopes/0/enable"
+        path = f"/{self.devname}/scopes/0/enable"
         if self.daq.getInt(path) == 1:
             self.daq.setInt(path, 0)
             self._controller._assert_node_value(path, 0, timeout=self.timeout())
@@ -513,9 +520,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     # FIXME this is blocking, to get enough data to average
                     #  in the driver (not the usual behaviour of poll)
                     self._controller._assert_node_value(
-                        f"/{self._serial}/scopes/0/enable", 0,
+                        f"/{self.devname}/scopes/0/enable", 0,
                         timeout=self.timeout())
-                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"
+                    path = f"/{self.devname}/scopes/0/channels/{i}/wave"
                     data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                     # This is a 1-D complex time trace
                     timetraces = np.concatenate((timetraces, data))
@@ -532,8 +539,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace')\
                     or self._acq_mode == 'avg':
-                if self.daq.getInt(f"/{self._serial}/scopes/0/enable") == 0:
-                    path = f"/{self._serial}/scopes/0/channels/{i}/wave"
+                if self.daq.getInt(f"/{self.devname}/scopes/0/enable") == 0:
+                    path = f"/{self.devname}/scopes/0/channels/{i}/wave"
                     timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                     dataset.update({(i, 0): [np.real(timetrace)]})
                     dataset.update({(i, 1): [np.imag(timetrace)]})
@@ -553,9 +560,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
-                self.qachannels[acq_unit].center_freq,
+                self.qachannels[acq_unit].centerfreq,
                 swf.Offset_Sweep(
-                    self.qachannels[acq_unit].sweeper.oscillator_freq,
+                    self.qachannels[acq_unit].oscs[0].freq,
                     ro_mod_freq),
                     self.allowed_lo_freqs(),
                 name=name_offset, parameter_name=name_offset),
@@ -563,7 +570,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def stop(self):
         for ch in self.qachannels:
-            ch.generator.stop()
+            ch.generator.enable(False)
 
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
@@ -581,8 +588,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                             f'not triggering the acquisition unit.')
 
     def _acquisition_set_weight(self, channel, weight):
-        self.qachannels[channel[0]].readout.integrations[channel[1]].weights(
-            weight[0].copy() + 1j * weight[1].copy())
+        self.qachannels[channel[0]].readout.integration.weights[channel[1]]\
+            .wave(weight[0].copy() + 1j * weight[1].copy())
 
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         properties = super().get_value_properties(
@@ -610,3 +617,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         except:  # If impossible to remove, just leave that in the output
                             pass
             return shf_settings
+
+
+# TODO add comment
+DEVICE_CLASS_BY_MODEL["SHFQA"] = SHFQA
