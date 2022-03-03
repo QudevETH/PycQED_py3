@@ -375,6 +375,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
                             continue
+                        if nr_cw != 0:
+                            w1, w2 = self._zi_waves_to_wavenames(wave)
+                            if cw not in codeword_table:
+                                codeword_table_defs += \
+                                    self._zi_codeword_table_entry(
+                                        cw, wave, use_placeholder_waves)
+                                codeword_table[cw] = (w1, w2)
+                            elif codeword_table[cw] != (w1, w2) \
+                                    and self.reuse_waveforms():
+                                log.warning('Same codeword used for different '
+                                            'waveforms. Using first waveform. '
+                                            f'Ignoring element {element}.')
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch1mid] |= wave[1] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
@@ -411,19 +423,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 else None for h, chid in zip(wave, chids))
                             wave_definitions += self._zi_wave_definition(
                                 wave, defined_waves)
-
-                        if nr_cw != 0:
-                            w1, w2 = self._zi_waves_to_wavenames(wave)
-                            if cw not in codeword_table:
-                                codeword_table_defs += \
-                                    self._zi_codeword_table_entry(
-                                        cw, wave, use_placeholder_waves)
-                                codeword_table[cw] = (w1, w2)
-                            elif codeword_table[cw] != (w1, w2) \
-                                    and self.reuse_waveforms():
-                                log.warning('Same codeword used for different '
-                                            'waveforms. Using first waveform. '
-                                            f'Ignoring element {element}.')
 
                     if not len(channels_to_upload):
                         # _program_awg was called only to decide which
