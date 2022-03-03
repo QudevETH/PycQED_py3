@@ -235,15 +235,11 @@ class Segment:
                                 f'{", ".join(list(channels))}')
             elif len(chs_ese) != 0:
                 p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask = \
-                    p0.pulse_obj.get('channel_mask', set())
                 p0.pulse_obj.channel_mask |= chs_ese
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
                 p1.pulse_obj.element_name = f'default_ese_{self.name}'
-                p1.pulse_obj.channel_mask = \
-                    p0.pulse_obj.get('channel_mask', set())
                 p1.pulse_obj.channel_mask |= channels - chs_ese
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
@@ -253,7 +249,7 @@ class Segment:
                 p1.pulse_obj.name += '_ese'
                 p1.is_ese_copy = True
                 if p1.pulse_obj.codeword == "no_codeword":
-                   self.resolved_pulses.append(p1)
+                    self.resolved_pulses.append(p1)
                 else:
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '

@@ -42,6 +42,11 @@ class Pulse:
             Defaults to 0.
         channels (list of str, optional): A list of channel names that the pulse
             instance generates waveforms form. Defaults to empty list.
+
+    Attrs:
+        channel_mask: set[str]
+            A set of channel names to be excluded from waveform generation.
+
     """
 
     def __init__(self, name, element_name, **kw):
@@ -57,6 +62,7 @@ class Pulse:
         self.crosstalk_cancellation_channels = []
         self.crosstalk_cancellation_mtx = None
         self.crosstalk_cancellation_shift_mtx = None
+        self.channel_mask = kw.pop('channel_mask', set())
 
         # Set default pulse_params and overwrite with params in keyword argument
         # list if applicable
@@ -136,8 +142,7 @@ class Pulse:
         return wfs_dict
 
     def masked_channels(self):
-        channel_mask = getattr(self, 'channel_mask', set())
-        masked_channels = set(self.channels) - channel_mask
+        masked_channels = set(self.channels) - self.channel_mask
         if len(masked_channels & set(self.crosstalk_cancellation_channels)) > 0:
             return masked_channels | set(self.crosstalk_cancellation_channels)
         else:
