@@ -43,6 +43,8 @@ class Sequence:
             raise NameError('Name {} already exisits in the sequence!'.format(
                 segment.name))
         self.segments[segment.name] = segment
+        if len(self.segments) == 1:
+            self.segments[segment.name].is_first_segment = True
 
     def extend(self, segments):
         """

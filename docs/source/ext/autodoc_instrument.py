@@ -71,6 +71,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
 @lru_cache(maxsize=None)
 def _get_template(template_path:str):
 
@@ -132,12 +133,11 @@ class InstrumentDocumenter(ClassDocumenter):
     directivetype = 'class'
     priority = 10 + ClassDocumenter.priority
     option_spec = dict(ClassDocumenter.option_spec)
-    instrument_configs = {}
 
-    @classmethod
-    def can_document_member(cls, member:Any, membername:str, isattr:bool,
-                            parent:Any) -> bool:
-        return super().can_document_member(member, membername, isattr, parent)
+    instrument_configs = {}
+    """This dictionnary will be filled with the content of the file specified
+    in the parameter ``autodoc_instrument_configs_file``.
+    """
 
     def add_content(self, more_content: Optional[StringList],
                     no_docstring: bool = False) -> None:
@@ -181,8 +181,6 @@ class InstrumentDocumenter(ClassDocumenter):
 
         for param in instrument.parameters.values():
             self.add_parameter_detail(param)
-
-        instrument.close()
 
     def add_parameter_table(self, parameters:Dict[str, _BaseParameter]):
         """Add a section with a summary table of the parameters."""
