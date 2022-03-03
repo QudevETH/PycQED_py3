@@ -60,6 +60,10 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         pulsar = self.pulsar
         name = self.awg.name
 
+        # TODO: Check if it is meaningful that this AWG has a different initial
+        # value for this parameter
+        pulsar.set(f"{name}_minimize_sequencer_memory", True)
+
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "Dig2", "DIO"),
@@ -348,11 +352,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         return self.awg.clock_freq()
 
     def get_segment_filter_userregs(self):
-        # TODO: It seems that UHFQA_core does not have
-        # USER_REG_FIRST_SEGMENT nor USER_REG_LAST_SEGMENT
-        # return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
-        #          f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
-        return []
+        return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
+                 f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
 
     def sigout_on(self, ch, on=True):
 

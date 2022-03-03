@@ -431,8 +431,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                         continue
                     if not internal_mod:
                         if first_element_of_segment:
-                            prepend_zeros = self.pulsar.parameters.get(
-                                f"{self.awg.name}_prepend_zeros")
+                            prepend_zeros = self.pulsar.parameters[
+                                f"{self.awg.name}_prepend_zeros"]()
                             if prepend_zeros is None:
                                 prepend_zeros = self.pulsar.prepend_zeros()
                             elif isinstance(prepend_zeros, list):
