@@ -605,6 +605,11 @@ class PollDetector(Hard_Detector):
                                                            self.detectors)}
         self.progress_scaling = None
 
+    def prepare(self):
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
+
+
     @Timer()
     def poll_data(self):
         """
@@ -846,6 +851,7 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.detector_control == 'hard' and sweep_points is None:
             raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
@@ -1026,6 +1032,7 @@ class AveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = len(sweep_points)
@@ -1236,6 +1243,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         """
         return self.get_values()
 
+    @Timer()
     def prepare(self, sweep_points=None):
         """
         Prepares instruments for acquisition:
@@ -1250,6 +1258,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
@@ -1334,6 +1343,7 @@ class ScopePollDetector(PollDetector):
 
     def prepare(self, sweep_points=None):
 
+        super().prepare()
         self.nr_sweep_points = len(sweep_points)  # MC might rely on this to get the correct amount of data?
         if self.data_type == 'spectrum':
             n_results = self.nr_sweep_points  # Number of points of the spectrum to be returned
