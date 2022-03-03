@@ -63,6 +63,8 @@ class Pulse:
         self.crosstalk_cancellation_mtx = None
         self.crosstalk_cancellation_shift_mtx = None
         self.channel_mask = kw.pop('channel_mask', set())
+        self.trigger_channels = kw.pop('trigger_channels', []) or []
+        self.trigger_pars = kw.pop('trigger_pars', {}) or {}
 
         # Set default pulse_params and overwrite with params in keyword argument
         # list if applicable

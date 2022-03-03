@@ -897,6 +897,18 @@ class HDAWG8Pulsar:
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
                             continue
+                        if nr_cw != 0:
+                            w1, w2 = self._zi_waves_to_wavenames(wave)
+                            if cw not in codeword_table:
+                                codeword_table_defs += \
+                                    self._zi_codeword_table_entry(
+                                        cw, wave, use_placeholder_waves)
+                                codeword_table[cw] = (w1, w2)
+                            elif codeword_table[cw] != (w1, w2) \
+                                    and self.reuse_waveforms():
+                                log.warning('Same codeword used for different '
+                                            'waveforms. Using first waveform. '
+                                            f'Ignoring element {element}.')
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch1mid] |= wave[1] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
@@ -933,19 +945,6 @@ class HDAWG8Pulsar:
                                 else None for h, chid in zip(wave, chids))
                             wave_definitions += self._zi_wave_definition(
                                 wave, defined_waves)
-                        
-                        if nr_cw != 0:
-                            w1, w2 = self._zi_waves_to_wavenames(wave)
-                            if cw not in codeword_table:
-                                codeword_table_defs += \
-                                    self._zi_codeword_table_entry(
-                                        cw, wave, use_placeholder_waves)
-                                codeword_table[cw] = (w1, w2)
-                            elif codeword_table[cw] != (w1, w2) \
-                                    and self.reuse_waveforms():
-                                log.warning('Same codeword used for different '
-                                            'waveforms. Using first waveform. '
-                                            f'Ignoring element {element}.')
 
                     if not len(channels_to_upload):
                         # _program_awg was called only to decide which
@@ -1968,6 +1967,16 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
                                      'False to save time if it is ensured '
                                      'that the channels are switched on '
                                      'somewhere else.')
+        self.add_parameter(
+            'trigger_pulse_parameters', initial_value={},
+            label='trigger pulse parameters', parameter_class=ManualParameter,
+            docstring='A dict whose keys are channel names and whose values '
+                      'are dicts of pulse parameters to overwrite the '
+                      'default trigger pulse parameters whenever a trigger '
+                      'pulse is played on the respective channel. In '
+                      'addition, the dict can contain keys of the form '
+                      '{channel}_first to provide different parameters for '
+                      'the first trigger pulse on that channel in a sequence.')
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
