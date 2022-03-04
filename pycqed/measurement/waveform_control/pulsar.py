@@ -1788,6 +1788,7 @@ class SHFQAPulsar:
             log.debug(f'{obj.name}: programming group {i}')
 
             hash_to_index_map = {h: i for i, h in enumerate(waves_to_upload)}
+            print(f"hash_to_index_map = {len(hash_to_index_map)}")
 
             if is_spectroscopy and len(waves_to_upload) > 1:
                 log.error(f"Can not have multiple elements in spectroscopy mode"
@@ -1848,13 +1849,13 @@ class SHFQAPulsar:
                         self._shfqa_sequence_string_template.format(
                             prep_string=prep_string,
                             playback_string='\n  '.join(playback_strings)),
-                        waves_to_upload)
+                        {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
                 #FIXME: is this still useful if we give waves_to_upload above?
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
-                daq = obj._controller._controller.connection._daq
+                daq = obj.daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
@@ -1883,6 +1884,7 @@ class SHFQAPulsar:
                 acq = metadata.get('acq', False)
                 h = tuple([chid_to_hash.get(chid, None) for chid in chids])
                 wave_idx = hash_to_index_map.get(h, None)
+                print(f"wave_idx = {wave_idx}")
                 wave_mask = f'QA_GEN_{wave_idx}' if wave_idx is not None \
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
@@ -1920,7 +1922,7 @@ class SHFQAPulsar:
                     # loop_count='{loop_count}',  # will be replaced by SHFQA driver
                     playback_string='\n  '.join(playback_strings),
                     prep_string=''),
-                waves_to_upload)
+                {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
         if any(grp_has_waveforms.values()):
             self.awgs_with_waveforms(obj.name)
@@ -1933,10 +1935,10 @@ class SHFQAPulsar:
         is_running = []
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
-            if qachannel.mode() == 'readout':
+            if qachannel.mode() == 1:
                 is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
-                daq = obj._controller._controller.connection._daq
+                daq = obj.daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
                        f"spectroscopy/result/enable"
                 is_running.append(daq.getInt(path) != 0)

@@ -1243,7 +1243,7 @@ class QuDev_transmon(Qubit):
                     center_freq, delta_f, _ = self.instr_acq.get_instr()\
                         .get_params_from_spectrum(freqs)
                     self.instr_acq.get_instr().qachannels[self.acq_unit()]\
-                        .center_freq(center_freq)
+                        .centerfreq(center_freq)
                     seg.acquisition_mode = dict(
                         sweeper='hardware',
                         f_start=freqs[0] - center_freq,
