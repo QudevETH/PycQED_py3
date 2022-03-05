@@ -14,6 +14,7 @@ import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
 import time
 from copy import deepcopy
+from collections import OrderedDict as odict
 
 from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
     VirtualAWG5014
@@ -446,9 +447,9 @@ class UHFQCPulsar:
             return super()._clock(obj)
         return obj.clock_freq()
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, **kw):
         if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return [(f'awgs_0_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_0_userregs_{obj.USER_REG_LAST_SEGMENT}')]
 
@@ -1114,12 +1115,13 @@ class HDAWG8Pulsar:
     def _hdawg_active_awgs(self, obj):
         return [0,1,2,3]
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, include_inactive=False, **kw):
         if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return [(f'awgs_{i}_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{obj.USER_REG_LAST_SEGMENT}')
-                for i in range(4) if obj._awg_program[i] is not None]
+                for i in range(4)
+                if include_inactive or obj._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))
@@ -1500,9 +1502,9 @@ class AWG5014Pulsar:
                 channel_cfg['CHANNEL_STATE_' + cid[2]] = 1
         return channel_cfg
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, **kw):
         if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return []
 
     def sigout_on(self, ch, on=True):
@@ -1886,10 +1888,10 @@ class SHFQAPulsar:
             return super()._clock(obj)
         return 2.0e9
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, **kw):
         """Segment filter currently not supported on SHFQA"""
         if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return []
 
     def sigout_on(self, ch, on=True):
@@ -1993,6 +1995,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         self._hash_to_wavename_table = {}
         self._filter_segments = None
         self._filter_segment_functions = {}
+        self._filter_segments_emulation_cache = {}
 
         self.num_seg = 0
 
@@ -2449,7 +2452,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         self.AWGs_prequeried(False)
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     **kw):
+                     filter_segments=None, **kw):
         """
         Program the AWG with a sequence of segments.
 
@@ -2470,6 +2473,47 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         # if fail is not None:
         #     raise TypeError('Unsupported AWG instrument: {} of type {}. '
         #                     .format(obj.name, type(obj)) + str(fail))
+
+        # store data for filter segments emulation if needed
+        if len(self._get_segment_filter_userregs(obj,
+                                                 include_inactive=True)) == 0:
+            use_filter = any([e is not None and
+                              e.get('metadata', {}).get('allow_filter', False)
+                              for e in awg_sequence.values()])
+            if use_filter:
+                # filter segments emulation needed
+                if repeat_pattern is not None:
+                    raise NotImplementedError(
+                        f'{obj.name} does not support filter_segments and an '
+                        f'emulation is needed, but the combination of '
+                        f'filter_segments emulation and repeat_pattern is not '
+                        f'implemented.')
+
+                if filter_segments is None:
+                    # _program_awg was called from self._program_awgs
+                    # (otherwise, it would have been called from
+                    # self._set_filter_segments)
+                    self._filter_segments_emulation_cache[
+                        f'{obj.name}'] = dict(
+                        awg_sequence=awg_sequence,
+                        waveforms=waveforms)
+                    self._filter_segments_emulation_cache[
+                        f'{obj.name}'].update(kw)
+                    filter_segments = self._filter_segments
+                new_awg_sequence = odict()
+                i_seg = -1
+                for k, v in awg_sequence.items():
+                    if v is None:
+                        i_seg += 1
+                    else:
+                        metadata = v.get('metadata', {})
+                        if metadata.get('allow_filter', False) and (
+                                i_seg < filter_segments[0] or
+                                i_seg > filter_segments[1]):
+                            continue
+                    new_awg_sequence[k] = deepcopy(v)
+                return super()._program_awg(obj, new_awg_sequence,
+                                            waveforms=waveforms, **kw)
         if repeat_pattern is not None:
             super()._program_awg(obj, awg_sequence, waveforms,
                                  repeat_pattern=repeat_pattern, **kw)
@@ -2713,6 +2757,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
     def _set_filter_segments(self, val, awgs='with_waveforms'):
         if val is None:
             val = (0, 32767)
+        old_val = self._filter_segments
         self._filter_segments = val
         if awgs == 'with_waveforms':
             awgs = self.awgs_with_waveforms()
@@ -2722,7 +2767,12 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
             AWG = self.AWG_obj(awg=AWG_name)
             fnc = self._filter_segment_functions.get(AWG_name, None)
             if fnc is None:
-                for regs in self._get_segment_filter_userregs(AWG):
+                all_regs = self._get_segment_filter_userregs(AWG)
+                if len(all_regs) == 0 and val != old_val:
+                    self._program_awg(
+                        AWG, filter_segments=val,
+                        **self._filter_segments_emulation_cache[f'{AWG.name}'])
+                for regs in all_regs:
                     AWG.set(regs[0], val[0])
                     AWG.set(regs[1], val[1])
             else:
