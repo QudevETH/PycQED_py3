@@ -1226,11 +1226,35 @@ class AWG5014Pulsar:
                            get_cmd=self._awg5014_getter(awg, id, 'offset', 
                                                         offset_mode_func),
                            vals=vals.Numbers())
+        scale_param = '{}_amplitude_scaling'.format(name)
+        # The set_cmd of the amplitude scaling makes sure that the AWG amp
+        # parameter gets updated when the scaling is changes. The set_cmd
+        # calls the _awg5014_setter without passing the scale_param,
+        # which is at this point not yet updated, and instead passed the
+        # scaled value.
+        self.add_parameter(
+            scale_param,
+            label='{} amplitude scaling'.format(name),
+            set_cmd=(lambda v, g=self._awg5014_getter(awg, id, 'amp',
+                                                      scale_param=scale_param),
+                            s=self._awg5014_setter(awg, id, 'amp') :
+                     s(v * g())),
+            vals=vals.Numbers(0.01/2.25, 1.0))
+        # Passing scale_param to  _awg5014_setter and _awg5014_getter
+        # translates between the scale amp set in the hardware and the
+        # non-scaled amp represented by the amp parameter of pulsar.
         self.add_parameter('{}_amp'.format(name),
                             label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._awg5014_setter(awg, id, 'amp'),
-                            get_cmd=self._awg5014_getter(awg, id, 'amp'),
+                            set_cmd=self._awg5014_setter(
+                                awg, id, 'amp',
+                                scale_param=scale_param),
+                            get_cmd=self._awg5014_getter(
+                                awg, id, 'amp',
+                                scale_param=scale_param),
                             vals=vals.Numbers(0.01, 2.25))
+        # Due to its set_cmd, amplitude scaling can be set to its initial
+        # value only now after the amp param has been created.
+        self.parameters[scale_param](1.0)
         self.add_parameter('{}_distortion'.format(name),
                             label='{} distortion mode'.format(name),
                             initial_value='off',
@@ -1268,8 +1292,8 @@ class AWG5014Pulsar:
                             get_cmd=self._awg5014_getter(awg, id, 'amp'),
                             vals=vals.Numbers(-5.4, 5.4))
 
-    @staticmethod
-    def _awg5014_setter(obj, id, par, offset_mode_func=None):
+    def _awg5014_setter(self, obj, id, par, offset_mode_func=None,
+                        scale_param=None):
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
             if par == 'offset':
                 def s(val):
@@ -1282,7 +1306,8 @@ class AWG5014Pulsar:
                                         '{}'.format(offset_mode_func()))
             elif par == 'amp':
                 def s(val):
-                    obj.set('{}_amp'.format(id), 2*val)
+                    scale = 1 if scale_param is None else self.get(scale_param)
+                    obj.set('{}_amp'.format(id), 2*val*scale)
             else:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         else:
@@ -1301,7 +1326,8 @@ class AWG5014Pulsar:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         return s
 
-    def _awg5014_getter(self, obj, id, par, offset_mode_func=None):
+    def _awg5014_getter(self, obj, id, par, offset_mode_func=None,
+                        scale_param=None):
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
             if par == 'offset':
                 def g():
@@ -1316,10 +1342,14 @@ class AWG5014Pulsar:
             elif par == 'amp':
                 def g():
                     if self._awgs_prequeried_state:
-                        return obj.parameters['{}_amp'.format(id)] \
-                                   .get_latest()/2
+                        amp = obj.parameters['{}_amp'.format(id)] \
+                                  .get_latest()/2
                     else:
-                        return obj.get('{}_amp'.format(id))/2
+                        amp = obj.get('{}_amp'.format(id))/2
+                    if scale_param is not None and self.get(scale_param) is \
+                            not None:
+                        amp /= self.get(scale_param)
+                    return amp
             else:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         else:
