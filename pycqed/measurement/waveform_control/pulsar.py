@@ -2529,7 +2529,13 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
                         waveforms=waveforms)
                     self._filter_segments_emulation_cache[
                         f'{obj.name}'].update(kw)
-                    filter_segments = self._filter_segments
+                    # We skip the programming, and it will be done in the
+                    # next update of filter_segments.
+                    # FIXME: This assumes that filter_segments will be set
+                    #  after the call to program_awgs (as it is the case in
+                    #  FilteredSweep). Find a more general solution.
+                    self._awgs_with_waveforms.add(obj.name)
+                    return
                 new_awg_sequence = odict()
                 i_seg = -1
                 for k, v in awg_sequence.items():
@@ -2542,6 +2548,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
                                 i_seg > filter_segments[1]):
                             continue
                     new_awg_sequence[k] = deepcopy(v)
+                self._filter_segments_emulation_cache[
+                    f'{obj.name}']['filter_segments'] = filter_segments
                 return super()._program_awg(obj, new_awg_sequence,
                                             waveforms=waveforms, **kw)
         if repeat_pattern is not None:
@@ -2787,7 +2795,6 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
     def _set_filter_segments(self, val, awgs='with_waveforms'):
         if val is None:
             val = (0, 32767)
-        old_val = self._filter_segments
         self._filter_segments = val
         if awgs == 'with_waveforms':
             awgs = self.awgs_with_waveforms()
@@ -2798,10 +2805,14 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
             fnc = self._filter_segment_functions.get(AWG_name, None)
             if fnc is None:
                 all_regs = self._get_segment_filter_userregs(AWG)
-                if len(all_regs) == 0 and val != old_val:
-                    self._program_awg(
-                        AWG, filter_segments=val,
-                        **self._filter_segments_emulation_cache[f'{AWG.name}'])
+                if len(all_regs) == 0:
+                    # Emulate filter segments for this AWG
+                    fsec = self._filter_segments_emulation_cache[f'{AWG.name}']
+                    if fsec.get('filter_segments', None) != val:
+                        self._program_awg(
+                            AWG, filter_segments=val,
+                            **{k: v for k, v in fsec.items()
+                               if k != 'filter_segments'})
                 for regs in all_regs:
                     AWG.set(regs[0], val[0])
                     AWG.set(regs[1], val[1])
