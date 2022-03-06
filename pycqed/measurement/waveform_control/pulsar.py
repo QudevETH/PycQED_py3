@@ -2507,6 +2507,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         # store data for filter segments emulation if needed
         if len(self._get_segment_filter_userregs(obj,
                                                  include_inactive=True)) == 0:
+            # AWG does not support segment filtering in hardware
             use_filter = any([e is not None and
                               e.get('metadata', {}).get('allow_filter', False)
                               for e in awg_sequence.values()])
@@ -2552,6 +2553,10 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
                     f'{obj.name}']['filter_segments'] = filter_segments
                 return super()._program_awg(obj, new_awg_sequence,
                                             waveforms=waveforms, **kw)
+        # If we are here, it means that the current sequence does not use
+        # segment filtering or that no emulation is needed for this AWG.
+        # Reset the _filter_segments_emulation_cache for this AWG.
+        self._filter_segments_emulation_cache[f'{obj.name}'] = None
         if repeat_pattern is not None:
             super()._program_awg(obj, awg_sequence, waveforms,
                                  repeat_pattern=repeat_pattern, **kw)
@@ -2807,15 +2812,18 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
                 all_regs = self._get_segment_filter_userregs(AWG)
                 if len(all_regs) == 0:
                     # Emulate filter segments for this AWG
-                    fsec = self._filter_segments_emulation_cache[f'{AWG.name}']
-                    if fsec.get('filter_segments', None) != val:
+                    fsec = self._filter_segments_emulation_cache.get(
+                        f'{AWG.name}', None)
+                    if fsec is not None and fsec.get(
+                            'filter_segments', None) != val:
                         self._program_awg(
                             AWG, filter_segments=val,
                             **{k: v for k, v in fsec.items()
                                if k != 'filter_segments'})
-                for regs in all_regs:
-                    AWG.set(regs[0], val[0])
-                    AWG.set(regs[1], val[1])
+                else:  # filter segments supported by the hardware for this AWG
+                    for regs in all_regs:
+                        AWG.set(regs[0], val[0])
+                        AWG.set(regs[1], val[1])
             else:
                 # used in case of a repeat pattern
                 for regs in self._get_segment_filter_userregs(AWG):
