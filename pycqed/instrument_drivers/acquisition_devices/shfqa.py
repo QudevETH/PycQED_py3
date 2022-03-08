@@ -375,6 +375,28 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         for ch in self.qachannels:
             ch.oscs[0].gain(0)
 
+    def acquisition_progress(self):
+        n_acq = {}
+        for i in self._acq_units_used:
+            if self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[i] == 1:  # readout
+                n_acq[i] = self.daq.getInt(f"/{self.devname}/qachannels/"
+                                           f"{i}/readout/result/acquired")
+            elif self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[i] == 0:  # spectroscopy
+                n_acq[i] = self.daq.getInt(
+                    self._get_spectroscopy_node(i, "acquired"))
+            elif self._acq_mode == 'scope' \
+                    and self._acq_data_type == 'spectrum':
+                n_acq[i] = 0
+            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') \
+                    or self._acq_mode == 'avg':
+                n_acq[i] = 0
+            else:
+                raise NotImplementedError
+        # FIXME maybe could return all
+        return max(n_acq.values())
+
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
         """Receive sequence data from Pulsar.
 
