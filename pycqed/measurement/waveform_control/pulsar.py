@@ -1531,17 +1531,6 @@ class SHFQAPulsar:
     """
     _supportedAWGtypes = (SHFQA,)
 
-    _shfqa_sequence_string_template = (
-        f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
-        f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
-        f" // only needed in sweeper mode\n"
-        "{prep_string}"
-        "\n"
-        "repeat (loop_cnt) {{\n"
-        "  {playback_string}\n"
-        "}}\n"
-    )
-
     def _create_awg_parameters(self, awg, channel_name_map):
         """Create parameters in the pulsar specific to the added AWG
 
@@ -1802,6 +1791,17 @@ class SHFQAPulsar:
                               f"waveforms. Clipping the waveform.")
                 waves_to_upload[h] = w[:max_len]
 
+            shfqa_sequence_string_template = (
+                f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
+                f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+                f" // only needed in sweeper mode\n"
+                "{prep_string}"
+                "\n"
+                "repeat (loop_cnt) {{\n"
+                "  {playback_string}\n"
+                "}}\n"
+            )
+
             if is_spectroscopy:
                 if obj.use_hardware_sweeper():
                     for element in awg_sequence:
@@ -1846,7 +1846,7 @@ class SHFQAPulsar:
                     # acquisition_initialize
                     obj.set_awg_program(
                         i,
-                        self._shfqa_sequence_string_template.format(
+                        shfqa_sequence_string_template.format(
                             prep_string=prep_string,
                             playback_string='\n  '.join(playback_strings)),
                         {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
@@ -1917,7 +1917,7 @@ class SHFQAPulsar:
             # acquisition_initialize
             obj.set_awg_program(
                 i,
-                self._shfqa_sequence_string_template.format(
+                shfqa_sequence_string_template.format(
                     # loop_count='{loop_count}',  # will be replaced by SHFQA driver
                     playback_string='\n  '.join(playback_strings),
                     prep_string=''),
