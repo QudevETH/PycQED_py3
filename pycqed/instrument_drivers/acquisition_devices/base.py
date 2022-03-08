@@ -401,6 +401,22 @@ class AcquisitionDevice():
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
 
+    def set_classifier_params(self, acquisition_channel, params):
+        """Set the classifier parameters on the acquisition device.
+
+        Arguments:
+            acquisition_channel: Channel for which to set the parameters.
+            params: A dictionnary containing various classifier parameters that
+                can be used by children classes:
+                * ``means_`` (sic): ``N x 2`` array containing the centroids for
+                  2D clustering of states
+                * ``thresholds``: OrderedDict containing the thresholds for
+                  state discrimination.
+        """
+
+        raise NotImplementedError("Not implemented in class "
+                                 f"'{self.__class__.__name__}'")
+
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
                                       weights_I=(), weights_Q=()):

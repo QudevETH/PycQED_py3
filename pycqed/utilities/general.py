@@ -815,11 +815,6 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
                 log.warning('This function sets only thresholds for ge. Please '
                             'call ActiveReset._set_thresholds for proper ge-ef '
                             'reset.')
-            threshs = qb.acq_classifier_params()
-            if threshs is not None:
-                threshs = threshs.get('thresholds', None)
-            if threshs is not None:
-                acq_dev.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
 
 def find_symmetry_index(data):

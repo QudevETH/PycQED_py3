@@ -1,104 +1,222 @@
 import numpy as np
-from pycqed.instrument_drivers.acquisition_devices.base import AcquisitionDevice
+import math
+from copy import deepcopy
+from qcodes.utils import validators
+from qcodes.instrument.parameter import ManualParameter
+from pycqed.instrument_drivers.acquisition_devices.base import \
+    AcquisitionDevice
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
+from vc707_python_interface.modules.base_module import BaseModule
 import logging
+
+
 log = logging.getLogger(__name__)
 
 
 class VC707(VC707_core, AcquisitionDevice):
-    """PycQED acquisition device wrapper for the VC707 FPGA."""
+    """
+    This is the Qudev specific PycQED driver for the VC707 FPGA instrument.
 
+    TODO: Currently the state discrimination integration is not optimal in the
+    way settings (integration weights, state centroids) are configured. Due to
+    the current implementation of the FPGA driver, each time one of these
+    settings is changed for one of the channels, all settings are reuploaded.
+    """
     n_acq_units = 2
-    n_int_acq_channels = 2  # TODO
+    n_acq_channels = 2  # TODO
+    # TODO: Will change with decimation!
     acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
-    #  to record so long traces by default
+    # to record so long traces by default.
     # TODO: In state discrimination mode this is actually 256.
-    acq_weights_n_samples = 4096
-    allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw',
-                                 # 'digitized'
-                                 ],
-                     # 'scope': [],
-                     }
+    acq_max_trace_samples = 4096
+    allowed_modes = {
+        "avg": [], # averaged raw input (time trace) in V
+        "int_avg": [
+            "raw",
+            "digitized", # Single-shot readout
+        ],
+        # "scope": [],
+    }
+    res_logging_indices = {#"raw": 1,  # raw integrated+averaged results
+                           #"digitized": 3,  # thresholded results (0 or 1)
+                           }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
         self.initialize()
+        self.add_parameter(
+            "timeout",
+            unit="s",
+            initial_value=30,
+            parameter_class=ManualParameter,
+            vals=validators.Ints())
         self._acq_integration_weights = {}
         self._last_traces = []
 
     def prepare_poll(self):
         super().prepare_poll()
-        self.averager.run()
+
+        if self._get_fpga_module() == "averager":
+            self.averager.configure()
+            self.averager.run()
+        elif self._get_fpga_module() == "state_discriminator":
+            self.state_discriminator.configure()
+            self.state_discriminator.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        super().acquisition_initialize(
+        self._acquisition_initialize_base(
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
+        self._acquisition_nodes = deepcopy(channels)
+        self._acq_data_type = data_type
 
-        self.averager_nb_samples.set(self.convert_time_to_n_samples(
-            acquisition_length))
-        if mode == 'avg':
-            #  pycqed does timetrace measurements only with a single segment
-            self.averager_nb_segments.set(1)
-        else:
-            self.averager_nb_segments.set(n_results)
-        self.averager_nb_averages.set(averages)
-        self.averager_loop_in_segment.set(False)  # False = TV mode
-        self.averager.configure()
-        self._last_traces = []
+        if self._get_fpga_module() == "averager":
+            self._last_traces = []
+            self.averager_nb_samples.set(
+                self.convert_time_to_n_samples(acquisition_length)
+            )
+            self.averager_nb_averages.set(averages)
+            self.averager_loop_in_segment.set(False) # False = TV mode
 
-    def poll(self, *args, **kwargs):
-        dataset = {}
-        if self._acq_mode in ['avg', 'int_avg']:
-            # int_avg is included because we emulate integration in software
+            if mode == "avg":
+                # pycqed does timetrace measurements only with a single segment
+                self.averager_nb_segments.set(1)
+            elif mode == "int_avg":
+                self.averager_nb_segments.set(n_results)
+
+        elif self._get_fpga_module() == "state_discriminator":
+            self.state_discriminator_settings_nb_samples = \
+                self.convert_time_to_n_samples(acquisition_length)
+            self.state_discriminator_nb_segments.set(n_results)
+            # TODO: loop_cnt seems to be `self.nr_shots * self.nr_averages`, what
+            # exact value do we need to set. In list_ouput mode the FPGA will
+            # return exactly 4**nb_triggers_pow4 values.
+            self.state_discriminator_nb_triggers_pow4.set(
+                math.log(loop_cnt, base=4)
+            )
+            self.state_discriminator_use_list_output.set(True)
+
+    def poll(self, poll_time=0.1) -> dict:
+
+        # Sanity check
+        super()._check_allowed_acquisition()
+
+        # Return empty data if FPGA still running
+        if not self._get_current_fpga_module().has_finished():
+            return {}
+
+        # Read results and update dataset
+        if self._get_current_fpga_module_name() == "averager":
             res = self.averager.read_results()
-            if res.shape[-1] == 0:  # no data received
-                # the avg block below can handle empty arrays, but the int_avg
-                # block cannot, so we just return the empty data already here
-                return dataset
-        else:
-            raise NotImplementedError(
-                f'{self.name}: Currently, mode {self._acq_mode} is not '
-                f'implemented for {self.__class__.__name__}.')
-        last_traces = {}
-        for i in self._acq_units_used:  # each acq. unit (physical input)
-            # channel is a tuple of physical acquisition unit index (0 or 1)
-            # and index of the weighted integration channel
+            if self._acq_mode == "avg":
+                return self._adapt_averager_results(res)
+            elif self._acq_mode == "int_avg":
+                return self._perform_integrated_averager(res)
+        elif self._get_current_fpga_module_name() == "state_discriminator":
+            res = self.state_discriminator.read_results()
+            return self._adapt_state_discriminator_results(res)
+
+    # TODO: Should take in list of tuple (acq_unit, quadrature)
+    def set_classifier_params(self, channels, params):
+        if self._get_current_fpga_module_name == "state_discriminator":
+            if params is not None and 'means_' in params:
+                for qubit in self.state_discriminator_qubits.get():
+                    if qubit.source_adc in [c[0] for c in channels]:
+                        qubit.center_coordinates = params['means_'].ravel()
+
+                self.state_discriminator.load_weights()
+
+    def _adapt_averager_results(self, raw_results) -> dict:
+        """Format the FPGA averager results as expected by PycQED."""
+
+        dataset = {}
+
+        for i in self._acq_units_used:
             int_channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            if self._acq_mode == 'avg':
-                # i*2 + n takes Re (n=0) or Im (n=1) of the i-th physical
-                # input. The index 0 is because pycqed does timetrace
-                # measurements only with a single segment.
-                # FIXME: check in which cases Im is useful (when using
-                #  demodulation?)
-                dataset.update({(i, ch): [res[i*2 + n][0]]
-                                for n, ch in enumerate(int_channels)})
-            elif self._acq_mode == 'int_avg':
-                last_traces[i] = res[i * 2:i * 2 + 2]
-                for ch in int_channels:  # each weighted integration channel
-                    weights = self._acq_integration_weights[(i, ch)]
-                    integration_result = []
-                    for seg in range(self._acq_n_results):  # each segment
-                        # i*2 (i*2+1) takes Re (Im) of the i-th physical
-                        # input. Note that Im is useful only with DDC.
-                        # FIXME: verify sign & normalization factor
-                        integration_result.append(
-                            np.matrix.dot(res[i * 2][seg],
-                                          weights[0][:res.shape[-1]]) +
-                            np.matrix.dot(res[i * 2 + 1][seg],
-                                          weights[1][:res.shape[-1]])
-                        )
-                    dataset[(i, ch)] = [np.array(integration_result)]
-        self._last_traces.append(last_traces)
+            dataset.update({(i, ch): [raw_results[i*2 + n][0]]
+                            for n, ch in enumerate(int_channels)})
+
         return dataset
 
+    def _adapt_state_discriminator_results(self, raw_results) -> dict:
+        """Format the FPGA averager results as expected by PycQED."""
+
+        dataset = {}
+
+        # TODO: What format is expected? The doc says "returns fraction of shots
+        # based on the threshold defined in the UHFQC".
+        for i in self._acq_units_used:
+            dataset[i] = raw_results
+
+        return dataset
+
+    def _perform_integrated_averager(self, averager_results) -> dict:
+        """Emulates integrated averager in software."""
+
+        dataset = {}
+
+        for acq_unit in self._acq_units_used:  # each acq. unit (physical input)
+            # channel is a tuple of physical acquisition unit index (0 or 1)
+            # and index of the weighted integration channel
+            int_channels = [
+                ch[1] for ch in self._acquisition_nodes if ch[0] == acq_unit
+            ]
+
+            for ch in int_channels:
+                # Retrieve weights
+                weights = self._acq_integration_weights[(acq_unit, ch)]
+
+                # Integrate each segment with weights
+                integration_result = \
+                    np.dot(integration_result[acq_unit * 2, :, :],
+                           weights[0][:averager_results.shape[-1]]) + \
+                    np.dot(integration_result[acq_unit * 2 + 1, :, :],
+                           weights[1][:averager_results.shape[-1]])
+
+                dataset[(acq_unit, ch)] = [np.array(integration_result)]
+
+        return dataset
+
+#    def get_value_properties(self, data_type="raw", acquisition_length=None):
+#        raise NotImplementedError(
+#            "get_value_properties still needs to be implemented for using "
+#            "the VC707 in integration mode.")
+
     def _acquisition_set_weight(self, channel, weight):
+        super()._acquisition_set_weight()
+
+        # Store a copy for software-emulated integration
         self._acq_integration_weights[channel] = weight
+
+        for qubit in self.state_discriminator_qubits.get():
+            if qubit.source_adc == channel:
+                qubit.weights = weight
+
+        self.state_discriminator.load_weights()
+
+    def _get_current_fpga_module_name(self) -> str:
+        """Helper function that checks which FPGA module must be used."""
+
+        if self._acq_mode == "avg" or \
+           (self._acq_mode == "int_avg" and self._acq_data_type == "raw"):
+            return "averager"
+        elif self._acq_mode == "int_avg" and self._acq_data_type == "digitized":
+            return "state_discriminator"
+        else:
+            raise ValueError(f"Unknow fpga mode for mode '{self._acq_mode}' "
+                             f"and data type '{self._acq_mode}'.")
+
+    def _get_current_fpga_module(self) -> BaseModule:
+        """Returns the FPGA module that is used with the acquisition mode."""
+
+        if self._get_current_fpga_module_name() == "averager":
+            return self.averager
+        elif self._get_current_fpga_module_name() == "state_discriminator":
+            return self.state_discriminator
