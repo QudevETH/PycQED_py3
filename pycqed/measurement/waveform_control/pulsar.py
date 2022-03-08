@@ -1884,7 +1884,6 @@ class SHFQAPulsar:
                 acq = metadata.get('acq', False)
                 h = tuple([chid_to_hash.get(chid, None) for chid in chids])
                 wave_idx = hash_to_index_map.get(h, None)
-                print(f"wave_idx = {wave_idx}")
                 wave_mask = f'QA_GEN_{wave_idx}' if wave_idx is not None \
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'

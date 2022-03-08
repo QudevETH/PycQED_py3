@@ -5,8 +5,7 @@ from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
-from zhinst.qcodes.driver.devices.shfqa import SHFQA as SHFQA_core
-from zhinst.qcodes.driver.devices import DEVICE_CLASS_BY_MODEL
+from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer, Checkpoint
 import logging
@@ -363,10 +362,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 f"/{self.devname}/scopes/0/channels/{scope_ch}/enable",
                 1)
         if self.seqtrigger is None:
-            self.scope.trigger.channel(
+            self.scopes[0].trigger.channel(
                 'channel0_trigger_input0')
         else:
-            self.scope.trigger.channel(
+            self.scopes[0].trigger.channel(
                 f'channel{self.seqtrigger}_sequencer_trigger0')
         # Always single acq. Would continuous mode be useful in some cases?
         self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
@@ -448,12 +447,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def _arm_scope(self):
         # FIXME: is it normal that 'single' gets reset after each acq???
-        self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
-        path = f"/{self.devname}/scopes/0/enable"
-        if self.daq.getInt(path) == 1:
-            self.daq.setInt(path, 0)
-            self._controller._assert_node_value(path, 0, timeout=self.timeout())
-        self.daq.syncSetInt(path, 1)
+        # self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
+        # path = f"/{self.devname}/scopes/0/enable"
+        # if self.daq.getInt(path) == 1:
+        #     self.daq.setInt(path, 0)
+        #     self._controller._assert_node_value(path, 0, timeout=self.timeout())
+        # self.daq.syncSetInt(path, 1)
+        self.scopes[0].stop()
+        self.scopes[0].run(single=1)
+
 
     @Timer()
     def poll(self, *args, **kwargs):
@@ -521,9 +523,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     self._arm_scope()
                     # FIXME this is blocking, to get enough data to average
                     #  in the driver (not the usual behaviour of poll)
-                    self._controller._assert_node_value(
-                        f"/{self.devname}/scopes/0/enable", 0,
-                        timeout=self.timeout())
+                    self.scopes[0].wait_done(timeout=self.timeout())
                     path = f"/{self.devname}/scopes/0/channels/{i}/wave"
                     data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
                     # This is a 1-D complex time trace
@@ -624,7 +624,3 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         except:  # If impossible to remove, just leave that in the output
                             pass
             return shf_settings
-
-
-# TODO add comment
-DEVICE_CLASS_BY_MODEL["SHFQA"] = SHFQA
