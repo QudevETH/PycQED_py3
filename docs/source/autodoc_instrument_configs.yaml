@@ -16,6 +16,10 @@ Device:
   qubits: []
   connectivity_graph: []
 
+Agilent_E8527D:
+  virtual: True
+  address: "GPIB0::7::INSTR"
+
 ZI_PQSC:
   device: "dev10"
   server: "emulator"
