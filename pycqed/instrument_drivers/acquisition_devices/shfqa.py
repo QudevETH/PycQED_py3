@@ -504,8 +504,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                * scaling_factor]
                      for n, ch in enumerate(channels)})
                 self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
-            elif self.use_hardware_sweeper():  # spectroscopy hard sweep
-                raise NotImplementedError('Hard Sweep not implemented')
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 0:  # spectroscopy
                 progress = self.daq.getInt(
