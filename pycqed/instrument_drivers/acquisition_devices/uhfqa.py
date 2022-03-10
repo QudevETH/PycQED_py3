@@ -29,8 +29,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
     acq_sampling_rate = 1.8e9
     acq_weights_n_samples = 4097
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized', 'lin_trans'],
-                     'int_avg_corr': ['corr', 'digitized_corr'],
+                     'int_avg': ['raw', 'digitized', 'lin_trans', 'raw_corr',
+                                 'digitized_corr'],
                      'scope': [],
                      'sum': [],
                      'swp_pts': [],
