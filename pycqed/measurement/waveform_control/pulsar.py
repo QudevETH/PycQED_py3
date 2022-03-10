@@ -1743,7 +1743,6 @@ class SHFQAPulsar:
                 for cw, chid_to_hash in codewords.items():
                     if cw == 'metadata':
                         acq = chid_to_hash.get('acq', False)
-                        if acq == 'sweeper':
                         if 'sweeper' in acq:
                             is_spectroscopy = True
                     hi = chid_to_hash.get(chids[0], None)
