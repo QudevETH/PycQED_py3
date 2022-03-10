@@ -1263,7 +1263,14 @@ def read_from_hdf(data_dict, hdf_group):
                 val_to_store = list(value[()])
             if path[-2] == path[-1]:
                 path = path[:-1]
-            add_param('.'.join(path), val_to_store, data_dict)
+            was_array = isinstance(val_to_store, np.ndarray)
+            val_to_store = convert_attribute(val_to_store)
+            if was_array:
+                val_to_store = np.array(val_to_store)
+            try:
+                add_param('.'.join(path), val_to_store, data_dict)
+            except Exception:
+                log.warning(f'Could not load path {".".join(path)}.')
 
     path = hdf_group.name.split('/')[1:]
     for key, value in hdf_group.attrs.items():
@@ -1283,7 +1290,10 @@ def read_from_hdf(data_dict, hdf_group):
             value = convert_attribute(value)
             if key == 'cal_points' and not isinstance(value, str):
                 value = repr(value)
-        add_param('.'.join(temp_path), value, data_dict)
+        try:
+            add_param('.'.join(temp_path), value, data_dict)
+        except Exception:
+            log.warning(f'Could not load path {".".join(path)}.')
 
     if 'list_type' in hdf_group.attrs:
         if (hdf_group.attrs['list_type'] == 'generic_list' or
@@ -1296,8 +1306,11 @@ def read_from_hdf(data_dict, hdf_group):
                 data_list = tuple(data_list)
             if path[-1] == 'sweep_points':
                 data_list = sp_mod.SweepPoints(data_list)
-            add_param('.'.join(path), data_list, data_dict,
-                      add_param_method='replace')
+            try:
+                add_param('.'.join(path), data_list, data_dict,
+                          add_param_method='replace')
+            except Exception:
+                log.warning(f'Could not load path {".".join(path)}.')
         else:
             raise NotImplementedError('cannot read "list_type":"{}"'.format(
                 hdf_group.attrs['list_type']))
