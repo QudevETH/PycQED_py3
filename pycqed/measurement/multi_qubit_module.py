@@ -41,10 +41,10 @@ def get_correlation_channels(qubits, self_correlated, **kw):
     """
     if self_correlated:
         return list(itertools.combinations_with_replacement(
-            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
+            [qb.get_acq_int_channels(n_channels=1)[0] for qb in qubits], r=2))
     else:
         return list(itertools.combinations(
-            [qb.get_acq_channels(n_channels=1)[0] for qb in qubits], r=2))
+            [qb.get_acq_int_channels(n_channels=1)[0] for qb in qubits], r=2))
 
 
 def get_multiplexed_readout_detector_functions(df_name, qubits,
@@ -108,7 +108,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             to be correlated
         add_channels (dict): keys are acquisition devices and values are
             lists/tuples of lists/tuples with pairs of acquisition channels to
-            be used IN ADDITION to those returned by qb.get_acq_channels()
+            be used IN ADDITION to those returned by qb.get_acq_int_channels()
         det_get_values_kws (dict): on used with the ClassifyingPollDetector.
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
@@ -129,7 +129,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     uhfs = set()
     uhf_instances = {}
     max_int_len = {}
-    channels = {}
+    int_channels = {}
+    inp_channels = {}
     acq_classifier_params = {}
     acq_state_prob_mtxs = {}
     for qb in qubits:
@@ -141,9 +142,11 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             max_int_len[uhf] = 0
         max_int_len[uhf] = max(max_int_len[uhf], qb.acq_length())
 
-        if uhf not in channels:
-            channels[uhf] = []
-        channels[uhf] += qb.get_acq_channels()
+        if uhf not in int_channels:
+            int_channels[uhf] = []
+            inp_channels[uhf] = []
+        int_channels[uhf] += qb.get_acq_int_channels()
+        inp_channels[uhf] += qb.get_acq_inp_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
@@ -174,7 +177,10 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     else:  # is a dict
         pass
     for uhf in add_channels:
-        channels[uhf] += add_channels[uhf]
+        # FIXME: this currently only allows adding integration channels (not
+        #  input channels) and only on AcqDevs that are already part of the
+        #  acquisition.
+        int_channels[uhf] += add_channels[uhf]
 
     if correlations is None:
         correlations = {uhf: [] for uhf in uhfs}
@@ -205,35 +211,50 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     if df_name == 'int_log_det':
         return det.MultiPollDetector([
             det.IntegratingSingleShotPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 data_type='raw', **kw)
             for uhf in uhfs])
     elif df_name == 'dig_log_det':
         return det.MultiPollDetector([
             det.IntegratingSingleShotPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 data_type='digitized', **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 **kw)
+            for uhf in uhfs])
+    elif df_name == 'int_avg_det_spec':
+        # FIXME AWG=AWG unnecessarily slow, should find a way to only
+        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        return det.MultiPollDetector([
+            det.IntegratingAveragingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
+                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                real_imag=False, single_int_avg=True, **kw)
             for uhf in uhfs])
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='digitized', **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_classif_det':
         return det.MultiPollDetector([
             det.ClassifyingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
                 get_values_function_kwargs=det_get_values_kws[uhf],
                 data_type='raw', **kw)
@@ -242,13 +263,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         return det.MultiPollDetector([
             det.AveragingPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
-                acquisition_length=max_int_len[uhf], channels=channels[uhf],
+                acquisition_length=max_int_len[uhf],
+                channels=inp_channels[uhf],
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_corr_det':
         return det.MultiPollDetector([
             det.UHFQC_correlation_detector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], data_type='raw_corr', **kw)
@@ -256,7 +279,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     elif df_name == 'dig_corr_det':
         return det.MultiPollDetector([
             det.UHFQC_correlation_detector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, channels=channels[uhf],
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], data_type='digitized_corr',
