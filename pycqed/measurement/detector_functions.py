@@ -63,9 +63,8 @@ class Detector_Function(object):
         try:
             # Go through all the attributes of itself, pass them to
             # savable_attribute_value, and store them in det_metadata
-            # det_metadata = {k: self.savable_attribute_value(v, self.name)
-            #                 for k, v in self.__dict__.items()}
-            det_metadata = {}
+            det_metadata = {k: self.savable_attribute_value(v, self.name)
+                            for k, v in self.__dict__.items()}
 
             # Change the 'detectors' entry from a list of dicts to a dict with
             # keys uhfName_detectorName
@@ -785,8 +784,19 @@ class MultiPollDetector(PollDetector):
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
         # to be used in MC.get_percdone()
-        self.acq_data_len_scaling = \
-            self.detectors[0].acq_data_len_scaling
+        self.acq_data_len_scaling = self.detectors[0].acq_data_len_scaling
+        self.detector_control = self.detectors[0].detector_control
+        # Check that these are consistent over all detectors
+        # (can be made more compact if this is to be done for more params)
+        for det in self.detectors:
+            if det.acq_data_len_scaling != self.acq_data_len_scaling:
+                raise ValueError(f"Detectors {det} and {self.detectors} have" +
+                                 " a different acq_data_len_scaling which is" +
+                                 " currently not supported")
+            if det.detector_control != self.detector_control:
+                raise ValueError(f"Detectors {det} and {self.detectors} have" +
+                                 " a different detector_control which is" +
+                                 " currently not supported")
 
         # currently only has support for classifier detector data
         self.correlated = kw.get('correlated', False)
@@ -802,7 +812,7 @@ class MultiPollDetector(PollDetector):
             self.value_units += ['']
 
     @Timer()
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points=None):
         """
         Calls the prepare method of each polling detector in self.detectors
         and defines self.progress_scaling to be used in poll_data to decide
@@ -812,6 +822,8 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        if self.detector_control == 'hard' and sweep_points is None:
+            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -845,6 +857,9 @@ class MultiPollDetector(PollDetector):
             data_processed = np.concatenate([data_processed, corr_data], axis=0)
 
         return data_processed
+
+    def acquire_data_point(self):
+        return self.get_values()
 
     def get_correlations_classif_det(self, data):
         """
@@ -943,10 +958,10 @@ class MultiPollDetector(PollDetector):
 class AveragingPollDetector(PollDetector):
 
     """
-    Poling detector used for acquiring averaged timetraces.
+    Polling detector used for acquiring averaged timetraces.
     """
 
-    def __init__(self, acq_dev, AWG=None, channels=(0, 1),
+    def __init__(self, acq_dev, AWG=None, channels=((0, 0), (0, 1)),
                  nr_averages=1024, acquisition_length=2.275e-6, **kw):
         """
         Init of the AveragingPollDetector class.
@@ -956,8 +971,9 @@ class AveragingPollDetector(PollDetector):
             :param AWG: instance of AcquisitionDevice. Must be provided when a
                 single polling detector is passed to detectors.
             channels (tuple or list): Channels on which the acquisition should
-                be performed. See more details in the docstring of
-                AcquisitionDevice.acquisition_initialize.
+                be performed. Each channel is identified by a tuple of
+                acquisition unit and quadrature index (0=I, 1=Q). See also
+                the docstring of AcquisitionDevice.acquisition_initialize.
             nr_averages (int): number of acquisition averages as a power of 2.
             acquisition_length (float): acquisition duration in seconds
 
@@ -1325,7 +1341,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
             correlation_channel = -1
 
-            for ch in range(self.acq_dev.n_acq_channels):
+            for ch in range(self.acq_dev.n_acq_int_channels):
                 ch = (0, ch)
                 # Find the first unused channel to set up as correlation
                 if ch not in used_channels:

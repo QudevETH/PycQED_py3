@@ -381,112 +381,155 @@ def get_plot_title_from_folder(folder):
     return default_plot_title
 
 
-def compare_instrument_settings_timestamp(timestamp_a, timestamp_b,
-                                          folder=None):
-    '''
-    Takes two analysis objects as input and prints the differences between
-    the instrument settings. Currently it only compares settings existing in
-    object_a, this function can be improved to not care about the order of
-    arguments.
-    '''
+def _compare_instrument_settings_groups(sets_a, sets_b, name_a, name_b,
+                                        parent='', instruments='all',
+                                        verbose=True):
+    """Helper function to implement recursion in compare_instrument_settings
+    """
+    all_msg = []
+    all_diff = {}
+    for ins_key in sorted(set(list(sets_a.keys()) + list(sets_b.keys()))):
+        if not parent and instruments != 'all' and ins_key not in instruments:
+            continue
+        ins_name = ins_key if not parent else '.'.join([parent, ins_key])
+        if ins_key not in sets_a.keys():
+            all_msg.append(f'\nInstrument "{ins_name}" missing in {name_a}.\n')
+            continue
+        if ins_key not in sets_b.keys():
+            all_msg.append(f'\nInstrument "{ins_name}" missing in {name_b}.\n')
+            continue
 
-    h5mode = 'r'
-    h5filepath = measurement_filename(get_folder(timestamp_a, folder=folder))
-    analysis_object_a = h5py.File(h5filepath, h5mode)
-    try:
-        h5filepath = measurement_filename(get_folder(timestamp_b,
-                                                     folder=folder))
-        analysis_object_b = h5py.File(h5filepath, h5mode)
-        try:
-            sets_a = analysis_object_a['Instrument settings']
-            sets_b = analysis_object_b['Instrument settings']
-        except Exception as e:
-            analysis_object_b.close()
-            raise e
-    except Exception as e:
-        analysis_object_a.close()
-        raise e
+        ins_a = sets_a[ins_key]
+        ins_b = sets_b[ins_key]
+        msg = ''
+        diff = {}
+        ins_childs = ins_name.split('.')[1:]
 
-    for ins_key in list(sets_a.keys()):
-        print()
-        try:
-            sets_b[ins_key]
-
-            ins_a = sets_a[ins_key]
-            ins_b = sets_b[ins_key]
-            print('Instrument "%s" ' % ins_key)
-            diffs_found = False
-            for par_key in list(ins_a.attrs.keys()):
+        for par_key in sorted(set(list(ins_a.attrs.keys())
+                                  + list(ins_b.attrs.keys()))):
+            par_name = '.'.join(ins_childs + [par_key])
+            vals = {}
+            if par_key not in ins_a.attrs.keys():
+                msg += (f'    Parameter "{par_name}" missing in {name_a}.\n')
+            else:
+                vals[name_a] = ins_a.attrs[par_key]
                 try:
-                    ins_b.attrs[par_key]
-                except KeyError:
-                    print('Instrument "%s" does have parameter "%s"' % (
-                        ins_key, par_key))
-
-                try:
-                    np.testing.assert_equal(eval(ins_a.attrs[par_key]),
-                                            eval(ins_b.attrs[par_key]))
-                except AssertionError:
-                    print('    "%s" has a different value '
-                          ' "%s" for %s, "%s" for %s' % (
-                              par_key, eval(ins_a.attrs[par_key]), timestamp_a,
-                              eval(ins_b.attrs[par_key]), timestamp_b))
-                    diffs_found = True
+                    vals[name_a] = eval(vals[name_a])
                 except Exception:
-                    # This happens if ins_a.attrs[par_key] or
-                    # ins_b.attrs[par_key] cannot be treated by eval.
-                    print('    Could not compare "%s".' % par_key)
-                    diffs_found = True
-
-            if not diffs_found:
-                print('    No differences found')
-        except KeyError:
-            print('Instrument "%s" not present in second settings file'
-                  % ins_key)
-    analysis_object_a.close()
-    analysis_object_b.close()
-
-
-def compare_instrument_settings(analysis_object_a, analysis_object_b):
-    '''
-    Takes two analysis objects as input and prints the differences between the
-    instrument settings. Currently it only compares settings existing in
-    object_a, this function can be improved to not care about the order
-    of arguments.
-    '''
-    sets_a = analysis_object_a.data_file['Instrument settings']
-    sets_b = analysis_object_b.data_file['Instrument settings']
-
-    for ins_key in list(sets_a.keys()):
-        print()
-        try:
-            sets_b[ins_key]
-
-            ins_a = sets_a[ins_key]
-            ins_b = sets_b[ins_key]
-            print('Instrument "%s" ' % ins_key)
-            diffs_found = False
-            for par_key in list(ins_a.attrs.keys()):
+                    pass  # compare raw string
+            if par_key not in ins_b.attrs.keys():
+                msg += (f'    Parameter "{par_name}" missing in {name_b}.\n')
+            else:
+                vals[name_b] = ins_b.attrs[par_key]
                 try:
-                    ins_b.attrs[par_key]
-                except KeyError:
-                    print('Instrument "%s" does have parameter "%s"' % (
-                        ins_key, par_key))
+                    vals[name_b] = eval(vals[name_b])
+                except Exception:
+                    pass  # compare raw string
+            if len(vals) < 2:
+                diff[par_name] = vals
+                continue
+            try:
+                np.testing.assert_equal(vals[name_a], vals[name_b])
+            except AssertionError:
+                msg += (f'    "{par_name}" has a different value: '
+                        f'"{vals[name_a]}" for {name_a}, '
+                        f'"{vals[name_b]}" for {name_b}\n')
+                diff[par_name] = vals
 
-                if eval(ins_a.attrs[par_key]) == eval(ins_b.attrs[par_key]):
-                    pass
-                else:
-                    print('    "%s" has a different value '
-                          ' "%s" for a, "%s" for b' % (
-                              par_key, eval(ins_a.attrs[par_key]),
-                              eval(ins_b.attrs[par_key])))
-                    diffs_found = True
+        new_msg, new_diff = _compare_instrument_settings_groups(
+            ins_a, ins_b, name_a, name_b, ins_name, verbose=verbose)
+        msg += new_msg
+        diff.update(new_diff)
 
-            if not diffs_found:
-                print('    No differences found')
-        except KeyError:
-            print('Instrument "%s" not present in second settings file'
-                  % ins_key)
+        if len(diff):
+            if not parent:
+                msg = f'\nInstrument "{ins_key}"\n' + msg
+                all_diff[ins_key] = diff
+            else:
+                all_diff = diff
+            if verbose and not parent:
+                print(msg)
+            else:
+                all_msg.append(msg)
+    return '\n'.join(all_msg), all_diff
+
+
+def compare_instrument_settings(a, b, folder=None, instruments='all',
+                                output='print'):
+    """Compare instrument settings from two hdf files.
+
+    Args:
+        a (str, obj): first hdf file identified by a timestamp or by giving an
+            analysis object containing an open hdf file as property data_file
+        b (str, obj): second hdf file identified by a timestamp or by giving an
+            analysis object containing an open hdf file as property data_file
+        folder (str): data directory, only used if a or b is a timestamp
+            (default: the stored datadir)
+        instruments (str, list of str): either 'all' (default) or a list of
+            instrument names to compare only a subset of instruments
+        output (str): One of the following output formats:
+            'print' (default): print comparison report and return None
+            'str': return comparison report as str
+            'dict': return comparison results as a dict
+            'html': return results as a table in an IPython HTML object
+
+    Returns:
+        None or the results as str or dict, see parameter of arg output
+    """
+    h5mode = 'r'
+    files_to_close = []
+    try:
+        if isinstance(a, str):
+            h5filepath = measurement_filename(get_folder(a, folder=folder))
+            file_a = h5py.File(h5filepath, h5mode)
+            files_to_close += [file_a]
+        else:
+            file_a = a.data_file
+            a = getattr(a, 'timestamp', 'file a').replace('/', '_')
+        if isinstance(b, str):
+            h5filepath = measurement_filename(get_folder(b, folder=folder))
+            file_b = h5py.File(h5filepath, h5mode)
+            files_to_close += [file_b]
+        else:
+            file_b = b.data_file
+            b = getattr(b, 'timestamp', 'file b').replace('/', '_')
+        sets_a = file_a['Instrument settings']
+        sets_b = file_b['Instrument settings']
+
+        msg, diff = _compare_instrument_settings_groups(
+            sets_a, sets_b, a, b, instruments=instruments,
+            verbose=(output == 'print'))
+    except Exception:
+        for f in files_to_close:
+            f.close()
+        raise
+    if output == 'str':
+        return msg
+    elif output == 'dict':
+        return diff
+    elif output == 'html':
+        from IPython.display import HTML
+        missing = '<b>!!! MISSING !!!</b>'
+        html = f'<table><tr>'
+        html += f'<td></td><td></td><td><b>{a}</b></td>' \
+                f'<td><b>{b}</b></td></tr>'
+        for k, v in diff.items():
+            html += f'<tr rowspan={len(v)}><td><b>{k}</b></td>'
+            first = True
+            for par, vals in v.items():
+                if not first:
+                    html += f'<tr><td></td>'
+                first = False
+                html += f"<td>{par}</td>"
+                html += f"<td>{vals.get(a, missing)}</td>"
+                html += f"<td>{vals.get(b, missing)}</td>"
+                html += f'</tr>'
+        html += f'</tr></table>'
+        return HTML(html)
+
+
+# The following is for backwards-compatibility
+compare_instrument_settings_timestamp = compare_instrument_settings
 
 
 def get_timestamps_in_range(timestamp_start, timestamp_end=None,
