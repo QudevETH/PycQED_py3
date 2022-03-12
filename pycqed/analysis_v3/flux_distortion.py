@@ -15,7 +15,7 @@ from pycqed.analysis import fitting_models as fit_mods
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.measurement.waveform_control import fluxpulse_predistortion as fpdist
 from pycqed.measurement import sweep_points as sp_mod
-import pycqedscripts.scripts.predistortion_filters.IIR_fitting as IIR_fitting
+import time
 
 import sys
 pp_mod.search_modules.add(sys.modules[__name__])
@@ -734,10 +734,10 @@ def fd_select_from_list(data_dict, keys_in, keys_out, index, **params):
             ko, hlp_mod.get_param(ki, data_dict, **params)[index],
             data_dict, **params)
 
-def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='JB',
+def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='multiexp',
                set_param_hints=True, fixed_A=None, return_expmod=False,
                start_vals=None, **params):
-    if method not in ['JB', 'JB_iter', 'integral', 'multiexp']:
+    if method not in ['integral', 'multiexp']:
         raise NotImplementedError(f"Method {method} not implemented.")
     if isinstance(fixed_A, str):  # a key was given
         fixed_A = hlp_mod.get_param(fixed_A, data_dict, **params)
@@ -761,52 +761,6 @@ def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='JB',
         params_with_update = deepcopy(params)
         if params_with_update.get('add_param_method', None) is None:
             params_with_update['add_param_method'] = 'update'
-        if method in ['JB', 'JB_iter']:
-            prep_data, delays_filter, dt_osc, i_start, i_end, t_end = \
-                IIR_fitting.prepare_data(
-                    np.array([data[0], data[1] / pulse_amp]).T,
-                    plot=False)
-            lmfit_model = deepcopy(IIR_fitting.f_exp_model)
-            initial_values_dict = hlp_mod.get_param(
-                'initial_values_dict', data_dict, default_value={}, **params)
-            if fixed_A is not None:
-                lmfit_model.set_param_hint('A', vary=False)
-                initial_values_dict.update({'A': fixed_A})
-            if method == 'JB_iter':
-                if fit_range is not None:
-                    fit_range = [np.array(fit_range)]
-                IIR_coeffs, data_corr, fit_res = \
-                    IIR_fitting.iterate_IIR_fitting_exp_model(
-                        prep_data, i_start, i_end, keep_i_end=False,
-                        fitting_ranges=fit_range,
-                        dt_awg=dt, lmfit_model=lmfit_model,
-                        n_fits=1, plot=False, plot_lmfit=False,
-                        IIR_filter_coeffs={},
-                        initial_values_dict=initial_values_dict,
-                        set_param_hints=set_param_hints, folder=folder)
-                if return_expmod:
-                    tmp_dict = {'iir': list(IIR_coeffs.values())[0], 'dt': dt}
-                    fd_IIR_to_expmod(tmp_dict, ['iir'], ['expmod'], **params)
-                    hlp_mod.add_param(ko, tmp_dict['expmod'], data_dict,
-                                      **params)
-                else:
-                    hlp_mod.add_param(ko, list(IIR_coeffs.values())[0],
-                                      data_dict, **params)
-                if kcorr is not None:
-                    data_corr[:,1] *= pulse_amp
-                    hlp_mod.add_param(kcorr, data_corr.T, data_dict, **params)
-            else:
-                mask = np.logical_and(data[0] > fit_range[0],
-                                      data[0] < fit_range[1])
-                fit_res, dt_osc = IIR_fitting.fit_IIR(
-                    np.array([data[0][mask], data[1][mask] / pulse_amp]).T,
-                    initial_values_dict, lmfit_model=lmfit_model,
-                    plot=False, folder=folder)
-                A, B, tau = [fit_res.result.params[p].value
-                             for p in ['A', 'B', 'tau']]
-            hlp_mod.add_param('fit_dicts',
-                              {f'IIR_{method}_{ki}': dict(fit_res=fit_res)},
-                              data_dict, **params_with_update)
         if method in ['integral', 'multiexp']:
             mask = np.logical_and(data[0] >= fit_range[0],
                                   data[0] <= fit_range[1])
@@ -833,7 +787,7 @@ def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='JB',
             B = [fit_res.values.get(f'B{i}') for i in range(N)]
             tau = np.array(
                 [fit_res.values.get(f'tau{i}') for i in range(N)]) * t_factor
-        if method in ['integral', 'JB', 'multiexp']:
+        if method in ['integral']:
             if return_expmod:
                 hlp_mod.add_param(ko, [A, B, tau], data_dict, **params)
             else:
@@ -1021,7 +975,7 @@ def fd_export_IIR(data_dict, keys_in, keys_out=None, keys_out_exported=None,
         ch = hlp_mod.get_param(k, data_dict, **params)
     iir_dict = {f'IIR_{i}': [a, b] for i, [a, b]
                 in enumerate(zip(iir[0], iir[1]))}
-    file_name = IIR_fitting.export_IIR_coeffs(
+    file_name = export_IIR_coeffs(
         iir_dict, fluxline=mobjn, awg_channel=ch, folder=folder)
     if keys_out is not None:
         hlp_mod.add_param(
@@ -1169,3 +1123,38 @@ class fd_combine(CombiningNode):
         else:
             data = np.concatenate([d for d in data_in])
         return data
+
+
+def export_IIR_coeffs(IIR_filter_coeffs_dict, fluxline='FL_XY',
+                      awg_channel=None, step_resp_filename=None, folder=None):
+    '''
+    filter export helper: exports the IIR filters in a way that is compatible with
+    the pycqed filter import function
+
+    Args:
+        IIR_filter_coeffs_dict (dict): dictionary containing the predistortion IIR filters
+        fluxline (str): flux line name, e.g. 'FL3'
+        awg_channel (str): AWG channel name, e.g. 'AWG2_ch1'
+        step_resp_filename:
+        folder (String): path ot the associated timestamp
+    Returns:
+        filename (String): path of the csv file saved
+    '''
+    if awg_channel is not None:
+        awg_channel = '_' + awg_channel
+    elif step_resp_filename is None:
+        awg_channel = ''
+    else:
+        awg_channel = '_' + step_resp_filename[-11:-4]
+
+    IIR_filter_array = np.zeros((len(IIR_filter_coeffs_dict), 3))
+    for i, key in enumerate(IIR_filter_coeffs_dict.keys()):
+        IIR_filter_array[i, 0] = IIR_filter_coeffs_dict[key][0][1]
+        IIR_filter_array[i, 1:] = IIR_filter_coeffs_dict[key][1]
+
+    file_name = '{}_IIR_filter_coeffs_{}{}.csv'.format(time.strftime(
+        "%Y%m%d_%H%M%S"), fluxline, awg_channel)
+    print(folder, file_name, os.path.join(folder, file_name), sep='\n')
+    np.savetxt(os.path.join(folder, file_name), IIR_filter_array,
+               delimiter=',')
+    return file_name
