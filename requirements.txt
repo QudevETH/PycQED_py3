@@ -5,8 +5,8 @@ matplotlib
 scipy
 sympy
 cython
-pyqt5
-tensorflow==1.13.2
+PyQt6
+tensorflow
 pandas
 pyyaml
 psutil
@@ -18,8 +18,7 @@ requests
 zhinst
 pyqtgraph
 qutip
-# current version of Qcodes seems not to support pyvisa 1.11.x
-pyvisa==1.9.1
+pyvisa
 pyserial
 nidaqmx
 pylint

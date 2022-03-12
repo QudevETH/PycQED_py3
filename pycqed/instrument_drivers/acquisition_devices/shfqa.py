@@ -54,7 +54,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.n_acq_units = len(self.qachannels)
         self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
         self._acq_loop_cnts_last = [None] * self.n_acq_units
-        self.n_acq_channels = len(self.qachannels[0].readout.integrations)
+        self.n_acq_int_channels = len(self.qachannels[0].readout.integrations)
         self._reset_acq_poll_inds()
         self._acq_units_modes = {}
 

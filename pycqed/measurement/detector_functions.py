@@ -961,10 +961,10 @@ class MultiPollDetector(PollDetector):
 class AveragingPollDetector(PollDetector):
 
     """
-    Poling detector used for acquiring averaged timetraces.
+    Polling detector used for acquiring averaged timetraces.
     """
 
-    def __init__(self, acq_dev, AWG=None, channels=(0, 1),
+    def __init__(self, acq_dev, AWG=None, channels=((0, 0), (0, 1)),
                  nr_averages=1024, acquisition_length=2.275e-6, **kw):
         """
         Init of the AveragingPollDetector class.
@@ -974,8 +974,9 @@ class AveragingPollDetector(PollDetector):
             :param AWG: instance of AcquisitionDevice. Must be provided when a
                 single polling detector is passed to detectors.
             channels (tuple or list): Channels on which the acquisition should
-                be performed. See more details in the docstring of
-                AcquisitionDevice.acquisition_initialize.
+                be performed. Each channel is identified by a tuple of
+                acquisition unit and quadrature index (0=I, 1=Q). See also
+                the docstring of AcquisitionDevice.acquisition_initialize.
             nr_averages (int): number of acquisition averages as a power of 2.
             acquisition_length (float): acquisition duration in seconds
 
@@ -1287,7 +1288,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     def __init__(self, acq_dev, AWG=None, integration_length=1e-6,
                  nr_averages=1024,  real_imag=True,
                  channels: list = ((0, 0), (0, 1)),
-                 correlations: list = ((0, 1)),
+                 correlations: list = (((0, 0), (0, 1))),
                  data_type: str = 'raw_corr',
                  used_channels=None, value_names=None, single_int_avg=False,
                  **kw):
@@ -1316,12 +1317,13 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
         if value_names is not None:
             self.value_names = value_names
-        for corr in correlations:
-            self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
-        value_properties = acq_dev.get_value_properties(
-            self.data_type, self.integration_length)
-        self.value_units = ([value_properties['value_unit']] *
-                            len(self.correlations))
+        else:
+            for corr in correlations:
+                self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
+        value_unit = acq_dev.get_value_properties(
+            self.data_type, self.integration_length)['value_unit']
+        for _ in correlations:
+            self.value_units += [f'({value_unit})^2']
 
         self.define_correlation_channels()
 
@@ -1337,13 +1339,12 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             # We can assume that channels belong to acquisition unit 0 because
             # this detector is specific to the UHF. (The acquisition device
             # would raise an error otherwise.)
-            if (0, corr[0]) not in used_channels or (0, corr[1]) not in \
-                   used_channels:
+            if corr[0] not in used_channels or corr[1] not in used_channels:
                 raise ValueError('Correlations should be in used channels')
 
-            correlation_channel = -1
+            correlation_channel = None
 
-            for ch in range(self.acq_dev.n_acq_channels):
+            for ch in range(self.acq_dev.n_acq_int_channels):
                 ch = (0, ch)
                 # Find the first unused channel to set up as correlation
                 if ch not in used_channels:
@@ -1359,7 +1360,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
                     break
                     # FIXME, can currently only use one correlation
 
-            if correlation_channel < 0:
+            if correlation_channel is None:
                 raise ValueError('No free channel available for correlation.')
             else:
                 used_channels += [correlation_channel]
@@ -1378,12 +1379,12 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             # second channel as channel to correlate with.
             copy_int_weights_real = \
                 np.array(self.acq_dev.get(
-                    f'qas_0_integration_weights_{corr[0]}_real')).astype(float)
+                    f'qas_0_integration_weights_{corr[0][1]}_real')).astype(float)
             copy_int_weights_imag = \
                 np.array(self.acq_dev.get(
-                    f'qas_0_integration_weights_{corr[0]}_imag')).astype(float)
+                    f'qas_0_integration_weights_{corr[0][1]}_imag')).astype(float)
 
-            copy_rot_matrix = self.acq_dev.get(f'qas_0_rotations_{corr[0]}')
+            copy_rot_matrix = self.acq_dev.get(f'qas_0_rotations_{corr[0][1]}')
 
             self.acq_dev.set(
                 f'qas_0_integration_weights_{correlation_channel[1]}_real',
@@ -1401,13 +1402,13 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             self.acq_dev.set(
                 f'qas_0_correlations_{correlation_channel[1]}_enable', 1)
             self.acq_dev.set(
-                f'qas_0_correlations_{correlation_channel[1]}_source', corr[1])
+                f'qas_0_correlations_{correlation_channel[1]}_source', corr[1][1])
 
             # If thresholding is enabled, set the threshold for the correlation
             # channel.
             if self.thresholding:
                 thresh_level = \
-                    self.acq_dev.get(f'qas_0_thresholds_{corr[0]}_level')
+                    self.acq_dev.get(f'qas_0_thresholds_{corr[0][1]}_level')
                 self.acq_dev.set(
                     f'qas_0_thresholds_{correlation_channel[1]}_level',
                     thresh_level)

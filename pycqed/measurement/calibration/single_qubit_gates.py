@@ -2383,8 +2383,8 @@ class QScale(SingleQubitGateCalibExperiment):
     """
 
     kw_for_sweep_points = {
-        'qscales': dict(param_name='motzoi', unit='V',
-                        label='Pulse Amplitude', dimension=0,
+        'qscales': dict(param_name='motzoi', unit='',
+                        label='Quadrature scaling, $q$', dimension=0,
                         values_func=lambda q: np.repeat(q, 3))
     }
     default_experiment_name = 'Qscale'
