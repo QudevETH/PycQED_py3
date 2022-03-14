@@ -451,8 +451,6 @@ class Pulsar(Instrument):
         self._hash_to_wavename_table = {}
         self._filter_segments = None
 
-        self.num_seg = 0
-
         Pulsar._instance = self
 
     # TODO: Should Pulsar be a singleton ? Is it really necessary to have such
@@ -911,7 +909,6 @@ class Pulsar(Instrument):
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.
             self._sequence_cache = sequence_cache
-        self.num_seg = len(sequence.segments)
 
         # Reset prequery state
         self.awgs_prequeried = False
