@@ -461,6 +461,10 @@ class Pulsar(Instrument):
     def get_instance(cls):
         return cls._instance
 
+    @staticmethod
+    def _get_pulsar_id_file():
+        return os.path.join(gen.get_pycqed_appdata_dir(), "pulsar_id")
+
     def _use_sequence_cache_parser(self, val):
         if val and not self.use_sequence_cache():
             self.reset_sequence_cache()
@@ -481,29 +485,27 @@ class Pulsar(Instrument):
         self._sequence_cache['hashes'] = {}  # for waveform hashes
         self._sequence_cache['length'] = {}  # for element lengths
 
-    def check_for_other_pulsar(self):
-        """Checks whether another pulsar has programmed the AWGs and resets the
-        sequence cache if this is the case.
+    def check_for_other_pulsar(self) -> bool:
+        """Returns true if another pulsar has programmed the AWGs.
 
         To make this check possible, the pulsar object ID is written to a file
-        in the pycqed app data dir.
+        in the pycqed app data dir, see :meth:`_get_pulsar_id_file` and
+        :meth:`_write_pulsar_check_file`.
         """
 
-        filename = os.path.join(gen.get_pycqed_appdata_dir(), "pulsar_id")
-        current_id = f"{id(self)}"
         try:
-            with open(filename, 'r') as f:
-                stored_id = f.read()
-        # TODO: Not a good practice to silence all kinds of exception. A
-        # specific type of exception should be caught.
-        except:
-            stored_id = None
-        if stored_id != current_id:
-            log.debug('Another pulsar instance has programmed the AWGs. '
-                      'Resetting sequence cache.')
-            self.reset_sequence_cache()
-        with open(filename, 'w') as f:
-            f.write(current_id)
+            with open(self._get_pulsar_id_file(), 'r') as f:
+                stored_id = int(f.read())
+        except FileNotFoundError:
+            return True
+
+        return stored_id != id(self)
+
+    def _write_pulsar_check_file(self):
+        """Set this pulsar as the last one to have programmed the AWGs."""
+
+        with open(self._get_pulsar_id_file(), 'w') as f:
+            f.write(str(id(self)))
 
     def define_awg_channels(self, awg:Instrument, channel_name_map:dict=None):
         """Add an AWG with a channel mapping to the pulsar.
@@ -716,9 +718,8 @@ class Pulsar(Instrument):
         log.info(f'Starting compilation of sequence {sequence.name}')
         t0 = time.time()
         if self.use_sequence_cache():
-            # reset the sequence cache if another pulsar instance has
-            # programmed the AWGs
-            self.check_for_other_pulsar()
+            self.invalid_cache_if_other_pulsar()
+            
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
                 sequence.generate_waveforms_sequences(get_channel_hashes=True)
@@ -914,6 +915,13 @@ class Pulsar(Instrument):
 
         # Reset prequery state
         self.awgs_prequeried = False
+
+    def invalid_cache_if_other_pulsar(self):
+        if self.check_for_other_pulsar():
+            log.debug("Another pulsar instance has programmed the AWGs. "
+                          "Resetting sequence cache.")
+            self.reset_sequence_cache()
+            self._write_pulsar_check_file()
 
     def _hash_to_wavename(self, h):
 

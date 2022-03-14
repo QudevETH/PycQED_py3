@@ -1,4 +1,6 @@
 from unittest import TestCase
+from unittest.mock import patch, Mock, mock_open
+import os
 import random
 
 from pycqed.measurement.waveform_control.pulsar import Pulsar
@@ -72,3 +74,31 @@ class TestPulsar(TestCase):
         segment = Segment("segment", pulses)
         sequence = Sequence("sequence", segments=[segment])
         self.pulsar.program_awgs(sequence)
+
+    def test_reset_sequence_cache(self):
+
+        self.pulsar.reset_sequence_cache()
+
+        self.assertTrue(hasattr(self.pulsar, "_sequence_cache"))
+        self.assertTrue(isinstance(self.pulsar._sequence_cache, dict))
+
+        for key in ["settings", "metadata", "hashes", "length"]:
+            self.assertTrue(self.pulsar._sequence_cache.get(key, None) == {})
+
+    def test_check_for_other_pulsar(self):
+
+        # Create another pulsar, make it override check file
+        pulsar2 = Pulsar("pulsar_test_check_for_other_pulsar")
+        pulsar2._write_pulsar_check_file()
+
+        # Another pulsar should be detected
+        self.assertTrue(self.pulsar.check_for_other_pulsar())
+
+        # Pulsar is now correct instance, so cache should not be reset
+        self.pulsar._write_pulsar_check_file()
+        self.assertFalse(self.pulsar.check_for_other_pulsar())
+
+        # Test case where check file does not exist yet
+        open_raise_file_not_found= mock_open(Mock(side_effect=FileNotFoundError))
+        with patch("builtins.open", new_callable=open_raise_file_not_found):
+            self.assertTrue(self.pulsar.check_for_other_pulsar())
