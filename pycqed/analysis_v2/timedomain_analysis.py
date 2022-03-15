@@ -8822,7 +8822,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         'yvals': func(weights * modulation),
                         'ylabel': 'Voltage, $V$ (arb.u.)',
                         "sharex": True,
-                        "xrange": (0, self.get_param_value('tmax', 1200e-9, 0)),
+                        "xrange": [min(tbase), max(tbase)],
                         "setdesc": label + f"_{i+1}",
                         "do_legend": True,
                         "legend_pos": "upper right",
