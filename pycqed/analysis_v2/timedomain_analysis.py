@@ -8642,8 +8642,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                          in case different bases should be used for different qubits.
                     orthonormalize (bool): Whether or not to orthonormalize the
                         weight basis
-                    tmax (float): time boundary for the plot (not the weights)
-                        in seconds.
                     scale_weights (bool): scales the weights near unity to avoid
                         loss of precision on FPGA if weights are too small
 
