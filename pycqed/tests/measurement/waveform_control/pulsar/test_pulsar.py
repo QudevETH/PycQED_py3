@@ -102,3 +102,28 @@ class TestPulsar(TestCase):
         open_raise_file_not_found= mock_open(Mock(side_effect=FileNotFoundError))
         with patch("builtins.open", new_callable=open_raise_file_not_found):
             self.assertTrue(self.pulsar.check_for_other_pulsar())
+
+    def test_active_awgs(self):
+        
+        # Create pulsar with a few AWGs
+        pulsar = Pulsar("pulsar_test_active_awgs")
+        awgs = set()
+        for i in range(3):
+            awg = VirtualAWG5014(f"awg_test_active_awgs_{i}")
+            pulsar.define_awg_channels(awg)
+            awgs.add(awg.name)
+
+        # All awgs should be active by default
+        self.assertSetEqual(pulsar.active_awgs(), awgs)
+
+        # Disable an AWG and check it is not returned falsely
+        pulsar.awg_test_active_awgs_0_active(False)
+        self.assertSetEqual(
+            pulsar.active_awgs(), 
+            {"awg_test_active_awgs_1", "awg_test_active_awgs_2"}
+        )
+
+        # Disable all AWGs and check set is empty
+        for i in range(3):
+            pulsar.parameters[f"awg_test_active_awgs_{i}_active"].set(False)
+        self.assertSetEqual(pulsar.active_awgs(), set())
