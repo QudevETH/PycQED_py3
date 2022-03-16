@@ -20,27 +20,29 @@ class Agilent_E8527D(E8527D.Agilent_E8527D):
     """
 
 
-    def __init__(self, *args, **kwargs) -> None:
+    # Parameters virtual, frequency_option defined as keyword-only arguments to
+    # keep backward compatibility with existing code
+    def __init__(self, *args, virtual=False, frequency_option="513", **kwargs):
         """Constructor.
 
         Arguments:
+            virtual: Set it to True for virtual (mocked) device.
+            frequency_option: Useful only if ``virtual=True``, this
+                corresponds to the model variant (possible values: see
+                :attr:`FREQUENCY_OPTIONS`).
             args, kwargs: Same arguments as the parent class, see 
-            :class:`qcodes.instrument_drivers.agilent.E8527D.Agilent_E8527D`. 
-            In addition, the following arguments can be provided:
-            * ``virtual``: Set it to True for virtual (mocked) device.
-            * ``frequency_option``: Useful only if ``virtual=True``, this
-              corresponds to the model variant (possible values: see
-              :attr:`FREQUENCY_OPTIONS`).
+                :class:`qcodes.instrument_drivers.agilent.E8527D.Agilent_E8527D`.
         """
 
-        # These parameters are not explicitely added to the signature of
-        # __init__ so as not to potentially break backward compatibility
-        self.virtual = kwargs.pop("virtual", False)
+        self.virtual = virtual
 
-        # Sanity check
+        # Sanity checks
         if self.virtual and kwargs.get("visalib", None) is not None:
             raise ValueError("The visalib should not be changed for the "
                              "virtual E8527D.")
+        if frequency_option not in self.FREQUENCY_OPTIONS:
+            raise ValueError(f"Invalid parameter '{frequency_option=}'. "
+                             f"Possible values: {self.FREQUENCY_OPTIONS}.")
 
         if self.virtual:
 
@@ -48,7 +50,7 @@ class Agilent_E8527D(E8527D.Agilent_E8527D):
 
             # Store dummy (string) values for virtual instrument
             self._virtual_parameters = {
-                "DIAG:CPU:INFO:OPT:DET": kwargs.pop("frequency_option", "513"),
+                "DIAG:CPU:INFO:OPT:DET": frequency_option,
                 "FREQ:CW": "250000",
                 "PHASE": "0.0",
                 "POW:AMPL": "-20.0",
