@@ -301,7 +301,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
         return channel_cfg
 
     def sigout_on(self, ch, on=True):
-        chid = self.get(ch + '_id')
+        chid = self.pulsar.get(ch + '_id')
         if f"{chid}_state" in self.awg.parameters:
             self.awg.set(f"{chid}_state", on)
         else:  # it is a marker channel
