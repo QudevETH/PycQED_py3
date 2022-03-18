@@ -119,7 +119,7 @@ class Segment:
         is instantiated.
         """
         if self.fast_mode:
-            pars_copy = pulse_pars
+            pars_copy = deepcopy(pulse_pars)
         else:
             self.pulse_pars.append(deepcopy(pulse_pars))
             pars_copy = deepcopy(pulse_pars)
