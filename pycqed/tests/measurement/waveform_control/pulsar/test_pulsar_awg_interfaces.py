@@ -19,6 +19,8 @@ from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .ZI_HDAWG_qudev import ZI_HDAWG_qudev
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .UHFQA_core import UHFQA_core
+# from pycqed.instrument_drivers.acquisition_devices.shfqa import \
+#     SHFQA
 
 
 registered_interfaces:List[Type[PulsarAWGInterface]] = [
@@ -50,8 +52,7 @@ class TestPulsarAWGInterface(TestCase):
                                     interface="1GbE", server="emulator")
 
         # TODO: SHFQ currently has no virtual driver, so we do not unit test it.
-        # self.shfqa = SHFQA(f"shfqa_{id}", device="dev8188",
-        #                    interface="1GbE", server="emulator")
+        # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12043", host="localhost")
 
         self.uhfqc = UHFQA_core(f"uhfqc_{id}", device='dev2268',
                                 interface='1GbE', server="emulator")
