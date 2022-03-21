@@ -33,42 +33,55 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
         """
         Class to run and analyze the randomized benchmarking experiment on
         one or several qubits in parallel, using the single-qubit Clifford group
-        :param task_list: list of dicts; see CalibBuilder docstring
-        :param sweep_points: SweepPoints class instance
-            Ex: [{'cliffords': ([0, 4, 10], '', 'Nr. Cliffords')},
-                 {'seeds': (array([0, 1, 2, 3]), '', 'Nr. Seeds')}]
-        :param qubits: list of QuDev_transmon class instances
-        :param sweep_type: dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-            the integers specify which parameter should correspond to the inner
-            sweep (0), and which to the outer sweep (1).
-        :param interleaved_gate: string specifying the interleaved gate in
-            pycqed notation (ex: X90, Y180 etc). Gate must be part of the
-            Clifford group.
-        :param purity: bool indicating whether to do purity benchmarking
-        :param gate_decomposition: string specifying what decomposition to use
-            to translate the Clifford elements into applicable pulses.
-            Possible choices are 'HZ' or 'XY'.
-            See HZ_gate_decomposition and XY_gate_decomposition in
-            pycqed\measurement\randomized_benchmarking\clifford_decompositions.py
-        :param kw: keyword arguments
+
+        Args:
+            task_list (list of dicts): see CalibBuilder docstring
+            sweep_points (SweepPoints class instance):
+                Ex: [{'cliffords': ([0, 4, 10], '', 'Nr. Cliffords')},
+                     {'seeds': (array([0, 1, 2, 3]), '', 'Nr. Seeds')}]
+            qubits (list): QuDev_transmon class instances on which to run
+                measurement
+            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+            interleaved_gate (string): the interleaved gate in pycqed notation
+                (ex: X90, Y180 etc). Gate must be part of the Clifford group.
+            purity (bool): indicates whether to do purity benchmarking
+            gate_decomposition (string): what decomposition to use
+                to translate the Clifford elements into applicable pulses.
+                Possible choices are 'HZ' or 'XY'.
+                See HZ_gate_decomposition and XY_gate_decomposition in
+                measurement\randomized_benchmarking\clifford_decompositions.py
+
+        Keyword arg:
             passed to parent class; see docstring there
 
             - tomo_pulses (list, default: ['I', 'X90', 'Y90']) list of op codes
                 to use as tomography pulses if purity==True
 
-            The following keyword arguments will be used to construct
-            sweep points:
-            - nr_seeds
-            - cliffords
+            The following keyword arguments, if passed, will be used to
+            construct sweep points:
+            - cliffords: numpy array of sequence lengths (specified as
+                total number of Cliffords in a sequence)
+            - nr_seeds: int specifying how many random sequences of each length
+                to measure
+                - the sweep points values that will be constructed from this
+                parameter will be an array or random numbers with nr_seeds
+                columns and len(cliffords) rows, which represent the seeds for
+                the random number generator used to sample a random RB
+                sequence. In the block creation function, the random seeds in
+                this 2D array are used to generate a random RB sequence (via
+                to randomized_benchmarking_sequence(_new)).
+                See also the class attribute kw_for_sweep_points.
 
         The following keys in a task are interpreted by this class in
         addition to the ones recognized by the parent classes:
-            - seeds
-            - cliffords
+            - cliffords (see description above)
+            - seeds (see description above)
 
         Assumptions:
          - If nr_seeds and cliffords are specified in kw and they do not exist
-          in the task_list, THEN ALL TASKS WILL RECEIVE THE SAME PULSES!!!
+          in the task_list, then all tasks will receive the same pulses!
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - in rb_block, it assumes only one parameter is being swept in the
@@ -76,6 +89,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
          - interleaved_gate and gate_decomposition should be the same for
          all qubits since otherwise the segments will have very different
          lengths for different qubits
+         - assumes there is one task for each qubit. If task_list is None, it
+          will internally create it.
         """
         try:
             condition1 = kw.get('nr_seeds', None) is None and \
@@ -89,8 +104,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                 raise ValueError('If one of nr_seeds or cliffords is specified '
                                  'as a global parameter, the other must also '
                                  'be specified. This enables identical pulses '
-                                 'on all tasks IF YOU ALSO REMOVE THEM '
-                                 'FROM TASK_LIST.')
+                                 'on all tasks if you also remove them from the'
+                                 'task list.')
 
             self.sweep_type = sweep_type
             if self.sweep_type is None:
@@ -106,12 +121,11 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
 
             self.purity = purity
             self.interleaved_gate = interleaved_gate
-            if self.interleaved_gate is not None and self.purity:
-                raise ValueError('There is no interleaved purity benchmarking '
-                                 'measurement. Please either set '
-                                 '"interleaved_gate=None" or "purity=False."')
 
             if self.interleaved_gate is not None:
+                # kw_for_sweep_points must be changed to add the random seeds
+                # for the IRB sequences. These are added as an extra sweep
+                # parameter in dimension 1
                 self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
@@ -124,6 +138,9 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T)]
             elif self.purity:
+                # kw_for_sweep_points must be changed to repeat each seed 3
+                # times (same seed, i.e. same sequence, for the 3 tomography
+                # pulses)
                 self.kw_for_sweep_points['nr_seeds,cliffords'] = [
                     dict(param_name='seeds', unit='',
                          label='Seeds', dimension=self.sweep_type['seeds'],
@@ -137,6 +154,8 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              sweep_points=sweep_points, **kw)
 
             self.experiment_name += f'_{gate_decomposition}'
+            if purity:
+                self.experiment_name += '_purity'
             self.identical_pulses = kw.get('nr_seeds', None) is not None and all([
                 task.get('nr_seeds', None) is None for task in task_list])
             self.gate_decomposition = gate_decomposition
@@ -185,6 +204,15 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             traceback.print_exc()
 
     def rb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Base method to create the rb blocks. To be modified by children.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args: see the docstrings of children
+        """
         pass
 
     def add_processing_pipeline(self, **kw):
@@ -196,24 +224,37 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
     def run_analysis(self, **kw):
         """
         Runs analysis and stores analysis instance in self.analysis.
-        :param kw: keyword_arguments passed to analysis functions;
-            see docstrings there
+
+        Keyword args:
+            keyword_arguments passed to analysis functions; see docstrings there
         """
         pass
 
 
 class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
-
+    """
+    Class for running the single qubit randomized benchmarking experiment on
+    several qubits in parallel.
+    """
     default_experiment_name = 'SingleQubitRB'
 
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, **kw):
         """
-        :param nr_seeds: int specifying the number of times the Clifford
-            group should be sampled for each Clifford sequence length.
-        :param cliffords: list or array of integers specifying the number of
-            cliffords to apply.
-        See docstring for RandomizedBenchmarking for the other parameters.
+        Init of the SingleQubitRandomizedBenchmarking class.
+
+        Args:
+            nr_seeds (int): the number of times the Clifford group should be
+                sampled for each Clifford sequence length.
+            cliffords(list/array): integers specifying the number of
+                cliffords to apply.
+
+        Keyword args:
+            passed to parent class
+            interleaved_gate is used here to update the experiment_name.
+            dim_hilbert of 2 is hardcoded into the kw
+
+        See docstring of RandomizedBenchmarking for more details.
         """
 
         if kw.get('interleaved_gate', None) is not None:
@@ -233,6 +274,17 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
                          nr_seeds=nr_seeds, cliffords=cliffords, **kw)
 
     def rb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Creates simultaneous blocks of RB pulses for each task in
+        preprocessed_task_list.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args:
+            interleaved_gate (see docstring of parent class)
+        """
         interleaved_gate = kw.get('interleaved_gate', None)
         pulse_op_codes_list = []
         tl = [self.preprocessed_task_list[0]] if self.identical_pulses else \
@@ -253,10 +305,9 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
                 cl_seq, gate_decomp=self.gate_decomposition)
             if self.purity:
                 idx = sp1d_idx if self.sweep_type['seeds'] == 0 else sp2d_idx
-                pulse_op_codes_list += [pulse_list +
-                                        [self.tomo_pulses[idx % 3]]]
-            else:
-                pulse_op_codes_list += [pulse_list]
+                pulse_list += [self.tomo_pulses[idx % 3]]
+            pulse_op_codes_list += [pulse_list]
+
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
                                  pulse_op_codes_list[0 if self.identical_pulses
@@ -269,20 +320,34 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
 
 class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
-
+    """
+    Class for running the two-qubit randomized benchmarking experiment on
+    several pairs of qubits in parallel.
+    """
     default_experiment_name = 'TwoQubitRB'
 
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, max_clifford_idx=11520, **kw):
         """
-        :param nr_seeds: int specifying the number of times the Clifford
-            group should be sampled for each Clifford sequence length.
-        :param cliffords: list or array of integers specifying the number of
-            cliffords to apply.
-        :param max_clifford_idx: int that allows to restrict the two qubit
-            Clifford that is sampled. Set to 24**2 to only sample the tensor
-            product of 2 single qubit Clifford groups.
-        See docstring for RandomizedBenchmarking for the other parameters.
+        Each task in task_list corresponds to a qubit pair, which is specified
+        with the keys 'qb_1' and 'qb2.'
+
+        Args:
+            nr_seeds (int): the number of times the Clifford group should be
+                sampled for each Clifford sequence length.
+            cliffords (list/array): integers specifying the number of
+                cliffords to apply.
+            max_clifford_idx (int): allows to restrict the two qubit
+                Clifford that is sampled. Set to 24**2 to only sample the tensor
+                product of 2 single qubit Clifford groups.
+
+        Keyword args:
+            passed to parent class
+            interleaved_gate is used here to update the experiment_name.
+            gate_decomposition is assigned to tqc.gate_decomposition.
+            dim_hilbert of 4 is hardcoded into the kw.
+
+        See docstring of RandomizedBenchmarking for the other parameters.
         """
         if kw.get('purity', False):
             raise NotImplementedError('Purity benchmarking is not implemented '
@@ -307,7 +372,7 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
     def guess_label(self, **kw):
         """
-        Default measurement label.
+        Create default measurement label and assign to self.label.
         """
         suffix = [''.join([task['qb_1'], task['qb_2']])
                   for task in self.task_list]
@@ -321,6 +386,17 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                              f'{self.gate_decomposition}_{suffix}'
 
     def rb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Creates simultaneous blocks of RB pulses for each task in
+        preprocessed_task_list.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args:
+            interleaved_gate (see docstring of parent class)
+        """
         interleaved_gate = kw.get('interleaved_gate', None)
         rb_block_list = []
         for i, task in enumerate(self.preprocessed_task_list):
@@ -355,15 +431,9 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                                     for qbn, gates in single_qb_gates.items()],
                             destroy=self.fast_mode))
                         single_qb_gates = {qb_1: [], qb_2: []}
-                        # if idx == interleaved_gate:
-                        #     pulse_modifs = {0: {'amplitude': 0.05,
-                        #                         'amplitude2': 0.05}}
-                        # else:
-                        pulse_modifs = None
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
-                            pulse_modifs=pulse_modifs
                             ))
                     else:
                         qb_name = qb_1 if '0' in pulse_tuple[1] else qb_2
@@ -387,7 +457,10 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
 
 
 class SingleQubitXEB(MultiTaskingExperiment):
-
+    """
+    Class for running the single qubit cross-entropy benchmarking experiment on
+    several qubits in parallel.
+    """
     kw_for_sweep_points = {
         'cycles': dict(param_name='cycles', unit='',
                           label='Nr. Cycles',
@@ -404,26 +477,31 @@ class SingleQubitXEB(MultiTaskingExperiment):
                  nr_seqs=None, cycles=None, sweep_type=None,
                  init_rotation='X90', **kw):
         """
-        Class to run cross-entropy benchmarking experiment on
-        one or several qubits in parallel.
+        Init of the SingleQubitXEB class.
         The experiment consists of applying
         [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
         with random values of theta each time.
-        :param task_list: list of dicts; see CalibBuilder docstring
-        :param sweep_points: SweepPoints class instance
-        :param qubits: list of QuDev_transmon class instances
-        :param nr_seqs: int specifying the number of times to apply a random
-            iteration of a sequence consisting of nr_cycles cycles.
-            If nr_seqs is specified and it does not exist in the task_list,
-            THEN ALL QUBITS WILL RECEIVE THE SAME PULSES provided they have the
-            same cycles array.
-        :param cycles: list or array of integers specifying the number of
-            [Ry - Rz(theta)] cycles to apply.
-        :param sweep_type: dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-            the integers specify which parameter should correspond to the inner
-            sweep (0), and which to the outer sweep (1).
-        :param init_rotation: string specifying the preparation pulse name
-        :param kw: keyword arguments
+
+        Args:
+            task_list (list): see CalibBuilder docstring
+            sweep_points (SweepPoints instance):
+                Ex: [{'cycles': ([0, 4, 10], '', 'Nr. Cycles')},
+                     {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
+            qubits (list): QuDev_transmon class instances on which to run
+                measurement
+            nr_seqs (int): the number of times to apply a random
+                iteration of a sequence consisting of nr_cycles cycles.
+                If nr_seqs is specified and it does not exist in the task_list,
+                then all qubits will receive the same pulses provided they have
+                the same cycles array.
+            cycles (list/array): integers specifying the number of
+                [Ry - Rz(theta)] cycles to apply.
+            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+            init_rotation (str): the preparation pulse name
+
+        Keyword args:
             passed to CalibBuilder; see docstring there
 
         Assumptions:
@@ -491,7 +569,6 @@ class SingleQubitXEB(MultiTaskingExperiment):
             self.exp_metadata['identical_pulses'] = self.identical_pulses
             self.exp_metadata['init_rotation'] = self.init_rotation
 
-            self.add_processing_pipeline(**kw)
             self.autorun(**kw)
 
         except Exception as x:
@@ -499,6 +576,18 @@ class SingleQubitXEB(MultiTaskingExperiment):
             traceback.print_exc()
 
     def xeb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Creates simultaneous blocks of XEB pulses for each task in
+        preprocessed_task_list.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args:
+            to allow pass through kw even if it contains entries that are
+            not needed
+        """
         pulse_op_codes_list = []
         tl = [self.preprocessed_task_list[0]] if self.identical_pulses else \
             self.preprocessed_task_list
@@ -521,22 +610,13 @@ class SingleQubitXEB(MultiTaskingExperiment):
                                         rb_block_list, block_align='end',
                                         destroy=self.fast_mode)
 
-    def add_processing_pipeline(self, **kw):
-        """
-        Creates and adds the analysis processing pipeline to exp_metadata.
-        """
-        pass
-
-    def run_analysis(self, **kw):
-        """
-        Runs analysis and stores analysis instance in self.analysis.
-        :param kw: keyword_arguments passed to analysis functions;
-            see docstrings there
-        """
-        pass
-
 
 class TwoQubitXEB(MultiTaskingExperiment):
+    """
+    Class for running the two-qubit cross-entropy benchmarking experiment on
+    several pairs of qubits in parallel.
+    Implementation as in https://www.nature.com/articles/s41567-018-0124-x.
+    """
     kw_for_sweep_points = {'cycles': dict(param_name='cycles', unit='',
                                           label='Nr. Cycles', dimension=0),
                            'nr_seqs,cycles': dict(
@@ -549,26 +629,37 @@ class TwoQubitXEB(MultiTaskingExperiment):
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  nr_seqs=None, cycles=None, sweep_type=None, **kw):
         """
-        Class to run cross-entropy benchmarking experiment on
-        one or several qubits in parallel.
+        Init of the TwoQubitXEB class.
         The experiment consists of applying
-        [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
-        with random values of theta each time.
-        :param task_list: list of dicts; see CalibBuilder docstring
-        :param sweep_points: SweepPoints class instance
-        :param qubits: list of QuDev_transmon class instances
-        :param nr_seqs: int specifying the number of times to apply a random
-            iteration of a sequence consisting of nr_cycles cycles.
-            If nr_seqs is specified and it does not exist in the task_list,
-            THEN ALL QUBITS WILL RECEIVE THE SAME PULSES provided they have the
-            same cycles array.
-        :param cycles: list or array of integers specifying the number of
-            [Ry - Rz(theta)] cycles to apply.
-        :param sweep_type: dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-            the integers specify which parameter should correspond to the inner
-            sweep (0), and which to the outer sweep (1).
-        :param kw: keyword arguments
+        [[Rq - CZ] * nr_cycles for nr_cycles in cycles] nr_seqs times,
+        where Rq denotes a pair of parallel single qubit gates sampled randomly
+        in each cycles from [X90, Y90, Z45], according to the following rules
+        (copied from the reference above):
+        "the first one-qubit gate for each qubit after the initial cycle of
+        Hadamard gates is always a T gate; and we place a one-qubit gate only
+        in the next cycle after a CZ gate in the same qubit."
+
+        Args:
+            task_list (list): see CalibBuilder docstring
+            sweep_points (SweepPoints instance):
+                Ex: [{'cycles': ([0, 4, 10], '', 'Nr. Cycles')},
+                     {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
+            qubits (list): QuDev_transmon class instances on which to run
+                measurement
+            nr_seqs (int): the number of times to apply a random
+                iteration of a sequence consisting of nr_cycles cycles.
+                If nr_seqs is specified and it does not exist in the task_list,
+                THEN ALL TASKS WILL RECEIVE THE SAME PULSES provided they have
+                the same cycles array.
+            cycles (list/array): integers specifying the number of
+                random cycles to apply in a sequence.
+            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+
+        Keyword args:
             passed to CalibBuilder; see docstring there
+
         Assumptions:
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
@@ -633,7 +724,6 @@ class TwoQubitXEB(MultiTaskingExperiment):
 
             self.exp_metadata['identical_pulses'] = self.identical_pulses
 
-            self.add_processing_pipeline(**kw)
             self.autorun(**kw)
 
         except Exception as x:
@@ -642,6 +732,19 @@ class TwoQubitXEB(MultiTaskingExperiment):
 
     @staticmethod
     def paulis_gen_func(nr_seqs, cycles):
+        """
+        Creates the list of random gates to be applied in each sequence of the
+        experiment.
+
+        Args:
+            nr_seqs (int): number of random sequences of gates for each cycle
+                length
+            cycles (list/array): integers specifying the number of cycles of
+                random gates to apply in a sequence
+
+        Returns:
+             list of strings with op codes
+        """
         def gen_random(cycles):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
@@ -681,6 +784,18 @@ class TwoQubitXEB(MultiTaskingExperiment):
         return [gen_random(cycles) for _ in range(nr_seqs)]
 
     def xeb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Creates simultaneous blocks of XEB pulses for each task in
+        preprocessed_task_list.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args:
+            to allow pass through kw even if it contains entries that are
+            not needed
+        """
         pulse_op_codes_list = []
         tl = [self.preprocessed_task_list[0]] if self.identical_pulses else \
             self.preprocessed_task_list
@@ -710,17 +825,3 @@ class TwoQubitXEB(MultiTaskingExperiment):
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
                                         rb_block_list, block_align='end',
                                         destroy=self.fast_mode)
-
-    def add_processing_pipeline(self, **kw):
-        """
-        Creates and adds the analysis processing pipeline to exp_metadata.
-        """
-        pass
-
-    def run_analysis(self, **kw):
-        """
-        Runs analysis and stores analysis instance in self.analysis.
-        :param kw: keyword_arguments passed to analysis functions;
-            see docstrings there
-        """
-        pass

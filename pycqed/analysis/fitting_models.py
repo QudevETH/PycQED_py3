@@ -220,24 +220,31 @@ def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
     return qubit_freq[0] if return_float else qubit_freq
 
 def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
-                              dac_sweet_spot=0.0, V_per_phi0=None,
-                              dac_flux_coefficient=None,
-                              phi_park=None,
-                      branch='smallest'):
-    '''
+                          dac_sweet_spot=0.0, V_per_phi0=None,
+                          dac_flux_coefficient=None, phi_park=None,
+                          branch='smallest', n_periods=(-1, 2)):
+    """
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
-    This function implements the inverse of "Qubit_dac_to_freq"
+    This function implements the inverse of "Qubit_dac_to_freq_res"
 
-    frequency (Hz)
-    Ej_max (Hz): Maximum josephson energy
-    E_c (Hz): charging energy of the qubit
-    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
-    asym (dimensionless asymmetry param) = abs((EJ1-EJ2)/(EJ1+EJ2))
-    couping (Hz): coupling to resonator
-    fr (Hz): frequency of resonator
-    dac_sweet_spot (V): voltage at which the sweet-spot is found
-    branch (enum: 'positive' 'negative' or "smallest")
-    '''
+    frequency (array): qubit frequency (Hz).
+    Ej_max (float): Maximum josephson energy (Hz).
+    E_c (float): charging energy of the qubit (Hz).
+    V_per_phi0 (float): volt per phi0 (convert voltage to flux).
+    asym: dimensionless asymmetry param: abs((EJ1-EJ2)/(EJ1+EJ2))
+    coupling: coupling to resonator (Hz).
+    fr (float): frequency of resonator (Hz)
+    dac_sweet_spot: voltage at which the sweet-spot is found (V)
+    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+        if "positive": returns voltages corresponding to the positive flux
+            branch (right to the upper sweetspot).
+        if "negative": returns voltages corresponding to the negative flux
+            (left to the upper sweetspot).
+        if "smallest": equivalent to branch = 0.
+        if volt_guess (integer):
+            returns voltages in the period closest to volt_guess
+
+    """
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
     if dac_sweet_spot is None and phi_park is None:
@@ -260,14 +267,16 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
 
     r = E_j / Ej_max
     if np.any(r > 1):
+        r_str = '[' + ', '.join([f'{x}' for x in r[r>1]]) + ']'
         log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
-                    f'indices {np.argwhere(r > 1)}.Truncating to 1.')
+                    f'indices {np.argwhere(r > 1)}: {r_str} '
+                    f'Truncating to 1.')
         r[r>1] = 1
     phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
 
     if dac_flux_coefficient is not None:
         log.warning('"dac_flux_coefficient" deprecated. Please use the '
-                        'physically meaningful "V_per_phi0" instead.')
+                    'physically meaningful "V_per_phi0" instead.')
         V_per_phi0 = np.pi / dac_flux_coefficient
 
     dac_voltage_pos = phi * V_per_phi0 / np.pi + dac_sweet_spot
@@ -277,17 +286,17 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     elif branch == 'negative':
         dac_voltage = dac_voltage_neg
     elif branch == 'smallest':
-        if np.ndim(phi) != 0:
-            dac_voltage = np.array([dac_voltage_pos, dac_voltage_neg])
-            idxs0 = np.argmin(np.abs(dac_voltage), 0)
-            idxs1 = np.arange(len(dac_voltage_pos))
-            dac_voltage = dac_voltage[idxs0, idxs1]
-        else:
-            dac_voltage = dac_voltage_pos \
-                if abs(dac_voltage_pos) < abs(dac_voltage_neg) \
-                else dac_voltage_neg
-    else:
+        branch = 0
+    elif not isinstance(branch, (int,float)):
         raise ValueError('branch {} not recognized'.format(branch))
+
+    if isinstance(branch, (int, float)):
+        dac_voltage = np.array([dac_voltage_pos + n * V_per_phi0 for n in range(
+            *n_periods)] + [dac_voltage_neg + n * V_per_phi0 for n in range(
+            *n_periods)])
+        idxs0 = np.argmin(np.abs(dac_voltage - branch), 0)
+        idxs1 = np.arange(len(dac_voltage_pos))
+        dac_voltage = dac_voltage[idxs0, idxs1]
 
     return dac_voltage[0] if return_float else dac_voltage
 
