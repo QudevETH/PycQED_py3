@@ -43,6 +43,8 @@ class Sequence:
             raise NameError('Name {} already exisits in the sequence!'.format(
                 segment.name))
         self.segments[segment.name] = segment
+        if len(self.segments) == 1:
+            self.segments[segment.name].is_first_segment = True
 
     def extend(self, segments):
         """
@@ -124,7 +126,8 @@ class Sequence:
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
                     if elname in seg.acquisition_elements:
-                        sequences[awg][elname]['metadata']['acq'] = True
+                        sequences[awg][elname]['metadata']['acq'] = \
+                            seg.acquisition_mode
                     else:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \

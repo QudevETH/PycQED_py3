@@ -23,7 +23,7 @@ class TWPAObject(qc.Instrument):
         self.add_parameter('instr_signal',
                            parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_lo', parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_uhf',
+        self.add_parameter('instr_acq',
                            parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_mc', parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_pulsar',
@@ -110,7 +110,12 @@ class TWPAObject(qc.Instrument):
         self.instr_pump.get_instr().off()
 
     def prepare_readout(self):
-        UHF = self.instr_uhf.get_instr()
+        UHF = self.instr_acq.get_instr()
+        if not UHF.IDN()['model'].startswith('UHF'):
+            raise NotImplementedError(
+                'The UHFQC_correlation_detector used for TWPA tuneup '
+                'measurements is not implemented for '
+                '{acq_dev.name}, but only for ZI UHF devices.')
         pulsar = self.instr_pulsar.get_instr()
 
         # Prepare MWG states
@@ -123,10 +128,11 @@ class TWPAObject(qc.Instrument):
         self.signal_freq(self.signal_freq())
 
         # Prepare integration weights
-        if self.acq_weights_type() == 'SSB':
-            UHF.prepare_SSB_weight_and_rotation(IF=self.acq_mod_freq())
-        else:
-            UHF.prepare_DSB_weight_and_rotation(IF=self.acq_mod_freq())
+        UHF.acquisition_set_weights(
+            channels=[(0, 0), (0, 1)],
+            weights_type=self.acq_weights_type(),
+            mod_freq=self.acq_mod_freq(),
+        )
 
         # Program the AWG
         if self.pulsed():
@@ -149,13 +155,13 @@ class TWPAObject(qc.Instrument):
 
         # Create the detector
         return det.UHFQC_correlation_detector(
-            UHFQC=UHF,
+            acq_dev=UHF,
             AWG=UHF,
             integration_length=self.acq_length(),
             nr_averages=self.acq_averages(),
-            channels=[0, 1],
-            correlations=[(0, 0), (1, 1)],
-            value_names=['I', 'Q'],
+            channels=[(0, 0), (0, 1)],
+            correlations=[((0, 0), (0, 0)), ((0, 1), (0, 1))],
+            value_names=['I', 'Q', 'I^2', 'Q^2'],
             single_int_avg=True)
 
     def _measure_1D(self, parameter, values, label, analyze=True):

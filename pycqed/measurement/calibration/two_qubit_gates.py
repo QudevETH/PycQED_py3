@@ -3,7 +3,7 @@ from copy import copy
 from copy import deepcopy
 from itertools import zip_longest
 import traceback
-from pycqed.utilities.general import temporary_value
+from pycqed.utilities.general import assert_not_none
 from pycqed.measurement.quantum_experiment import QuantumExperiment
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.measurement.waveform_control.block import Block, ParametricValue
@@ -64,6 +64,7 @@ class MultiTaskingExperiment(QuantumExperiment):
     # the actual objects were provided.
     task_mobj_keys = ()
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, dev=None, qubits=None,
                  operation_dict=None, **kw):
 
@@ -453,7 +454,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                     qubits}
         found_qubits = []
 
-        # helper function that checks candiates and calls itself recursively
+        # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
             if isinstance(candidate, QuDev_transmon):
@@ -561,10 +562,15 @@ class MultiTaskingExperiment(QuantumExperiment):
                     # assumes the string is the name of a self method
                     values_func = getattr(self, values_func, None)
 
+                # comma-separated strings correspond to different keys in task
+                # whose corresponding values can be used as input parameters
+                # for values_func
                 k_list = k.split(',')
                 # if the respective task parameters (or keyword arguments) exist
                 if all([k in task and task[k] is not None for k in k_list]):
                     if values_func is not None:
+                        # the entries in k_list point to input parameters
+                        # for values_func
                         values = values_func(*[task[key] for key in k_list])
                     elif isinstance(task[k_list[0]], int):
                         # A single int N as sweep value will be interpreted as
@@ -917,12 +923,12 @@ class CPhase(CalibBuilder):
         ref_pi_half = kw.get('ref_pi_half', False)
         if self.classified:
             channel_map = {qb.name: [vn + ' ' +
-                                     qb.instr_uhf() for vn in
+                                     qb.instr_acq() for vn in
                                      qb.int_avg_classif_det.value_names]
                            for qb in self.meas_objs}
         else:
             channel_map = {qb.name: [vn + ' ' +
-                                     qb.instr_uhf() for vn in
+                                     qb.instr_acq() for vn in
                                      qb.int_avg_det.value_names]
                            for qb in self.meas_objs}
         self.analysis = tda.CPhaseLeakageAnalysis(
@@ -1039,6 +1045,7 @@ class DynamicPhase(CalibBuilder):
     kw_for_task_keys = ['num_cz_gates', 'init_for_swap']
     default_experiment_name = 'Dynamic_phase_measurement'
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             self.simultaneous = kw.get('simultaneous', False)
@@ -1447,6 +1454,7 @@ class Chevron(CalibBuilder):
     task_mobj_keys = ['qbc', 'qbt']
     default_experiment_name = 'Chevron'
 
+    @assert_not_none('task_list')
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
             for d in task_list + [kw]:
@@ -1461,6 +1469,9 @@ class Chevron(CalibBuilder):
 
             # Preprocess sweep points and tasks before creating the sequences
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            # Chevron takes care of the init state inside the task, so we
+            # have to make sure that we do not pass init_state to parallel_sweep.
+            kw.pop('init_state', None)
             # the block alignments are for: prepended pulses, initial
             # rotations, flux pulse
             self.sequences, self.mc_points = self.parallel_sweep(
