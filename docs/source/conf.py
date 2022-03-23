@@ -38,6 +38,7 @@ import sphinx_rtd_theme
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx_rtd_theme",
     "myst_parser",
@@ -76,6 +77,16 @@ autosummary_generate = True
 autodoc_default_options = {
     "undoc-members": True, # Include members with no docstrings
     "special-members": "__init__", # Include following dunder functions in docs
+}
+
+
+# -- intersphinx documentation -----------------------------------------------
+
+intersphinx_mapping = {
+    # Can be used to add links to Python Standard library
+    "python": ("https://docs.python.org/3.9/", None),
+    # Can be used to add links to qcodes objects
+    "qcodes": ("https://qcodes.github.io/Qcodes/", None),
 }
 
 
