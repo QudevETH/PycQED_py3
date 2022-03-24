@@ -9155,6 +9155,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=1e-6,
+                    reg_covar=1e-12,
                     weights_init=weights_init,
                     means_init=[mu for _, mu in
                                 self.proc_data_dict['analysis_params']
