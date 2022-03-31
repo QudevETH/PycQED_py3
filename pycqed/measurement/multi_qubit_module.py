@@ -177,7 +177,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             acq_classifier_params[uhf] = []
             acq_state_prob_mtxs[uhf] = []
         for params in add_chs:
-            if isinstance(params, list):
+            if not isinstance(params, dict):
                 params = dict(acq_channels=params)
 
             # FIXME: the following is a hack that will work as long as all
