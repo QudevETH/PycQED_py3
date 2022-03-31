@@ -36,12 +36,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
-        _acq_scope_memory: #FIXME is this the correct number?
+        _acq_scope_memory (int): Number of points that the scope can acquire
+            in one hardware run.
         seqtrigger (int): Number of the acquisition unit whose internal
             sequencer trigger should trigger the scope. If None, the scope is
             triggered by the external trigger of acq unit 0.
     """
-    acq_length_granularity = 16 #FIXME should this be set to some value?
+    acq_length_granularity = 16
 
     # acq_sampling_rate is the effective sampling rate provided by the SHF,
     # even though internally it has an ADC running at 4e9 Sa/s.
@@ -55,7 +56,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
-    acq_weights_n_samples = 4096 #FIXME: is this the maximum in readout mode?
+    acq_weights_n_samples = 4096
     acq_Q_sign = -1 # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'], #FIXME data types unused
@@ -77,10 +78,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.n_acq_units = len(self.qachannels)
         self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
         self._acq_loop_cnts_last = [None] * self.n_acq_units
-        self.n_acq_int_channels = len(self.qachannels[0]
-                                      .readout.integration.weights)
-        print(f"self.n_acq_int_channels = {self.n_acq_int_channels} (is "
-              f"this ok???")
+        self.n_acq_int_channels = self.max_qubits_per_channel
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
@@ -121,13 +119,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     @property
     def devname(self):
-        return self.get_idn()['serial']
+        return self.serial
 
     @property
     def daq(self):
         """Returns the ZI data server (DAQ).
         """
-        return self._session._tk_object._daq_server
+        return self.session.daq_server
 
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
@@ -144,8 +142,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
-        self.qachannels[acq_unit].centerfreq(lo_freq)
-        new_lo_freq = self.qachannels[acq_unit].centerfreq()
+        # Deep set (synchronous set that returns the value acknowledged by the
+        # device)
+        new_lo_freq = self._tk_object.qachannels[acq_unit].centerfreq(
+            lo_freq, deep=True)
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '
@@ -170,15 +170,23 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     and self._acq_units_modes[i] == 0:  # spectroscopy
                 # Spectroscopy mode outputs a sine wave at a given frequency
                 # and integrates against this same signal only
-                self._arm_spectroscopy(i, length=self._acq_n_results,
-                                       averages=self._acq_averages)
+                self.qachannels[i].spectroscopy.configure_result_logger(
+                    result_length=self._acq_n_results,
+                    num_averages=self._acq_averages,
+                    averaging_mode=AveragingMode.CYCLIC,
+                )
+                self.qachannels[i].generator.userregs[1](  # Used in seqc code
+                    self.convert_time_to_n_samples(self._acq_length)
+                )
+                self.qachannels[i].generator.single(1)
+                self.qachannels[i].spectroscopy.run()
+
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
                 pass  # FIXME currently done in poll
             elif (self._acq_mode == 'scope'
                   and self._acq_data_type == 'timetrace')\
                     or self._acq_mode == 'avg':
-                # FIXME should this set the length and avg number?
                 self._arm_scope()
         self._reset_acq_poll_inds()
 
@@ -240,18 +248,15 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self._acq_units_modes = {i: self.qachannels[i].mode()  # Caching
                                  for i in self._acq_units_used}
 
-        #Set the scope trigger to the same delay as the other modes
-        self.daq.setDouble(f"/{self.devname}/scopes/0/trigger/delay",
-                           self.acq_trigger_delay())
+        # Set the scope trigger to the same delay as the other modes
+        self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
         for i in range(self.n_acq_units):
-            #Set trigger delay to the same value for all modes. This is
+            # Set trigger delay to the same value for all modes. This is
             # necessary e.g. to get consistent acquisition weights.
-            self.daq.setDouble(f"/{self.devname}/qachannels/"
-                               f"{i}/readout/integration/delay",
-                               self.acq_trigger_delay())
-            self.daq.setDouble(f"/{self.devname}/qachannels/"
-                            f"{i}/spectroscopy/delay",self.acq_trigger_delay())
+            self.qachannels[i].readout.integration.delay(
+                self.acq_trigger_delay())
+            self.qachannels[i].spectroscopy.delay(self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
             self.qachannels[i].readout.stop()  # readout mode
@@ -260,7 +265,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 # meaning that the output generator must be always running.
                 # Here it is effectively disabled by oscillator_gain(0)
                 self.qachannels[i].oscs[0].gain(0)  # spectroscopy mode
-                # FIXME: check whether this will be fine with the hw sweeper
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
@@ -270,8 +274,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             if self._acq_loop_cnts_last[i] != loop_cnt:
                 self._program_awg(i)  # reprogramm this acq unit
                 self._acq_loop_cnts_last[i] = loop_cnt
-            self.daq.setInt(f"/{self.devname}/qachannels/"  # Used in seqc code
-                            f"{i}/generator/userregs/0", self._acq_loop_cnt)
+            self.qachannels[i].generator.userregs[0](
+                self._acq_loop_cnt)  # Used in seqc code
             # TODO: should probably decide actions based on the data type, not
             #  also on the acq unit physical mode
             if self._acq_mode == 'int_avg'\
@@ -289,8 +293,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     and self._acq_units_modes[i] == 0\
                     and not self.use_hardware_sweeper():  # spectroscopy
                 self.qachannels[i].oscs[0].gain(1.0)
-                self.daq.setInt(
-                    self._get_spectroscopy_node(i, "integration_length"),
+                self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
                 self.qachannels[i].spectroscopy.trigger.channel(
                     f'channel{i}_trigger_input0')
@@ -299,8 +302,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     and self.use_hardware_sweeper():  # spectroscopy
                 # FIXME: check whether this will be fine with the hw sweeper
                 self.qachannels[i].oscs[0].gain(1.0)
-                self.daq.setInt(
-                    self._get_spectroscopy_node(i, "integration_length"),
+                self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
                 self.qachannels[i].spectroscopy.trigger.channel(
                     f'channel{i}_sequencer_trigger0')
@@ -328,52 +330,31 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             else:
                 raise NotImplementedError
 
-    # Used in acquisition_initialize in modes that use the scope.
-    # This might be replaceable by a couple of lines from the qcodes driver
     def _initialize_scope(self, acq_unit, nr_hard_avg, num_points_per_run):
         num_segments = 1  # for segmented averaging (several triggers per time
         # trace) compensation for the delay between generator output and input
         # of the integration unit
-        self.qachannels[acq_unit].mode('readout')
+        self.qachannels[acq_unit].mode("readout")
         self.qachannels[acq_unit].input.on(True)
         self.qachannels[acq_unit].output.on(True)
-        self.daq.setInt(f"/{self.devname}/scopes/0/segments/count",
-                        num_segments)
-        if num_segments > 1:
-            self.daq.setInt(f"/{self.devname}/scopes/0/segments/enable", 1)
-        else:
-            self.daq.setInt(f"/{self.devname}/scopes/0/segments/enable", 0)
-        if nr_hard_avg > 1:
-            self.daq.setInt(f"/{self.devname}/scopes/0/averaging/enable", 1)
-        else:
-            self.daq.setInt(f"/{self.devname}/scopes/0/averaging/enable", 0)
-        self.daq.setInt(f"/{self.devname}/scopes/0/averaging/count",
-                        nr_hard_avg)
-        self.daq.setInt(f"/{self.devname}/scopes/0/length",
-                        num_points_per_run)
-
-        self.daq.setInt(f"/{self.devname}/scopes/0/channels/*/enable", 0)
-        input_select = {acq_unit: f"channel{acq_unit}_signal_input"}
-        for scope_ch, acq_unit_path in input_select.items():
-            self.daq.setString(
-                f"/{self.devname}/scopes/0/channels/{scope_ch}/inputselect",
-                acq_unit_path)
-            self.daq.setInt(
-                f"/{self.devname}/scopes/0/channels/{scope_ch}/enable",
-                1)
         if self.seqtrigger is None:
-            self.scopes[0].trigger.channel(
-                'channel0_trigger_input0')
+            trigger_channel = 'channel0_trigger_input0'
         else:
-            self.scopes[0].trigger.channel(
-                f'channel{self.seqtrigger}_sequencer_trigger0')
-        # Always single acq. Would continuous mode be useful in some cases?
-        self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
-
+            trigger_channel = f'channel{self.seqtrigger}_sequencer_trigger0'
+        self.scopes[0].configure(
+            input_select={acq_unit: f"channel{acq_unit}_signal_input"},
+            num_samples=num_points_per_run,
+            trigger_input=trigger_channel,
+            num_segments=num_segments,
+            num_averages=nr_hard_avg,
+        )
 
     def acquisition_finalize(self):
-        for ch in self.qachannels:
-            ch.oscs[0].gain(0)
+        # Use a transaction since qcodes does not support wildcards
+        # Or use toolkit: self._tk_object.qachannels["*"].oscs[0].gain(0)
+        with self.set_transaction():
+            for ch in self.qachannels:
+                ch.oscs[0].gain(0)
 
     def acquisition_progress(self):
         n_acq = {}
@@ -418,63 +399,14 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # This is now known and can be replaced in the seqc code
         awg_program = awg_program.replace(
             '{loop_count}', f'{self._acq_loop_cnt}')
-        qachannel.generator.load_sequencer_program(
-            # sequence_type="Custom", program=awg_program)
-            sequencer_program = awg_program)
-        # qachannel.generator.compile()
+        qachannel.generator.load_sequencer_program(awg_program)
         waves_to_upload = self._waves_to_upload.get(acq_unit, None)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
             self._waves_to_upload[acq_unit] = None  # upload only once
 
-    def _get_spectroscopy_node(self, acq_unit, node):
-        # These direct accesses to the zhinst-toolkit were simpler to
-        # implement based on the SHF documentation than finding
-        # the corresponding higher-level functions in zhinst-qcodes
-        lookup = {
-            'enable': 'result/enable',
-            'averages': 'result/averages',
-            'length': 'result/length',
-            'integration_length': 'length',
-            'data': 'result/data/wave',
-            'acquired': 'result/acquired',
-            'mode': 'result/mode',
-        }
-        return f"/{self.devname}/qachannels/{acq_unit}/spectroscopy/" \
-               f"{lookup.get(node, node)}"
-
-    def _arm_spectroscopy(self, acq_unit, length, averages):
-        #FIXME: many things to put in acq_init
-
-        # if self.use_hardware_sweeper():
-        #     raise NotImplementedError('Hard Sweep not implemented')
-        # else:
-        self.daq.setString(
-            self._get_spectroscopy_node(acq_unit, "mode"), 'cyclic') #TV mode
-        self.daq.setInt(
-            self._get_spectroscopy_node(acq_unit, "length"), length)
-        self.daq.setInt(
-            self._get_spectroscopy_node(acq_unit, "averages"), averages)
-        self.daq.setInt(f"/{self.devname}/qachannels/"  # Used in seqc code
-                        f"{acq_unit}/generator/userregs/1",
-                        self.convert_time_to_n_samples(self._acq_length))
-        self.daq.setInt(f"/{self.devname}/qachannels/"
-                        f"{acq_unit}/generator/single", 1)
-
-        self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 0)
-        self.daq.sync()
-        self.daq.setInt(self._get_spectroscopy_node(acq_unit, "enable"), 1)
-        self.daq.sync()
-
     def _arm_scope(self):
-        # FIXME: is it normal that 'single' gets reset after each acq???
-        # self.daq.setInt(f"/{self.devname}/scopes/0/single", 1)
-        # path = f"/{self.devname}/scopes/0/enable"
-        # if self.daq.getInt(path) == 1:
-        #     self.daq.setInt(path, 0)
-        #     self._controller._assert_node_value(path, 0, timeout=self.timeout())
-        # self.daq.syncSetInt(path, 1)
         self.scopes[0].stop()
         self.scopes[0].run(single=1)
 
@@ -486,15 +418,45 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # normal behaviour of poll. One could implement an actual poll after
         # ZI has improved the drivers, if that turns out to be a bottleneck.
         # sqrt(2) are because the SHF seems to return integrated RMS voltages.
+
+        # TODO (from ZI) poll is availabe on the new zhinst-qcodes driver,
+        #  might be worthwhile considering since it is much faster.
+        # The polling is implemented on the session directly and not the
+        # device!
+        # subscribing  works on every "qcodes-node"
+        # e.g. self.qachannels[0].centerfreq.subscribe()
+        #
+        # To poll the subscribed data use the session
+        # result = self.session.poll()
+        #
+        # The polled data contain ALL nodes subscribed in a session!
+        # The result is a dictionary qcodes_node:Data
+        # e.g. result[self.qachannels[0].centerfreq] returns the data for the
+        # earlier subscribed center frequency
+        # https://docs.zhinst.com/zhinst-toolkit/en/latest/first_steps/nodetree.html#Subscribe-/-Unsubscribe
+        # This is a toolkit example but it works similar in qcodes.
+
         dataset = {}
         for i in self._acq_units_used:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
             if self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 1:  # readout
-                # res = self.qachannels[i].readout.read()
+
+                # Comments from ZI (didn't investigate since we'll likely
+                # remove this poll function, see comments above):
+                # self.qachannels[i].readout.read() is blocking now but would
+                # be the simplest solution.
+                # QCoDeS does not support wildcards and therefor needs to get
+                # each wave individually.
+                # Using toolkit in this case speeds up the progress quite a lot:
+                # res = self._tk_object.qachannels[i].readout.result.data["*"].wave()
+                # res = [res[i] for i in channels]
+                # Alternatively use qcodes in a loop
                 res = []
                 for channel in channels:
-                    res.append(self.qachannels[i].readout.result.data[channel].wave())
+                    res.append(self.qachannels[i].readout.result.data[
+                                   channel].wave())
+
                 # In readout mode the data isn't rescaled yet in the SHF
                 # by the number of points
                 scaling_factor = np.sqrt(2) \
@@ -506,12 +468,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 0:  # spectroscopy
-                progress = self.daq.getInt(
-                    self._get_spectroscopy_node(i, "acquired"))
+                progress = self.qachannels[i].spectroscopy.result.acquired()
                 if progress >= self._acq_loop_cnt * self._acq_n_results:
-                    node = self._get_spectroscopy_node(i, "data")
-                    data = self.daq.get(node, flat=True).get(node, [])
-                    data = [a.get('vector', a) for a in data]
+                    data = self.qachannels[i].spectroscopy.result.data.wave()
                     data = [[np.real(a), np.imag(a)] for a in data]
                     scaling_factor = np.sqrt(2)
                     dataset.update({(i, ch): [a[n % 2] * scaling_factor
@@ -544,8 +503,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     # FIXME this is blocking, to get enough data to average
                     #  in the driver (not the usual behaviour of poll)
                     self.scopes[0].wait_done(timeout=self.timeout())
-                    path = f"/{self.devname}/scopes/0/channels/{i}/wave"
-                    data = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                    data = self.scopes[0].channels[i].wave()
                     # This is a 1-D complex time trace
                     timetraces = np.concatenate((timetraces, data))
                 timetraces = timetraces[:self._acq_averages*num_points_per_run]
@@ -561,9 +519,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace')\
                     or self._acq_mode == 'avg':
-                if self.daq.getInt(f"/{self.devname}/scopes/0/enable") == 0:
-                    path = f"/{self.devname}/scopes/0/channels/{i}/wave"
-                    timetrace = self.daq.get(path.lower(), flat=True)[path][0]["vector"]
+                if self.scopes[0].enable() == 0:
+                    timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
                     dataset.update({(i, 1): [np.imag(timetrace)]})
             else:
@@ -591,8 +548,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             -ro_mod_freq, name=name, parameter_name=name)
 
     def stop(self):
-        for ch in self.qachannels:
-            ch.generator.enable(False)
+        # Use a transaction since qcodes does not support wildcards
+        # Or in toolkit: self._tk_object.qachannels["*"].generator.enable(False)
+        with self.set_transaction():
+            for ch in self.qachannels:
+                ch.generator.enable(False)
 
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
@@ -624,23 +584,26 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1 # Set separately in poll()
         return properties
 
-    def snapshot(self, update=False, detailed=False):
-        # Extends the base method to request all possible details from the data server if necessary.
-        # Would that work similarly for any other ZI instrument?
-        if detailed==False:
-            return super().snapshot(update)
-        else:  # update is not used in this case
-            nodes = json.loads(self.daq.listNodesJSON('/' + self.devname))
-            shf_settings = {k: self.daq.get(k, settingsonly=False, flat=True) for k in nodes}
-            # Remove timestamp data to help diffing
-            for key, s in shf_settings.items():
-                for same_key in list(s.keys()):  # s is a dict that contains a single key, the same as in shf_settings
-                    try:
-                        s[same_key].pop('timestamp', None)
-                    except:
-                        try:
-                            for item in s[same_key]:
-                                item.pop('timestamp', None)
-                        except:  # If impossible to remove, just leave that in the output
-                            pass
-            return shf_settings
+    # According to ZI the snapshot has been improved, and is now much faster
+    # and covers all nodes, such that we should not need that. To be deleted
+    # once we tested the new snapshot.
+    # def snapshot(self, update=False, detailed=False):
+    #     # Extends the base method to request all possible details from the data server if necessary.
+    #     # Would that work similarly for any other ZI instrument?
+    #     if detailed==False:
+    #         return super().snapshot(update)
+    #     else:  # update is not used in this case
+    #         nodes = json.loads(self.daq.listNodesJSON('/' + self.devname))
+    #         shf_settings = {k: self.daq.get(k, settingsonly=False, flat=True) for k in nodes}
+    #         # Remove timestamp data to help diffing
+    #         for key, s in shf_settings.items():
+    #             for same_key in list(s.keys()):  # s is a dict that contains a single key, the same as in shf_settings
+    #                 try:
+    #                     s[same_key].pop('timestamp', None)
+    #                 except:
+    #                     try:
+    #                         for item in s[same_key]:
+    #                             item.pop('timestamp', None)
+    #                     except:  # If impossible to remove, just leave that in the output
+    #                         pass
+    #         return shf_settings
