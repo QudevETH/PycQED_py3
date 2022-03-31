@@ -164,6 +164,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     self.convert_time_to_n_samples(acquisition_length))
 
     def acquisition_finalize(self):
+        super().acquisition_finalize()
         for ch in self.qachannels:
             ch.sweeper.oscillator_gain(0)
 

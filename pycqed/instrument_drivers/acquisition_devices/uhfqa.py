@@ -135,6 +135,10 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                 dataset[k] = [a.get('vector', a) for a in dataset[k]]
         return dataset
 
+    def acquisition_finalize(self) -> None:
+        super().acquisition_finalize()
+        ZI_AcquisitionDevice.acquisition_finalize(self)
+
     def correct_offset(self, channels, data):
         data = super().correct_offset(channels, data)
         if self._acq_data_type == 'lin_trans':
