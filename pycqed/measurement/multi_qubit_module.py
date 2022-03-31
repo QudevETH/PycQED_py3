@@ -109,12 +109,27 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         add_channels (dict): keys are acquisition devices and values are
             lists/tuples of lists/tuples/dicts with groups (usually pairs or
             singletons) of acquisition channels to be used IN ADDITION to those
-            returned by  qb.get_acq_int_channels(). If a dict is used,
+            returned by qb.get_acq_int_channels(). If a dict is used,
             it must contain a key acq_channels specifying the list/tuple of
             channels in the group, and can have further keys acq_length,
             acq_classifier_params, and acq_state_prob_mtxs. Channels must be
             specified in the format understood by the acquisition device, see
-            docstring of AcquisitionDevice.acquisition_initialize
+            docstring of AcquisitionDevice.acquisition_initialize.
+            Examples:
+                add_channels={'UHF1': [[(0,2), (0,3)], [(0,6), (0,7)]]}
+                add_channels={'Osci': [{
+                    'acq_length': 10e-6,
+                    'acq_channels': [(0,0), (1,0)]}]}
+            Remark: Specifying an acq_length is necessary if the acquisition
+                device is added to the detector function only due to
+                add_channels.
+            Remark: In case of a detector function that uses
+                acq_classifier_params or acq_state_prob_mtxs, channels have to
+                be specified in the correct groups (pairs or singletons),
+                with the corresponding acq_classifier_params or
+                acq_state_prob_mtxs passed along with the group. Otherwise,
+                the grouping of channels can be useful to reflect structure,
+                but has not particular consequence.
         det_get_values_kws (dict): on used with the ClassifyingPollDetector.
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
