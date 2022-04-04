@@ -2333,7 +2333,7 @@ class QuDev_transmon(Qubit):
             other_qb:
                 a qubit on another acquisition device that is configured to
                 see the LO leakage output of the readout UC of self
-            other arguments as in
+            other arguments as in calibrate_drive_mixer_carrier
 
         Example:
             >>> # configure switches to readout mixer calib configuration
