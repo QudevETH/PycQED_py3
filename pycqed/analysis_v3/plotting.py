@@ -26,8 +26,8 @@ import sys
 this_module = sys.modules[__name__]
 pp_mod.search_modules.add(this_module )
 
-prx_single_column_width = 3.404
-prx_two_column_width = 7.057
+prx_single_column_width = 3.375
+prx_two_column_width = 2*prx_single_column_width
 # Default to PRX style, change these global variables according to journal
 FIGURE_WIDTH_1COL = prx_single_column_width
 FIGURE_WIDTH_2COL = prx_two_column_width
