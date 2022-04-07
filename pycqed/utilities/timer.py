@@ -593,3 +593,37 @@ class Checkpoint(list):
 
     def __repr__(self):
         return self.__str__()
+
+
+class TimedMetaClass(type):
+    """
+    A helper metaclass that automatically times each method whose name is
+    specified in the TIMED_METHODS attribute of the class.
+
+    TIMED_METHODS (list of strings) should be an attribute of the class to be
+    created or of its parent class(es). Note that TimedMetaClass overrides
+    the TIMED_METHODS attribute of the class to add those of the parents,
+    in order to pass them through inheritance.
+
+    """
+    def __new__(mcs, name, bases, attrs):
+        """
+        If the class has methods whose names are in `TIMED_METHODS`, they are
+        timed.
+        """
+
+        # If TIMED_METHODS is defined in the new class, it will be accessible
+        # in attrs
+        timed_methods = attrs.get("TIMED_METHODS", [])
+        # In addition, loop over parent classes to find TIMED_METHODS
+        for base_class in bases:
+            timed_methods += getattr(base_class, "TIMED_METHODS", [])
+        # Set the TIMED_METHODS of the new class to be the union of the
+        # TIMED_METHODS of its parents
+        attrs["TIMED_METHODS"] = list(set(timed_methods))
+
+        # Decorate each timed method with a Timer
+        for method_name in attrs["TIMED_METHODS"]:
+            if method_name in attrs:
+                attrs[method_name] = Timer()(attrs[method_name])
+        return super(TimedMetaClass, mcs).__new__(mcs, name, bases, attrs)
