@@ -97,6 +97,7 @@ class VC707(VC707_core, AcquisitionDevice):
                                           weights[1][:res.shape[-1]])
                         )
                     dataset[(i, ch)] = [np.array(integration_result)]
+                self.save_extra_data(f'traces/{i}', last_traces[i])
         self._last_traces.append(last_traces)
         return dataset
 
