@@ -1218,7 +1218,7 @@ class QuDev_transmon(Qubit):
                                        sweep_function_2D=None,
                                        trigger_separation=3e-6,
                                        upload=True, analyze=True,
-                                       close_fig=True, label=None, hard=False):
+                                       close_fig=True, label=None):
         """ Varies the frequency of the microwave source to the resonator and
         measures the transmittance """
         if np.any(freqs < 500e6):
@@ -1238,25 +1238,24 @@ class QuDev_transmon(Qubit):
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
 
             for seg in seq.segments.values():
-                if hard:
-                    # FIXME: SHF specific
-                    self.instr_acq.get_instr().use_hardware_sweeper(True)
-                    center_freq, delta_f, _ = self.instr_acq.get_instr()\
-                        .get_params_from_spectrum(freqs)
-                    self.instr_acq.get_instr().qachannels[self.acq_unit()]\
-                        .centerfreq(center_freq)
-                    seg.acquisition_mode = dict(
-                        sweeper='hardware',
-                        f_start=freqs[0] - center_freq,
-                        f_step=delta_f,
-                        n_step=len(freqs),
-                        seqtrigger=True,
-                    )
-                else:
-                    self.instr_acq.get_instr().use_hardware_sweeper(False)
-                    seg.acquisition_mode = dict(
-                        sweeper='software'
-                    )
+                # SHF-specific
+                if hasattr(self.instr_acq.get_instr(), 'use_hardware_sweeper'):
+                    if self.instr_acq.get_instr().use_hardware_sweeper():
+                        center_freq, delta_f, _ = self.instr_acq.get_instr()\
+                            .get_params_from_spectrum(freqs)
+                        self.instr_acq.get_instr().qachannels[self.acq_unit()]\
+                            .centerfreq(center_freq)
+                        seg.acquisition_mode = dict(
+                            sweeper='hardware',
+                            f_start=freqs[0] - center_freq,
+                            f_step=delta_f,
+                            n_step=len(freqs),
+                            seqtrigger=True,
+                        )
+                    else:
+                        seg.acquisition_mode = dict(
+                            sweeper='software'
+                        )
             self.instr_pulsar.get_instr().program_awgs(seq)
             self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
 
