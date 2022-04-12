@@ -42,6 +42,7 @@ try:
 except ModuleNotFoundError:
     log.warning('"readout_mode_simulations_for_CLEAR_pulse" not imported.')
 
+
 class QuDev_transmon(Qubit):
     DEFAULT_FLUX_DISTORTION = dict(
         IIR_filter_list=[],
@@ -2347,6 +2348,87 @@ class QuDev_transmon(Qubit):
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
             no_improv_break=no_improv_break, upload=upload, plot=plot)
 
+    def calibrate_readout_mixer_carrier(self, other_qb, update=True,
+                                        x0=(0., 0.),
+                                        initial_stepsize=0.01, trigger_sep=5e-6,
+                                        no_improv_break=50, upload=True,
+                                        plot=True):
+        """
+        Calibrate readout upconversion mixer local oscillator leakage
+
+        Args:
+            other_qb:
+                a qubit on another acquisition device that is configured to
+                see the LO leakage output of the readout UC of self
+            other arguments as in calibrate_drive_mixer_carrier
+
+        Example:
+            >>> # configure switches to readout mixer calib configuration
+            >>> # ...
+            >>>
+            >>> with temporary_value((qb_other.ro_mod_freq, 100e6),
+            >>>                      (qb_other.acq_length, 1e-6)):
+            >>>     qb.calibrate_readout_mixer_carrier(
+            >>>         qb_other, trigger_sep=40e-6, no_improv_break=20)
+            >>>
+            >>> # configure switches to nominal configuration
+            >>> # ...
+            >>>
+            >>> for qb_on_feedline in qubits_feedline:
+            >>>     qb_on_feedline.ro_I_offset(qb.ro_I_offset())
+            >>>     qb_on_feedline.ro_Q_offset(qb.ro_Q_offset())
+        """
+
+        MC = self.instr_mc.get_instr()
+        ad_func_pars = {'adaptive_function': opti.nelder_mead,
+                        'x0': x0,
+                        'initial_step': [initial_stepsize, initial_stepsize],
+                        'no_improv_break': no_improv_break,
+                        'minimize': True,
+                        'maxiter': 500}
+        chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ro_I_channel())]
+        chQ_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ro_Q_channel())]
+        MC.set_sweep_functions([chI_par, chQ_par])
+        MC.set_adaptive_function_parameters(ad_func_pars)
+        if upload:
+            sq.pulse_list_list_seq([[other_qb.get_acq_pars(), dict(
+                pulse_type='GaussFilteredCosIQPulse',
+                pulse_length=self.acq_length(),
+                ref_point='start',
+                amplitude=0,
+                I_channel=self.ro_I_channel(),
+                Q_channel=self.ro_Q_channel(),
+            )]])
+
+        with temporary_value(
+                (other_qb.ro_freq, self.ro_freq() - self.ro_mod_freq()),
+                (other_qb.acq_weights_type, 'SSB'),
+                (other_qb.acq_length, self.acq_length()),
+                (other_qb.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive=None)
+            other_qb.prepare(drive=None)
+            MC.set_detector_function(det.IndexDetector(
+                other_qb.int_avg_det_spec, 0))
+            other_qb.instr_pulsar.get_instr().start(
+                exclude=[other_qb.instr_uhf()])
+            MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
+                   mode='adaptive')
+
+        a = ma.OptimizationAnalysis(label='readout_carrier_calibration')
+        if plot:
+            # v2 creates a pretty picture of the optimizations
+            ma.OptimizationAnalysis_v2(label='readout_carrier_calibration')
+
+        ch_1_min = a.optimization_result[0][0]
+        ch_2_min = a.optimization_result[0][1]
+        if update:
+            self.ro_I_offset(ch_1_min)
+            self.ro_Q_offset(ch_2_min)
+        return ch_1_min, ch_2_min
+
     def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
                                             limits=(-0.1, 0.1, -0.1, 0.1),
                                             n_meas=(10, 10), meas_grid=None,
@@ -2724,7 +2806,6 @@ class QuDev_transmon(Qubit):
         exp_metadata = {'qb_names': [self.name], 'rotate': False,
                         'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
 
-        exp_metadata = {'qb_names': [self.name], 'rotate': False}
         with temporary_value(
             (self.ro_freq, self.ge_freq() - 2*self.ge_mod_freq()),
             (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset

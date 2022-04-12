@@ -428,6 +428,11 @@ class QuantumExperiment(CircuitBuilder):
                     extra sequences are compatible with the normal sequences
                     of the QuantumExperiment, e.g., in terms of number of
                     acquisition elements.
+                - aux_triggers (dict): a dict where each key is a tuple of a
+                    sequence index and segment index, and the corresponding
+                    value is a list of channel names. This will add trigger
+                    pulses on the given channels for the first pulse of
+                    the segment indicated by the key.
         Returns:
 
         """
@@ -466,6 +471,11 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.concatenate([
                     self.mc_points[1],
                     np.arange(len(extra_seqs)) + self.mc_points[1][-1] + 1])
+            aux_triggers = sequence_kwargs.get('aux_triggers', None)
+            if aux_triggers is not None:
+                for (i, j), v in aux_triggers.items():
+                    self.sequences[i][j].unresolved_pulses[
+                        0].pulse_obj.trigger_channels = v
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
