@@ -350,6 +350,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         )
 
     def acquisition_finalize(self):
+        super().acquisition_finalize()
         # Use a transaction since qcodes does not support wildcards
         # Or use toolkit: self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
