@@ -37,7 +37,7 @@ class Segment:
     trigger_pulse_start_buffer = 25e-9
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
-                 **kw):
+                 fast_mode=False, **kw):
         """
         Initiate instance of Segment class.
 
@@ -60,6 +60,9 @@ class Segment:
                 - 'sweeper': use sweeper mode if available (for RO frequency
                   sweeps, e.g., resonator spectroscopy)
                 - 'default' (default value): normal acquisition elements
+            fast_mode (bool):  If True, copying pulses is avoided. In this
+                case, the pulse_pars_list passed to Segment will be modified
+                (default: False).
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -100,6 +103,7 @@ class Segment:
         self.timer = Timer(self.name)
         self.pulse_pars = []
         self.is_first_segment = False
+        self.fast_mode = fast_mode
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -114,8 +118,11 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
-        self.pulse_pars.append(deepcopy(pulse_pars))
-        pars_copy = deepcopy(pulse_pars)
+        if self.fast_mode:
+            pars_copy = pulse_pars
+        else:
+            self.pulse_pars.append(deepcopy(pulse_pars))
+            pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
         if pars_copy.get('name') in self._pulse_names:
