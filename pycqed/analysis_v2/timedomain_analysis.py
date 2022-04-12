@@ -8642,8 +8642,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                          in case different bases should be used for different qubits.
                     orthonormalize (bool): Whether or not to orthonormalize the
                         weight basis
-                    tmax (float): time boundary for the plot (not the weights)
-                        in seconds.
                     scale_weights (bool): scales the weights near unity to avoid
                         loss of precision on FPGA if weights are too small
 
@@ -8822,7 +8820,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         'yvals': func(weights * modulation),
                         'ylabel': 'Voltage, $V$ (arb.u.)',
                         "sharex": True,
-                        "xrange": (0, self.get_param_value('tmax', 1200e-9, 0)),
+                        "xrange": [self.get_param_value('tmin', min(tbase), 0),
+                                   self.get_param_value('tmax', max(tbase), 0)],
                         "setdesc": label + f"_{i+1}",
                         "do_legend": True,
                         "legend_pos": "upper right",
