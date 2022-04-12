@@ -45,7 +45,7 @@ class Segment:
             name: Name of segment
             pulse_pars_list: list of pulse parameters in the form
                 of dictionaries
-            acquisition_mode (str): This will be copied into the acq key of
+            acquisition_mode (dict): This will be copied into the acq key of
                 the element metadata of acquisition elements to inform Pulsar
                 that waveforms need to be programmed in a way that is
                 compatible with the given acquisition mode. Note:
@@ -56,15 +56,19 @@ class Segment:
                   special acquisition mode need to ensure that other parts of
                   pycqed (e.g., sweep_function) get configured in a
                   compatible manner.
-                - multiple non-default modes can be combined as a
-                  comma-separated str, e.g., 'sweeper,seqtrigger'
-                Allowed modes currently include:
+                Allowed items currently include:
                 - 'sweeper': use sweeper mode if available (for RO frequency
-                  sweeps, e.g., resonator spectroscopy)
-                - 'seqtrigger': let the sequencer output an auxiliary trigger
-                  when starting the the acquisition
-                - 'default' (default value): normal acquisition elements
-                FIXME: update this arg in the docstring
+                  sweeps, e.g., resonator spectroscopy). Currently the SHFQA
+                  accepts the values: 'software', 'hardware', while the UHFQA
+                  only relies on the presence or not of this 'sweeper' key.
+                - 'fstart', 'fstep' and 'nstep': Sweep parameters, in the
+                  case of a hardware sweep on the SHFQA.
+                - 'seqtrigger': if True, let the sequencer output an auxiliary
+                  trigger when starting the acquisition
+                - 'default' (default value): if this key is present in
+                  the dict, indicates a normal acquisition element. This
+                  should not be used in combination with the other possible
+                  items.
             fast_mode (bool):  If True, copying pulses is avoided. In this
                 case, the pulse_pars_list passed to Segment will be modified
                 (default: False).

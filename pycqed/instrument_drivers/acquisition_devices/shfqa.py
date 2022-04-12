@@ -13,7 +13,14 @@ import json
 import time
 log = logging.getLogger(__name__)
 
-class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
+
+class SHFQASpectroscopyHardSweep(swf.Hard_Sweep):
+    """Defines a hard sweep segment specific to the SHFQA hard spectroscopy.
+
+    Unlike other similar segments, here the frequency parameters are
+    set externally in the acquisition_mode of the Segment, to allow Pulsar to
+    access them in order to write them in the seqc code.
+    """
     def __init__(self, acq_dev, acq_unit, parameter_name='None'):
         super().__init__()
         self.parameter_name = parameter_name
@@ -22,9 +29,7 @@ class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
         self.acq_unit = acq_unit
 
     def set_parameter(self, value):
-        pass  # FIXME  add comment why
-        # # FIXME: at some point, we need to test whether the freqs are supported
-        # #  by the sweeper
+        pass  # Set in the Segment, see docstring
 
 
 class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
@@ -44,9 +49,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     """
     acq_length_granularity = 16
 
-    # acq_sampling_rate is the effective sampling rate provided by the SHF,
+    # acq_sampling_rate is the effective sampling rate provided by the SHFQA,
     # even though internally it has an ADC running at 4e9 Sa/s.
-    # More details on the chain of downconversions on the SHF input:
+    # More details on the chain of downconversions on the SHFQA input:
     # Signal at center_freq+/-1e9 Hz
     # (or +/-700e6 is the actual analog bandwidth)
     # DC by center_freq+12e9 and filter -> 12e9+/-1e9
@@ -57,7 +62,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
     acq_weights_n_samples = 4096
-    acq_Q_sign = -1 # Determined experimentally
+    acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'], #FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
@@ -65,7 +70,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                      'scope': ['spectrum', 'timetrace', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
-    # the SHF
+    # the SHFQA
     res_logging_indices = {'raw': 1,  # raw integrated+averaged results
                            'digitized': 3,  # thresholded results (0 or 1)
                            }
@@ -191,10 +196,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self._reset_acq_poll_inds()
 
     def get_sweep_points_spectrum(self, acquisition_length=None, lo_freq=0):
-        """
+        """Returns the sweep points that will be measured by a software PSD
+        measurement.
 
         For now this only considers acquiring at the normal sampling rate, and
-        without e.g. sweeping the (internal) LO
+        without e.g. sweeping the (internal) LO.
+        This function might not be needed anymore once we use the soft PSD
+        from the ZI qcodes.
         """
         if acquisition_length is None:
             acquisition_length = self._acq_length
@@ -208,6 +216,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         """Convenience method for retrieving parameters needed to measure a
         spectrum
 
+        Args:
+            requested_freqs (list of double): frequencies to be measured.
+            Note that the effectively measured frequencies will be a rounded
+            version of these values.
         """
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
@@ -226,7 +238,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
         if min_bandwidth > self.acq_sampling_rate:
             raise NotImplementedError('Spectrum wider than the bandwidth of '
-                                      'the SHF is not yet implemented!')
+                                      'the SHFQA is not yet implemented!')
         # Compute needed acq length
         delta_f = np.mean(diff_f)
         # Note that this might underestimate the necessary acq_length to get
@@ -268,7 +280,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
-            # This is needed because the SHF currently lacks user
+            # This is needed because the SHFQA currently lacks user
             # registers and thus cannot be programmed by Pulsar,
             # which is instead done in self._program_awg
             if self._acq_loop_cnts_last[i] != loop_cnt:
@@ -300,7 +312,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 0\
                     and self.use_hardware_sweeper():  # spectroscopy
-                # FIXME: check whether this will be fine with the hw sweeper
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
@@ -308,7 +319,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     f'channel{i}_sequencer_trigger0')
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
-                # Fit as many traces as possible in a single SHF call
+                # Fit as many traces as possible in a single SHFQA call
                 num_points_per_trace = self.convert_time_to_n_samples(
                     self._acq_length)
                 num_traces_per_run = int(np.floor(self._acq_scope_memory /
@@ -352,7 +363,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def acquisition_finalize(self):
         super().acquisition_finalize()
         # Use a transaction since qcodes does not support wildcards
-        # Or use toolkit: self._tk_object.qachannels["*"].oscs[0].gain(0)
+        # Could use the ZI toolkit instead:
+        # self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
@@ -371,8 +383,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'spectrum':
                 n_acq[i] = 0
-            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace') \
-                    or self._acq_mode == 'avg':
+            elif (self._acq_mode == 'scope' and self._acq_data_type ==
+                  'timetrace') or self._acq_mode == 'avg':
                 n_acq[i] = 0
             else:
                 raise NotImplementedError
@@ -411,17 +423,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.scopes[0].stop()
         self.scopes[0].run(single=1)
 
-
     @Timer()
     def poll(self, *args, **kwargs):
         # 220118 For now, poll reads all data available from the data server
         # at each run, and then returns only the newer data to match the
         # normal behaviour of poll. One could implement an actual poll after
         # ZI has improved the drivers, if that turns out to be a bottleneck.
-        # sqrt(2) are because the SHF seems to return integrated RMS voltages.
+        # sqrt(2) are because the SHFQA seems to return integrated RMS voltages.
 
         # TODO (from ZI) poll is availabe on the new zhinst-qcodes driver,
-        #  might be worthwhile considering since it is much faster.
+        # might be worthwhile considering since it is much faster.
         # The polling is implemented on the session directly and not the
         # device!
         # subscribing  works on every "qcodes-node"
@@ -458,7 +469,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     res.append(self.qachannels[i].readout.result.data[
                                    channel].wave())
 
-                # In readout mode the data isn't rescaled yet in the SHF
+                # In readout mode the data isn't rescaled yet in the SHFQA
                 # by the number of points
                 scaling_factor = np.sqrt(2) \
                                  / (self.acq_sampling_rate * self._acq_length)
@@ -466,7 +477,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     {(i, ch): [np.real(res[n][self._acq_poll_inds[i][n]:])
                                * scaling_factor]
                      for n, ch in enumerate(channels)})
-                self._acq_poll_inds[i] = [len(res[n]) for n in range(len(channels))]
+                self._acq_poll_inds[i] = [len(res[n]) for n in range(len(
+                    channels))]
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 0:  # spectroscopy
                 progress = self.qachannels[i].spectroscopy.result.acquired()
@@ -481,7 +493,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     and self._acq_data_type == 'spectrum':
                 if not channels == [0, 1]:  # TODO: one channel in TWPA object
                     raise ValueError()
-                # The SHF acquires at full memory, then we get as many traces
+                # The SHFQA acquires at full memory, then we get as many traces
                 # as possible from that (this could be avoided e.g. if a few
                 # points only are needed, in case this slows down measuring)
                 num_points_per_run = self.convert_time_to_n_samples(
@@ -518,8 +530,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
                 dataset.update({(i, 0): [power_spectrum]})
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
-            elif (self._acq_mode == 'scope' and self._acq_data_type == 'timetrace')\
-                    or self._acq_mode == 'avg':
+            elif (self._acq_mode == 'scope' and self._acq_data_type ==
+                  'timetrace') or self._acq_mode == 'avg':
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
@@ -535,8 +547,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
-                                            parameter_name=name)
+            return SHFQASpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
+                                              parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -544,7 +556,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 swf.Offset_Sweep(
                     self.qachannels[acq_unit].oscs[0].freq,
                     ro_mod_freq),
-                    self.allowed_lo_freqs(),
+                self.allowed_lo_freqs(),
                 name=name_offset, parameter_name=name_offset),
             -ro_mod_freq, name=name, parameter_name=name)
 
@@ -582,7 +594,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         properties = super().get_value_properties(
             data_type=data_type, acquisition_length=acquisition_length)
-        properties['scaling_factor'] = 1 # Set separately in poll()
+        properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
     # According to ZI the snapshot has been improved, and is now much faster
@@ -595,10 +607,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     #         return super().snapshot(update)
     #     else:  # update is not used in this case
     #         nodes = json.loads(self.daq.listNodesJSON('/' + self.devname))
-    #         shf_settings = {k: self.daq.get(k, settingsonly=False, flat=True) for k in nodes}
+    #         shfqa_settings = {k: self.daq.get(k, settingsonly=False,
+    #             flat=True) for k in nodes}
     #         # Remove timestamp data to help diffing
-    #         for key, s in shf_settings.items():
-    #             for same_key in list(s.keys()):  # s is a dict that contains a single key, the same as in shf_settings
+    #         for key, s in shfqa_settings.items():
+    #             for same_key in list(s.keys()):  # s is a dict that contains a single key, the same as in shfqa_settings
     #                 try:
     #                     s[same_key].pop('timestamp', None)
     #                 except:
@@ -607,4 +620,4 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     #                             item.pop('timestamp', None)
     #                     except:  # If impossible to remove, just leave that in the output
     #                         pass
-    #         return shf_settings
+    #         return shfqa_settings

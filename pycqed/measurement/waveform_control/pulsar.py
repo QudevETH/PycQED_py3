@@ -1777,7 +1777,6 @@ class SHFQAPulsar:
             log.debug(f'{obj.name}: programming group {i}')
 
             hash_to_index_map = {h: i for i, h in enumerate(waves_to_upload)}
-            print(f"hash_to_index_map = {len(hash_to_index_map)}")
 
             if is_spectroscopy and len(waves_to_upload) > 1:
                 log.error(f"Can not have multiple elements in spectroscopy mode"
@@ -1821,6 +1820,8 @@ class SHFQAPulsar:
                         # chid_to_hash = awg_sequence_element['no_codeword']
                         acq = metadata.get('acq', False)
                         break  # FIXME: assumes there is only one segment
+                    # FIXME: at some point, we need to test whether the freqs
+                    #  are supported by the sweeper
                     prep_string = "const OSC0 = 0;\n"\
                         "setTrigger(0);\n"\
                         f"configFreqSweep(OSC0, {acq['f_start']}, " \
@@ -1844,6 +1845,8 @@ class SHFQAPulsar:
                         "  }")
                     # provide sequence data to SHFQA object for upload in
                     # acquisition_initialize
+                    # TODO: the contents of this function should now be moved
+                    #  here, since we now have user registers
                     obj.set_awg_program(
                         i,
                         shfqa_sequence_string_template.format(
@@ -1934,7 +1937,7 @@ class SHFQAPulsar:
         is_running = []
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
-            if qachannel.mode() == 1:
+            if qachannel.mode() == 1:  # readout
                 is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
                 daq = obj.daq

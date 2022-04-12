@@ -1312,9 +1312,9 @@ class ScopePollDetector(PollDetector):
 
     Attributes:
         data_type (str) :  options are
-            - timedomain        -> returns (possibly averaged) time traces
-            - voltage_spectrum  -> returns (possibly averaged) voltage spectral density
-            - power_spectrum    -> returns (possibly averaged) power spectral density
+            - timedomain: returns time traces (possibly averaged and/or
+              single-shot)
+            - spectrum: returns (possibly averaged) power spectral density
     """
 
     def __init__(self,
@@ -1337,18 +1337,24 @@ class ScopePollDetector(PollDetector):
         self.nr_shots = nr_shots
         # will be used in MC
         if self.data_type == 'spectrum':
-            self.acq_data_len_scaling = 1  # Multiple shots aren't implemented for spectrum measurements
+            # Multiple shots aren't implemented for spectrum measurements
+            self.acq_data_len_scaling = 1
         elif self.data_type == 'timetrace':
-            self.acq_data_len_scaling = self.nr_shots  # Normal number of shots (MC will expect that many timetraces)
+            # Normal number of shots (MC will expect that many timetraces)
+            self.acq_data_len_scaling = self.nr_shots
 
     def prepare(self, sweep_points=None):
 
         super().prepare()
-        self.nr_sweep_points = len(sweep_points)  # MC might rely on this to get the correct amount of data?
+        # MC might rely on this to get the correct amount of data?
+        self.nr_sweep_points = len(sweep_points)
         if self.data_type == 'spectrum':
-            n_results = self.nr_sweep_points  # Number of points of the spectrum to be returned
+            # Number of points of the spectrum to be returned
+            n_results = self.nr_sweep_points
         elif self.data_type == 'timetrace':
-            n_results = 1  # Meaning 1 timetrace. Could be extended e.g. if hardware allows TV-mode avg of timetraces
+            # Meaning 1 timetrace. Could be extended e.g. if hardware allows
+            # TV-mode avg of timetraces
+            n_results = 1
         else:
             raise ValueError
 
