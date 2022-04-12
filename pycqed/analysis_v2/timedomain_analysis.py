@@ -1072,10 +1072,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.num_cal_points,
                         self.proc_data_dict['sweep_points_dict'][qbn][
                             'sweep_points'])
-                sweep_points_dict[qbn]['msmt_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][:-self.num_cal_points]
-                sweep_points_dict[qbn]['cal_points_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][-self.num_cal_points::]
+                if self.num_cal_points == 0:
+                    msmt_swpts = sweep_points_dict[qbn]['sweep_points']
+                    calpts_swpts = np.array([])
+                else:
+                    msmt_swpts = sweep_points_dict[qbn]['sweep_points'][
+                                 :-self.num_cal_points]
+                    calpts_swpts = sweep_points_dict[qbn]['sweep_points'][
+                                   -self.num_cal_points:]
+                sweep_points_dict[qbn]['msmt_sweep_points'] = msmt_swpts
+                sweep_points_dict[qbn]['cal_points_sweep_points'] = calpts_swpts
             else:
                 sweep_points_dict[qbn]['sweep_points'] = \
                     self.proc_data_dict['sweep_points_dict'][qbn]['sweep_points']
