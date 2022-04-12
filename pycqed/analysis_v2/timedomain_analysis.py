@@ -1073,9 +1073,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.proc_data_dict['sweep_points_dict'][qbn][
                             'sweep_points'])
                 if self.num_cal_points == 0:
+                    # msmt_sweep_points the same as sweep_points:
+                    # no dummy sweep points corresponding to calibration points
                     msmt_swpts = sweep_points_dict[qbn]['sweep_points']
                     calpts_swpts = np.array([])
                 else:
+                    # distinguish between the sweep points corresponding to
+                    # the measurement, and dummy sweep points appended by
+                    # extend_sweep_points_by_n_cal_pts
                     msmt_swpts = sweep_points_dict[qbn]['sweep_points'][
                                  :-self.num_cal_points]
                     calpts_swpts = sweep_points_dict[qbn]['sweep_points'][
