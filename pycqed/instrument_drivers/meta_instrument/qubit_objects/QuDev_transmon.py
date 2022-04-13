@@ -1238,16 +1238,15 @@ class QuDev_transmon(Qubit):
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
 
             for seg in seq.segments.values():
-                # SHF-specific
                 if hasattr(self.instr_acq.get_instr(), 'use_hardware_sweeper'):
                     if self.instr_acq.get_instr().use_hardware_sweeper():
-                        center_freq, delta_f, _ = self.instr_acq.get_instr()\
+                        lo_freq, delta_f, _ = self.instr_acq.get_instr()\
                             .get_params_from_spectrum(freqs)
-                        self.instr_acq.get_instr().qachannels[self.acq_unit()]\
-                            .centerfreq(center_freq)
+                        self.instr_acq.get_instr().set_lo_freq(self.acq_unit,
+                                                               lo_freq)
                         seg.acquisition_mode = dict(
                             sweeper='hardware',
-                            f_start=freqs[0] - center_freq,
+                            f_start=freqs[0] - lo_freq,
                             f_step=delta_f,
                             n_step=len(freqs),
                             seqtrigger=True,
