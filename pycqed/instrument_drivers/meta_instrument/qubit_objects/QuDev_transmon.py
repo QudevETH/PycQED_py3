@@ -3617,11 +3617,11 @@ class QuDev_transmon(Qubit):
                     qb_names=[self.name], options_dict=dict(
                         fit_gaussian_decay=kw.get('fit_gaussian_decay', True)))
                 new_qubit_freq = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'new_qb_freq']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['new_qb_freq']
                 T2_star = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'T2_star']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['T2_star']
 
             if update:
                 if for_ef:
