@@ -38,7 +38,6 @@ class Detector_Function(object):
             'progress_callback_interval', 5)  # in seconds
         # tells MC whether to show live plotting for the measurement
         self.live_plot_allowed = kw.get('live_plot_allowed', True)
-        self.extra_data_callback = None
 
     def set_kw(self, **kw):
         '''
@@ -603,6 +602,7 @@ class PollDetector(Hard_Detector):
         self.acq_devs = [d.acq_dev for d in self.detectors]
         self.det_from_acq_dev = {k.name: v for k, v in zip(self.acq_devs,
                                                            self.detectors)}
+
         self.progress_scaling = None
 
     def prepare(self):
@@ -626,9 +626,6 @@ class PollDetector(Hard_Detector):
 
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
-            # Allow the acqusition device to store additional data
-            acq_dev.extra_data_callback = self.extra_data_callback
-            # Final preparations for an acquisition.
             acq_dev.prepare_poll()
 
         if self.AWG is not None:

@@ -48,8 +48,6 @@ except Exception:
     print('When instantiating an MC object,'
           ' be sure to set live_plot_enabled=False')
 
-EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
-
 
 class MeasurementControl(Instrument):
 
@@ -291,7 +289,7 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.save_exp_metadata(self.exp_metadata)
+            self.save_exp_metadata(self.exp_metadata, self.data_object)
             exception = None
             try:
                 self.check_keyboard_interrupt()
@@ -324,7 +322,8 @@ class MeasurementControl(Instrument):
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
-                self.save_exp_metadata({'percentage_done': percentage_done})
+                self.save_exp_metadata({'percentage_done': percentage_done},
+                                       self.data_object)
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
@@ -1646,14 +1645,11 @@ class MeasurementControl(Instrument):
                 val_name+' (' + self.detector_function.value_units[i] + ')')
         return self.column_names
 
-    def _get_experimentaldata_group(self):
-        if EXPERIMENTAL_DATA_GROUP_NAME in self.data_object:
-            return self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
-        else:
-            return self.data_object.create_group(EXPERIMENTAL_DATA_GROUP_NAME)
-
     def create_experimentaldata_dataset(self):
-        data_group = self._get_experimentaldata_group()
+        if 'Experimental Data' in self.data_object:
+            data_group = self.data_object['Experimental Data']
+        else:
+            data_group = self.data_object.create_group('Experimental Data')
         self.dset = data_group.create_dataset(
             'Data', (0, len(self.sweep_functions) +
                      len(self.detector_function.value_names)),
@@ -1692,53 +1688,6 @@ class MeasurementControl(Instrument):
         }
         return result_dict
 
-    def save_extra_data(self, group_name, dataset_name, data,
-                        column_names=None):
-        """Save further data in addition to the Data table
-
-        This can, e.g., be used to save raw data in cases where the data in
-        the Data table is processed in software, or data that is provided by
-        the acquisition instrument in addition to the main measurement data.
-        Note that the method can only be used during a run of MC, i.e.,
-        while self.data_object is open.
-
-        Note that this method is provided as a callback function to
-        self.detector_function.
-
-        Args:
-            group_name (str): Name of the subgroup inside experimental data
-                group. The subgroup is automatically created if it does
-                not exist.
-            dataset_name (str): The name of the dataset in which the data
-                should be stored. If the dataset exists already, the shape
-                of the new data must be compatible with the dimensions of
-                the existing dataset such that it can be appended in axis 0.
-                Note that the name can contain slashes indicating a
-                hierarchy of subgroups with only the part behind the last
-                slash interpreted as dataset name.
-            data (np.array): the data to be stored
-            column_names (None or list of str): names of the columns of the
-                data array. If this is not None and a new dataset is
-                created, the list is stored as an attribute column_names of
-                the new dataset.
-        """
-        data_group = self._get_experimentaldata_group()
-        if group_name in data_group:
-            group = data_group[group_name]
-        else:
-            group = data_group.create_group(group_name)
-        if dataset_name not in group:
-            dset = group.create_dataset(dataset_name, data=data,
-                                        maxshape=[None] * len(data.shape))
-            if column_names is not None:
-                dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
-        else:
-            dset = group[dataset_name]
-            # FIXME: we should check whether dimensions and column names
-            #  are the same
-            dset.resize(dset.shape[0] + data.shape[0], axis=0)
-            dset[-data.shape[0]:] = data
-
     def save_optimization_settings(self):
         '''
         Saves the parameters used for optimization
@@ -1771,8 +1720,8 @@ class MeasurementControl(Instrument):
                                         xfavorite, stds,
                                         [fbest], xbest, [evals_best]])
         if (not 'optimization_result'
-                in self.data_object[EXPERIMENTAL_DATA_GROUP_NAME].keys()):
-            opt_res_grp = self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
+                in self.data_object['Experimental Data'].keys()):
+            opt_res_grp = self.data_object['Experimental Data']
             self.opt_res_dset = opt_res_grp.create_dataset(
                 'optimization_result', (0, len(results_array)),
                 maxshape=(None, len(results_array)),
@@ -1820,7 +1769,6 @@ class MeasurementControl(Instrument):
             res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
-    @Timer()
     def save_instrument_settings(self, data_object=None, *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -1850,17 +1798,11 @@ class MeasurementControl(Instrument):
             set_grp = data_object.create_group('Instrument settings')
             inslist = dict_to_ordered_tuples(self.station.components)
             for (iname, ins) in inslist:
-                self.timer.checkpoint(
-                    f"MeasurementControl.save_instrument_settings.{iname}.start")
                 instrument_grp = set_grp.create_group(iname)
                 inst_snapshot = ins.snapshot()
-                self.timer.checkpoint(
-                    f"MeasurementControl.save_instrument_settings.{iname}.store")
                 self.store_snapshot_parameters(inst_snapshot,
                                                entry_point=instrument_grp,
                                                instrument=ins)
-                self.timer.checkpoint(
-                    f"MeasurementControl.save_instrument_settings.{iname}.end")
         numpy.set_printoptions(**opt)
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
@@ -1973,7 +1915,8 @@ class MeasurementControl(Instrument):
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
 
-    def save_exp_metadata(self, metadata: dict):
+    @classmethod
+    def save_exp_metadata(self, metadata: dict, data_object):
         '''
         Saves experiment metadata to the data file. The metadata is saved at
             file['Experimental Data']['Experimental Metadata']
@@ -1982,8 +1925,13 @@ class MeasurementControl(Instrument):
             metadata (dict):
                     Simple dictionary without nesting. An attribute will be
                     created for every key in this dictionary.
+            data_object:
+                    An open hdf5 data object.
         '''
-        data_group = self._get_experimentaldata_group()
+        if 'Experimental Data' in data_object:
+            data_group = data_object['Experimental Data']
+        else:
+            data_group = data_object.create_group('Experimental Data')
 
         if 'Experimental Metadata' in data_group:
             metadata_group = data_group['Experimental Metadata']
@@ -2274,7 +2222,6 @@ class MeasurementControl(Instrument):
                                                 wrapped_det_control)
         self.detector_function = detector_function
         self.set_detector_function_name(detector_function.name)
-        self.detector_function.extra_data_callback = self.save_extra_data
 
     def get_detector_function(self):
         return self.detector_function
