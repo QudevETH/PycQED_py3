@@ -1214,6 +1214,7 @@ class QuDev_transmon(Qubit):
             self.instr_ro_lo.get_instr().frequency(),
             name='Readout frequency',
             parameter_name='Readout frequency')
+
     def measure_resonator_spectroscopy(self, freqs, sweep_points_2D=None,
                                        sweep_function_2D=None,
                                        trigger_separation=3e-6,
@@ -1242,7 +1243,7 @@ class QuDev_transmon(Qubit):
                     if self.instr_acq.get_instr().use_hardware_sweeper():
                         lo_freq, delta_f, _ = self.instr_acq.get_instr()\
                             .get_params_from_spectrum(freqs)
-                        self.instr_acq.get_instr().set_lo_freq(self.acq_unit,
+                        self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
                                                                lo_freq)
                         seg.acquisition_mode = dict(
                             sweeper='hardware',
@@ -1256,7 +1257,6 @@ class QuDev_transmon(Qubit):
                             sweeper='software'
                         )
             self.instr_pulsar.get_instr().program_awgs(seq)
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
 
         MC = self.instr_mc.get_instr()
         MC.set_sweep_function(self.swf_ro_freq_lo())

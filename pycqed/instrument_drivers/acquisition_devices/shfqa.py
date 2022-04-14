@@ -180,7 +180,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     num_averages=self._acq_averages,
                     averaging_mode=AveragingMode.CYCLIC,
                 )
-                self.qachannels[i].generator.userregs[1](  # Used in seqc code
+                self.qachannels[i].generator.userregs[1].value(
+                    # Used in seqc code
                     self.convert_time_to_n_samples(self._acq_length)
                 )
                 self.qachannels[i].generator.single(1)
@@ -286,7 +287,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             if self._acq_loop_cnts_last[i] != loop_cnt:
                 self._program_awg(i)  # reprogramm this acq unit
                 self._acq_loop_cnts_last[i] = loop_cnt
-            self.qachannels[i].generator.userregs[0](
+            self.qachannels[i].generator.userregs[0].value(
                 self._acq_loop_cnt)  # Used in seqc code
             # TODO: should probably decide actions based on the data type, not
             #  also on the acq unit physical mode
@@ -486,8 +487,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     data = self.qachannels[i].spectroscopy.result.data.wave()
                     data = [[np.real(a), np.imag(a)] for a in data]
                     scaling_factor = np.sqrt(2)
-                    dataset.update({(i, ch): [a[n % 2] * scaling_factor
-                                              for a in data]
+                    dataset.update({(i, ch): [[a[n % 2] * scaling_factor
+                                              for a in data]]
                                     for n, ch in enumerate(channels)})
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
