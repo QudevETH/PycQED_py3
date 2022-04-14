@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import logging
 from copy import deepcopy
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
@@ -8,7 +9,8 @@ from pycqed.instrument_drivers.acquisition_devices.base import \
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
 from vc707_python_interface.modules.base_module import BaseModule
-import logging
+from vc707_python_interface.settings.state_discriminator_settings \
+    import DiscriminationUnit
 
 
 log = logging.getLogger(__name__)
@@ -43,33 +45,38 @@ class VC707(VC707_core, AcquisitionDevice):
                            #"digitized": 3,  # thresholded results (0 or 1)
                            }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, devidx:int, clockmode:int, **kwargs):
+        """
+        Arguments:
+            devidx, clockmode: see :class:`vc707_python_interface.fpga_interface.vc707_interface.VC707InitSettings`.
+        """
+
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
+
+        # Init settings must be set before initialize() is called
+        self.init_devidx(devidx)
+        self.init_clockmode(clockmode)
         self.initialize()
-        self.add_parameter(
-            "timeout",
-            unit="s",
-            initial_value=30,
-            parameter_class=ManualParameter,
-            vals=validators.Ints())
+
         self._acq_integration_weights = {}
         self._last_traces = []
 
     def prepare_poll(self):
         super().prepare_poll()
 
-        if self._get_fpga_module() == "averager":
+        if self._get_current_fpga_module_name() == "averager":
             self.averager.configure()
             self.averager.run()
-        elif self._get_fpga_module() == "state_discriminator":
+        elif self._get_current_fpga_module_name() == "state_discriminator":
             self.state_discriminator.configure()
+            self.state_discriminator.upload_weights()
             self.state_discriminator.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
-        self._acquisition_initialize_base(
+        super().acquisition_initialize(
             channels, n_results, averages, loop_cnt,
             mode, acquisition_length, data_type)
 
@@ -77,7 +84,7 @@ class VC707(VC707_core, AcquisitionDevice):
         self._acquisition_nodes = deepcopy(channels)
         self._acq_data_type = data_type
 
-        if self._get_fpga_module() == "averager":
+        if self._get_current_fpga_module_name() == "averager":
             self._last_traces = []
             self.averager_nb_samples.set(
                 self.convert_time_to_n_samples(acquisition_length)
@@ -91,17 +98,26 @@ class VC707(VC707_core, AcquisitionDevice):
             elif mode == "int_avg":
                 self.averager_nb_segments.set(n_results)
 
-        elif self._get_fpga_module() == "state_discriminator":
-            self.state_discriminator_settings_nb_samples = \
+        elif self._get_current_fpga_module_name() == "state_discriminator":
+            self.state_discriminator_nb_samples.set(
                 self.convert_time_to_n_samples(acquisition_length)
+            )
             self.state_discriminator_nb_segments.set(n_results)
             # TODO: loop_cnt seems to be `self.nr_shots * self.nr_averages`, what
             # exact value do we need to set. In list_ouput mode the FPGA will
             # return exactly 4**nb_triggers_pow4 values.
             self.state_discriminator_nb_triggers_pow4.set(
-                math.log(loop_cnt, base=4)
+                math.log(loop_cnt, 4)
             )
             self.state_discriminator_use_list_output.set(True)
+
+            # TODO: configure fpga acquisition units properly
+            print("Don't forget to set discrimination units, and weights.")
+            # self.state_discriminator_units.set([])
+            # for ch, quadrature in channels:
+            #     self.state_discriminator_units.get().append(
+            #         DiscriminationUnit()
+            #     )
 
     def poll(self, poll_time=0.1) -> dict:
 
@@ -131,7 +147,7 @@ class VC707(VC707_core, AcquisitionDevice):
                     if qubit.source_adc in [c[0] for c in channels]:
                         qubit.center_coordinates = params['means_'].ravel()
 
-                self.state_discriminator.load_weights()
+                self.state_discriminator.upload_weights()
 
     def _adapt_averager_results(self, raw_results) -> dict:
         """Format the FPGA averager results as expected by PycQED."""
@@ -199,7 +215,7 @@ class VC707(VC707_core, AcquisitionDevice):
             if qubit.source_adc == channel:
                 qubit.weights = weight
 
-        self.state_discriminator.load_weights()
+        self.state_discriminator.upload_weights()
 
     def _get_current_fpga_module_name(self) -> str:
         """Helper function that checks which FPGA module must be used."""
