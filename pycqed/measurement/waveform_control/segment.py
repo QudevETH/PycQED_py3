@@ -37,7 +37,7 @@ class Segment:
     trigger_pulse_start_buffer = 25e-9
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
-                 **kw):
+                 fast_mode=False, **kw):
         """
         Initiate instance of Segment class.
 
@@ -60,6 +60,9 @@ class Segment:
                 - 'sweeper': use sweeper mode if available (for RO frequency
                   sweeps, e.g., resonator spectroscopy)
                 - 'default' (default value): normal acquisition elements
+            fast_mode (bool):  If True, copying pulses is avoided. In this
+                case, the pulse_pars_list passed to Segment will be modified
+                (default: False).
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -100,6 +103,7 @@ class Segment:
         self.timer = Timer(self.name)
         self.pulse_pars = []
         self.is_first_segment = False
+        self.fast_mode = fast_mode
 
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
@@ -114,8 +118,11 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
-        self.pulse_pars.append(deepcopy(pulse_pars))
-        pars_copy = deepcopy(pulse_pars)
+        if self.fast_mode:
+            pars_copy = pulse_pars
+        else:
+            self.pulse_pars.append(deepcopy(pulse_pars))
+            pars_copy = deepcopy(pulse_pars)
 
         # Makes sure that pulse name is unique
         if pars_copy.get('name') in self._pulse_names:
@@ -219,12 +226,13 @@ class Segment:
     def enforce_single_element(self):
         self.resolved_pulses = []
         for p in self.unresolved_pulses:
-            ch_mask = []
-            for ch in p.pulse_obj.channels:
+            channels = p.pulse_obj.masked_channels()
+            chs_ese = set()
+            for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                ch_mask.append(
-                    self.pulsar.get(f'{ch_awg}_enforce_single_element'))
-            if all(ch_mask) and len(ch_mask) != 0:
+                if self.pulsar.get(f'{ch_awg}_enforce_single_element'):
+                    chs_ese.add(ch)
+            if len(channels - chs_ese) == 0 and len(chs_ese) != 0:
                 p = deepcopy(p)
                 p.pulse_obj.element_name = f'default_ese_{self.name}'
                 if p.pulse_obj.codeword == "no_codeword":
@@ -232,15 +240,15 @@ class Segment:
                 else:
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
-                                f'{", ".join(p.pulse_obj.channels)}')
-            elif any(ch_mask):
+                                f'{", ".join(list(channels))}')
+            elif len(chs_ese) != 0:
                 p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask = [not x for x in ch_mask]
+                p0.pulse_obj.channel_mask |= chs_ese
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
                 p1.pulse_obj.element_name = f'default_ese_{self.name}'
-                p1.pulse_obj.channel_mask = ch_mask
+                p1.pulse_obj.channel_mask |= channels - chs_ese
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
                 p1.ref_point_new = 0
@@ -249,12 +257,11 @@ class Segment:
                 p1.pulse_obj.name += '_ese'
                 p1.is_ese_copy = True
                 if p1.pulse_obj.codeword == "no_codeword":
-                   self.resolved_pulses.append(p1)
+                    self.resolved_pulses.append(p1)
                 else:
-                    ese_chs = [ch for m, ch in zip(ch_mask, p.pulse_obj.channels) if m]
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
-                                f'{", ".join(ese_chs)}')
+                                f'{", ".join(list(channels & chs_ese))}')
             else:
                 p = deepcopy(p)
                 self.resolved_pulses.append(p)
