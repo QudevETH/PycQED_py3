@@ -691,7 +691,7 @@ class QuDev_transmon(Qubit):
         :param amplitude: (float, default: None) flux pulse amplitude. If None,
             the function calculates the required pulse amplitude to reach
             the target frequency (taking into account the given bias).
-            Otherwise, it fixes the pulse ammplitude and calculates the
+            Otherwise, it fixes the pulse amplitude and calculates the
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
