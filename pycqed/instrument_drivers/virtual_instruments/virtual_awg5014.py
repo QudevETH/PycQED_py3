@@ -111,6 +111,16 @@ class VirtualAWG5014(Tektronix_AWG5014):
 
         self.awg_files = {}
         self.file = None
+        self.stop()  # to init self._state
+
+    def stop(self):
+        self._state = 'Idle'
+
+    def start(self):
+        self._state = 'Waiting for trigger'
+
+    def get_state(self):
+        return self._state
 
     def stop(self):
         pass
