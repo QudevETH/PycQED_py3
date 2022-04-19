@@ -25,12 +25,12 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
     USER_REG_LAST_SEGMENT = 6
 
     acq_length_granularity = 4
-    n_acq_channels = 10
+    n_acq_int_channels = 10
     acq_sampling_rate = 1.8e9
     acq_weights_n_samples = 4097
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized', 'lin_trans'],
-                     'int_avg_corr': ['corr', 'digitized_corr'],
+                     'int_avg': ['raw', 'digitized', 'lin_trans', 'raw_corr',
+                                 'digitized_corr'],
                      'scope': [],
                      'sum': [],
                      'swp_pts': [],
@@ -134,6 +134,10 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             if isinstance(dataset[k], list):
                 dataset[k] = [a.get('vector', a) for a in dataset[k]]
         return dataset
+
+    def acquisition_finalize(self) -> None:
+        super().acquisition_finalize()
+        ZI_AcquisitionDevice.acquisition_finalize(self)
 
     def correct_offset(self, channels, data):
         data = super().correct_offset(channels, data)

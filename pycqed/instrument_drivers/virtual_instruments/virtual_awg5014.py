@@ -122,9 +122,6 @@ class VirtualAWG5014(Tektronix_AWG5014):
     def get_state(self):
         return self._state
 
-    def stop(self):
-        pass
-
     def pack_waveform(self, wf, m1, m2):
         # Input validation
         if not ((len(wf) == len(m1)) and ((len(m1) == len(m2)))):
