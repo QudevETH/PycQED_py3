@@ -1217,7 +1217,8 @@ class AWG5014Pulsar:
         self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
         self.add_parameter('{}_offset_mode'.format(name), 
                            parameter_class=ManualParameter, 
-                           vals=vals.Enum('software', 'hardware'))
+                           vals=vals.Enum('software', 'hardware'),
+                           initial_value='software')
         offset_mode_func = self.parameters['{}_offset_mode'.format(name)]
         self.add_parameter('{}_offset'.format(name),
                            label='{} offset'.format(name), unit='V',
