@@ -1233,20 +1233,18 @@ class AWG5014Pulsar:
         # The product of the amp and scaling paraemeters is
         # rounded to the nearest 0.001 when passed to the AWG to prevent
         # a build-up of rounding errors caused by the AWG.
-
         self.add_parameter(
             scale_param,
             label='{} amplitude scaling'.format(name),
             set_cmd=(lambda v, g=self._awg5014_getter(awg, id, 'amp',
                                                       scale_param=scale_param),
                             s=self._awg5014_setter(awg, id, 'amp'):
-                     s(np.round(v*1000*g())/(1000*g()) * g())),
+                     s(np.round(v * g(), decimals=3))),
             vals=vals.Numbers(0.01 / 2.25, 1.0))
 
         # Passing scale_param to  _awg5014_setter and _awg5014_getter
         # translates between the scale amp set in the hardware and the
         # non-scaled amp represented by the amp parameter of pulsar.
-
         self.add_parameter('{}_amp'.format(name),
                            label='{} amplitude'.format(name), unit='V',
                            set_cmd=self._awg5014_setter(
@@ -1299,7 +1297,6 @@ class AWG5014Pulsar:
 
     def _awg5014_setter(self, obj, id, par, offset_mode_func=None,
                         scale_param=None):
-
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
             if par == 'offset':
                 def s(val):
@@ -1311,16 +1308,15 @@ class AWG5014Pulsar:
                         raise ValueError('Invalid offset mode for AWG5014: '
                                         '{}'.format(offset_mode_func()))
             elif par == 'amp':
-
-
                 def s(val):
                     scale = 1 if scale_param is None else self.get(scale_param)
-                    if scale !=1:
-                        raise ValueError('Amplitude should not be changed when '
-                                         'amplitude scaling enabled.'
-                            ' Current scaling factor: {}'.format(scale))
+                    if scale != 1:
+                        raise ValueError(
+                            'Amplitude cannot be changed while amplitude '
+                            'scaling is enabled. '
+                            f'Current scaling factor {scale_param}: {scale}')
                     else:
-                        obj.set('{}_amp'.format(id), 2*val*scale)
+                        obj.set(f'{id}_amp', 2 * val * scale)
             else:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         else:
