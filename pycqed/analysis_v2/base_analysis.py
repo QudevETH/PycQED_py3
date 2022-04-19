@@ -667,7 +667,7 @@ class BaseDataAnalysis(object):
                     if measured_data.shape[1] == 1:
                         # only one soft sweep point: do 1D analysis which gives
                         # more meaningful plots
-                        measured_data = np.squeeze(measured_data)
+                        measured_data = np.squeeze(measured_data, axis=1)
                 else:
                     measured_data = data[i]
                 raw_data_dict['measured_data'][ro_ch] = measured_data
