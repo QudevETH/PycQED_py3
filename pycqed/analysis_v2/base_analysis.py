@@ -620,9 +620,9 @@ class BaseDataAnalysis(object):
                 raise ValueError('Shape mismatch between data and ro channels.')
             for i, ro_ch in enumerate(value_names):
                 if 'soft_sweep_points' in raw_data_dict:
-                    TwoD = True
                     hsl = len(raw_data_dict['hard_sweep_points'])
                     ssl = len(raw_data_dict['soft_sweep_points'])
+                    TwoD = ssl > 1
                     if hybrid_measurement:
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
@@ -664,6 +664,10 @@ class BaseDataAnalysis(object):
                         measured_data = np.reshape(data[i], (ssl, hsl)).T
                     if soft_sweep_mask is not None:
                         measured_data = measured_data[:, soft_sweep_mask]
+                    if measured_data.shape[1] == 1:
+                        # only one soft sweep point: do 1D analysis which gives
+                        # more meaningful plots
+                        measured_data = np.squeeze(measured_data)
                 else:
                     measured_data = data[i]
                 raw_data_dict['measured_data'][ro_ch] = measured_data
