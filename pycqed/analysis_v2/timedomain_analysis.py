@@ -4545,15 +4545,8 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
         super().__init__(qb_names, *args, **kwargs)
 
     def extract_data(self):
+        self.default_options['rotation_type'] = 'global_PCA'
         super().extract_data()
-        # Set some default values specific to FluxPulseScopeAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('rotation_type', default_value=None) is None:
-            self.options_dict['rotation_type'] = 'global_PCA'
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def process_data(self):
         super().process_data()
@@ -6134,13 +6127,6 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
     def extract_data(self):
         super().extract_data()
-        # Set some default values specific to RabiFrequencySweepAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
         # Extract additional parameters from the HDF file.
         params_dict = {}
         for qbn in self.qb_names:
@@ -6707,15 +6693,6 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class ReparkingRamseyAnalysis(RamseyAnalysis):
-
-    def extract_data(self):
-        super().extract_data()
-        # Set some default values specific to ReparkingRamseyAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
@@ -9824,11 +9801,6 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
             s = 'Instrument settings.'+qbn
         kwargs['params_dict'] = params_dict
         kwargs['numeric_params'] = list(params_dict)
-        # super().__init__(qb_names, *args, **kwargs)
-
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
         super().__init__(qb_names, *args, **kwargs)
 
     def process_data(self):
@@ -9961,14 +9933,7 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
             s = 'Instrument settings.' + qbn
         kwargs['params_dict'] = params_dict
         kwargs['numeric_params'] = list(params_dict)
-        # super().__init__(qb_names, *args, **kwargs)
-
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
         super().__init__(qb_names, *args, **kwargs)
-
-    #         self.analyze_results()
 
     def process_data(self):
         super().process_data()
@@ -10171,22 +10136,9 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
     - from_lower: unclear; should be cleaned up (TODO, Steph 07.10.2020)
     - ghost: unclear; should be cleaned up (TODO, Steph 07.10.2020)
     """
-    def __init__(self, *args, **kwargs):
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
-        super().__init__(*args, **kwargs)
-
     def extract_data(self):
+        self.default_options['rotation_type'] = 'fixed_cal_points'
         super().extract_data()
-        # Set some default values specific to FluxPulseScopeAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('rotation_type', default_value=None) is None:
-            self.options_dict['rotation_type'] = 'fixed_cal_points'
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def process_data(self):
         super().process_data()
@@ -10679,11 +10631,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     The class extracts the DC biases on the I and Q channel inputs of the
     measured IQ mixer that minimize the LO leakage.
     """
-    def extract_data(self):
-        super().extract_data()
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
     def process_data(self):
         super().process_data()
 
@@ -10970,11 +10917,6 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     channel input of the measured IQ mixer that maximize the suppression of the
     unwanted sideband.
     """
-    def extract_data(self):
-        super().extract_data()
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
     def process_data(self):
         super().process_data()
 
