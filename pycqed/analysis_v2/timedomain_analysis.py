@@ -4692,7 +4692,7 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             if self.do_fitting:
-                if self.options_dict.get('scatter', True):
+                if self.get_param_value('scatter', True):
                     label = f'freq_scatter_{qb}_scatter'
                     self.plot_dicts[label] = {
                         'title': rdd['measurementstring'] +
@@ -4872,8 +4872,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             # Plot all fits in single figure
-            if self.options_dict.get('all_fits', False) and self.do_fitting:
-                colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            if self.get_param_value('all_fits', False) and self.do_fitting:
+                colormap = self.get_param_value('colormap', mpl.cm.Blues)
                 for i in range(len(self.amps[qb])):
                     color = colormap(i/(len(self.amps[qb])-1))
                     label = f'exp_fit_{qb}_amp_{i}'
@@ -4886,7 +4886,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ylabel': r'Excited state population',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': f'freq={fitid:.4f}' if p == 1
                                             else f'amp={fitid:.4f}',
@@ -5023,10 +5023,10 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             # Plot all fits in single figure
-            if not self.options_dict.get('all_fits', False):
+            if not self.get_param_value('all_fits', False):
                 continue
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['frequencies'])-1))
                 label = f'exp_fit_{qb}_amp_{i}'
@@ -5042,7 +5042,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'ylabel': r'Excited state population',
                     'plotfn': self.plot_fit,
                     'fit_res': self.fit_res[label],
-                    'plot_init': self.options_dict.get('plot_init', False),
+                    'plot_init': self.get_param_value('plot_init', False),
                     'color': color,
                     'setlabel': f'freq={fitid:.4f}' if freqs
                                         else f'amp={fitid:.4f}',
@@ -5178,7 +5178,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'zlabel': 'Excited state population',
                 }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i, amp in enumerate(pdd['amps_reshaped']):
                 color = colormap(i/(len(pdd['amps_reshaped'])-1))
                 label = f'cos_data_{qb}_{i}'
@@ -5207,7 +5207,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'amplitude_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': f'fit, amp={amp:.4f}',
                     }
@@ -5379,7 +5379,7 @@ class DriveCrosstalkCancellationAnalysis(MultiQubit_TimeDomain_Analysis):
                 'zlabel': 'Excited state population',
             }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i, pval in enumerate(pdd['qb_sweep_points'][qb]):
                 if i == len(pdd['qb_sweep_points'][qb]) - 1:
                     legendlabel='data, ref.'
@@ -5419,7 +5419,7 @@ class DriveCrosstalkCancellationAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'param_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'do_legend': False,
                         # 'setlabel': legendlabel
@@ -5671,7 +5671,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                 'zlabel': 'Excited state population',
             }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+            colormap = self.get_param_value('colormap', mpl.cm.plasma)
             for i, pval in enumerate(pdd['target_amps']):
                 legendlabel = f'data, amp. = {pval:.4f} V'
                 color = colormap(i / (len(pdd['target_amps']) - 1))
@@ -5703,7 +5703,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'param_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': legendlabel,
                         'do_legend': False,
@@ -5791,7 +5791,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'{param}_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[f'{param}_fit_{qb}'],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'linestyle': '-',
                         'marker': '',
                         'color': 'C1',
@@ -6346,7 +6346,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 model=exp_decay_mod, data=data, t=sweep_points)
             guess_pars['amplitude'].vary = True
             guess_pars['tau'].vary = True
-            if self.options_dict.get('vary_offset', False):
+            if self.get_param_value('vary_offset', False):
                 guess_pars['offset'].vary = True
             else:
                 guess_pars['offset'].value = 0
@@ -6548,7 +6548,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'artificial_detuning'] = self.artificial_detuning_dict[qbn]
 
-        hdf_group_name_suffix = self.options_dict.get(
+        hdf_group_name_suffix = self.get_param_value(
             'hdf_group_name_suffix', '')
         self.save_processed_data(key='analysis_params_dict' +
                                      hdf_group_name_suffix)
