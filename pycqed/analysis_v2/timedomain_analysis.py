@@ -348,7 +348,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.create_sweep_points_dict()
         self.get_num_cal_points()
         self.update_sweep_points_dict()
-        if self.options_dict.get('TwoD', False):
+        if self.get_param_value('TwoD', False):
             self.create_sweep_points_2D_dict()
 
     def get_channel_map(self):
@@ -2019,7 +2019,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data_label = 'Data'
                             plot_name_suffix = ''
                             plot_cal_points = (
-                                not self.options_dict.get('TwoD', False))
+                                not self.get_param_value('TwoD', False))
                         data_axis_label = self.get_yaxis_label(qb_name,
                                                                data_key)
                         tf = f'{data_key}_{title_suf}' if \
@@ -2038,7 +2038,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.prepare_projected_data_plot(
                         fig_name, corr_data, qb_name=qb_name,
                         plot_cal_points=(
-                            not self.options_dict.get('TwoD', False)))
+                            not self.get_param_value('TwoD', False)))
 
         if self.get_param_value('plot_raw_data', default_value=True):
             self.prepare_raw_data_plots(plot_filtered=False)
