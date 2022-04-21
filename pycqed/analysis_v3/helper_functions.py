@@ -226,14 +226,20 @@ def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
     :return: thresholds of the form
         {meas_obj_name: classification threshold value).
     """
+    use_default_th_path = th_path is None
     thresholds = {}
     for mobjn in meas_obj_names:
         if acq_dev_name is None:
             # take the one defined in mobjn
-            acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'acq_dev',
-                                                         timestamp, **params)
-
-        if th_path is None:
+            try:
+                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_acq',
+                                                             timestamp,
+                                                             **params)
+            except KeyError:
+                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_uhf',
+                                                             timestamp,
+                                                             **params)
+        if use_default_th_path:
             # try to figure out the correct path for the acquisition instrument
             if 'uhf' in acq_dev_name.lower():
                 # acquisition device is a UHFQA
