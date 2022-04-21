@@ -50,6 +50,7 @@ class CircuitBuilder:
         self.cz_pulse_name = kw.get('cz_pulse_name', 'upCZ')
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
         self.fast_mode = kw.get('fast_mode', False)
+        self.copy_op = copy if self.fast_mode else deepcopy
         self.prep_params = kw.get('prep_params', None)
 
     @staticmethod
@@ -230,11 +231,11 @@ class CircuitBuilder:
         op = op_name + ' ' + ' '.join(op_info[1:])
 
         if op in self.operation_dict:
-            p = deepcopy(self.operation_dict[op])
+            p = self.copy_op(self.operation_dict[op])
         elif op_info[0].rstrip('0123456789.') == 'CZ' or \
                 op_info[0].startswith('CZ:'):
             operation = self.get_cz_operation_name(op_info[1], op_info[2])
-            p = deepcopy(self.operation_dict[operation])
+            p = self.copy_op(self.operation_dict[operation])
         elif parse_rotation_gates and op not in self.operation_dict:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
@@ -513,7 +514,7 @@ class CircuitBuilder:
 
             prep_pulse_list = []
             for rep in range(reset_reps):
-                ro_list = deepcopy(reset_ro_pulses)
+                ro_list = self.copy_op(reset_ro_pulses)
                 ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
 
                 for pulse in ro_list:
@@ -527,7 +528,7 @@ class CircuitBuilder:
                     ro_list[0]['pulse_delay'] = ro_separation
                     ro_list[0]['ref_point'] = 'start'
 
-                rp_list = deepcopy(reset_pulses)
+                rp_list = self.copy_op(reset_pulses)
                 for j, pulse in enumerate(rp_list):
                     pulse['element_name'] = f'reset_pulse_element_{rep}'
                     pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
@@ -564,7 +565,7 @@ class CircuitBuilder:
         _, qb_names = self.get_qubits(qb_names)
         ro_pulses = []
         for j, qb_name in enumerate(qb_names):
-            ro_pulse = deepcopy(self.operation_dict['RO ' + qb_name])
+            ro_pulse = self.copy_op(self.operation_dict['RO ' + qb_name])
             ro_pulse['name'] = '{}_{}'.format(element_name, j)
             ro_pulse['element_name'] = element_name
             if j == 0:
@@ -666,7 +667,7 @@ class CircuitBuilder:
                       for op in operations]
         else:
             # the shortcut if op in self.operation_dict is for speed reasons
-            pulses = [deepcopy(self.operation_dict[op])
+            pulses = [self.copy_op(self.operation_dict[op])
                       if op in self.operation_dict
                       else self.get_pulse(op, True)
                       for op in operations]
