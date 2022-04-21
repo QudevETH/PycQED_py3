@@ -6,6 +6,7 @@ import itertools
 import matplotlib as mpl
 import cmath
 from collections import OrderedDict, defaultdict
+import re
 
 from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
@@ -1675,10 +1676,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     def get_latex_prob_label(prob_label):
         if '$' in prob_label:
             return prob_label
-        elif 'p' in prob_label.lower():
-            return r'$|{}\rangle$'.format(prob_label[-1])
         else:
-            return r'$|{}\rangle$'.format(prob_label)
+            # search for "p" plus a letter between a and z, enclosed by
+            # underscores (or at beginning/end of string)
+            res = re.search('_p([a-z])_', '_' + prob_label.lower() + '_')
+            if res:
+                return r'$|{}\rangle$'.format(res.expand(r'\1'))
+            else:
+                return r'$|{}\rangle$'.format(prob_label)
 
     def get_yaxis_label(self, qb_name, data_key=None):
         if self.rotate and ('pca' in self.rotation_type[qb_name].lower() or
