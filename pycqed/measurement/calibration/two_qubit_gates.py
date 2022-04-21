@@ -162,8 +162,9 @@ class MultiTaskingExperiment(QuantumExperiment):
             'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
-            'data_to_fit': self.data_to_fit,
         })
+        if len(data_to_fit):
+            self.exp_metadata.update({'data_to_fit': self.data_to_fit})
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
             tl = [copy(t) for t in self.preprocessed_task_list]
