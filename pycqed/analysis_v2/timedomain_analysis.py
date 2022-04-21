@@ -2125,7 +2125,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
                 if prep_1d_plot:
                     yvals = raw_data_dict[ro_channel]
-                    if yvals.shape[1] == 1:
+                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
                         # only one soft sweep point: prepare 1D plot which is
                         # more meaningful
                         yvals = np.squeeze(yvals, axis=1)
@@ -2261,7 +2261,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'clabel': data_axis_label}
 
         if prep_1d_plot:
-            if yvals.shape[0] == 1:
+            if len(yvals.shape) > 1 and yvals.shape[0] == 1:
                 # only one soft sweep point: prepare 1D plot which is
                 # more meaningful
                 yvals = np.squeeze(yvals, axis=0)
