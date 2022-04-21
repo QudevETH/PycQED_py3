@@ -2084,44 +2084,56 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             plot_name = 'raw_plot_' + qb_name + suffix
             xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+            prep_1d_plot = True
             for ax_id, ro_channel in enumerate(raw_data_dict):
                 if self.get_param_value('TwoD', default_value=False):
-                    if self.sp is None:
-                        soft_sweep_params = self.get_param_value(
-                            'soft_sweep_params')
-                        if soft_sweep_params is not None:
-                            yunit = list(soft_sweep_params.values())[0]['unit']
-                        else:
-                            yunit = self.raw_data_dict[
-                                'sweep_parameter_units'][1]
-                        if np.ndim(yunit) > 0:
-                            yunit = yunit[0]
-                    for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                            qb_name].items():
-                        ylabel = pn
-                        if self.sp is not None:
-                            yunit = self.sp.get_sweep_params_property(
-                                'unit', dimension=1, param_names=pn)
-                            ylabel = self.sp.get_sweep_params_property(
-                                'label', dimension=1, param_names=pn)
-                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                            'fig_id': plot_name + '_' + pn,
-                            'ax_id': ax_id,
-                            'plotfn': self.plot_colorxy,
-                            'xvals': sweep_points,
-                            'yvals': ssp,
-                            'zvals': raw_data_dict[ro_channel].T,
-                            'xlabel': xlabel,
-                            'xunit': xunit,
-                            'ylabel': ylabel,
-                            'yunit': yunit,
-                            'numplotsx': numplotsx,
-                            'numplotsy': numplotsy,
-                            'plotsize': (plotsize[0]*numplotsx,
-                                         plotsize[1]*numplotsy),
-                            'title': fig_title,
-                            'clabel': '{} (Vpeak)'.format(ro_channel)}
-                else:
+                    sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+                    if not (len(sp2dd) == 1 and len(sp2dd[list(sp2dd)[0]]) == 1):
+                        # Only prepare 2D plots when there is more than one soft
+                        # sweep points. When there is only one soft sweep point
+                        # we want to do 1D plots which are more meaningful
+                        prep_1d_plot = False
+                        if self.sp is None:
+                            soft_sweep_params = self.get_param_value(
+                                'soft_sweep_params')
+                            if soft_sweep_params is not None:
+                                yunit = list(soft_sweep_params.values())[0]['unit']
+                            else:
+                                yunit = self.raw_data_dict[
+                                    'sweep_parameter_units'][1]
+                            if np.ndim(yunit) > 0:
+                                yunit = yunit[0]
+                        for pn, ssp in sp2dd.items():
+                            ylabel = pn
+                            if self.sp is not None:
+                                yunit = self.sp.get_sweep_params_property(
+                                    'unit', dimension=1, param_names=pn)
+                                ylabel = self.sp.get_sweep_params_property(
+                                    'label', dimension=1, param_names=pn)
+                            self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                                'fig_id': plot_name + '_' + pn,
+                                'ax_id': ax_id,
+                                'plotfn': self.plot_colorxy,
+                                'xvals': sweep_points,
+                                'yvals': ssp,
+                                'zvals': raw_data_dict[ro_channel].T,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': ylabel,
+                                'yunit': yunit,
+                                'numplotsx': numplotsx,
+                                'numplotsy': numplotsy,
+                                'plotsize': (plotsize[0]*numplotsx,
+                                             plotsize[1]*numplotsy),
+                                'title': fig_title,
+                                'clabel': '{} (Vpeak)'.format(ro_channel)}
+
+                if prep_1d_plot:
+                    yvals = raw_data_dict[ro_channel]
+                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
+                        # only one soft sweep point: prepare 1D plot which is
+                        # more meaningful
+                        yvals = np.squeeze(yvals, axis=1)
                     self.plot_dicts[plot_name + '_' + ro_channel] = {
                         'fig_id': plot_name,
                         'ax_id': ax_id,
@@ -2129,7 +2141,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'xvals': sweep_points,
                         'xlabel': xlabel,
                         'xunit': xunit,
-                        'yvals': raw_data_dict[ro_channel],
+                        'yvals': yvals,
                         'ylabel': '{} (Vpeak)'.format(ro_channel),
                         'yunit': '',
                         'numplotsx': numplotsx,
@@ -2213,40 +2225,51 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
         xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+        prep_1d_plot = True
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', default_value=False)
         if TwoD:
-            if self.sp is None:
-                soft_sweep_params = self.get_param_value(
-                    'soft_sweep_params')
-                if soft_sweep_params is not None:
-                    yunit = list(soft_sweep_params.values())[0]['unit']
-                else:
-                    yunit = self.raw_data_dict['sweep_parameter_units'][1]
-                if np.ndim(yunit) > 0:
-                    yunit = yunit[0]
-            for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                    qb_name].items():
-                ylabel = pn
-                if self.sp is not None:
-                    yunit = self.sp.get_sweep_params_property(
-                        'unit', dimension=1, param_names=pn)
-                    ylabel = self.sp.get_sweep_params_property(
-                        'label', dimension=1, param_names=pn)
-                self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
-                    'plotfn': self.plot_colorxy,
-                    'fig_id': fig_name + '_' + pn,
-                    'xvals': xvals,
-                    'yvals': ssp,
-                    'zvals': yvals,
-                    'xlabel': xlabel,
-                    'xunit': xunit,
-                    'ylabel': ylabel,
-                    'yunit': yunit,
-                    'zrange': self.get_param_value('zrange', None),
-                    'title': title,
-                    'clabel': data_axis_label}
-        else:
+            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+            if not (len(sp2dd) == 1 and len(sp2dd[list(sp2dd)[0]]) == 1):
+                # Only prepare 2D plots when there is more than one soft
+                # sweep points. When there is only one soft sweep point
+                # we want to do 1D plots which are more meaningful
+                prep_1d_plot = False
+                if self.sp is None:
+                    soft_sweep_params = self.get_param_value(
+                        'soft_sweep_params')
+                    if soft_sweep_params is not None:
+                        yunit = list(soft_sweep_params.values())[0]['unit']
+                    else:
+                        yunit = self.raw_data_dict['sweep_parameter_units'][1]
+                    if np.ndim(yunit) > 0:
+                        yunit = yunit[0]
+                for pn, ssp in sp2dd.items():
+                    ylabel = pn
+                    if self.sp is not None:
+                        yunit = self.sp.get_sweep_params_property(
+                            'unit', dimension=1, param_names=pn)
+                        ylabel = self.sp.get_sweep_params_property(
+                            'label', dimension=1, param_names=pn)
+                    self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
+                        'plotfn': self.plot_colorxy,
+                        'fig_id': fig_name + '_' + pn,
+                        'xvals': xvals,
+                        'yvals': ssp,
+                        'zvals': yvals,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'zrange': self.get_param_value('zrange', None),
+                        'title': title,
+                        'clabel': data_axis_label}
+
+        if prep_1d_plot:
+            if len(yvals.shape) > 1 and yvals.shape[0] == 1:
+                # only one soft sweep point: prepare 1D plot which is
+                # more meaningful
+                yvals = np.squeeze(yvals, axis=0)
             self.plot_dicts[plot_dict_name] = {
                 'plotfn': self.plot_line,
                 'fig_id': fig_name,
