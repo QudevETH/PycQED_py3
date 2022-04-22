@@ -189,9 +189,22 @@ class multi_sweep_function(Soft_Sweep):
         self.unit = sweep_functions[0].unit if len(sweep_functions) != 0 \
                                             else ''
         self.parameter_name = parameter_name or 'multiple_parameters'
-        for i, sweep_function in enumerate(sweep_functions):
+        self.check_units()
+
+    def check_units(self):
+        """Checks that all sweep functions inside self.sweep_functions have
+        the same unit as specified in self.unit.
+
+        Raises:
+            ValueError: Thrown if self.sweep_functions contains a
+                sweep_function with a unit different from self.unit
+        """
+        for i, sweep_function in enumerate(self.sweep_functions):
             if self.unit.lower() != sweep_function.unit.lower():
-                raise ValueError('units of the sweepfunctions are not equal')
+                raise ValueError(f'Unit {sweep_function.unit} of the'
+                    f' sweepfunction {sweep_function.name} is not equal to the'
+                    f' multi sweep unit {self.unit}. All sweep functions in a'
+                    f' multi_sweep_function have to have the same unit.')
 
     def set_parameter(self, val):
         for sweep_function in self.sweep_functions:
