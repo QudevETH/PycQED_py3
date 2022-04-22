@@ -210,6 +210,36 @@ class multi_sweep_function(Soft_Sweep):
         for sweep_function in self.sweep_functions:
             sweep_function.set_parameter(val)
 
+    def add_sweep_functions(self, sweep_functions: list):
+        """Adds the passed sweep_functions to the multi_sweep.
+
+        Also takes care of changing the unit of self and calls self.check_units
+        to make sure all sweep_fucntions are compatible.
+
+        Args:
+            sweep_functions (list): List of Sweep_function objects that will
+                be added to the multi_sweep_function. The list might also
+                contain qcodes.Parameter objects, these will be converted to
+                Sweep_functions before they are added to the
+                multi_sweep_function.
+        """
+        self.sweep_functions += [mc_parameter_wrapper.wrap_par_to_swf(s)
+                                 if isinstance(s, qcodes.Parameter) else s
+                                 for s in sweep_functions]
+        if len(self.sweep_functions) != 0:
+            self.unit = self.sweep_functions[0].unit
+        else:
+            self.unit = ''
+        self.check_units()
+
+    def add_sweep_function(self, sweep_function):
+        """Adds a single sweep_function to the multi_sweep_function
+
+        Implemented as simple wrapper around add_sweep_functions. See docstring
+        of add_sweep_functions for details.
+        """
+        return self.add_sweep_functions([sweep_function])
+
 
 class two_par_joint_sweep(Soft_Sweep):
     """
