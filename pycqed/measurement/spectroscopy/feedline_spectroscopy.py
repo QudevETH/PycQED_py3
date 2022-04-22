@@ -298,15 +298,27 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
         return self.preprocessed_task_list
 
-    def sweep_block(self, sweep_points, qb, **kw):
+    def sweep_block(self, sweep_points, qb, init_state='0',
+                    prepend_pulse_dicts=None , **kw):
         """
         This function creates the blocks for a single transmission measurement
         task.
 
         :param sweep_points: SweepPoints object
         :param qb: target qubit
+        :param init_state: initial state qb (default: '0')
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            CircuitBuilder.block_from_pulse_dicts
         :param kw: further keyword arguments
         """
+        # create prepended pulses (pb)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+
+        # create pulses for initial rotations (ir)
+        pulse_modifs = {'all': {'element_name': 'initial_rots_el'}}
+        ir = self.block_from_ops('initial_rots',
+                                 [f'{self.STD_INIT[init_state][0]} {qb}'],
+                                 pulse_modifs=pulse_modifs)
 
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"])
@@ -320,7 +332,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         pulse_dict[param_name] = ParametricValue(param_name)
 
         # return all generated blocks (parallel_sweep will arrange them)
-        return [ro]
+        return [pb, ir, ro]
 
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ro_lo
