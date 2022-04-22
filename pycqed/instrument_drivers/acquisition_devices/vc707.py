@@ -13,7 +13,7 @@ class VC707(VC707_core, AcquisitionDevice):
     """PycQED acquisition device wrapper for the VC707 FPGA."""
 
     n_acq_units = 2
-    n_int_acq_channels = 2  # TODO
+    n_acq_int_channels = 2  # TODO
     acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
