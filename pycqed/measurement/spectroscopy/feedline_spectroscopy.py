@@ -59,6 +59,44 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         # self.adjust_sweep_functions()
 
+    def generate_sweep_functions(self):
+        # loop over all sweep_points dimensions
+        for i in range(len(self.sweep_points)):
+            if i >= len(self.sweep_functions):
+                # add new dimension with empty multi_sweep_function
+                # in case i is out of range
+                self.sweep_functions.append(
+                    swf.multi_sweep_function(
+                        [],
+                        parameter_name=f"{i}. dim multi sweep"
+                    )
+                )
+            else:
+                # refactor current sweep function into multi_sweep_function
+                self.sweep_functions[i] = swf.multi_sweep_function(
+                    [self.sweep_functions[i]],
+                    parameter_name=f"{i}. dim multi sweep"
+                )
+
+            for param in self.sweep_points[i].keys():
+                if self.sweep_functions_dict.get(param, None) is not None:
+                    self.sweep_functions[i].add_sweep_function(
+                        swf.Indexed_Sweep(
+                            self.sweep_functions_dict[param],
+                            values=self.sweep_points[i][param][0],
+                            name=self.sweep_points[i][param][2],
+                            parameter_name=param
+                        )
+                    )
+                else:
+                    # assuming that this parameter is a pulse paramater and we
+                    # therefore nee a SegmentSoftSweep as the first sweep
+                    # function in our multi_sweep_function
+                    self.sweep_functions[i].insert_sweep_function(
+                        pos=0,
+                        sweep_function=awg_swf.SegmentSoftSweep
+                    )
+
     def resolve_freq_sweep_points(self, **kw):
         """
         This function is called from the init of the class to resolve the
