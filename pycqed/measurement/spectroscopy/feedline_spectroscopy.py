@@ -249,22 +249,31 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
                       label=r'RO frequency, $f_{RO}$',
-                      dimension=0,
-                      unique_per_feedline=True),
+                      dimension=0),
         'volts': dict(param_name='volt', unit='V',
                       label=r'fluxline voltage',
-                      dimension=1,
-                      unique_per_feedline=False),
-        'amps':  dict(param_name='ro_amp', unit='V',
+                      dimension=1),
+        'ro_amps':  dict(param_name='ro_amp', unit='V',
                       label=r'RO pulse amplitude',
-                      dimension=1,
-                      unique_per_feedline=True),
+                      sweep_function_2D='ro_amp',
+                      dimension=1),
+        'sweep_points_2D': dict(param_name='sweep_points_2D', unit='',
+                      label=r'sweep_points_2D',
+                      dimension=1),
     }
     default_experiment_name = 'FeedlineSpectroscopy'
 
-    def __init__(self, task_list, sweep_points=None, **kw):
+    def __init__(self, task_list, **kw):
         self.feedline_task_dict = {}
-        super().__init__(task_list, sweep_points, **kw)
+        super().__init__(task_list, **kw)
+        kw.pop('init_state', None)
+        # the block alignments are for: prepended pulses, initial
+        # rotations, ro pulse.
+        self.sequences, self.mc_points = self.parallel_sweep(
+            self.preprocessed_task_list, self.sweep_block,
+            block_align = ['center', 'end', 'start'], **kw)
+
+        self.autorun(**kw)  # run measurement & analysis if requested in kw
 
     def preprocess_task_list(self, **kw):
         """Calls super method and afterwards checks that the preprocessed task
