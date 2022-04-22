@@ -28,20 +28,20 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
     """
     task_mobj_keys = ['qb']
     @assert_not_none('task_list')
-    def __init__(self, task_list, allowed_lo_freqs=None,
-                    sweep_points=None, **kw):
+    def __init__(self, task_list, allowed_lo_freqs=None, **kw):
         # Passing keyword arguments to the super class (even if they are not
         # needed there) makes sure that they are stored in the metadata.
-        super().__init__(task_list, sweep_points=sweep_points, **kw)
+        super().__init__(task_list, **kw)
+        self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
+        self.sweep_functions = []
         self.allowed_lo_freqs = allowed_lo_freqs
         self.analysis = {}
 
         self.lo_task_dict = {}
         self.lo_frequencies = {}
         self.mod_frequencies = {}
-        self.preprocessed_task_list = []
 
-        # self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
         # self.generate_lo_task_dict()
         # self.check_all_freqs_per_lo()
