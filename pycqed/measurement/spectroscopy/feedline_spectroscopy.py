@@ -175,51 +175,6 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         self.update_operation_dict()
 
-    def generate_kw_sweep_points(self, task):
-        """
-        Pops the freq sweep points from the task and creates an index sweep for
-        the frequencies which is needed to be able to sweep LO and IF in
-        parallel. Afterwards calls teh super method to create the sweep points
-        in the second dimension.
-        """
-        # make sure that sweep_points is a SweepPoints object
-        task['sweep_points'] = SweepPoints(task.get('sweep_points', None))
-
-        for k, sp_dict_list in self.kw_for_sweep_points.items():
-            if isinstance(sp_dict_list, dict):
-                sp_dict_list = [sp_dict_list]
-            # This loop can create multiple sweep points based on a single
-            # keyword argument.
-            for v in sp_dict_list:
-                # copy to allow popping the values_func, which should not be
-                # passed to SweepPoints.add_sweep_parameter
-                v = copy(v)
-                values_func = v.pop('values_func', None)
-                if isinstance(values_func, str):
-                    # assumes the string is the name of a self method
-                    values_func = getattr(self, values_func, None)
-
-                # comma-separated strings correspond to different keys in task
-                # whose corresponding values can be used as input parameters
-                # for values_func
-                k_list = k.split(',')
-                # if the respective task parameters (or keyword arguments) exist
-                if all([k in task and task[k] is not None for k in k_list]):
-                    if values_func is not None:
-                        # the entries in k_list point to input parameters
-                        # for values_func
-                        values = values_func(*[task[key] for key in k_list])
-                    elif isinstance(task[k_list[0]], int):
-                        # A single int N as sweep value will be interpreted as
-                        # a sweep over N indices.
-                        values = np.arange(task[k_list[0]])
-                    else:
-                        # Otherwise it is assumed that list-like sweep
-                        # values are provided.
-                        values = task[k_list[0]]
-                    task['sweep_points'].add_sweep_parameter(
-                        values=values, **v)
-
     def generate_lo_task_dict(self, **kw):
         """Fills the lo_task_dict with a list of tasks from
         preprocessed_task_list per LO found in the preprocessed_task_list.
