@@ -186,10 +186,25 @@ class multi_sweep_function(Soft_Sweep):
                                 for s in sweep_functions]
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
-        self.unit = sweep_functions[0].unit if len(sweep_functions) != 0 \
-                                            else ''
         self.parameter_name = parameter_name or 'multiple_parameters'
+        self.set_unit()
         self.check_units()
+
+    def set_unit(self, unit=None):
+        """Set self.unit either from self.sweep_functions or passed string.
+
+        If the parameter unit is not specified and self.sweep_functions is empty
+        the unit will be set to an ampty string ''.
+
+        Args:
+            unit (String, optional): Manually specified unit. Defaults to None.
+        """
+        if unit is not None:
+            self.unit = unit
+        elif len(self.sweep_functions) != 0:
+            self.unit = self.sweep_functions[0].unit
+        else:
+            self.unit = ''
 
     def check_units(self):
         """Checks that all sweep functions inside self.sweep_functions have
@@ -226,10 +241,7 @@ class multi_sweep_function(Soft_Sweep):
         self.sweep_functions += [mc_parameter_wrapper.wrap_par_to_swf(s)
                                  if isinstance(s, qcodes.Parameter) else s
                                  for s in sweep_functions]
-        if len(self.sweep_functions) != 0:
-            self.unit = self.sweep_functions[0].unit
-        else:
-            self.unit = ''
+        self.set_unit()
         self.check_units()
 
     def add_sweep_function(self, sweep_function):
