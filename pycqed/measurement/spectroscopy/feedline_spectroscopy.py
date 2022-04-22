@@ -52,6 +52,19 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         # self.adjust_sweep_functions()
 
+    def preprocess_task(self, task, global_sweep_points,
+                        sweep_points=None, **kw):
+        preprocessed_task = super().preprocess_task(task, global_sweep_points,
+                                                    sweep_points, **kw)
+
+        prefix = preprocessed_task['prefix']
+        for k, v in preprocessed_task.get('sweep_functions', dict()).items():
+            # add task sweep functions to the global sweep_functions dict with
+            # the appropriately prefixed key
+            self.sweep_functions_dict[prefix + k] = v
+
+        return preprocessed_task
+
     def generate_sweep_functions(self):
         # loop over all sweep_points dimensions
         for i in range(len(self.sweep_points)):
