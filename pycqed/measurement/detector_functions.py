@@ -670,7 +670,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         these detectors.
         """
         super().__init__(**kw)
-        self.always_prepare = False
+        self.always_prepare = kw.get('always_prepare', False)
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
 
         if detectors is None:
