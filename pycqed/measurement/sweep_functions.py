@@ -186,7 +186,8 @@ class multi_sweep_function(Soft_Sweep):
                                 for s in sweep_functions]
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
-        self.unit = sweep_functions[0].unit
+        self.unit = sweep_functions[0].unit if len(sweep_functions) != 0 \
+                                            else ''
         self.parameter_name = parameter_name or 'multiple_parameters'
         for i, sweep_function in enumerate(sweep_functions):
             if self.unit.lower() != sweep_function.unit.lower():
