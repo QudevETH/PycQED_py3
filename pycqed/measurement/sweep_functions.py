@@ -248,6 +248,24 @@ class multi_sweep_function(Soft_Sweep):
         """
         return self.add_sweep_functions([sweep_function])
 
+    def insert_sweep_function(self, pos, sweep_function):
+        """Inserts sweep_function at specified position to self.sweep_fucntions.
+
+        Args:
+            pos (int): Index of the position the sweep_function is inserted.
+            sweep_function (Sweep_function or qcodes.Parameter): Sweep_function
+                that is inserted into the self.sweep_functions list. If a
+                qcodes.Parameter object is passed it will be converted to a
+                Sweep_function beforehand.
+        """
+        if isinstance(sweep_function, qcodes.Parameter):
+            sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
+                sweep_function
+            )
+        self.sweep_functions.insert(pos, sweep_function)
+        self.set_unit()
+        self.check_units()
+
 
 class two_par_joint_sweep(Soft_Sweep):
     """
