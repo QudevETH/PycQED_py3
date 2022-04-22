@@ -429,9 +429,12 @@ class MultiTaskingExperiment(QuantumExperiment):
             kw['ro_qubits'] = [m for m in self.meas_obj_names if f'RO {m}'
                                not in op_codes]
         # call sweep_n_dim to perform the actual sweep
-        return self.sweep_n_dim(self.sweep_points,
+        return self.sweep_n_dim(self.get_sweep_points_for_sweep_n_dim(),
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points, **kw)
+
+    def get_sweep_points_for_sweep_n_dim(self):
+        return self.sweep_points
 
     @staticmethod
     def find_qubits_in_tasks(qubits, task_list, search_in_operations=True):
