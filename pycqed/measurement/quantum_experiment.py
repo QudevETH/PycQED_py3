@@ -562,6 +562,19 @@ class QuantumExperiment(CircuitBuilder):
                 sequence=self.sequences[0], upload=self.upload,
                 parameter_name=sweep_param_name, unit=unit)
         else:
+            # Check whether it is a nested sweep function whose first
+            # sweep function is a SegmentHardSweep class as placeholder.
+            swfs = getattr(self.sweep_functions[0], 'sweep_functions',
+                            [None])
+            if (swfs[0] == awg_swf.SegmentHardSweep):
+                # Replace the SegmentHardSweep placeholder by a properly
+                # configured instance of SegmentHardSweep.
+                if len(swfs) > 1:
+                    # make sure that units are compatible
+                    unit = getattr(swfs[1], 'unit', unit)
+                swfs[0] = awg_swf.SegmentHardSweep(
+                    sequence=self.sequences[0], upload=self.upload,
+                    parameter_name=sweep_param_name, unit=unit)
             # In case of an unknown sweep function type, it is assumed
             # that self.sweep_functions[0] has already been initialized
             # with all required parameters and can be directly passed to
