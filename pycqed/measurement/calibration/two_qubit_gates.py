@@ -164,20 +164,25 @@ class MultiTaskingExperiment(QuantumExperiment):
             'ro_qubits': self.meas_obj_names,
             'data_to_fit': self.data_to_fit,
         })
+        def replace_qc_params(obj):
+            obj = copy(obj)
+            if isinstance(obj, list):
+                ind = range(len(obj))
+            elif isinstance(obj, dict):
+                ind = obj.keys()
+            for i in ind:
+                if isinstance(obj[i], (dict, list)):
+                    obj[i] = replace_qc_params(obj[i])
+                elif isinstance(obj[i], qcodes.Parameter):
+                    obj[i] = repr(obj[i])
+            return(obj)
+
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
-            tl = [copy(t) for t in self.preprocessed_task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.preprocessed_task_list)
             self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
-            tl = [copy(t) for t in self.task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.task_list)
             self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
