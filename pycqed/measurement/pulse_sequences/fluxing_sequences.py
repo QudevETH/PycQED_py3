@@ -268,70 +268,76 @@ def T2_freq_sweep_seq(amplitudes,
                       qb_name,
                       operation_dict,
                       cz_pulse_name,
-                      flux_lengths,
                       phases,
+                      flux_lengths=None,
+                      n_pulses=None,
                       cal_points=None,
                       upload=True):
-    '''
-    Performs a X180 pulse before changing the qubit frequency with the flux
+    """
+    Performs a Ramsey experiment and interleaving a (train of) flux pulse(s).
 
-    Timings of sequence
+    Args:
+        amplitudes: amplitudes of the flux pulses
+        qb_name:
+        operation_dict:
+        cz_pulse_name: name of the flux pulse (should be in the operation_dict)
+        phases (1D array, list): phases of the second pi-half pulse.
+        flux_lengths (1D array, list): list containing the pulse durations.
+        See Notes below.
+        n_pulses (1D array, list): list containing the number of repetitions
+         for the flux pulses. See Notes below.
 
-       |          ---|X180|  ------------------------------|RO|
-       |          --------| --------- fluxpulse ---------- |
-    '''
+        cal_points:
+        upload:
+    Notes:
+        2 sorts of sequences can be generated based on the combination of
+        (flux_lengths, n_pulses):
+        1. (None, array):
+         The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+        |          --------(| - fp -| ) x n_pulses[i] ---------
+       Each flux pulse has a duration equal to the stored value in the operations dict
+        2. (array, None):
+        The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+       |          --------| -- fp --length=flux_lengths[i]----|
+       and the duration of the single flux pulse is adapted according to the values
+       specified in flux_lengths
+       3. other combinations such as (array, array) or (None, None) are currently
+       not supported.
+    Returns:
 
-    len_amp = len(amplitudes)
-    len_flux = len(flux_lengths)
-    len_phase = len(phases)
-    amplitudes = np.repeat(amplitudes, len_flux * len_phase)
-    phases = np.tile(phases, len_flux * len_amp)
-    flux_lengths = np.tile(np.repeat(flux_lengths, len_phase), len_amp)
-    #
-    #
-    # seq_name = 'T2_freq_sweep_seq'
-    # ge_pulse = deepcopy(operation_dict['X90 ' + qb_name])
-    # ge_pulse['name'] = 'DF_X90'
-    # ge_pulse['element_name'] = 'DF_X90_el'
-    #
-    # flux_pulse = deepcopy(operation_dict[cz_pulse_name])
-    # flux_pulse['name'] = 'DF_Flux'
-    # flux_pulse['ref_pulse'] = 'DF_X90'
-    # flux_pulse['ref_point'] = 'end'
-    # flux_pulse['pulse_delay'] = 0  #-flux_pulse.get('buffer_length_start', 0)
-    #
-    # ge_pulse2 = deepcopy(operation_dict['X90 ' + qb_name])
-    # ge_pulse2['name'] = 'DF_X90_2'
-    # ge_pulse2['ref_pulse'] = 'DF_Flux'
-    # ge_pulse2['ref_point'] = 'end'
-    # ge_pulse2['pulse_delay'] = 0
-    # ge_pulse2['element_name'] = 'DF_X90_el'
-    #
-    # ro_pulse = deepcopy(operation_dict['RO ' + qb_name])
-    # ro_pulse['name'] = 'DF_Ro'
-    # ro_pulse['ref_pulse'] = 'DF_X90_2'
-    # ro_pulse['ref_point'] = 'end'
-    # ro_pulse['pulse_delay'] = 0
-    #
-    # pulses = [ge_pulse, flux_pulse, ge_pulse2, ro_pulse]
-    #
-    # swept_pulses = sweep_pulse_params(
-    #     pulses, {
-    #         'DF_Flux.amplitude': amplitudes,
-    #         'DF_Flux.pulse_length': flux_lengths,
-    #         'DF_X90_2.phase': phases
-    #     })
-
-
-    print('hacked!')
+    """
     seq_name = 'T2_freq_sweep_seq'
     ge_pulse = deepcopy(operation_dict['X90 ' + qb_name])
     ge_pulse['name'] = 'DF_X90'
     ge_pulse['element_name'] = 'DF_X90_el'
 
     flux_pulse = deepcopy(operation_dict[cz_pulse_name])
-    n_pulses = (flux_lengths // flux_pulse['pulse_length']).astype(np.int)
 
+    if (flux_lengths, n_pulses) is (None, None):
+        raise ValueError('Expected either flux_lengths or n_pulses but neither'
+                         ' got provided.')
+    elif flux_lengths is not None and n_pulses is not None:
+        raise ValueError('Expected either flux_lengths or n_pulses but both'
+                         ' got provided.')
+
+    len_amp = len(amplitudes)
+    len_flux = len(flux_lengths) if flux_lengths is not None else len(n_pulses)
+    len_phase = len(phases)
+    amplitudes = np.repeat(amplitudes, len_flux * len_phase)
+    phases = np.tile(phases, len_flux * len_amp)
+    #
+
+    if flux_lengths is None:
+        # create flux lengths with lengths equal to the current duration of
+        # the flux pulse
+        flux_lengths = np.ones_like(amplitudes) * flux_pulse["pulse_length"]
+        n_pulses = np.tile(np.repeat(n_pulses, len_phase), len_amp)
+    elif n_pulses is None:
+        # single flux pulse (and length will be swept)
+        n_pulses = np.ones_like(amplitudes, dtype=int)
+        flux_lengths = np.tile(np.repeat(flux_lengths, len_phase), len_amp)
 
 
     ge_pulse2 = deepcopy(operation_dict['X90 ' + qb_name])
@@ -345,9 +351,12 @@ def T2_freq_sweep_seq(amplitudes,
     ro_pulse['pulse_delay'] = 0
 
     swept_pulses = []
-    for a, ph, n in zip(amplitudes, phases, n_pulses):
+    print(amplitudes, phases, n_pulses, flux_lengths)
+    for a, ph, n, fl in zip(amplitudes, phases, n_pulses, flux_lengths):
+        print(fl)
         f = deepcopy(flux_pulse)
         f['amplitude'] = a
+        f['pulse_length'] = fl
         fps = [deepcopy(f) for _ in range(n)]
         ge_pulse2 = deepcopy(ge_pulse2)
         ge_pulse2['phase'] = ph
