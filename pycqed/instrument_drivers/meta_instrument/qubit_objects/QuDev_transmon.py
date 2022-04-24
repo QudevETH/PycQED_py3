@@ -4500,7 +4500,7 @@ class QuDev_transmon(Qubit):
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
                               exp_metadata=None):
-        '''
+        """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
 
@@ -4526,14 +4526,30 @@ class QuDev_transmon(Qubit):
 
 
         Args:
-            freqs (numpy array): array of drive frequencies
-            amplitudes (numpy array): array of amplitudes of the flux pulse
-            delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
-
+            freqs (numpy array):
         Returns: None
+        Args:
+            flux_lengths (array):  array containing the flux pulse durations.
+                Used if n_pulses is None.
+            n_pulses (array): array containing the number of flux pulses. Used
+                if flux_lengths is None.
+            cz_pulse_name: name of the flux pulse
+            freqs: array of drive frequencies (from which the flux pulse
+            amplitudes are inferred)
+            amplitudes: array of amplitudes of the flux pulse
+            phases (array, list): array of phases for the second pi-half pulse
+                for the Ramsey experiment
+            analyze:
+            cal_states:
+            cal_points:
+            upload:
+            label:
+            n_cal_points_per_state:
+            exp_metadata:
 
-        '''
+        Returns:
+
+        """
         fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
         if freqs is not None:
             amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
