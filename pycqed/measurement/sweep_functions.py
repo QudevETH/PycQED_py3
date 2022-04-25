@@ -184,6 +184,7 @@ class multi_sweep_function(Soft_Sweep):
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
         self.parameter_name = parameter_name or 'multiple_parameters'
+        self.sweep_functions = []
         self.add_sweep_functions(sweep_functions)
 
     def set_unit(self, unit=None):
