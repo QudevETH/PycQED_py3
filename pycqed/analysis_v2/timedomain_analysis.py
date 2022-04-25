@@ -7641,9 +7641,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
             for gate_qbs in self.gates_list:
                 if qbn in gate_qbs:
                     default_preselection_qbs[qbn].extend(gate_qbs)
-        preselection_qbs = self.get_param_value("preselection_qbs",
-                                                default_preselection_qbs)
-        self.default_options.update({"preselection_qbs": preselection_qbs})
+        self.default_options.update(
+            {"preselection_qbs": default_preselection_qbs})
 
     def process_data(self):
         super().process_data()
@@ -8047,7 +8046,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 if self.do_fitting and len_ssp == 1:
                     # only plot raw data here; the projected data plots were
                     # prepared above
-                    self.prepare_raw_data_plots(plot_filtered=False)
+                    self.default_options['plot_proj_data'] = False
+                    super().prepare_plots()
 
                     if qbn in self.ramsey_qbnames:
                         # add the cphase + leakage textboxes to the
