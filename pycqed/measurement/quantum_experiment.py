@@ -566,7 +566,7 @@ class QuantumExperiment(CircuitBuilder):
             # sweep function is a SegmentHardSweep class as placeholder.
             swfs = getattr(self.sweep_functions[0], 'sweep_functions',
                             [None])
-            if (swfs[0] == awg_swf.SegmentHardSweep):
+            if (len(swfs) != 0 and swfs[0] == awg_swf.SegmentHardSweep):
                 # Replace the SegmentHardSweep placeholder by a properly
                 # configured instance of SegmentHardSweep.
                 if len(swfs) > 1:
@@ -600,7 +600,7 @@ class QuantumExperiment(CircuitBuilder):
                 # sweep function is a SegmentSoftSweep class as placeholder.
                 swfs = getattr(self.sweep_functions[1], 'sweep_functions',
                                [None])
-                if (swfs[0] == awg_swf.SegmentSoftSweep):
+                if (len(swfs) != 0 and swfs[0] == awg_swf.SegmentSoftSweep):
                     # Replace the SegmentSoftSweep placeholder by a properly
                     # configured instance of SegmentSoftSweep.
                     if len(swfs) > 1:
