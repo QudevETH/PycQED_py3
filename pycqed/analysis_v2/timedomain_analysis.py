@@ -577,11 +577,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 for qbn in self.qb_names:
                     if not len(self.cal_states_dict[qbn]) or \
                             'pca' in self.rotation_type[qbn].lower():
+                        # cal states do not exist or the rotation type is some
+                        # type of pca (the only recognised rotation types are
+                        # cal_states or some form of pca): assign rotation type
+                        # to the data to fit. This allows for plots with unique
+                        # names if the same data is analysed with different
+                        # rotation types.
                         data_to_fit[qbn] = self.rotation_type[qbn]
                     else:
+                        # cal states exist or rotation_type is cal_states but
+                        # cal states weren't specified:
+                        # the highest transmon state will be fitted
                         csr = [(k, v) for k, v in
                                self.cal_states_rotations[qbn].items()]
+                        # sort by transmon state (lowest to highest)
                         csr.sort(key=lambda t: t[1])
+                        # take letter of the highest transmon state
                         data_to_fit[qbn] = f'p{csr[-1][0]}'
 
         # make sure no extra qubit names exist in data_to_fit compared to
@@ -9824,8 +9835,8 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
             TwoErrorFuncModel = lmfit.Model(fit_mods.TwoErrorFunc)
-            guess_pars = fit_mods.TwoErrorFunc_guess(model=TwoErrorFuncModel,
-                                               data=data, delays=sweep_points)
+            guess_pars = fit_mods.TwoErrorFunc_guess(
+                model=TwoErrorFuncModel, data=data, delays=sweep_points)
             guess_pars['amp'].vary = True
             guess_pars['mu_A'].vary = True
             guess_pars['mu_B'].vary = True
