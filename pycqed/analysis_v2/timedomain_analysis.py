@@ -578,11 +578,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if not len(self.cal_states_dict[qbn]) or \
                             'pca' in self.rotation_type[qbn].lower():
                         # cal states do not exist or the rotation type is some
-                        # type of pca (the only recognised rotation types are
-                        # cal_states or some form of pca): assign rotation type
-                        # to the data to fit. This allows for plots with unique
-                        # names if the same data is analysed with different
-                        # rotation types.
+                        # kind of pca: assign rotation type
+                        # to the data to fit such that the rotation type appears
+                        # in the plot title and figure names. This allows for
+                        # plots with unique names if the same data is analysed
+                        # with different rotation types.
                         data_to_fit[qbn] = self.rotation_type[qbn]
                     else:
                         # cal states exist or rotation_type is cal_states but
