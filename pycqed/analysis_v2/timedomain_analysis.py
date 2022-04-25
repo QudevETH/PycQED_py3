@@ -2012,64 +2012,44 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         averaged_shots[i]
 
     def prepare_plots(self):
-        if self.get_param_value('plot_proj_data', default_value=True):
-            select_split = self.get_param_value('select_split')
-            fig_name_suffix = self.get_param_value('fig_name_suffix', '')
-            title_suffix = self.get_param_value('title_suffix', '')
-            for qb_name, corr_data in self.proc_data_dict[
-                    'projected_data_dict'].items():
-                fig_name = f'projected_plot_{qb_name}'
-                title_suf = title_suffix
-                if select_split is not None:
-                    param, idx = select_split[qb_name]
-                    # remove qb_name from param
-                    p = '_'.join([e for e in param.split('_') if e != qb_name])
-                    # create suffix
-                    suf = f'({p}, {str(np.round(idx, 3))})'
-                    # add suffix
-                    fig_name += f'_{suf}'
-                    title_suf = f'{suf}_{title_suf}' if \
-                        len(title_suf) else suf
-                if isinstance(corr_data, dict):
-                    for data_key, data in corr_data.items():
-                        fn = f'{fig_name}_{data_key}'
-                        if not self.rotate:
-                            data_label = ''
-                            plot_name_suffix = data_key
-                            plot_cal_points = False
-                        else:
-                            data_label = 'Data'
-                            plot_name_suffix = ''
-                            plot_cal_points = (
-                                not self.get_param_value('TwoD', False))
-                        data_axis_label = self.get_yaxis_label(qb_name,
-                                                               data_key)
-                        tf = f'{data_key}_{title_suf}' if \
-                            len(title_suf) else data_key
-                        self.prepare_projected_data_plot(
-                            fn, data, qb_name=qb_name,
-                            data_label=data_label,
-                            title_suffix=tf,
-                            plot_name_suffix=plot_name_suffix,
-                            fig_name_suffix=fig_name_suffix,
-                            data_axis_label=data_axis_label,
-                            plot_cal_points=plot_cal_points)
+        """
+        Prepares the plot dicts for the raw data and the projected data.
+        """
+        self.prepare_raw_data_plots()
+        self.prepare_projected_data_plots()
 
-                else:
-                    fig_name = 'projected_plot_' + qb_name
-                    self.prepare_projected_data_plot(
-                        fig_name, corr_data, qb_name=qb_name,
-                        plot_cal_points=(
-                            not self.get_param_value('TwoD', False)))
+    def prepare_raw_data_plots(self):
+        """
+        Calls _prepare_raw_data_plots if plot_raw_data (passed in the
+        options_dict, metadata, or default_options) is True.
 
+        If the measurement had active reset readouts (specified in
+        preparation_params), _prepare_raw_data_plots is called again with
+        plot_filtered=False (see docstring there) in order to create plots both
+        with and without the data points corresponding to the active reset
+        readouts.
+        """
         if self.get_param_value('plot_raw_data', default_value=True):
-            self.prepare_raw_data_plots(plot_filtered=False)
+            self._prepare_raw_data_plots(plot_filtered=False)
             if 'preparation_params' in self.metadata:
                 if 'active' in self.metadata['preparation_params'].get(
                         'preparation_type', 'wait'):
-                    self.prepare_raw_data_plots(plot_filtered=True)
+                    # plot raw data without the active reset readouts
+                    self._prepare_raw_data_plots(plot_filtered=True)
 
-    def prepare_raw_data_plots(self, plot_filtered=False):
+    def _prepare_raw_data_plots(self, plot_filtered=False):
+        """
+        Prepares plots of the raw data stored in
+        proc_data_dict['meas_results_per_qb'] or
+        proc_data_dict['meas_results_per_qb_raw'].
+
+        Args:
+            plot_filtered: specifies whether to plot the raw data from
+                meas_results_per_qb (True) or meas_results_per_qb_raw (False)
+                The former case is useful for measurements that contain active
+                reset readouts, which will be not be shown in the plot if
+                plot_filtered == False.
+        """
         if plot_filtered or not self.data_with_reset:
             key = 'meas_results_per_qb'
             suffix = 'filtered' if self.data_with_reset else ''
@@ -2170,12 +2150,101 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.plot_dicts[
                     plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
 
+    def prepare_projected_data_plots(self):
+        """
+        If plot_proj_data  is True (passed in the options_dict, metadata, or
+        default_options), calls prepare_projected_data_plot with the correct
+        input parameters for each key in proc_data_dict['projected_data_dict'].
+        """
+        if self.get_param_value('plot_proj_data', default_value=True):
+            select_split = self.get_param_value('select_split')
+            fig_name_suffix = self.get_param_value('fig_name_suffix', '')
+            title_suffix = self.get_param_value('title_suffix', '')
+            for qb_name, corr_data in self.proc_data_dict[
+                    'projected_data_dict'].items():
+                fig_name = f'projected_plot_{qb_name}'
+                title_suf = title_suffix
+                if select_split is not None:
+                    param, idx = select_split[qb_name]
+                    # remove qb_name from param
+                    p = '_'.join([e for e in param.split('_') if e != qb_name])
+                    # create suffix
+                    suf = f'({p}, {str(np.round(idx, 3))})'
+                    # add suffix
+                    fig_name += f'_{suf}'
+                    title_suf = f'{suf}_{title_suf}' if \
+                        len(title_suf) else suf
+                if isinstance(corr_data, dict):
+                    for data_key, data in corr_data.items():
+                        fn = f'{fig_name}_{data_key}'
+                        if not self.rotate:
+                            data_label = ''
+                            plot_name_suffix = data_key
+                            plot_cal_points = False
+                        else:
+                            data_label = 'Data'
+                            plot_name_suffix = ''
+                            plot_cal_points = (
+                                not self.get_param_value('TwoD', False))
+                        data_axis_label = self.get_yaxis_label(qb_name,
+                                                               data_key)
+                        tf = f'{data_key}_{title_suf}' if \
+                            len(title_suf) else data_key
+                        self.prepare_projected_data_plot(
+                            fn, data, qb_name=qb_name,
+                            data_label=data_label,
+                            title_suffix=tf,
+                            plot_name_suffix=plot_name_suffix,
+                            fig_name_suffix=fig_name_suffix,
+                            data_axis_label=data_axis_label,
+                            plot_cal_points=plot_cal_points)
+
+                else:
+                    fig_name = 'projected_plot_' + qb_name
+                    self.prepare_projected_data_plot(
+                        fig_name, corr_data, qb_name=qb_name,
+                        plot_cal_points=(
+                            not self.get_param_value('TwoD', False)))
+
     def prepare_projected_data_plot(
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None):
+        """
+        Prepares one projected data plot, typically one of the keys in
+        proc_data_dict['projected_data_dict'].
 
+        Args:
+            fig_name: string with name of the figure
+            data: numpy array of data to plot, typically from
+                proc_data_dict['projected_data_dict']
+            qb_name: string with name of the qubit to which the data corresponds
+            title_suffix: string with axis title suffix (without the
+                underscore character '_' which is added by this method)
+            sweep_points: numpy array of sweep points corresponding to the data
+                If None, will be taken from proc_data_dict['sweep_points_dict']
+            plot_cal_points: bool specifying whether to prepare separate plot
+                dicts for the cal points (with individual colors taken from
+                self.get_cal_state_color)
+            plot_name_suffix: string with suffix for the key name under which
+                the plot dict will be added to self.plots_dicts (should not
+                contain the underscore character '_' which is added by this
+                method)
+            fig_name_suffix: string with figure title suffix (without the
+                underscore character '_' which is added by this method)
+            data_label: string with the legend label corresponding to the data
+            data_axis_label: string with the yaxis label. If not specified, it
+                will be taken from self.get_yaxis_label.
+            do_legend_data: bool specifying whether to set to True the do_legend
+                key of the plot dict corresponding to the data
+            do_legend_cal_states: bool specifying whether to set to True the
+                do_legend key of the plot dict corresponding to the cal points.
+                Only has an effect if plot_cal_points is True.
+            TwoD: bool specifying whether to prepare a plot dict for 2D (True)
+                or 1D data (False).
+            yrange: tuple/list of floats for the plot yrange
+        """
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
 
@@ -2278,6 +2347,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'xunit': xunit,
                         'ylabel': ylabel,
                         'yunit': yunit,
+                        'yrange': yrange,
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
@@ -2297,6 +2367,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'yvals': yvals,
                 'ylabel': data_axis_label,
                 'yunit': '',
+                'yrange': yrange,
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': 'none',
@@ -8047,8 +8118,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 if self.do_fitting and len_ssp == 1:
                     # only plot raw data here; the projected data plots were
                     # prepared above
-                    self.default_options['plot_proj_data'] = False
-                    super().prepare_plots()
+                    self.prepare_raw_data_plots()
 
                     if qbn in self.ramsey_qbnames:
                         # add the cphase + leakage textboxes to the
