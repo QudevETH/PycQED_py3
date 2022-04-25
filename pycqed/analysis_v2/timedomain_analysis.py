@@ -2093,7 +2093,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             for ax_id, ro_channel in enumerate(raw_data_dict):
                 if self.get_param_value('TwoD', default_value=False):
                     sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-                    if not (len(sp2dd) == 1 and len(sp2dd[list(sp2dd)[0]]) == 1):
+                    if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
                         # Only prepare 2D plots when there is more than one soft
                         # sweep points. When there is only one soft sweep point
                         # we want to do 1D plots which are more meaningful
@@ -2235,7 +2235,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             TwoD = self.get_param_value('TwoD', default_value=False)
         if TwoD:
             sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-            if not (len(sp2dd) == 1 and len(sp2dd[list(sp2dd)[0]]) == 1):
+            if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
                 # Only prepare 2D plots when there is more than one soft
                 # sweep points. When there is only one soft sweep point
                 # we want to do 1D plots which are more meaningful
