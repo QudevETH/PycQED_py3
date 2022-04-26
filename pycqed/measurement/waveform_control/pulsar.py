@@ -1790,6 +1790,9 @@ class SHFQAPulsar:
                               f"waveforms. Clipping the waveform.")
                 waves_to_upload[h] = w[:max_len]
 
+            # This one needs to be defined here and not as a class constant,
+            # otherwise SHFQA.USER_REG_... would crash on setups which do not
+            # have an SHFQA object initialised
             shfqa_sequence_string_template = (
                 f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
                 f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
@@ -1891,6 +1894,9 @@ class SHFQAPulsar:
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
+                # If seqtrigger is True in acq, the SHFQA will trigger the
+                # acquisition module using an internal pulse ('0x1') from the
+                # sequencer, else it will be triggered externally
                 trig = '0x1' if (isinstance(acq, dict) and
                                  acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [
@@ -1921,7 +1927,6 @@ class SHFQAPulsar:
             obj.set_awg_program(
                 i,
                 shfqa_sequence_string_template.format(
-                    # loop_count='{loop_count}',  # will be replaced by SHFQA driver
                     playback_string='\n  '.join(playback_strings),
                     prep_string=''),
                 {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})

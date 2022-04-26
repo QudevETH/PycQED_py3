@@ -59,16 +59,16 @@ class Segment:
                 Allowed items currently include:
                 - 'sweeper': use sweeper mode if available (for RO frequency
                   sweeps, e.g., resonator spectroscopy). Currently the SHFQA
-                  accepts the values: 'software', 'hardware', while the UHFQA
-                  only relies on the presence or not of this 'sweeper' key.
-                - 'fstart', 'fstep' and 'nstep': Sweep parameters, in the
+                  accepts the values: 'software', 'hardware' (the UHFQA ignores
+                  'sweeper').
+                - 'f_start', 'f_step' and 'n_step': Sweep parameters, in the
                   case of a hardware sweep on the SHFQA.
                 - 'seqtrigger': if True, let the sequencer output an auxiliary
                   trigger when starting the acquisition
                 - 'default' (default value): if this key is present in
-                  the dict, indicates a normal acquisition element. This
-                  should not be used in combination with the other possible
-                  items.
+                  acquisition_mode, indicates a normal acquisition element. In
+                  practice, currently the default value of acquisition_mode is
+                  a STRING equal to 'default'.
             fast_mode (bool):  If True, copying pulses is avoided. In this
                 case, the pulse_pars_list passed to Segment will be modified
                 (default: False).

@@ -759,6 +759,13 @@ class MultiPollDetector(PollDetector):
     Combines several polling detectors into a single detector.
     """
     class MultiAWGWrapper:
+        """
+        Wrapper to flexibly define the master AWG to be restarted by the
+        detector function.
+
+        This allows for instance to only restart the acquisition device (and
+        not the whole Pulsar) for measurements with only one segment.
+        """
         def __init__(self, master_awg, awgs=()):
             self.master_awg = master_awg
             self.awgs = list(set(awgs))
@@ -780,6 +787,9 @@ class MultiPollDetector(PollDetector):
         Args
             detectors (list): poling detectors from this module to be used for
                 acquisition
+            AWG (qcodes instrument): instrument to be restarted before each
+                hard sweep (this is often Pulsar, to ensure that all
+                instruments start on the same segment).
 
         Keyword args: passed to parent class
         """
@@ -1332,7 +1342,6 @@ class ScopePollDetector(PollDetector):
         self.nr_sweep_points = None
         self.values_per_point = 1
         self.nr_shots = nr_shots
-        # will be used in MC
         if self.data_type == 'spectrum':
             # Multiple shots aren't implemented for spectrum measurements
             self.acq_data_len_scaling = 1
@@ -1343,7 +1352,6 @@ class ScopePollDetector(PollDetector):
     def prepare(self, sweep_points=None):
 
         super().prepare()
-        # MC might rely on this to get the correct amount of data?
         self.nr_sweep_points = len(sweep_points)
         if self.data_type == 'spectrum':
             # Number of points of the spectrum to be returned

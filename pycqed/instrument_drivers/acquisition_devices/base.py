@@ -41,6 +41,9 @@ class AcquisitionDevice():
             acquisition_initialize if that mode is used (*)
         lo_freqs (list of float/None): LO frequencies of the internal or
             external LOs of all acquisition units, see set_lo_freq
+        timer: Timer object (see pycqed.utilities.timer.Timer). This is
+            currently set by the detector function, in order to recover timer
+            data from the acquisition device through the detector function.
     """
 
     n_acq_units = 1

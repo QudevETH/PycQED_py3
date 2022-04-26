@@ -24,7 +24,6 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
 from pycqed.utilities.general import temporary_value
-import pycqed.utilities.general as gen
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement import optimization as opti
@@ -1242,7 +1241,7 @@ class QuDev_transmon(Qubit):
                 if hasattr(self.instr_acq.get_instr(), 'use_hardware_sweeper'):
                     if self.instr_acq.get_instr().use_hardware_sweeper():
                         lo_freq, delta_f, _ = self.instr_acq.get_instr()\
-                            .get_params_from_spectrum(freqs)
+                            .get_params_for_spectrum(freqs)
                         self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
                                                                lo_freq)
                         seg.acquisition_mode = dict(
