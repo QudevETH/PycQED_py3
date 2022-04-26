@@ -63,10 +63,14 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
             # and the data format will be the same as for a true soft sweep.
             self.sweep_points_pulses.add_sweep_parameter('dummy_soft_sweep', [0],
                                                   dimension=1)
-        # the block alignments are for: prepended pulses, initial
-        # rotations, ro pulse.
-        self.sequences, _ = self.parallel_sweep(
-            self.preprocessed_task_list, self.sweep_block, **kw)
+
+        # temp value ensure that mod_freqs etc are set corretcly
+        with temporary_value(*self.temporary_values):
+            # the block alignments are for: prepended pulses, initial
+            # rotations, ro pulse.
+            self.update_operation_dict()
+            self.sequences, _ = self.parallel_sweep(
+                self.preprocessed_task_list, self.sweep_block, **kw)
 
         self.mc_points = [np.arange(n) for n in self.sweep_points.length()]
 
