@@ -161,7 +161,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         super().prepare_poll()
         for i in self._acq_units_used:
             if self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 1:  # readout
+                    and self._acq_units_modes[i] == 'readout':
                 # Readout mode outputs programmed waveforms, and integrates the
                 # input with different custom weights for each integration
                 # channel
@@ -171,9 +171,12 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     result_source="result_of_integration",
                     averaging_mode=AveragingMode.CYCLIC,
                 )
+                # Disable rerun; the AWG seqc program defines the number of
+                # iterations in the loop
+                self.qachannels[i].generator.single(1)
                 self.qachannels[i].readout.run()
             elif self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 0:  # spectroscopy
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 # Spectroscopy mode outputs a sine wave at a given frequency
                 # with an envelope, and integrates the input by weighting
                 # with this same sine (without the envelope)
@@ -260,7 +263,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
-        self._acq_units_modes = {i: self.qachannels[i].mode()  # Caching
+        self._acq_units_modes = {i: self.qachannels[i].mode().name  # Caching
                                  for i in self._acq_units_used}
 
         # Set the scope trigger to the same delay as the other modes
@@ -294,10 +297,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             # TODO: should probably decide actions based on the data type, not
             #  also on the acq unit physical mode
             if self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 1:  # readout
-                # Disable rerun; the AWG seqc program defines the number of
-                # iterations in the loop
-                self.qachannels[i].generator.single(1)
+                    and self._acq_units_modes[i] == 'readout':
                 if data_type is not None:
                     self.qachannels[i].readout.result.source(
                         self.res_logging_indices[data_type])
@@ -305,21 +305,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     self.qachannels[i].readout.integration.length(
                         self.convert_time_to_n_samples(self._acq_length))
             elif self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 0\
-                    and not self.use_hardware_sweeper():  # spectroscopy
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                self.qachannels[i].spectroscopy.trigger.channel(
-                    f'channel{i}_trigger_input0')
-            elif self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 0\
-                    and self.use_hardware_sweeper():  # spectroscopy
-                self.qachannels[i].oscs[0].gain(1.0)
-                self.qachannels[i].spectroscopy.length(
-                    self.convert_time_to_n_samples(self._acq_length))
-                self.qachannels[i].spectroscopy.trigger.channel(
-                    f'channel{i}_sequencer_trigger0')
+                if self.use_hardware_sweeper():
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        f'channel{i}_sequencer_trigger0')
+                else:
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        f'channel{i}_trigger_input0')
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
                 # Fit as many traces as possible in a single SHFQA call
@@ -349,8 +344,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode("readout")
-        self.qachannels[acq_unit].input.on(True)
-        self.qachannels[acq_unit].output.on(True)
         if self.seqtrigger is None:
             trigger_channel = 'channel0_trigger_input0'
         else:
@@ -376,11 +369,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         n_acq = {}
         for i in self._acq_units_used:
             if self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 1:  # readout
-                n_acq[i] = self.daq.getInt(f"/{self.devname}/qachannels/"
-                                           f"{i}/readout/result/acquired")
+                    and self._acq_units_modes[i] == 'readout':
+                n_acq[i] = self.qachannels[i].readout.result.acquired()
             elif self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 0:  # spectroscopy
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 n_acq[i] = self.daq.getInt(
                     self._get_spectroscopy_node(i, "acquired"))
             elif self._acq_mode == 'scope' \
@@ -455,7 +447,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         for i in self._acq_units_used:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
             if self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 1:  # readout
+                    and self._acq_units_modes[i] == 'readout':
 
                 # Comments from ZI (didn't investigate since we'll likely
                 # remove this poll function, see comments above):
@@ -483,7 +475,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 self._acq_poll_inds[i] = [len(res[n]) for n in range(len(
                     channels))]
             elif self._acq_mode == 'int_avg'\
-                    and self._acq_units_modes[i] == 0:  # spectroscopy
+                    and self._acq_units_modes[i] == 'spectroscopy':
                 progress = self.qachannels[i].spectroscopy.result.acquired()
                 if progress >= self._acq_loop_cnt * self._acq_n_results:
                     data = self.qachannels[i].spectroscopy.result.data.wave()
@@ -547,10 +539,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 raise NotImplementedError("Mode not recognised!")
         return dataset
 
-    def set_sweep_freqs(self, acq_unit, freqs):
-        # FIXME: find nicer method name and write docstring
-        raise NotImplementedError('set_sweep_freqs not implemented')
-
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
@@ -577,8 +565,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
             if self.awg_active[i]:
-                if ch.mode() == 1 or self.use_hardware_sweeper():
-                    ch.generator.enable_sequencer(single=False)
+                if ch.mode().name == 'readout' or self.use_hardware_sweeper():
+                    ch.generator.enable_sequencer(single=True)
                 else:
                     # No AWG needs to be started in soft spectroscopy mode.
                     # The pulse generation starts together with the acquisition,

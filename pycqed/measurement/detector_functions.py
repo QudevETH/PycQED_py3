@@ -605,10 +605,9 @@ class PollDetector(Hard_Detector):
 
         self.progress_scaling = None
 
-    def prepare(self):
+    def prepare(self, sweep_points=None):
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
-
 
     @Timer()
     def poll_data(self):

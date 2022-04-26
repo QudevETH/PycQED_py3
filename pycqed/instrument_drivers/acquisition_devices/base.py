@@ -74,6 +74,7 @@ class AcquisitionDevice():
         self._reset_n_acquired()
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
+        self.timer = None
         if 'timeout' not in self.parameters:
             # The underlying qcodes driver has not created a parameter
             # timeout. In that case, we add the parameter here.

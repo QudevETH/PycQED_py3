@@ -1803,6 +1803,29 @@ class SHFQAPulsar:
                 "  {playback_string}\n"
                 "}}\n"
             )
+            shfqa_sweeper_playback_string_template = (
+                "for(var i = 0; i < {n_step}; i++)" + " {\n"
+                "    // self-triggering mode\n\n"
+                "    // define time from setting the oscillator "
+                "frequency to sending the spectroscopy trigger\n"
+                "    playZero(400);\n    \n"
+                "    // set the oscillator frequency depending "
+                "on the loop variable i\n"
+                "    setSweepStep(OSC0, i);\n    \n"
+                "    waitDigTrigger(1);\n"
+                "    resetOscPhase();\n\n"
+                "    // define time to the next iteration\n"
+                "    playZero(acq_len + 144);\n\n"
+                "    // trigger the integration unit and pulsed "
+                "playback in pulsed mode\n"
+                "    setTrigger(1);\n    setTrigger(0);\n"
+                "  }"
+            )
+            shfqa_sweeper_prep_string = (
+                "const OSC0 = 0;\n"
+                "setTrigger(0);\n"
+                "configFreqSweep(OSC0, {f_start}, {f_step});\n"
+            )
 
             if is_spectroscopy:
                 if obj.use_hardware_sweeper():
@@ -1825,27 +1848,9 @@ class SHFQAPulsar:
                         break  # FIXME: assumes there is only one segment
                     # FIXME: at some point, we need to test whether the freqs
                     #  are supported by the sweeper
-                    prep_string = "const OSC0 = 0;\n"\
-                        "setTrigger(0);\n"\
-                        f"configFreqSweep(OSC0, {acq['f_start']}, " \
-                        f"{acq['f_step']});\n"
                     playback_strings.append(
-                        f"for(var i = 0; i < {acq['n_step']}; i++)"+" {\n"
-                        "    // self-triggering mode\n\n"
-                        "    // define time from setting the oscillator "
-                        "frequency to sending the spectroscopy trigger\n"
-                        "    playZero(400);\n    \n"
-                        "    // set the oscillator frequency depending "
-                        "on the loop variable i\n"
-                        "    setSweepStep(OSC0, i);\n    \n"
-                        "    waitDigTrigger(1);\n"
-                        "    resetOscPhase();\n\n"
-                        "    // define time to the next iteration\n"
-                        "    playZero(acq_len + 144);\n\n"
-                        "    // trigger the integration unit and pulsed "
-                        "playback in pulsed mode\n"
-                        "    setTrigger(1);\n    setTrigger(0);\n"
-                        "  }")
+                        shfqa_sweeper_playback_string_template.format(
+                            n_step=acq['n_step']))
                     # provide sequence data to SHFQA object for upload in
                     # acquisition_initialize
                     # TODO: the contents of this function should now be moved
@@ -1853,7 +1858,10 @@ class SHFQAPulsar:
                     obj.set_awg_program(
                         i,
                         shfqa_sequence_string_template.format(
-                            prep_string=prep_string,
+                            prep_string=shfqa_sweeper_prep_string.format(
+                                f_start=acq['f_start'],
+                                f_step=acq['f_step'],
+                            ),
                             playback_string='\n  '.join(playback_strings)),
                         {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
@@ -1912,7 +1920,6 @@ class SHFQAPulsar:
                     ]
                 return playback_strings
 
-
             qachannel.mode('readout')
             self._filter_segment_functions[obj.name] = None
 
@@ -1942,7 +1949,7 @@ class SHFQAPulsar:
         is_running = []
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
-            if qachannel.mode() == 1:  # readout
+            if qachannel.mode().name == 'readout':
                 is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
                 daq = obj.daq
