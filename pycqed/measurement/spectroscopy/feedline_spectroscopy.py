@@ -180,11 +180,17 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                 # the maximum absolut modulation frequency.
                 freqs_all = np.array([task['freqs'] for task in tasks])
                 if kw.get('optimize_mod_freqs', True) and len(tasks) >= 2:
+                    # optimize the mod freq to lie in the middle of the overall
+                    # frequency range of this LO
                     lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
                                                     + np.min(freqs_all, axis=0))
                 else:
+                    # if told not to optimize or only one task is using this LO
+                    # we use the mod. freq. of the first qb in the task to set
+                    # the LO
                     lo_freqs = tasks[0]['freqs'] \
-                                              - self.get_qubits(tasks[0]['qb'])[0][0].ro_mod_freq()
+                                - self.get_mod_from_qb(
+                                    self.get_qubits(tasks[0]['qb'])[0][0])()
 
             qubits = []
             for task in tasks:
@@ -192,13 +198,14 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                 qubits.append(qb)
                 mod_freqs = task['freqs'] - lo_freqs
                 if all(mod_freqs - mod_freqs[0] == 0):
+                    # mod freq is the same for all acquisitions
                     self.temporary_values.append(
                         (qb.ge_mod_freq, mod_freqs[0]))
                 else:
                     mod_freq_key = task['prefix'] + 'mod_freq'
                     self.sweep_points.add_sweep_parameter(mod_freq_key, mod_freqs, unit='Hz', dimension=0)
                 if min(abs(mod_freqs)) < 1e3:
-                    log.warning(f'Modulation frequency of {qb.name}'
+                    log.warning(f'Modulation frequency of {qb.name} '
                                 f'is {min(abs(mod_freqs))}.')
 
                 self.sweep_functions_dict.pop(qb.name + '_freq', None)
