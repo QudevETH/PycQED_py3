@@ -28,7 +28,8 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
     """
     task_mobj_keys = ['qb']
     @assert_not_none('task_list')
-    def __init__(self, task_list, allowed_lo_freqs=None, **kw):
+    def __init__(self, task_list, allowed_lo_freqs=None,
+                 trigger_separation=10e-6, **kw):
         # Passing keyword arguments to the super class (even if they are not
         # needed there) makes sure that they are stored in the metadata.
         df_name = kw.pop('df_name', 'int_avg_det_spec')
@@ -41,6 +42,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         self.allowed_lo_freqs = allowed_lo_freqs
         self.analysis = {}
 
+        self.trigger_separation = trigger_separation
         self.lo_task_dict = {}
         self.lo_frequencies = {}
         self.mod_frequencies = {}
@@ -311,8 +313,14 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     }
     default_experiment_name = 'FeedlineSpectroscopy'
 
-    def __init__(self, task_list, **kw):
-        super().__init__(task_list, **kw)
+    def __init__(self, task_list,
+                 allowed_lo_freqs=None,
+                 trigger_separation=10e-6,
+                 **kw):
+        super().__init__(task_list,
+                         allowed_lo_freqs=allowed_lo_freqs,
+                         trigger_separation=trigger_separation,
+                         **kw)
         self.autorun(**kw)
 
     # def preprocess_task_list(self, **kw):
