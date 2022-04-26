@@ -1,5 +1,6 @@
 import traceback
 
+import time
 import numpy as np
 from pycqed.analysis_v3 import helper_functions
 
@@ -12,6 +13,7 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
+from pycqed.measurement.waveform_control import pulsar as ps
 from copy import deepcopy
 import logging
 log = logging.getLogger(__name__)
@@ -583,6 +585,10 @@ class QuantumExperiment(CircuitBuilder):
 
         self.MC.set_sweep_function(sweep_func_1st_dim)
         self.MC.set_sweep_points(self.mc_points[0])
+        if not hasattr(sweep_func_1st_dim, 'upload'):
+            self._upload_first_sequence()
+            # separate method so that children can override
+            # see docstring for default behavior
 
         # set second dimension sweep function
         if len(self.mc_points[1]) > 0: # second dimension exists
@@ -735,6 +741,19 @@ class QuantumExperiment(CircuitBuilder):
     #             raise e
     #
     #     self.__dict__[name] = value
+
+    def _upload_first_sequence(self, awgs_to_upload='awgs', sequence=None):
+        if sequence is None:
+            if hasattr(self, 'sequence'):
+                sequence = self.sequence
+            elif hasattr(self, 'sequences'):
+                sequence = self.sequences[0]
+
+        if self.upload:
+            time.sleep(0.1)
+            ps.Pulsar.get_instance().program_awgs(sequence,
+                                                  awgs=awgs_to_upload)
+            time.sleep(0.1)
 
     def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
