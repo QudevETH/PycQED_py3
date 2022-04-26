@@ -582,18 +582,22 @@ class MultiTaskingExperiment(QuantumExperiment):
                 if all([k in task and task[k] is not None for k in k_list]):
                     # sweep_function_2D specified in task is used by default.
                     # If it is not specified we try to get it from the sp_dict v
-                    sweep_function_2D = task.pop('sweep_function_2D', None)
+                    sweep_functions = task.get('sweep_functions', dict())
                     swf_2d = v.pop('sweep_function_2D', None)
-                    if sweep_function_2D is None:
-                        sweep_function_2D = swf_2d
-                    if isinstance(sweep_function_2D, str):
-                        # assumes the string is the name of a parameter of the
-                        # first measurement object
-                        mo = self.find_qubits_in_tasks(self.qubits, [task])[0]
-                        sweep_function_2D = getattr(mo, sweep_function_2D)
-                    if isinstance(sweep_function_2D, qcodes.Parameter):
-                        sweep_function_2D = \
-                            parameter_wrapper.wrap_par_to_swf(sweep_function_2D)
+                    param_name = v['param_name']
+                    if sweep_functions.get(param_name, None) is None:
+                        if isinstance(swf_2d, str):
+                            # assumes the string is the name of a parameter of the
+                            # first measurement object
+                            mo = self.find_qubits_in_tasks(self.qubits, [task])[0]
+                            swf_2d = getattr(mo, swf_2d)
+                        if task.get('sweep_functions', None) is None:
+                            task['sweep_functions'] = {param_name: swf_2d}
+                        else:
+                            task['sweep_functions'][param_name] = swf_2d
+                    # if isinstance(sweep_function_2D, qcodes.Parameter):
+                    #     sweep_function_2D = \
+                    #         parameter_wrapper.wrap_par_to_swf(sweep_function_2D)
 
                     if values_func is not None:
                         # the entries in k_list point to input parameters
