@@ -68,6 +68,8 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         self.mc_points = [np.arange(n) for n in self.sweep_points.length()]
 
+        self.fill_temporary_values()
+
     def get_sweep_points_for_sweep_n_dim(self):
         return self.sweep_points_pulses
 
@@ -256,6 +258,19 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
             self.label = self.experiment_name
             for t in self.task_list:
                 self.label += f"_{t['qb']}"
+
+    def _fill_temporary_values(self):
+        """adds additionally required qcodes parameter to the
+        self.temporary_values list
+        """
+        # make sure that all triggers are set to the correct trigger separation
+        triggers = []
+        for qb in self.qubits:
+            trigger = qb.instr_trigger
+            if trigger() not in triggers:
+                self.temporary_values.append((trigger.get_instr().pulse_period,
+                                              self.trigger_separation))
+                triggers.append(trigger())
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
