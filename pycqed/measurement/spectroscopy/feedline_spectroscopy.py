@@ -70,7 +70,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         self.mc_points = [np.arange(n) for n in self.sweep_points.length()]
 
-        self.fill_temporary_values()
+        self._fill_temporary_values()
 
     def get_sweep_points_for_sweep_n_dim(self):
         return self.sweep_points_pulses
