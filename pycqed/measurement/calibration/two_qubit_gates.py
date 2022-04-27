@@ -163,7 +163,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
-        if len(data_to_fit):
+        if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
