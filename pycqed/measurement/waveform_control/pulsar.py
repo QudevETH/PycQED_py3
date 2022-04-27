@@ -1516,7 +1516,9 @@ class AWG5014Pulsar:
             if self.get('{}_type'.format(channel)) == 'analog':
                 offset_mode = self.get('{}_offset_mode'.format(channel))
                 channel_cfg['ANALOG_METHOD_' + cid[2]] = 1
-                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = amp * 2
+                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = (
+                    self._awg5014_getter(self.AWG_obj(awg=awg), cid, 'amp')()
+                    * 2)
                 if offset_mode == 'software':
                     channel_cfg['ANALOG_OFFSET_' + cid[2]] = off
                     channel_cfg['DC_OUTPUT_LEVEL_' + cid[2]] = 0
