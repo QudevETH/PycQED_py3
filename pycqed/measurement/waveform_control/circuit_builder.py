@@ -972,9 +972,9 @@ class CircuitBuilder:
                 1D: list of segments, number of 1d sweep points or
                 2D: list of list of segments, list of numbers of sweep points
             - else:
-                1D: sequence, number acquisition elements
-                2D: list of sequences, number of acquisition elements, number
-                    of sequences
+                1D: sequence, np.arange(number of acquisition elements)
+                2D: list of sequences, [np.arange(number of acquisition elements),
+                                        np.arange(number of sequences)]
         """
         sweep_dims = len(sweep_points)
         if sweep_dims > 2:
