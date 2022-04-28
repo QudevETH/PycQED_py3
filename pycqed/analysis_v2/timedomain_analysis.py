@@ -6,6 +6,7 @@ import itertools
 import matplotlib as mpl
 import cmath
 from collections import OrderedDict, defaultdict
+import re
 
 from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
@@ -1072,10 +1073,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.num_cal_points,
                         self.proc_data_dict['sweep_points_dict'][qbn][
                             'sweep_points'])
+                # slicing with aux variable ind to be robust to the case
+                # of 0 cal points
+                ind = len(sweep_points_dict[qbn]['sweep_points']) - \
+                      self.num_cal_points
                 sweep_points_dict[qbn]['msmt_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][:-self.num_cal_points]
+                    sweep_points_dict[qbn]['sweep_points'][:ind]
                 sweep_points_dict[qbn]['cal_points_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][-self.num_cal_points::]
+                    sweep_points_dict[qbn]['sweep_points'][ind:]
             else:
                 sweep_points_dict[qbn]['sweep_points'] = \
                     self.proc_data_dict['sweep_points_dict'][qbn]['sweep_points']
@@ -1671,10 +1676,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     def get_latex_prob_label(prob_label):
         if '$' in prob_label:
             return prob_label
-        elif 'p' in prob_label.lower():
-            return r'$|{}\rangle$'.format(prob_label[-1])
         else:
-            return r'$|{}\rangle$'.format(prob_label)
+            # search for "p" plus a letter between a and z, enclosed by
+            # underscores (or at beginning/end of string)
+            res = re.search('_p([a-z])_', '_' + prob_label.lower() + '_')
+            if res:
+                return r'$|{}\rangle$'.format(res.expand(r'\1'))
+            else:
+                return r'$|{}\rangle$'.format(prob_label)
 
     def get_yaxis_label(self, qb_name, data_key=None):
         if self.rotate and ('pca' in self.rotation_type[qb_name].lower() or
@@ -2075,44 +2084,56 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             plot_name = 'raw_plot_' + qb_name + suffix
             xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+            prep_1d_plot = True
             for ax_id, ro_channel in enumerate(raw_data_dict):
                 if self.get_param_value('TwoD', default_value=False):
-                    if self.sp is None:
-                        soft_sweep_params = self.get_param_value(
-                            'soft_sweep_params')
-                        if soft_sweep_params is not None:
-                            yunit = list(soft_sweep_params.values())[0]['unit']
-                        else:
-                            yunit = self.raw_data_dict[
-                                'sweep_parameter_units'][1]
-                        if np.ndim(yunit) > 0:
-                            yunit = yunit[0]
-                    for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                            qb_name].items():
-                        ylabel = pn
-                        if self.sp is not None:
-                            yunit = self.sp.get_sweep_params_property(
-                                'unit', dimension=1, param_names=pn)
-                            ylabel = self.sp.get_sweep_params_property(
-                                'label', dimension=1, param_names=pn)
-                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                            'fig_id': plot_name + '_' + pn,
-                            'ax_id': ax_id,
-                            'plotfn': self.plot_colorxy,
-                            'xvals': sweep_points,
-                            'yvals': ssp,
-                            'zvals': raw_data_dict[ro_channel].T,
-                            'xlabel': xlabel,
-                            'xunit': xunit,
-                            'ylabel': ylabel,
-                            'yunit': yunit,
-                            'numplotsx': numplotsx,
-                            'numplotsy': numplotsy,
-                            'plotsize': (plotsize[0]*numplotsx,
-                                         plotsize[1]*numplotsy),
-                            'title': fig_title,
-                            'clabel': '{} (Vpeak)'.format(ro_channel)}
-                else:
+                    sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+                    if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                        # Only prepare 2D plots when there is more than one soft
+                        # sweep points. When there is only one soft sweep point
+                        # we want to do 1D plots which are more meaningful
+                        prep_1d_plot = False
+                        if self.sp is None:
+                            soft_sweep_params = self.get_param_value(
+                                'soft_sweep_params')
+                            if soft_sweep_params is not None:
+                                yunit = list(soft_sweep_params.values())[0]['unit']
+                            else:
+                                yunit = self.raw_data_dict[
+                                    'sweep_parameter_units'][1]
+                            if np.ndim(yunit) > 0:
+                                yunit = yunit[0]
+                        for pn, ssp in sp2dd.items():
+                            ylabel = pn
+                            if self.sp is not None:
+                                yunit = self.sp.get_sweep_params_property(
+                                    'unit', dimension=1, param_names=pn)
+                                ylabel = self.sp.get_sweep_params_property(
+                                    'label', dimension=1, param_names=pn)
+                            self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                                'fig_id': plot_name + '_' + pn,
+                                'ax_id': ax_id,
+                                'plotfn': self.plot_colorxy,
+                                'xvals': sweep_points,
+                                'yvals': ssp,
+                                'zvals': raw_data_dict[ro_channel].T,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': ylabel,
+                                'yunit': yunit,
+                                'numplotsx': numplotsx,
+                                'numplotsy': numplotsy,
+                                'plotsize': (plotsize[0]*numplotsx,
+                                             plotsize[1]*numplotsy),
+                                'title': fig_title,
+                                'clabel': '{} (Vpeak)'.format(ro_channel)}
+
+                if prep_1d_plot:
+                    yvals = raw_data_dict[ro_channel]
+                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
+                        # only one soft sweep point: prepare 1D plot which is
+                        # more meaningful
+                        yvals = np.squeeze(yvals, axis=1)
                     self.plot_dicts[plot_name + '_' + ro_channel] = {
                         'fig_id': plot_name,
                         'ax_id': ax_id,
@@ -2120,7 +2141,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'xvals': sweep_points,
                         'xlabel': xlabel,
                         'xunit': xunit,
-                        'yvals': raw_data_dict[ro_channel],
+                        'yvals': yvals,
                         'ylabel': '{} (Vpeak)'.format(ro_channel),
                         'yunit': '',
                         'numplotsx': numplotsx,
@@ -2204,40 +2225,51 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
         xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+        prep_1d_plot = True
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', default_value=False)
         if TwoD:
-            if self.sp is None:
-                soft_sweep_params = self.get_param_value(
-                    'soft_sweep_params')
-                if soft_sweep_params is not None:
-                    yunit = list(soft_sweep_params.values())[0]['unit']
-                else:
-                    yunit = self.raw_data_dict['sweep_parameter_units'][1]
-                if np.ndim(yunit) > 0:
-                    yunit = yunit[0]
-            for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                    qb_name].items():
-                ylabel = pn
-                if self.sp is not None:
-                    yunit = self.sp.get_sweep_params_property(
-                        'unit', dimension=1, param_names=pn)
-                    ylabel = self.sp.get_sweep_params_property(
-                        'label', dimension=1, param_names=pn)
-                self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
-                    'plotfn': self.plot_colorxy,
-                    'fig_id': fig_name + '_' + pn,
-                    'xvals': xvals,
-                    'yvals': ssp,
-                    'zvals': yvals,
-                    'xlabel': xlabel,
-                    'xunit': xunit,
-                    'ylabel': ylabel,
-                    'yunit': yunit,
-                    'zrange': self.get_param_value('zrange', None),
-                    'title': title,
-                    'clabel': data_axis_label}
-        else:
+            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+            if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                # Only prepare 2D plots when there is more than one soft
+                # sweep points. When there is only one soft sweep point
+                # we want to do 1D plots which are more meaningful
+                prep_1d_plot = False
+                if self.sp is None:
+                    soft_sweep_params = self.get_param_value(
+                        'soft_sweep_params')
+                    if soft_sweep_params is not None:
+                        yunit = list(soft_sweep_params.values())[0]['unit']
+                    else:
+                        yunit = self.raw_data_dict['sweep_parameter_units'][1]
+                    if np.ndim(yunit) > 0:
+                        yunit = yunit[0]
+                for pn, ssp in sp2dd.items():
+                    ylabel = pn
+                    if self.sp is not None:
+                        yunit = self.sp.get_sweep_params_property(
+                            'unit', dimension=1, param_names=pn)
+                        ylabel = self.sp.get_sweep_params_property(
+                            'label', dimension=1, param_names=pn)
+                    self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
+                        'plotfn': self.plot_colorxy,
+                        'fig_id': fig_name + '_' + pn,
+                        'xvals': xvals,
+                        'yvals': ssp,
+                        'zvals': yvals,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'zrange': self.get_param_value('zrange', None),
+                        'title': title,
+                        'clabel': data_axis_label}
+
+        if prep_1d_plot:
+            if len(yvals.shape) > 1 and yvals.shape[0] == 1:
+                # only one soft sweep point: prepare 1D plot which is
+                # more meaningful
+                yvals = np.squeeze(yvals, axis=0)
             self.plot_dicts[plot_dict_name] = {
                 'plotfn': self.plot_line,
                 'fig_id': fig_name,
@@ -8642,8 +8674,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                          in case different bases should be used for different qubits.
                     orthonormalize (bool): Whether or not to orthonormalize the
                         weight basis
-                    tmax (float): time boundary for the plot (not the weights)
-                        in seconds.
                     scale_weights (bool): scales the weights near unity to avoid
                         loss of precision on FPGA if weights are too small
 
@@ -8665,6 +8695,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict, )
 
         if self.qb_names is None:
             # get all qubits from cal_points of first timetrace
@@ -8723,8 +8755,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                basis_labels = ["ge", "ef"] \
-                    if len(ana_params['timetraces'][qbn]) > 2 else ['ge']
+                n_labels = min(len(ana_params['timetraces'][qbn]) - 1, 2)
+                basis_labels = ["ge", "ef"][:n_labels]
 
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
@@ -8740,7 +8772,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                               for b in basis_labels])
 
             # orthonormalize if required
-            if self.get_param_value("orthonormalize", False):
+            if self.get_param_value("orthonormalize", False) and len(basis):
                 # We need to consider the integration weights as a vector of
                 # real numbers to ensure the Gram-Schmidt transformation of the
                 # weights leads to a linear transformation of the integrated
@@ -8755,7 +8787,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                                 for bs in basis_labels]
 
             # scale if required
-            if self.get_param_value('scale_weights', True):
+            if self.get_param_value('scale_weights', True) and len(basis):
                 k = np.amax([(np.max(np.abs(b.real)),
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
@@ -8822,7 +8854,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         'yvals': func(weights * modulation),
                         'ylabel': 'Voltage, $V$ (arb.u.)',
                         "sharex": True,
-                        "xrange": (0, self.get_param_value('tmax', 1200e-9, 0)),
+                        "xrange": [self.get_param_value('tmin', min(tbase), 0),
+                                   self.get_param_value('tmax', max(tbase), 0)],
                         "setdesc": label + f"_{i+1}",
                         "do_legend": True,
                         "legend_pos": "upper right",
