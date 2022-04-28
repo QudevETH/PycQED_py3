@@ -149,6 +149,28 @@ class SegmentHardSweep(swf.Hard_Sweep):
 
     def __init__(self, sequence, upload=True, parameter_name='None', unit='',
                  start_pulsar=False, start_exclude_awgs=()):
+        """A hardware sweep over segments in a sequence.
+
+        Args:
+            sequence (:class:`~pycqed.measurement.waveform_control.sequence.Sequence`):
+                Sequence of segments to sweep over.
+            upload (bool, optional):
+                Whether to upload the sequences before measurement.
+                Defaults to True.
+            parameter_name (str, optional):
+                Name for the sweep parameter. Defaults to 'None'.
+            unit (str, optional):
+                Unit for the sweep parameter. Defaults to ''.
+            start_pulsar (bool, optional):
+                Whether (a sub set of) the used AWGs will be started directly
+                after upload. This can be used, e.g., to start AWGs that have
+                only one unique segment and do not need to be synchronized to
+                other AWGs and therefore do not need to be stopped when
+                switching to the next segment in the sweep. Defaults to False.
+            start_exclude_awgs (collection[str], optional):
+                A collection of AWG names that will not be started directly
+                after upload in case start_pulsar is True. Defaults to ().
+        """
         super().__init__()
         self.sequence = sequence
         self.upload = upload

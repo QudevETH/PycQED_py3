@@ -687,6 +687,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                                            **prep_params))
                 # set sweep function and run measurement
                 if len(set(qb.instr_acq() for qb in qubits)) == 1:
+                    # No synchronization between AWGs is needed if only a single
+                    # acq device is used. We will keep other AWGs free running
+                    # and only start the acq device for repetitions or averages
+                    # of the timetrace measurement.
                     single_acq_dev = qubits[0].instr_acq.get_instr()
                     MC.set_sweep_function(awg_swf.SegmentHardSweep(
                         sequence=seq, upload=upload, start_pulsar=True,
@@ -704,9 +708,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 if single_acq_dev is not None:
                     df.AWG = single_acq_dev
                 MC.set_detector_function(df)
-                MC.run(name=name, exp_metadata=exp_metadata)
-                if single_acq_dev is not None:
-                    ps.Pulsar.get_instance().stop()
+                try:
+                    MC.run(name=name, exp_metadata=exp_metadata)
+                finally:
+                    try:
+                        if single_acq_dev is not None:
+                            ps.Pulsar.get_instance().stop()
+                    except Exception:
+                        pass
 
     if analyze:
         tps = [a_tools.latest_data(
