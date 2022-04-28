@@ -9514,7 +9514,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     """
 
     def extract_data(self):
-        self.default_options['TwoD'] = True
         super().extract_data()
         if self.qb_names is None:
             # try to get qb_names from cal_points
