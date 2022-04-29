@@ -742,7 +742,7 @@ class QuantumExperiment(CircuitBuilder):
     #
     #     self.__dict__[name] = value
 
-    def _upload_first_sequence(self, awgs_to_upload='awgs', sequence=None):
+    def _upload_first_sequence(self, awgs_to_upload='all', sequence=None):
         if sequence is None:
             if hasattr(self, 'sequence'):
                 sequence = self.sequence
