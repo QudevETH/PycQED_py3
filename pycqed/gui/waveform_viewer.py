@@ -218,7 +218,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.selectbox_qubits.default_display_text = 'Select...'
         self.selectbox_qubits.addItems(list(self.qubit_list))
 
-        self.get_current_segment().resolve_segment()
+        self.get_current_segment().resolve_segment(allow_overlap=True)
         self.get_current_segment().gen_elements_on_awg()
         self.instrument_list = set(self.get_current_segment().elements_on_awg)
         self.selectbox_instruments = CheckableComboBox()
