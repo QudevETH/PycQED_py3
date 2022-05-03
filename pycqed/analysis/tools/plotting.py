@@ -315,7 +315,8 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
 
     # create a figure and set of axes
     if ax is None:
-        fig = plt.figure(figsize=(12, 7))
+        figsize = kw.get('plotsize', (12, 7))
+        fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
 
     # convert xvals and yvals to single dimension arrays
