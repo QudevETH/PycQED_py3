@@ -582,7 +582,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          acq_length=4096/1.8e9, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
-                         update=True, measure=True, operation_dict=None):
+                         update=True, measure=True, operation_dict=None,
+                         df_kwargs=None):
     """
     Measures time traces for specified states and
     Args:
@@ -601,6 +602,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         upload: upload waveforms to AWG
         acq_length: length of timetrace to record
         exp_metadata: experimental metadata
+        analyze (bool): whether analysis should be run (default: True)
+        analysis_kwargs (dict or None): keyword arguments for the analysis class
         acq_weights_basis (list): shortcut for analysis parameter.
             list of basis vectors used for computing the weights.
             (see Timetrace Analysis). e.g. ["ge", "gf"] yields basis vectors e - g
@@ -610,10 +613,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         orthonormalize (bool): shortcut for analysis parameter. Whether or not to
             orthonormalize the optimal weights (see MultiQutrit Timetrace Analysis)
         update (bool): update weights
-
+        measure (bool): whether the measurement should be run (default: True)
+        operation_dict (dict or None): the operations dictionary of the (device
+            and) qubits. Will be obtained from the dev object if it is None
+            (default).
+        df_kwargs (dict or None): keyword arguments for the detector function
 
     Returns:
-
+        The analysis object if analze is True, and None otherwise.
     """
     # check whether timetraces can be compute simultaneously
     qubits = dev.get_qubits(qubits)
@@ -679,13 +686,36 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                         cp.create_segments(operation_dict,
                                                            **prep_params))
                 # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
+                if len(set(qb.instr_acq() for qb in qubits)) == 1:
+                    # No synchronization between AWGs is needed if only a single
+                    # acq device is used. We will keep other AWGs free running
+                    # and only start the acq device for repetitions or averages
+                    # of the timetrace measurement.
+                    single_acq_dev = qubits[0].instr_acq.get_instr()
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload, start_pulsar=True,
+                        start_exclude_awgs=[single_acq_dev.name]))
+                else:
+                    single_acq_dev = None
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload))
+
                 MC.set_sweep_points(sweep_points)
+                if df_kwargs is None:
+                    df_kwargs = {}
                 df = get_multiplexed_readout_detector_functions(
-                    'inp_avg_det', qubits)
+                    'inp_avg_det', qubits, **df_kwargs)
+                if single_acq_dev is not None:
+                    df.AWG = single_acq_dev
                 MC.set_detector_function(df)
-                MC.run(name=name, exp_metadata=exp_metadata)
+                try:
+                    MC.run(name=name, exp_metadata=exp_metadata)
+                finally:
+                    try:
+                        if single_acq_dev is not None:
+                            ps.Pulsar.get_instance().stop()
+                    except Exception:
+                        pass
 
     if analyze:
         tps = [a_tools.latest_data(

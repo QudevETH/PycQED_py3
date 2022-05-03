@@ -162,7 +162,6 @@ class MultiTaskingExperiment(QuantumExperiment):
             'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
-            'data_to_fit': self.data_to_fit,
         })
         def replace_qc_params(obj):
             obj = copy(obj)
@@ -177,6 +176,8 @@ class MultiTaskingExperiment(QuantumExperiment):
                     obj[i] = repr(obj[i])
             return(obj)
 
+        if len(self.data_to_fit):
+            self.exp_metadata.update({'data_to_fit': self.data_to_fit})
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
             tl = replace_qc_params(self.preprocessed_task_list)

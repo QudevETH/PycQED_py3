@@ -12,6 +12,8 @@ import requests
 import numpy as np
 import numbers
 from scipy.optimize import fmin_powell
+
+import pycqed.version
 from pycqed.measurement import hdf5_data as h5d
 from pycqed.utilities import general
 from pycqed.utilities.general import dict_to_ordered_tuples
@@ -1965,6 +1967,7 @@ class MeasurementControl(Instrument):
         sha1_id, diff = self.get_git_info()
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
+        set_grp.attrs['pycqed_version'] = pycqed.version.__version__
 
     def save_exp_metadata(self, metadata: dict):
         '''
