@@ -345,8 +345,7 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
         zvals /= np.mean(zvals, axis=0)
     # logarithmic plot
     if log:
-        for xx in range(len(xvals)):
-            zvals[xx] = np.log(zvals[xx])/np.log(10)
+        zvals = np.log10(zvals)
 
     # add blocks to plot
     do_transpose = kw.pop('transpose', False)
