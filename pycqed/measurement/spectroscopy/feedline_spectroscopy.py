@@ -316,7 +316,6 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                       dimension=1),
         'ro_amps':  dict(param_name='ro_amp', unit='V',
                       label=r'RO pulse amplitude',
-                      sweep_function_2D='ro_amp',
                       dimension=1),
         'sweep_points_2D': dict(param_name='sweep_points_2D', unit='',
                       label=r'sweep_points_2D',
