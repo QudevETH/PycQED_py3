@@ -204,7 +204,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                 if all(mod_freqs - mod_freqs[0] == 0):
                     # mod freq is the same for all acquisitions
                     self.temporary_values.append(
-                        (qb.ge_mod_freq, mod_freqs[0]))
+                        (self.get_mod_from_qb(qb), mod_freqs[0]))
                 else:
                     mod_freq_key = task['prefix'] + 'mod_freq'
                     self.sweep_points.add_sweep_parameter(mod_freq_key, mod_freqs, unit='Hz', dimension=0)
