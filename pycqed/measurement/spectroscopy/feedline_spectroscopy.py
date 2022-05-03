@@ -444,9 +444,16 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     }
     default_experiment_name = 'QubitSpectroscopy'
 
-    def __init__(self, task_list, **kw):
-        drive = kw.pop('drive', 'continuous_spec')
-        super().__init__(task_list, drive=drive, **kw)
+    def __init__(self, task_list,
+                 drive='continuous_spec',
+                 allowed_lo_freqs=None,
+                 trigger_separation=10e-6,
+                 **kw):
+        super().__init__(task_list,
+                         drive=drive,
+                         allowed_lo_freqs=allowed_lo_freqs,
+                         trigger_separation=trigger_separation,
+                         **kw)
 
         ro_lo_qubits_dict = {}
         for task in self.preprocessed_task_list:
@@ -464,7 +471,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
             else:
                 ro_lo_freq = freqs_all[0] - qubits[0].ro_mod_freq()
-            configure_qubit_mux_readout(self.qubits, {ro_lo: ro_lo_freq})
+            configure_qubit_mux_readout(qubits, {ro_lo: ro_lo_freq})
 
         self.autorun(**kw)  # run measurement & analysis if requested in kw
 
