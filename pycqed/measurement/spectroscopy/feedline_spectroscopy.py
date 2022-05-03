@@ -499,7 +499,18 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         return [ro]
 
     def configure_qubit_mux(self, qubits, lo_freqs_dict):
-        return configure_qubit_mux_drive(qubits, lo_freqs_dict)
+        mwgs_set = set()
+        for qb in qubits:
+            qb_ge_mwg = qb.instr_ge_lo()
+            if qb_ge_mwg not in lo_freqs_dict:
+                raise ValueError(
+                    f'{qb_ge_mwg} for {qb.name} not found in lo_freqs_dict.')
+            else:
+                qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
+                if qb_ge_mwg not in mwgs_set:
+                    qb.instr_ge_lo.get_instr().frequency(lo_freqs_dict[qb_ge_mwg])
+                    mwgs_set.add(qb_ge_mwg)
+        # return configure_qubit_mux_drive(qubits, lo_freqs_dict)
 
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ge_lo
