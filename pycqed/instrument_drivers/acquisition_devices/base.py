@@ -168,7 +168,6 @@ class AcquisitionDevice():
         """
         self.extra_data_callback = None
         self.timer = None
-        pass
 
     def _reset_n_acquired(self):
         """Reset quantities that are needed by acquisition_progress.

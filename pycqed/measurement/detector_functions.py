@@ -624,7 +624,6 @@ class PollDetector(Hard_Detector):
             self.AWG.stop()
 
         for acq_dev in self.acq_devs:
-            acq_dev.timer = self.timer
             # Allow the acqusition device to store additional data
             acq_dev.extra_data_callback = self.extra_data_callback
             # Final preparations for an acquisition.

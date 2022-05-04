@@ -354,8 +354,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 n_acq[i] = self.qachannels[i].readout.result.acquired()
             elif self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'spectroscopy':
-                n_acq[i] = self.daq.getInt(
-                    self._get_spectroscopy_node(i, "acquired"))
+                n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
                 n_acq[i] = 0
@@ -364,11 +363,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
-        # FIXME maybe could return all
-        return max(n_acq.values())
+        return np.mean(n_acq.values())
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
-
         """
         Program the internal AWGs
         """
