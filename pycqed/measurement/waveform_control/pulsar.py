@@ -1952,7 +1952,7 @@ class SHFQAPulsar:
                                  acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [
                     f'waitDigTrigger(1);',
-                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
+                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
                 ]
                 if trig == '0x1':
                     if obj.seqtrigger is None:
