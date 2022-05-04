@@ -1238,23 +1238,24 @@ class QuDev_transmon(Qubit):
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
 
             for seg in seq.segments.values():
-                if hasattr(self.instr_acq.get_instr(), 'use_hardware_sweeper'):
-                    if self.instr_acq.get_instr().use_hardware_sweeper():
-                        lo_freq, delta_f, _ = self.instr_acq.get_instr()\
-                            .get_params_for_spectrum(freqs)
-                        self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
-                                                               lo_freq)
-                        seg.acquisition_mode = dict(
-                            sweeper='hardware',
-                            f_start=freqs[0] - lo_freq,
-                            f_step=delta_f,
-                            n_step=len(freqs),
-                            seqtrigger=True,
-                        )
-                    else:
-                        seg.acquisition_mode = dict(
-                            sweeper='software'
-                        )
+                if hasattr(self.instr_acq.get_instr(),
+                           'use_hardware_sweeper') and \
+                        self.instr_acq.get_instr().use_hardware_sweeper():
+                    lo_freq, delta_f, _ = self.instr_acq.get_instr()\
+                        .get_params_for_spectrum(freqs)
+                    self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
+                                                           lo_freq)
+                    seg.acquisition_mode = dict(
+                        sweeper='hardware',
+                        f_start=freqs[0] - lo_freq,
+                        f_step=delta_f,
+                        n_step=len(freqs),
+                        seqtrigger=True,
+                    )
+                else:
+                    seg.acquisition_mode = dict(
+                        sweeper='software'
+                    )
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()

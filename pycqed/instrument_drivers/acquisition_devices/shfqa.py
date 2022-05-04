@@ -87,6 +87,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
+        self._awg_program = [None]*self.n_acq_units
         self.seqtrigger = None
         self.timer = None
 
@@ -272,12 +273,12 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self.use_hardware_sweeper():
-                    self.qachannels[i].spectroscopy.trigger.channel(
-                        f'channel{i}_sequencer_trigger0')
-                else:
+                if self.seqtrigger is None:
                     self.qachannels[i].spectroscopy.trigger.channel(
                         f'channel{i}_trigger_input0')
+                else:
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        f'channel{self.seqtrigger}_sequencer_trigger0')
                 # Spectroscopy mode outputs a modulated pulse, whose envelope
                 # is programmed by pulsar and whose modulation frequency is
                 # given by the sum of the configured center frequency and
@@ -372,6 +373,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         Program the internal AWGs
         """
         qachannel = self.qachannels[acq_unit]
+        self._awg_program[acq_unit] = awg_program
         if awg_program is not None:
             qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
@@ -529,12 +531,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
             if self.awg_active[i]:
-                if ch.mode().name == 'readout' or self.use_hardware_sweeper():
+                if self._awg_program[i]:
                     ch.generator.enable_sequencer(single=True)
                 else:
-                    # No AWG needs to be started in soft spectroscopy mode.
-                    # The pulse generation starts together with the acquisition,
-                    # see self.prepare_poll
+                    # No AWG needs to be started if the acq unit has no program
                     pass
             elif i in self._acq_units_used:
                 log.warning(f'{self.name}: acquisition unit {i} is used '

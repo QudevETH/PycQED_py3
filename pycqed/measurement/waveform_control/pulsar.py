@@ -1871,24 +1871,23 @@ class SHFQAPulsar:
             )
 
             if is_spectroscopy:
-                if obj.use_hardware_sweeper():
-                    for element in awg_sequence:
-                        # This is a light copy of the readout mode below,
-                        # not sure how to make this more general without a
-                        # use case.
-                        awg_sequence_element = deepcopy(awg_sequence[element])
-                        if awg_sequence_element is None:
-                            playback_strings.append(f'// Segment {element}')
-                            continue
-                        playback_strings.append(f'// Element {element}')
-
-                        metadata = awg_sequence_element.pop('metadata', {})
-                        # if list(awg_sequence_element.keys()) != ['no_codeword']:
-                        #     raise NotImplementedError('SHFQA sequencer does '
-                        #         'currently not support codewords!')
-                        # chid_to_hash = awg_sequence_element['no_codeword']
-                        acq = metadata.get('acq', False)
-                        break  # FIXME: assumes there is only one segment
+                for element in awg_sequence:
+                    # This is a light copy of the readout mode below,
+                    # not sure how to make this more general without a
+                    # use case.
+                    awg_sequence_element = deepcopy(awg_sequence[element])
+                    if awg_sequence_element is None:
+                        playback_strings.append(f'// Segment {element}')
+                        continue
+                    playback_strings.append(f'// Element {element}')
+                    metadata = awg_sequence_element.pop('metadata', {})
+                    # if list(awg_sequence_element.keys()) != ['no_codeword']:
+                    #     raise NotImplementedError('SHFQA sequencer does '
+                    #         'currently not support codewords!')
+                    # chid_to_hash = awg_sequence_element['no_codeword']
+                    acq = metadata.get('acq', False)
+                    break  # FIXME: assumes there is only one segment
+                if acq['sweeper'] == 'hardware':
                     # FIXME: at some point, we need to test whether the freqs
                     #  are supported by the sweeper
                     playback_strings.append(
