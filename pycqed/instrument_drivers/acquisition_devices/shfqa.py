@@ -41,11 +41,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
-        _acq_scope_memory (int): Number of points that the scope can acquire
-            in one hardware run.
         seqtrigger (int): Index of the acquisition unit whose internal
             sequencer trigger should trigger the scope. If None, the scope is
             triggered by the external trigger of acq unit 0.
+        _acq_scope_memory (int): Number of points that the scope can acquire
+            in one hardware run.
     """
     acq_length_granularity = 16
 
@@ -297,6 +297,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
                 # Fit as many traces as possible in a single SHFQA call
+                # FIXME this should be disabled when measuring a synchronous
+                #  signal instead of noise
                 num_points_per_trace = self.convert_time_to_n_samples(
                     self._acq_length)
                 num_traces_per_run = int(np.floor(self._acq_scope_memory /

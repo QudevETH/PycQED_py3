@@ -783,12 +783,12 @@ class MultiPollDetector(PollDetector):
 
     def __init__(self, detectors, AWG=None, **kw):
         """
-        Init of the PollDetector base class.
+        Init of the MultiPollDetector base class.
 
         Args
             detectors (list): poling detectors from this module to be used for
                 acquisition
-            AWG (qcodes instrument): instrument to be restarted before each
+            AWG (qcodes instrument): master AWG to be restarted before each
                 hard sweep (this is often Pulsar, to ensure that all
                 instruments start on the same segment).
 

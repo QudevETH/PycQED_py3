@@ -1572,6 +1572,13 @@ class SHFQAPulsar:
     """
     Defines the Zurich Instruments SHFQA specific functionality for the Pulsar
     class
+
+    Supports :class:`pycqed.measurement.waveform_control.pulsar.Segment`
+    objects with the following values for acquisition_mode:
+        'default' for a measurement in readout mode
+        dict in spectroscopy mode, with 'sweeper' key (allowed values:
+        'hardware', 'software'), see other allowed keys in
+        :class:`pycqed.measurement.waveform_control.pulsar.Segment`.
     """
     _supportedAWGtypes = (SHFQA,)
 
@@ -1903,7 +1910,8 @@ class SHFQAPulsar:
                             playback_string='\n  '.join(playback_strings)),
                         {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
-                #FIXME: is this still useful if we give waves_to_upload above?
+                # FIXME: check whether some of this code should be moved to
+                #  the SHFQA class in the next cleanup
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
@@ -1940,9 +1948,8 @@ class SHFQAPulsar:
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
-                # If seqtrigger is True in acq, the SHFQA will trigger the
-                # acquisition module using an internal pulse ('0x1') from the
-                # sequencer, else it will be triggered externally
+                # If 0x1, generates an internal trigger signal from the
+                # sequencer module
                 trig = '0x1' if (isinstance(acq, dict) and
                                  acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [

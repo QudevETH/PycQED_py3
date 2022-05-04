@@ -163,8 +163,8 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). By default, only removes the extra_data_callback. Can be
-        overridden in child classes to add further functionality.
+        sweeps). By default, only removes the extra_data_callback and the
+        timer. Can be overridden in child classes to add further functionality.
         """
         self.extra_data_callback = None
         self.timer = None

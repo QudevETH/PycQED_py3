@@ -45,9 +45,9 @@ class Segment:
             name: Name of segment
             pulse_pars_list: list of pulse parameters in the form
                 of dictionaries
-            acquisition_mode (dict): This will be copied into the acq key of
-                the element metadata of acquisition elements to inform Pulsar
-                that waveforms need to be programmed in a way that is
+            acquisition_mode (dict or string): This will be copied into the acq
+                key of the element metadata of acquisition elements to inform
+                Pulsar that waveforms need to be programmed in a way that is
                 compatible with the given acquisition mode. Note:
                 - Pulsar may fall back to the default acquisition mode if
                   the given mode is not available or not needed on the used
@@ -56,19 +56,20 @@ class Segment:
                   special acquisition mode need to ensure that other parts of
                   pycqed (e.g., sweep_function) get configured in a
                   compatible manner.
-                Allowed items currently include:
+                If acquisition_mode is a dict, allowed items currently include:
                 - 'sweeper': use sweeper mode if available (for RO frequency
-                  sweeps, e.g., resonator spectroscopy). Currently the SHFQA
-                  accepts the values: 'software', 'hardware' (the UHFQA ignores
-                  'sweeper').
+                  sweeps, e.g., resonator spectroscopy).
                 - 'f_start', 'f_step' and 'n_step': Sweep parameters, in the
                   case of a hardware sweep on the SHFQA.
                 - 'seqtrigger': if True, let the sequencer output an auxiliary
                   trigger when starting the acquisition
                 - 'default' (default value): if this key is present in
-                  acquisition_mode, indicates a normal acquisition element. In
-                  practice, currently the default value of acquisition_mode is
-                  a STRING equal to 'default'.
+                  acquisition_mode, indicates a normal acquisition element
+                It can also be a string in older code (note that conditions
+                such as "'sweeper' in acquisition_mode" work in both cases)
+                See
+                :class:`pycqed.measurement.waveform_control.pulsar.SHFQAPulsar`
+                for allowed values.
             fast_mode (bool):  If True, copying pulses is avoided. In this
                 case, the pulse_pars_list passed to Segment will be modified
                 (default: False).

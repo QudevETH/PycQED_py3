@@ -283,7 +283,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
-        # This is used in QE to force a hard sweep if the sf is hard
+        # Can be used to force a hard sweep by explicitly setting to False
         kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
