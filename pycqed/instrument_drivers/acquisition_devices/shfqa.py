@@ -156,46 +156,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def prepare_poll(self):
         super().prepare_poll()
-        for i in self._acq_units_used:
-            if self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 'readout':
-                # Readout mode outputs programmed waveforms, and integrates the
-                # input with different custom weights for each integration
-                # channel
-                self.qachannels[i].readout.configure_result_logger(
-                    result_length=self._acq_n_results,
-                    num_averages=self._acq_averages,
-                    result_source="result_of_integration",
-                    averaging_mode=AveragingMode.CYCLIC,
-                )
-                # Disable rerun; the AWG seqc program defines the number of
-                # iterations in the loop
-                self.qachannels[i].generator.single(1)
-                self.qachannels[i].readout.run()
-            elif self._acq_mode == 'int_avg' \
-                    and self._acq_units_modes[i] == 'spectroscopy':
-                # Spectroscopy mode outputs a sine wave at a given frequency
-                # with an envelope, and integrates the input by weighting
-                # with this same sine (without the envelope)
-                self.qachannels[i].spectroscopy.configure_result_logger(
-                    result_length=self._acq_n_results,
-                    num_averages=self._acq_averages,
-                    averaging_mode=AveragingMode.CYCLIC,
-                )
-                self.qachannels[i].generator.userregs[1].value(
-                    # Used in seqc code
-                    self.convert_time_to_n_samples(self._acq_length)
-                )
-                self.qachannels[i].generator.single(1)
-                self.qachannels[i].spectroscopy.run()
-
-            elif self._acq_mode == 'scope'\
-                    and self._acq_data_type == 'spectrum':
-                pass  # FIXME currently done in poll
-            elif (self._acq_mode == 'scope'
-                  and self._acq_data_type == 'timetrace')\
-                    or self._acq_mode == 'avg':
-                self._arm_scope()
         self._reset_acq_poll_inds()
 
     def get_sweep_points_spectrum(self, acquisition_length=None, lo_freq=0):
@@ -295,6 +255,18 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 if self._acq_length is not None:
                     self.qachannels[i].readout.integration.length(
                         self.convert_time_to_n_samples(self._acq_length))
+                # Readout mode outputs programmed waveforms, and integrates the
+                # input with different custom weights for each integration
+                # channel
+                self.qachannels[i].readout.configure_result_logger(
+                    result_length=self._acq_n_results,
+                    num_averages=self._acq_averages,
+                    result_source="result_of_integration",
+                    averaging_mode=AveragingMode.CYCLIC,
+                )
+                # Disable rerun; the AWG seqc program defines the number of
+                # iterations in the loop
+                self.qachannels[i].readout.run()
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy':
                 self.qachannels[i].oscs[0].gain(1.0)
@@ -306,6 +278,21 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 else:
                     self.qachannels[i].spectroscopy.trigger.channel(
                         f'channel{i}_trigger_input0')
+                # Spectroscopy mode outputs a modulated pulse, whose envelope
+                # is programmed by pulsar and whose modulation frequency is
+                # given by the sum of the configured center frequency and
+                # intermediate frequency, and integrates the input by weighting
+                # with the same waveform (without the envelope)
+                self.qachannels[i].spectroscopy.configure_result_logger(
+                    result_length=self._acq_n_results,
+                    num_averages=self._acq_averages,
+                    averaging_mode=AveragingMode.CYCLIC,
+                )
+                self.qachannels[i].generator.userregs[1].value(
+                    # Used in seqc code
+                    self.convert_time_to_n_samples(self._acq_length)
+                )
+                self.qachannels[i].spectroscopy.run()
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'spectrum':
                 # Fit as many traces as possible in a single SHFQA call
@@ -317,6 +304,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 # should avg in software, (hard avg not implemented)
                 self._initialize_scope(acq_unit=i, num_hard_avg=1,
                                        num_points_per_run=num_points_per_run)
+                # FIXME self._arm_scope() currently done in poll
             elif (self._acq_mode == 'scope'
                   and self._acq_data_type == 'timetrace')\
                     or self._acq_mode == 'avg':
@@ -327,6 +315,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 self._initialize_scope(acq_unit=i,
                                        num_hard_avg=self._acq_averages,
                                        num_points_per_run=num_points_per_run)
+                self._arm_scope()
             else:
                 raise NotImplementedError("Mode not recognised!")
 
