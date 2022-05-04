@@ -1894,10 +1894,6 @@ class SHFQAPulsar:
                     playback_strings.append(
                         shfqa_sweeper_playback_string_template.format(
                             n_step=acq['n_step']))
-                    # provide sequence data to SHFQA object for upload in
-                    # acquisition_initialize
-                    # TODO: the contents of this function should now be moved
-                    #  here, since we now have user registers
                     obj.set_awg_program(
                         i,
                         shfqa_sequence_string_template.format(
@@ -1972,8 +1968,6 @@ class SHFQAPulsar:
             obj.seqtrigger = None
             for element in awg_sequence:
                 playback_strings = play_element(element, playback_strings, i)
-            # provide sequence data to SHFQA object for upload in
-            # acquisition_initialize
             obj.set_awg_program(
                 i,
                 shfqa_sequence_string_template.format(

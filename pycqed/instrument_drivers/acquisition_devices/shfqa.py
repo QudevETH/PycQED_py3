@@ -82,7 +82,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
         self.n_acq_units = len(self.qachannels)
         self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
-        self._acq_loop_cnts_last = [None] * self.n_acq_units
         self.n_acq_int_channels = self.max_qubits_per_channel
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
@@ -92,8 +91,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         self.timer = None
 
         self.awg_active = [False] * self.n_acq_units
-        self._awg_programs = {}
-        self._waves_to_upload = {}
 
         self.add_parameter(
             'allowed_lo_freqs',
@@ -286,12 +283,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
-            # This is needed because the SHFQA currently lacks user
-            # registers and thus cannot be programmed by Pulsar,
-            # which is instead done in self._program_awg
-            if self._acq_loop_cnts_last[i] != loop_cnt:
-                self._program_awg(i)  # reprogramm this acq unit
-                self._acq_loop_cnts_last[i] = loop_cnt
             self.qachannels[i].generator.userregs[0].value(
                 self._acq_loop_cnt)  # Used in seqc code
             # TODO: should probably decide actions based on the data type, not
@@ -387,32 +378,16 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         return max(n_acq.values())
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
-        """Receive sequence data from Pulsar.
 
-         This will be uploaded in self.acquisition_initialize.
-         The reason is that awg_program is incomplete as Pulsar
-         does not know yet the loop count, which is replaced
-         in self._program_awg.
         """
-        self._awg_programs[acq_unit] = awg_program
-        self._waves_to_upload[acq_unit] = waves_to_upload
-        # force programming in acquisition_initialize
-        self._acq_loop_cnts_last[acq_unit] = None
-
-    def _program_awg(self, acq_unit):
-        awg_program = self._awg_programs.get(acq_unit, None)
-        if awg_program is None:
-            return
+        Program the internal AWGs
+        """
         qachannel = self.qachannels[acq_unit]
-        # This is now known and can be replaced in the seqc code
-        awg_program = awg_program.replace(
-            '{loop_count}', f'{self._acq_loop_cnt}')
-        qachannel.generator.load_sequencer_program(awg_program)
-        waves_to_upload = self._waves_to_upload.get(acq_unit, None)
+        if awg_program is not None:
+            qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
-            self._waves_to_upload[acq_unit] = None  # upload only once
 
     def _arm_scope(self):
         self.scopes[0].stop()
