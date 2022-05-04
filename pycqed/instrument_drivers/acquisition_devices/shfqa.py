@@ -67,7 +67,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                      'int_avg': ['raw', 'digitized'], #FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
                      # compatibility, we allow this mode here.
-                     'scope': ['spectrum', 'timetrace', ],
+                     'scope': ['timedomain', 'fft_power', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
     # the SHFQA
@@ -295,7 +295,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 )
                 self.qachannels[i].spectroscopy.run()
             elif self._acq_mode == 'scope'\
-                    and self._acq_data_type == 'spectrum':
+                    and self._acq_data_type == 'fft_power':
                 # Fit as many traces as possible in a single SHFQA call
                 num_points_per_trace = self.convert_time_to_n_samples(
                     self._acq_length)
@@ -307,7 +307,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                        num_points_per_run=num_points_per_run)
                 # FIXME self._arm_scope() currently done in poll
             elif (self._acq_mode == 'scope'
-                  and self._acq_data_type == 'timetrace')\
+                  and self._acq_data_type == 'timedomain')\
                     or self._acq_mode == 'avg':
                 # Concatenation of traces in one run not supported for now
                 # (would need to think about ergodicity)
@@ -357,10 +357,10 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 n_acq[i] = self.daq.getInt(
                     self._get_spectroscopy_node(i, "acquired"))
             elif self._acq_mode == 'scope' \
-                    and self._acq_data_type == 'spectrum':
+                    and self._acq_data_type == 'fft_power':
                 n_acq[i] = 0
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
-                  'timetrace') or self._acq_mode == 'avg':
+                  'timedomain') or self._acq_mode == 'avg':
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
@@ -451,7 +451,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                                               for a in data]]
                                     for n, ch in enumerate(channels)})
             elif self._acq_mode == 'scope'\
-                    and self._acq_data_type == 'spectrum':
+                    and self._acq_data_type == 'fft_power':
                 if not channels == [0, 1]:  # TODO: one channel in TWPA object
                     raise ValueError(
                         "Currently the scope only works with two data "
@@ -496,7 +496,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 dataset.update({(i, 0): [power_spectrum]})
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
-                  'timetrace') or self._acq_mode == 'avg':
+                  'timedomain') or self._acq_mode == 'avg':
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})

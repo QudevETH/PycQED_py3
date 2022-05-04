@@ -1321,9 +1321,12 @@ class ScopePollDetector(PollDetector):
 
     Attributes:
         data_type (str) :  options are
-            - timedomain: returns time traces (possibly averaged and/or
+            - timedomain: Returns time traces (possibly averaged and/or
               single-shot)
-            - spectrum: returns (possibly averaged) power spectral density
+            - fft: Returns the absolute value of the Fourier' transform
+                       of the data.
+            - fft_power: Squares the data before averaging and taking the
+                             Fourier' transform.
     """
 
     def __init__(self,
@@ -1344,21 +1347,23 @@ class ScopePollDetector(PollDetector):
         self.nr_sweep_points = None
         self.values_per_point = 1
         self.nr_shots = nr_shots
-        if self.data_type == 'spectrum':
-            # Multiple shots aren't implemented for spectrum measurements
-            self.acq_data_len_scaling = 1
-        elif self.data_type == 'timetrace':
+        if self.data_type == 'timedomain':
             # Normal number of shots (MC will expect that many timetraces)
             self.acq_data_len_scaling = self.nr_shots
+        elif self.data_type == 'fft':
+            raise NotImplementedError("Amplitude FFT mode not implemented!")
+        elif self.data_type == 'fft_power':
+            # Multiple shots aren't implemented for power spectrum measurements
+            self.acq_data_len_scaling = 1
 
     def prepare(self, sweep_points=None):
 
         super().prepare()
         self.nr_sweep_points = len(sweep_points)
-        if self.data_type == 'spectrum':
+        if self.data_type == 'fft_power':
             # Number of points of the spectrum to be returned
             n_results = self.nr_sweep_points
-        elif self.data_type == 'timetrace':
+        elif self.data_type == 'timedomain':
             # Meaning 1 timetrace. Could be extended e.g. if hardware allows
             # TV-mode avg of timetraces
             n_results = 1
