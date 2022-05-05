@@ -10,7 +10,7 @@ class VC707(VC707_core, AcquisitionDevice):
     """PycQED acquisition device wrapper for the VC707 FPGA."""
 
     n_acq_units = 2
-    n_acq_channels = 2  # TODO
+    n_int_acq_channels = 2  # TODO
     acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
@@ -97,6 +97,7 @@ class VC707(VC707_core, AcquisitionDevice):
                                           weights[1][:res.shape[-1]])
                         )
                     dataset[(i, ch)] = [np.array(integration_result)]
+                self.save_extra_data(f'traces/{i}', last_traces[i])
         self._last_traces.append(last_traces)
         return dataset
 

@@ -146,6 +146,10 @@ class BaseDataAnalysis(object):
                 self.options_dict = OrderedDict()
             else:
                 self.options_dict = options_dict
+            # The following dict can be populated by child classes to set
+            # default values that are different from the default behavior of
+            # the base class.
+            self.default_options = {}
 
             ################################################
             # These options determine what data to extract #
@@ -419,7 +423,8 @@ class BaseDataAnalysis(object):
                 param_name, default_value))
 
     def get_param_value(self, param_name, default_value=None, index=0,
-                        search_attrs=('options_dict', 'metadata', 'raw_data_dict')):
+                        search_attrs=('options_dict', 'metadata',
+                                      'raw_data_dict', 'default_options')):
         """
         Gets a value from a set of searchable hashable attributes.
         :param param_name: name of the parameter to be searched
@@ -723,8 +728,8 @@ class BaseDataAnalysis(object):
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
-            if 'TwoD' not in self.options_dict:
-                self.options_dict['TwoD'] = TwoD
+            if 'TwoD' not in self.default_options:
+                self.default_options['TwoD'] = TwoD
         else:
             temp_dict_list = []
             twod_list = []
@@ -743,13 +748,13 @@ class BaseDataAnalysis(object):
                 temp_dict_list.append(rdd,)
                 twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
-            if 'TwoD' not in self.options_dict:
+            if 'TwoD' not in self.default_options:
                 if not all(twod_list):
                     log.info('Not all measurements have the same '
                              'number of sweep dimensions. TwoD flag '
                              'will remain unset.')
                 else:
-                    self.options_dict['TwoD'] = twod_list[0]
+                    self.default_options['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -840,7 +845,8 @@ class BaseDataAnalysis(object):
         axes_keys_to_pop = []
         for ax_key, ax in self.axs.items():
             for ax_to_pop in axes_to_pop:
-                if ax is ax_to_pop:
+                if (hasattr(ax, '__iter__') and ax_to_pop in ax)\
+                        or ax is ax_to_pop:
                     axes_keys_to_pop.append(ax_key)
                     break
         for ax_key in axes_keys_to_pop:

@@ -179,7 +179,7 @@ class QuantumExperiment(CircuitBuilder):
         self.filter_segments_mask = filter_segments_mask
         self.sweep_points = self.sequence_kwargs.get("sweep_points", None)
         self.mc_points = mc_points if mc_points is not None else [[], []]
-        self.sweep_functions = sweep_functions
+        self.sweep_functions = list(sweep_functions)
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
         self.harmonize_element_lengths = harmonize_element_lengths
@@ -428,6 +428,11 @@ class QuantumExperiment(CircuitBuilder):
                     extra sequences are compatible with the normal sequences
                     of the QuantumExperiment, e.g., in terms of number of
                     acquisition elements.
+                - aux_triggers (dict): a dict where each key is a tuple of a
+                    sequence index and segment index, and the corresponding
+                    value is a list of channel names. This will add trigger
+                    pulses on the given channels for the first pulse of
+                    the segment indicated by the key.
         Returns:
 
         """
@@ -466,6 +471,11 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.concatenate([
                     self.mc_points[1],
                     np.arange(len(extra_seqs)) + self.mc_points[1][-1] + 1])
+            aux_triggers = sequence_kwargs.get('aux_triggers', None)
+            if aux_triggers is not None:
+                for (i, j), v in aux_triggers.items():
+                    self.sequences[i][j].unresolved_pulses[
+                        0].pulse_obj.trigger_channels = v
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
@@ -521,8 +531,8 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.sequences) > 1:
             # compress 2D sweep
             if self.compression_seg_lim is not None:
-                if self.sweep_functions == (awg_swf.SegmentHardSweep,
-                                            awg_swf.SegmentSoftSweep):
+                if self.sweep_functions == [awg_swf.SegmentHardSweep,
+                                            awg_swf.SegmentSoftSweep]:
                     self.sequences, self.mc_points[0], \
                     self.mc_points[1], cf = \
                         self.sequences[0].compress_2D_sweep(self.sequences,

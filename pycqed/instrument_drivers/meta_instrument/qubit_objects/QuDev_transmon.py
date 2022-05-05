@@ -41,6 +41,7 @@ try:
 except ModuleNotFoundError:
     log.warning('"readout_mode_simulations_for_CLEAR_pulse" not imported.')
 
+
 class QuDev_transmon(Qubit):
     DEFAULT_FLUX_DISTORTION = dict(
         IIR_filter_list=[],
@@ -130,7 +131,8 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
-                                 initial_value=None, vals=vals.Strings())
+                                 initial_value=None, vals=vals.MultiType(
+                                     vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO', 'ro_flux_channel', 'flux_channel',
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
@@ -174,6 +176,13 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter(
+            'RO', 'ro_trigger_channels', 'trigger_channels',
+            vals=vals.MultiType(vals.Enum(None), vals.Strings(),
+                                vals.Lists(vals.Strings())))
+        self.add_pulse_parameter(
+            'RO', 'ro_trigger_pars', 'trigger_pars',
+            vals=vals.MultiType(vals.Enum(None), vals.Dict()))
         self.add_pulse_parameter('RO', 'ro_flux_amplitude', 'flux_amplitude',
                                  initial_value=0, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_extend_start', 'flux_extend_start',
@@ -682,7 +691,7 @@ class QuDev_transmon(Qubit):
         :param amplitude: (float, default: None) flux pulse amplitude. If None,
             the function calculates the required pulse amplitude to reach
             the target frequency (taking into account the given bias).
-            Otherwise, it fixes the pulse ammplitude and calculates the
+            Otherwise, it fixes the pulse amplitude and calculates the
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
@@ -830,19 +839,20 @@ class QuDev_transmon(Qubit):
         vfc['dac_sweet_spot'] = -flux * vfc['V_per_phi0']
         return vfc
 
-    def get_acq_channels(self, n_channels=None):
-        """
-        Get the list of tuples with the qubit acquisition channels.
+    def get_acq_int_channels(self, n_channels=None):
+        """Get a list of tuples with the qubit's integration channels.
 
         Args:
-            n_channels (int): number of integration channels; can be
-                1: for ro_weights_type == 'optimal
-                2: for ro_weights_type in ['SSB', 'DSB', 'DSB2',
-                 'optimal_qutrit', 'manual']
+            n_channels (int): number of integration channels; if this is None,
+                it will be chosen as follows:
+                2 for ro_weights_type in ['SSB', 'DSB', 'DSB2',
+                    'optimal_qutrit', 'manual']
+                1 otherwise (in particular for ro_weights_type in
+                    ['optimal', 'square_rot'])
 
         Returns
             list with n_channels tuples, where the first entry in each tuple is
-            the acq_unit and the second is an integration channel
+            the acq_unit and the second is an integration channel index
         """
         if n_channels is None:
             n_channels = 2 if (self.acq_weights_type() in [
@@ -850,6 +860,23 @@ class QuDev_transmon(Qubit):
                                and self.acq_Q_channel() is not None) else 1
         return [(self.acq_unit(), self.acq_I_channel()),
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
+
+    def get_acq_inp_channels(self):
+        """Get a list of tuples with the qubit's acquisition input channels.
+
+        For now, this method assumes that all quadratures available on the
+        acquisition unit should be recorded, i.e., two for devices that
+        provide I&Q signals, and one otherwise.
+
+        TODO: In the future, a parameter could be added to the qubit object
+            to allow recording only one out of two available quadratures.
+
+        Returns
+            list of tuples, where the first entry in each tuple is
+            the acq_unit and the second is an input channel index
+        """
+        n_channels = self.instr_acq.get_instr().n_acq_inp_channels
+        return [(self.acq_unit(), i) for i in range(n_channels)]
 
     def update_detector_functions(self):
         """
@@ -880,19 +907,19 @@ class QuDev_transmon(Qubit):
             - self.scope_fft_det: UHFQC_scope_detector
                 Used for acquisition with the scope module of the UHF.
         """
-        channels = self.get_acq_channels()
+        int_channels = self.get_acq_int_channels()
 
         self.int_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_shots(),
+            channels=int_channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.int_avg_classif_det = det.ClassifyingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_averages(),
+            channels=int_channels, nr_shots=self.acq_averages(),
             integration_length=self.acq_length(),
             get_values_function_kwargs={
                 'classifier_params': [self.acq_classifier_params()],
@@ -902,35 +929,35 @@ class QuDev_transmon(Qubit):
         self.int_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_averages=self.acq_averages(),
+            channels=int_channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw')
 
         self.dig_avg_det = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_averages=self.acq_averages(),
+            channels=int_channels, nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.inp_avg_det = det.AveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels,
+            channels=self.get_acq_inp_channels(),
             nr_averages=self.acq_averages(),
             acquisition_length=self.acq_length())
 
         self.dig_log_det = det.IntegratingSingleShotPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_pulsar.get_instr(),
-            channels=channels, nr_shots=self.acq_shots(),
+            channels=int_channels, nr_shots=self.acq_shots(),
             integration_length=self.acq_length(),
             data_type='digitized')
 
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_acq.get_instr(),
-            channels=self.get_acq_channels(n_channels=2),
+            channels=int_channels,
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
@@ -1070,7 +1097,7 @@ class QuDev_transmon(Qubit):
         if f_mod is None:
             f_mod = self.ro_mod_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
-            channels=self.get_acq_channels(n_channels=2),
+            channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
             weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
@@ -1993,12 +2020,15 @@ class QuDev_transmon(Qubit):
             parameter_name=self.name + ' drive frequency'))
         MC.set_sweep_points_2D(freqs)
 
-        d = det.UHFQC_integrated_average_detector(
-            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(),
-            nr_averages=self.acq_averages(),
+        d = det.IntegratingAveragingPollDetector(
+            acq_dev=self.instr_acq.get_instr(),
+            AWG=self.instr_pulsar.get_instr(),
             channels=self.int_avg_det.channels,
+            nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffix=['_probe', '_measure'])
+            data_type='raw',
+            values_per_point=2,
+            values_per_point_suffix=['_probe', '_measure'])
         MC.set_detector_function(d)
         MC.run_2D(label)
 
@@ -2290,6 +2320,87 @@ class QuDev_transmon(Qubit):
             detector_generator, update=update, x0=x0,
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
             no_improv_break=no_improv_break, upload=upload, plot=plot)
+
+    def calibrate_readout_mixer_carrier(self, other_qb, update=True,
+                                        x0=(0., 0.),
+                                        initial_stepsize=0.01, trigger_sep=5e-6,
+                                        no_improv_break=50, upload=True,
+                                        plot=True):
+        """
+        Calibrate readout upconversion mixer local oscillator leakage
+
+        Args:
+            other_qb:
+                a qubit on another acquisition device that is configured to
+                see the LO leakage output of the readout UC of self
+            other arguments as in calibrate_drive_mixer_carrier
+
+        Example:
+            >>> # configure switches to readout mixer calib configuration
+            >>> # ...
+            >>>
+            >>> with temporary_value((qb_other.ro_mod_freq, 100e6),
+            >>>                      (qb_other.acq_length, 1e-6)):
+            >>>     qb.calibrate_readout_mixer_carrier(
+            >>>         qb_other, trigger_sep=40e-6, no_improv_break=20)
+            >>>
+            >>> # configure switches to nominal configuration
+            >>> # ...
+            >>>
+            >>> for qb_on_feedline in qubits_feedline:
+            >>>     qb_on_feedline.ro_I_offset(qb.ro_I_offset())
+            >>>     qb_on_feedline.ro_Q_offset(qb.ro_Q_offset())
+        """
+
+        MC = self.instr_mc.get_instr()
+        ad_func_pars = {'adaptive_function': opti.nelder_mead,
+                        'x0': x0,
+                        'initial_step': [initial_stepsize, initial_stepsize],
+                        'no_improv_break': no_improv_break,
+                        'minimize': True,
+                        'maxiter': 500}
+        chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ro_I_channel())]
+        chQ_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
+            self.ro_Q_channel())]
+        MC.set_sweep_functions([chI_par, chQ_par])
+        MC.set_adaptive_function_parameters(ad_func_pars)
+        if upload:
+            sq.pulse_list_list_seq([[other_qb.get_acq_pars(), dict(
+                pulse_type='GaussFilteredCosIQPulse',
+                pulse_length=self.acq_length(),
+                ref_point='start',
+                amplitude=0,
+                I_channel=self.ro_I_channel(),
+                Q_channel=self.ro_Q_channel(),
+            )]])
+
+        with temporary_value(
+                (other_qb.ro_freq, self.ro_freq() - self.ro_mod_freq()),
+                (other_qb.acq_weights_type, 'SSB'),
+                (other_qb.acq_length, self.acq_length()),
+                (other_qb.instr_trigger.get_instr().pulse_period, trigger_sep),
+        ):
+            self.prepare(drive=None)
+            other_qb.prepare(drive=None)
+            MC.set_detector_function(det.IndexDetector(
+                other_qb.int_avg_det_spec, 0))
+            other_qb.instr_pulsar.get_instr().start(
+                exclude=[other_qb.instr_uhf()])
+            MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
+                   mode='adaptive')
+
+        a = ma.OptimizationAnalysis(label='readout_carrier_calibration')
+        if plot:
+            # v2 creates a pretty picture of the optimizations
+            ma.OptimizationAnalysis_v2(label='readout_carrier_calibration')
+
+        ch_1_min = a.optimization_result[0][0]
+        ch_2_min = a.optimization_result[0][1]
+        if update:
+            self.ro_I_offset(ch_1_min)
+            self.ro_Q_offset(ch_2_min)
+        return ch_1_min, ch_2_min
 
     def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
                                             limits=(-0.1, 0.1, -0.1, 0.1),
@@ -3506,11 +3617,11 @@ class QuDev_transmon(Qubit):
                     qb_names=[self.name], options_dict=dict(
                         fit_gaussian_decay=kw.get('fit_gaussian_decay', True)))
                 new_qubit_freq = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'new_qb_freq']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['new_qb_freq']
                 T2_star = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'T2_star']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['T2_star']
 
             if update:
                 if for_ef:
@@ -4709,8 +4820,9 @@ class QuDev_transmon(Qubit):
         pulsar = self.instr_pulsar.get_instr()
         offset_list = []
         if set_ro_offsets:
-            offset_list += [('ro_I_channel', 'ro_I_offset'),
-                           ('ro_Q_channel', 'ro_Q_offset')]
+            offset_list += [('ro_I_channel', 'ro_I_offset')]
+            if self.ro_Q_channel() is not None:
+                offset_list += [('ro_Q_channel', 'ro_Q_offset')]
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':

@@ -162,8 +162,9 @@ class MultiTaskingExperiment(QuantumExperiment):
             'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
-            'data_to_fit': self.data_to_fit,
         })
+        if len(self.data_to_fit):
+            self.exp_metadata.update({'data_to_fit': self.data_to_fit})
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
             tl = [copy(t) for t in self.preprocessed_task_list]
@@ -562,10 +563,15 @@ class MultiTaskingExperiment(QuantumExperiment):
                     # assumes the string is the name of a self method
                     values_func = getattr(self, values_func, None)
 
+                # comma-separated strings correspond to different keys in task
+                # whose corresponding values can be used as input parameters
+                # for values_func
                 k_list = k.split(',')
                 # if the respective task parameters (or keyword arguments) exist
                 if all([k in task and task[k] is not None for k in k_list]):
                     if values_func is not None:
+                        # the entries in k_list point to input parameters
+                        # for values_func
                         values = values_func(*[task[key] for key in k_list])
                     elif isinstance(task[k_list[0]], int):
                         # A single int N as sweep value will be interpreted as
