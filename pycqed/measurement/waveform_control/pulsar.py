@@ -1907,8 +1907,7 @@ class SHFQAPulsar:
                                 f_start=acq['f_start'],
                                 f_step=acq['f_step'],
                             ),
-                            playback_string='\n  '.join(playback_strings)),
-                        {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
+                            playback_string='\n  '.join(playback_strings)))
 
                 # FIXME: check whether some of this code should be moved to
                 #  the SHFQA class in the next cleanup

@@ -279,8 +279,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     result_source="result_of_integration",
                     averaging_mode=AveragingMode.CYCLIC,
                 )
-                # Disable rerun; the AWG seqc program defines the number of
-                # iterations in the loop
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy':
                 self.qachannels[i].oscs[0].gain(1.0)
@@ -337,6 +335,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode("readout")
+        # Arbitrarily always using the trigger from ch0, since there is only
+        # one scope module
         if self.seqtrigger is None:
             trigger_channel = 'channel0_trigger_input0'
         else:
@@ -377,14 +377,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(n_acq.values())
 
-    def set_awg_program(self, acq_unit, awg_program, waves_to_upload):
+    def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
         Program the internal AWGs
         """
         qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
-        if awg_program is not None:
-            qachannel.generator.load_sequencer_program(awg_program)
+        qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
@@ -539,8 +538,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
 
     def start(self, **kwargs):
         for i, ch in enumerate(self.qachannels):
-            if self.awg_active[i]:
-                if self._awg_program[i]:
+            if self.awg_active[i]:  # Outputs a waveform
+                if self._awg_program[i]:  # Using the sequencer
                     ch.generator.enable_sequencer(single=True)
                 else:
                     # No AWG needs to be started if the acq unit has no program
