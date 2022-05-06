@@ -296,7 +296,7 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
 
     The vertices of the blocks lie in the middle between the values specified
     in ``xvals`` and ``yvals``. Blocks on the edges have vertices that are
-    symetric with respect to their data point.
+    symmetric with respect to their data point.
 
     Args:
         xvals (list/array): 1d list/array of 1st dimension of data points.
