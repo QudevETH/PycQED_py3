@@ -291,32 +291,34 @@ def flex_color_plot_vs_x(xvals, yvals, zvals, ax=None,
 
 def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
                               normalize=False, log=False, **kw):
-    """Add rectangular blocks to a color plot using pcolormesh.
+    """Add rectangular blocks to a color plot using
+    :meth:`pcolormesh <matplotlib.axes.Axes.pcolormesh>`.
+
     The vertices of the blocks lie in the middle between the values specified
-    in xvals and yvals. Blocks on the edges have vertices that are symetric with
-    respect to their sweep point.
+    in ``xvals`` and ``yvals``. Blocks on the edges have vertices that are
+    symetric with respect to their data point.
 
     Args:
-        xvals (list/array): 1d list/array of 1st dimension of sweep points.
-        yvals (list/array): 1d list/array of 2st dimension of sweep points.
+        xvals (list/array): 1d list/array of 1st dimension of data points.
+        yvals (list/array): 1d list/array of 2st dimension of data points.
         zvals (list/array): 2d list of arrays holding the measured values
-            with shape (len(yvals), len(xvals)).
-        ax (matplotlib.pyplot.axis, optional): Axis the plot is added to.
-            Defaults to None.
-        normalize (bool, optional): Normalize zvals along axis=0 to have mean 1.
-            Defaults to False.
-        log (bool, optional): Plot log10 of zvals. Defaults to False.
-        **kwargs (dict): Keyword arguments. Arguments taken into account are:
+            with shape ``(len(yvals), len(xvals))``.
+        ax (:class:`Axes <matplotlib.axes.Axes>`, optional): Axis the plot is added to.
+            Defaults to ``None``.
+        normalize (bool, optional): Normalize ``zvals`` along ``axis=0`` to
+            have mean 1. Defaults to ``False``.
+        log (bool, optional): Plot log10 of ``zvals``. Defaults to ``False``.
 
-            * ``plotsize``: The figsize used in case ax is none. Defaults
-                to (12, 7)
-            * ``cmap``: Colomap passed to `~matplotlib.pyplot.pcolormesh`.
-                Defaults to 'viridis'.
-            * ``clim``: Colomap limits. Defaults to [None, None].
-            * ``transpose``: Plot transpose of data. Defaults to False.
+    Keyword Arguments:
+        plotsize (tuple): The figsize used in case ``ax`` is ``None``.
+            Defaults to ``(12, 7)``.
+        cmap (:class:`Colormap <matplotlib.colors.Colormap>`): Colormap passed to
+            :meth:`pcolormesh <matplotlib.axes.Axes.pcolormesh>`. Defaults to ``'viridis'``.
+        clim: Colormap limits. Defaults to ``[None, None]``.
+        transpose (bool): Plot transpose of data. Defaults to ``False``.
 
     Returns:
-        dict: Dictonary with keys 'fig', 'ax' and 'cmap'
+        dict: Dictionary with keys ``fig``, ``ax`` and ``cmap``
     """
 
     xvals = np.array(xvals)
