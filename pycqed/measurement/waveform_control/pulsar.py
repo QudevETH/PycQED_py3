@@ -1877,6 +1877,7 @@ class SHFQAPulsar:
                 "configFreqSweep(OSC0, {f_start}, {f_step});\n"
             )
 
+            obj.seqtrigger = None
             if is_spectroscopy:
                 for element in awg_sequence:
                     # This is a light copy of the readout mode below,
@@ -1908,6 +1909,9 @@ class SHFQAPulsar:
                                 f_step=acq['f_step'],
                             ),
                             playback_string='\n  '.join(playback_strings)))
+                    # The acquisition modules will each be triggered by their
+                    # sequencer
+                    obj.seqtrigger = True
 
                 # FIXME: check whether some of this code should be moved to
                 #  the SHFQA class in the next cleanup
@@ -1957,6 +1961,7 @@ class SHFQAPulsar:
                 ]
                 if trig == '0x1':
                     if obj.seqtrigger is None:
+                        # The scope will be triggered by this single acq_unit
                         obj.seqtrigger = acq_unit
                     playback_strings += [
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
@@ -1970,7 +1975,6 @@ class SHFQAPulsar:
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "
                          "ignoring it")
-            obj.seqtrigger = None
             for element in awg_sequence:
                 playback_strings = play_element(element, playback_strings, i)
             obj.set_awg_program(

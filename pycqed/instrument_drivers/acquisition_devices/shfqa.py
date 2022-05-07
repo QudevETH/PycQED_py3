@@ -289,7 +289,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         f'channel{i}_trigger_input0')
                 else:
                     self.qachannels[i].spectroscopy.trigger.channel(
-                        f'channel{self.seqtrigger}_sequencer_trigger0')
+                        f'channel{i}_sequencer_trigger0')
                 # Spectroscopy mode outputs a modulated pulse, whose envelope
                 # is programmed by pulsar and whose modulation frequency is
                 # given by the sum of the configured center frequency and
