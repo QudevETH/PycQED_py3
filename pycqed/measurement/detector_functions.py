@@ -786,11 +786,11 @@ class MultiPollDetector(PollDetector):
         Init of the MultiPollDetector base class.
 
         Args
-            detectors (list): poling detectors from this module to be used for
+            detectors (list): polling detectors from this module to be used for
                 acquisition
-            AWG (qcodes instrument): master AWG to be restarted before each
-                hard sweep (this is often Pulsar, to ensure that all
-                instruments start on the same segment).
+            AWG (qcodes instrument): AWG that will be treated as a master AWG
+                by wrapping it in a MultiAWGWrapper together with the AWGs of
+                the individual detectors
 
         Keyword args: passed to parent class
         """
