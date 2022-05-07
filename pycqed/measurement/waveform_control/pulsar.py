@@ -1854,7 +1854,7 @@ class SHFQAPulsar:
                 "}}\n"
             )
             shfqa_sweeper_playback_string_template = (
-                "for(var i = 0; i < {n_step}; i++)" + " {\n"
+                "for(var i = 0; i < {n_step}; i++)" + " {{\n"
                 "    // self-triggering mode\n\n"
                 "    // define time from setting the oscillator "
                 "frequency to sending the spectroscopy trigger\n"
@@ -1869,7 +1869,7 @@ class SHFQAPulsar:
                 "    // trigger the integration unit and pulsed "
                 "playback in pulsed mode\n"
                 "    setTrigger(1);\n    setTrigger(0);\n"
-                "  }"
+                "  }}"
             )
             shfqa_sweeper_prep_string = (
                 "const OSC0 = 0;\n"
@@ -1878,6 +1878,7 @@ class SHFQAPulsar:
             )
 
             obj.seqtrigger = None
+
             if is_spectroscopy:
                 for element in awg_sequence:
                     # This is a light copy of the readout mode below,

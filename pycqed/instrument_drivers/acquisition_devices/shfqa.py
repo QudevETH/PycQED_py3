@@ -147,8 +147,8 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         super().set_lo_freq(acq_unit, lo_freq)
         # Deep set (synchronous set that returns the value acknowledged by the
         # device)
-        new_lo_freq = self._tk_object.qachannels[acq_unit].centerfreq(
-            lo_freq, deep=True)
+        self.qachannels[acq_unit].centerfreq(lo_freq, deep=True)
+        new_lo_freq = self.qachannels[acq_unit].centerfreq()
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '

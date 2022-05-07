@@ -342,7 +342,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                data_type='timetrace',
+                data_type='timedomain',
                 **kw)
             for uhf in uhfs])
     elif df_name == 'psd_avg_det':
@@ -351,7 +351,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                data_type='spectrum',
+                data_type='fft_power',
                 **kw)
             for uhf in uhfs])
 
