@@ -357,6 +357,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
+        self._awg_program = [None] * self.n_acq_units
 
     def acquisition_progress(self):
         n_acq = {}
