@@ -1347,6 +1347,7 @@ class ScopePollDetector(PollDetector):
                  data_type,
                  **kw):
         super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
         self.channels = channels
         self.integration_length = integration_length
         self.nr_averages = nr_averages

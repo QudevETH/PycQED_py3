@@ -10663,7 +10663,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return bmtimer
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
-                              count_nan_measurements=False, count_hsp=True):
+                              count_nan_measurements=False):
         det_metadata = self.metadata.get("Detector Metadata", None)
         if nr_averages is None:
             nr_averages = self.get_param_value('nr_averages', None)
@@ -10677,10 +10677,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
         self.nr_averages = nr_averages
-        if count_hsp:  # This could be an integer if more scalings are needed
-            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
-        else:
+        # metadata['detectors'] is a dict for MultiPollDetector and else a list
+        df_names = list(det_metadata['detectors'])
+        # Testing the first detector, since detectors in a MultiPollDetector
+        # should all be the same
+        if 'scope' in df_names[0]:
+            # No scaling needed, since all hsp are contained in one hardware run
             n_hsp = 1
+        else:
+            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
