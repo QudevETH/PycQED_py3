@@ -387,8 +387,9 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                  [f'{self.STD_INIT[init_state][0]} {qb}'],
                                  pulse_modifs=pulse_modifs)
 
+        pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
-        ro = self.block_from_ops('ro', [f"RO {qb}"])
+        ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
         # create ParametricValues from param_name in sweep_points
         # (e.g. "ro_amp", "ro_length", etc.)
