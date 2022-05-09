@@ -6,9 +6,11 @@ the spectroscopy measurement analyses.
 """
 
 import logging
+import re
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
+import pycqed.analysis_v2.timedomain_analysis as tda
 import pycqed.analysis.fitting_models as fit_mods
 
 import pandas as pd
@@ -1667,3 +1669,31 @@ class QubitTrackerSpectroscopy(Spectroscopy):
         y = fr.model.func(x, **fr.best_values)
         f_next = (y.min() - freq_slack, y.max() + freq_slack)
         return v2d_next, f_next
+
+
+class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
+    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_model' measurement.
+
+    The class extracts the DC biases on the I and Q channel inputs of the
+    measured IQ mixer that minimize the LO leakage.
+    """
+    def process_data(self):
+        super().process_data()
+
+        mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
+        self.proc_data_dict['projected_data_dict'] = {
+            qb: self._transform(raw_data, False) for qb, raw_data in mdata_per_qb.items()
+        }
+
+    def _transform(self, data, transpose=False):
+        polar_data = dict()
+        values = list(data.values())
+        S21 = values[0] + 1j * values[1] # vector in complex plane
+        polar_data["Magnitude"] = np.abs(S21).T if transpose else np.abs(S21)
+        polar_data["Phase"] = np.angle(S21).T if transpose else np.angle(S21)
+        return polar_data
+
+    def get_yaxis_label(self, qb_name, data_key=None):
+        if data_key is None:
+            return 'Measured Data (arb.)'
+        return data_key
