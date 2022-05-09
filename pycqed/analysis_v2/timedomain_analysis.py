@@ -2341,6 +2341,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             'unit', dimension=1, param_names=pn)
                         ylabel = self.sp.get_sweep_params_property(
                             'label', dimension=1, param_names=pn)
+                    yvals = yvals.reshape((len(ssp), len(xvals)))
                     self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
                         'plotfn': self.plot_colorxy,
                         'fig_id': fig_name + '_' + pn,
