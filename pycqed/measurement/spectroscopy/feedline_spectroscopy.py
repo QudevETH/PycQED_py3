@@ -125,13 +125,15 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                     # Probably qb frequency that is now contained in an lo sweep
                     pass
                 else:
-                    # assuming that this parameter is a pulse paramater and we
-                    # therefore need a SegmentSoftSweep as the first sweep
-                    # function in our multi_sweep_function
-                    self.sweep_functions[i].insert_sweep_function(
-                        pos=0,
-                        sweep_function=awg_swf.SegmentSoftSweep
-                    )
+                    if len(self.sweep_functions[i].sweep_functions) == 0 \
+                        or self.sweep_functions[i].sweep_functions[0] != awg_swf.SegmentSoftSweep:
+                        # assuming that this parameter is a pulse paramater and we
+                        # therefore need a SegmentSoftSweep as the first sweep
+                        # function in our multi_sweep_function
+                        self.sweep_functions[i].insert_sweep_function(
+                            pos=0,
+                            sweep_function=awg_swf.SegmentSoftSweep
+                        )
                     self.sweep_points_pulses[i][param] = self.sweep_points[i][param]
 
     def resolve_freq_sweep_points(self, **kw):
