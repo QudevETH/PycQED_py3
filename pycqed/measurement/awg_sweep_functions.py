@@ -145,10 +145,10 @@ class arbitrary_variable_swf(swf.Hard_Sweep):
           pass
 
 
-class SegmentHardSweep(swf.Hard_Sweep):
+class SegmentHardSweep(swf.UploadingSweepFunctionMixin, swf.Hard_Sweep):
 
     def __init__(self, sequence, upload=True, parameter_name='None', unit='',
-                 start_pulsar=False, start_exclude_awgs=()):
+                 start_pulsar=True, start_exclude_awgs=(), **kw):
         """A hardware sweep over segments in a sequence.
 
         Args:
@@ -171,57 +171,34 @@ class SegmentHardSweep(swf.Hard_Sweep):
                 A collection of AWG names that will not be started directly
                 after upload in case start_pulsar is True. Defaults to ().
         """
-        super().__init__()
-        self.sequence = sequence
-        self.upload = upload
-        self.parameter_name = parameter_name
-        self.unit = unit
-        self.start_pulsar = start_pulsar
-        self.start_exclude_awgs = start_exclude_awgs
-
-    def prepare(self, awgs_to_upload='all', **kw):
-        if self.upload:
-            time.sleep(0.1)
-            ps.Pulsar.get_instance().program_awgs(self.sequence,
-                                                  awgs=awgs_to_upload)
-            time.sleep(0.1)
-            if self.start_pulsar:
-                ps.Pulsar.get_instance().start(exclude=self.start_exclude_awgs)
+        super().__init__(sequence=sequence, upload=upload,
+                         upload_first=True,
+                         start_pulsar=start_pulsar,
+                         start_exclude_awgs=start_exclude_awgs,
+                         parameter_name=parameter_name, unit=unit, **kw)
+        self.name = 'Segment hard sweep'
 
     def set_parameter(self, value):
         pass
 
 
-class SegmentSoftSweep(swf.Soft_Sweep):
+class SegmentSoftSweep(swf.UploadingSweepFunctionMixin, swf.Soft_Sweep):
     # The following allows adding the class as placeholder in a
     # multi_sweep_function
     unit = ''
 
-    def __init__(self, hard_sweep_func, sequence_list,
-                 param_name='None', param_unit='',
-                 channels_to_upload='all', upload_first=False):
-        super().__init__()
+    def __init__(self, sequence_list, parameter_name='None', unit='',
+                 upload_first=False, upload=True, **kw):
+        super().__init__(sequence=sequence_list[0], upload=upload,
+                         parameter_name=parameter_name, unit=unit, **kw)
         self.name = 'Segment soft sweep'
-        self.hard_sweep = hard_sweep_func
         self.sequence_list = sequence_list
-        self.parameter_name = param_name
-        self.unit = param_unit
-        if channels_to_upload == 'all':
-            self.awgs_to_upload = 'all'
-        else:
-            log.warning('SegmentSoftSweep: reducing upload overhead manually '
-                        'with channels_to_upload is deprecated. Set '
-                        'pulsar.use_sequence_cache to True for automatic '
-                        'reduction of upload overhead.')
-            pulsar = ps.Pulsar.get_instance()
-            self.awgs_to_upload = set([pulsar.get(f'{ch}_awg')
-                                            for ch in channels_to_upload])
         self.upload_next = upload_first
 
     def set_parameter(self, val, **kw):
-        self.hard_sweep.sequence = self.sequence_list[val]
+        self.sequence = self.sequence_list[val]
         if self.upload_next:
-            self.hard_sweep.prepare(awgs_to_upload=self.awgs_to_upload)
+            self.upload_sequence()
         self.upload_next = True
 
 
