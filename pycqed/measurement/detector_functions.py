@@ -157,7 +157,7 @@ class Detector_Function(object):
         original_shape = data.shape
         data = np.atleast_2d(data)
         if self.live_plot_transform_type == 'mag_phase':
-            v = data[:, 0] + 1j * data[:, 1] # vector in complex plane
+            v = data[:, 0::2] + 1j * data[:, 1::2] # vector in complex plane
             magn = np.abs(v)
             phase  = np.angle(v)
             return np.reshape(np.array([magn, phase]).T, original_shape)
