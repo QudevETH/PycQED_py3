@@ -316,7 +316,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'volts': dict(param_name='volt', unit='V',
                       label=r'fluxline voltage',
                       dimension=1),
-        'ro_amps':  dict(param_name='ro_amp', unit='V',
+        'ro_amp':  dict(param_name='ro_amp', unit='V',
                       label=r'RO pulse amplitude',
                       dimension=1),
         'sweep_points_2D': dict(param_name='sweep_points_2D', unit='',
