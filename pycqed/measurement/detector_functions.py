@@ -85,6 +85,15 @@ class Detector_Function(object):
                             {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
