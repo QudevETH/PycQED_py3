@@ -36,6 +36,44 @@ class Sweep_function(object):
         '''
         pass
 
+class UploadingSweepFunctionMixin:
+    def __init__(self, sequence=None, upload=True, upload_first=True,
+                 start_pulsar=False, start_exclude_awgs=(), **kw):
+        """A mixin to extend any sweep function to be able to upload sequences.
+
+        Args:
+            sequence (:class:`~pycqed.measurement.waveform_control.sequence.Sequence`):
+                Sequence of segments to sweep over.
+            upload (bool, optional):
+                Whether to upload the sequences before measurement.
+                Defaults to True.
+            start_pulsar (bool, optional):
+                Whether (a sub set of) the used AWGs will be started directly
+                after upload. This can be used, e.g., to start AWGs that have
+                only one unique segment and do not need to be synchronized to
+                other AWGs and therefore do not need to be stopped when
+                switching to the next segment in the sweep. Defaults to False.
+            start_exclude_awgs (collection[str], optional):
+                A collection of AWG names that will not be started directly
+                after upload in case start_pulsar is True. Defaults to ().
+        """
+        super().__init__(**kw)
+        self.sequence = sequence
+        self.upload = upload
+        self.upload_first = upload_first
+        self.start_pulsar = start_pulsar
+        self.start_exclude_awgs = start_exclude_awgs
+
+    def prepare(self, **kw):
+        if self.upload_first:
+            self.upload_sequence()
+        if self.start_pulsar:
+            self.sequence.pulsar.start(exclude=self.start_exclude_awgs)
+
+    def upload_sequence(self, force_upload=False):
+        if self.upload or force_upload:
+            self.sequence.upload()
+
 
 class Soft_Sweep(Sweep_function):
     def __init__(self, **kw):
