@@ -595,8 +595,8 @@ class QuantumExperiment(CircuitBuilder):
             except TypeError:
                 sweep_param_name, unit = "None", ""
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
-                sweep_func_2nd_dim = self.sweep_functions[1](
-                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
+                sweep_func_2nd_dim = awg_swf.SegmentSoftSweep(
+                    self.sequences, sweep_param_name, unit)
             else:
                 # Check whether it is a nested sweep function whose first
                 # sweep function is a SegmentSoftSweep class as placeholder.
@@ -609,7 +609,7 @@ class QuantumExperiment(CircuitBuilder):
                         # make sure that units are compatible
                         unit = getattr(swfs[1], 'unit', unit)
                     swfs[0] = awg_swf.SegmentSoftSweep(
-                        sweep_func_1st_dim, self.sequences,
+                        self.sequences,
                         sweep_param_name, unit)
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
