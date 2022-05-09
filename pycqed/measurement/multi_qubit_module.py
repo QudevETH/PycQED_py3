@@ -283,7 +283,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 acq_dev=uhf_instances[uhf], AWG=AWG,
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                real_imag=False, single_int_avg=True, **kw)
+                polar=False, single_int_avg=True, **kw)
             for uhf in uhfs])
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
