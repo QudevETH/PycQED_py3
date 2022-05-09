@@ -484,9 +484,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         :param qb: target qubit
         :param kw: further keyword arguments
         """
-
+        pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
-        ro = self.block_from_ops('ro', [f"RO {qb}"])
+        ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
