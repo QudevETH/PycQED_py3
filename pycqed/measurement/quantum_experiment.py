@@ -649,6 +649,12 @@ class QuantumExperiment(CircuitBuilder):
 
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
+        if sweep_func_1st_dim.sweep_control == 'hard':
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            # Used by IntegratingAveragingPollDetector and its childen,
+            # detectors that don't implement this kwarg will ignore it
+            self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
             self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
