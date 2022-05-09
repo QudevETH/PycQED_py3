@@ -300,7 +300,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
             analysis_kwargs['options_dict']['TwoD'] = True
-        self.analysis = spa.Spectroscopy(t_start=self.timestamp,
+        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(qb_names=self.qb_names,
                                          **analysis_kwargs)
         return self.analysis
 
