@@ -585,10 +585,6 @@ class QuantumExperiment(CircuitBuilder):
 
         self.MC.set_sweep_function(sweep_func_1st_dim)
         self.MC.set_sweep_points(self.mc_points[0])
-        if not hasattr(sweep_func_1st_dim, 'upload'):
-            self._upload_first_sequence()
-            # separate method so that children can override
-            # see docstring for default behavior
 
         # set second dimension sweep function
         if len(self.mc_points[1]) > 0: # second dimension exists
@@ -660,6 +656,20 @@ class QuantumExperiment(CircuitBuilder):
 
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
+
+        if isinstance(sweep_func_1st_dim, swf.UploadingSweepFunctionMixin):
+            sweep_func_1st_dim.upload = True
+            sweep_func_1st_dim.upload_first = True
+            sweep_func_1st_dim.start_pulsar = True
+        elif len(self.mc_points[1]) > 0 \
+            and isinstance(sweep_func_2nd_dim, swf.UploadingSweepFunctionMixin):
+            sweep_func_2nd_dim.upload = True
+            sweep_func_2nd_dim.upload_first = True
+            sweep_func_2nd_dim.start_pulsar = True
+        else:
+            self._upload_first_sequence()
+            # separate method so that children can override
+            # see docstring for default behavior
 
         # check whether there is at least one measure object
         if len(self.meas_objs) == 0:
@@ -742,18 +752,14 @@ class QuantumExperiment(CircuitBuilder):
     #
     #     self.__dict__[name] = value
 
-    def _upload_first_sequence(self, awgs_to_upload='all', sequence=None):
-        if sequence is None:
-            if hasattr(self, 'sequence'):
-                sequence = self.sequence
-            elif hasattr(self, 'sequences'):
-                sequence = self.sequences[0]
-
+    def _upload_first_sequence(self):
         if self.upload:
-            time.sleep(0.1)
-            ps.Pulsar.get_instance().program_awgs(sequence,
-                                                  awgs=awgs_to_upload)
-            time.sleep(0.1)
+            if hasattr(self, 'sequences') and self.sequences is not None \
+                and len(self.sequences) > 0:
+                self.sequences[0].upload()
+            else:
+                raise ValueError(f'QuantumExperiment needs to have attribute '
+                                 f'self.sequences not None and not empty.')
 
     def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
