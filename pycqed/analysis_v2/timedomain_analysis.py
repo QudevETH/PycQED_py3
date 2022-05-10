@@ -565,12 +565,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compares what this class sets for self.data_to_fit and what was given
         # in options_dict/metadata/default_options
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if data_to_fit is None or not len(data_to_fit):
+        if data_to_fit is None:
             # It could happen that it was passed as None or empty dict in the
             # metadata. In this case, it makes sense to still check the
             # default option because data_to_fit must be specified.
             data_to_fit = deepcopy(self.default_options.get('data_to_fit'))
-            if data_to_fit is None or not len(data_to_fit):
+            if data_to_fit is None:
                 # If we have cal points, but data_to_fit is not specified,
                 # choose a reasonable default value.
                 data_to_fit = {}

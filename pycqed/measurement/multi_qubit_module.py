@@ -554,7 +554,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
-                         "data_to_fit": {}
+                         "data_to_fit": {},
+                         "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
             'int_log_det', qubits, nr_shots=n_shots)
