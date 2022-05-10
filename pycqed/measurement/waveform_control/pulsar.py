@@ -33,7 +33,7 @@ try:
 except Exception:
     ZI_HDAWG_core = type(None)
 try:
-    from zhinst.qcodes import SHFQA
+    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
 except Exception:
     SHFQA = type(None)
 
@@ -1572,17 +1572,15 @@ class SHFQAPulsar:
     """
     Defines the Zurich Instruments SHFQA specific functionality for the Pulsar
     class
+
+    Supports :class:`pycqed.measurement.waveform_control.pulsar.Segment`
+    objects with the following values for acquisition_mode:
+        'default' for a measurement in readout mode
+        dict in spectroscopy mode, with 'sweeper' key (allowed values:
+        'hardware', 'software'), see other allowed keys in
+        :class:`pycqed.measurement.waveform_control.pulsar.Segment`.
     """
     _supportedAWGtypes = (SHFQA,)
-
-    _shfqa_sequence_string_template = (
-        "// hardcoded value until we figure out user registers\n"
-        "var loop_cnt = {loop_count};\n"
-        "\n"
-        "repeat (loop_cnt) {{\n"
-        "  {playback_string}\n"
-        "}}\n"
-    )
 
     def _create_awg_parameters(self, awg, channel_name_map):
         """Create parameters in the pulsar specific to the added AWG
@@ -1724,7 +1722,7 @@ class SHFQAPulsar:
                 Converts the input in volts to dBm."""
         if par == 'amp':
             def s(val):
-                obj.qachannels[int(id[2]) - 1].output_range(
+                obj.qachannels[int(id[2]) - 1].output.range(
                     20 * (np.log10(val) + 0.5)
                 )
         else:
@@ -1737,10 +1735,10 @@ class SHFQAPulsar:
         if par == 'amp':
             def g():
                 if self._awgs_prequeried_state:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range\
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range\
                         .get_latest()
                 else:
-                    dbm = obj.qachannels[int(id[2]) - 1].output_range()
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range()
                 return 10**(dbm/20 - 0.5)
         else:
             raise NotImplementedError('Unknown parameter {}'.format(par))
@@ -1796,7 +1794,7 @@ class SHFQAPulsar:
                 for cw, chid_to_hash in codewords.items():
                     if cw == 'metadata':
                         acq = chid_to_hash.get('acq', False)
-                        if acq == 'sweeper':
+                        if 'sweeper' in acq:
                             is_spectroscopy = True
                     hi = chid_to_hash.get(chids[0], None)
                     hq = chid_to_hash.get(chids[1], None)
@@ -1842,11 +1840,82 @@ class SHFQAPulsar:
                               f"waveforms. Clipping the waveform.")
                 waves_to_upload[h] = w[:max_len]
 
+            # This one needs to be defined here and not as a class constant,
+            # otherwise SHFQA.USER_REG_... would crash on setups which do not
+            # have an SHFQA object initialised
+            shfqa_sequence_string_template = (
+                f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
+                f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+                f" // only needed in sweeper mode\n"
+                "{prep_string}"
+                "\n"
+                "repeat (loop_cnt) {{\n"
+                "  {playback_string}\n"
+                "}}\n"
+            )
+            shfqa_sweeper_playback_string_template = (
+                "for(var i = 0; i < {n_step}; i++)" + " {\n"
+                "    // self-triggering mode\n\n"
+                "    // define time from setting the oscillator "
+                "frequency to sending the spectroscopy trigger\n"
+                "    playZero(400);\n    \n"
+                "    // set the oscillator frequency depending "
+                "on the loop variable i\n"
+                "    setSweepStep(OSC0, i);\n    \n"
+                "    waitDigTrigger(1);\n"
+                "    resetOscPhase();\n\n"
+                "    // define time to the next iteration\n"
+                "    playZero(acq_len + 144);\n\n"
+                "    // trigger the integration unit and pulsed "
+                "playback in pulsed mode\n"
+                "    setTrigger(1);\n    setTrigger(0);\n"
+                "  }"
+            )
+            shfqa_sweeper_prep_string = (
+                "const OSC0 = 0;\n"
+                "setTrigger(0);\n"
+                "configFreqSweep(OSC0, {f_start}, {f_step});\n"
+            )
+
             if is_spectroscopy:
+                for element in awg_sequence:
+                    # This is a light copy of the readout mode below,
+                    # not sure how to make this more general without a
+                    # use case.
+                    awg_sequence_element = deepcopy(awg_sequence[element])
+                    if awg_sequence_element is None:
+                        playback_strings.append(f'// Segment {element}')
+                        continue
+                    playback_strings.append(f'// Element {element}')
+                    metadata = awg_sequence_element.pop('metadata', {})
+                    # if list(awg_sequence_element.keys()) != ['no_codeword']:
+                    #     raise NotImplementedError('SHFQA sequencer does '
+                    #         'currently not support codewords!')
+                    # chid_to_hash = awg_sequence_element['no_codeword']
+                    acq = metadata.get('acq', False)
+                    break  # FIXME: assumes there is only one segment
+                if acq['sweeper'] == 'hardware':
+                    # FIXME: at some point, we need to test whether the freqs
+                    #  are supported by the sweeper
+                    playback_strings.append(
+                        shfqa_sweeper_playback_string_template.format(
+                            n_step=acq['n_step']))
+                    obj.set_awg_program(
+                        i,
+                        shfqa_sequence_string_template.format(
+                            prep_string=shfqa_sweeper_prep_string.format(
+                                f_start=acq['f_start'],
+                                f_step=acq['f_step'],
+                            ),
+                            playback_string='\n  '.join(playback_strings)),
+                        {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
+
+                # FIXME: check whether some of this code should be moved to
+                #  the SHFQA class in the next cleanup
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
-                daq = obj._controller._controller.connection._daq
+                daq = obj.daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
@@ -1858,7 +1927,7 @@ class SHFQAPulsar:
                 daq.sync()
                 continue
 
-            def play_element(element, playback_strings):
+            def play_element(element, playback_strings, acq_unit):
                 awg_sequence_element = deepcopy(awg_sequence[element])
                 if awg_sequence_element is None:
                     current_segment = element
@@ -1879,11 +1948,21 @@ class SHFQAPulsar:
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
+                # If 0x1, generates an internal trigger signal from the
+                # sequencer module
+                trig = '0x1' if (isinstance(acq, dict) and
+                                 acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [
                     f'waitDigTrigger(1);',
-                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
+                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
                 ]
-
+                if trig == '0x1':
+                    if obj.seqtrigger is None:
+                        obj.seqtrigger = acq_unit
+                    playback_strings += [
+                        f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
+                        f'setTrigger(0x0);'
+                    ]
                 return playback_strings
 
             qachannel.mode('readout')
@@ -1892,17 +1971,15 @@ class SHFQAPulsar:
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "
                          "ignoring it")
+            obj.seqtrigger = None
             for element in awg_sequence:
-                playback_strings = play_element(element, playback_strings)
-
-            # provide sequence data to SHFQA object for upload in
-            # acquisition_initialize
+                playback_strings = play_element(element, playback_strings, i)
             obj.set_awg_program(
                 i,
-                self._shfqa_sequence_string_template.format(
-                    loop_count='{loop_count}',  # will be replaced by SHFQA driver
-                    playback_string='\n  '.join(playback_strings)),
-                waves_to_upload)
+                shfqa_sequence_string_template.format(
+                    playback_string='\n  '.join(playback_strings),
+                    prep_string=''),
+                {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
         if any(grp_has_waveforms.values()):
             self.awgs_with_waveforms(obj.name)
@@ -1915,10 +1992,10 @@ class SHFQAPulsar:
         is_running = []
         for awg_nr in range(4):
             qachannel = obj.qachannels[awg_nr]
-            if qachannel.mode() == 'readout':
-                is_running.append(qachannel.generator.is_running)
+            if qachannel.mode().name == 'readout':
+                is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
-                daq = obj._controller._controller.connection._daq
+                daq = obj.daq
                 path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
                        f"spectroscopy/result/enable"
                 is_running.append(daq.getInt(path) != 0)
@@ -1942,7 +2019,7 @@ class SHFQAPulsar:
         if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
             return super().sigout_on(ch, on)
         chid = self.get(ch + '_id')
-        awg.qachannels[int(chid[-2]) - 1].output(True)
+        awg.qachannels[int(chid[-2]) - 1].output.on(True)
 
 
 class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
@@ -2221,6 +2298,8 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
         """
         if exclude is None:
             exclude = []
+        if self.name in exclude:
+            return
 
         # Start only the AWGs which have at least one channel programmed, i.e.
         # where at least one channel has state = 1. 

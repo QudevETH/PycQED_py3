@@ -54,6 +54,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                                                correlations=None,
                                                add_channels=None,
                                                det_get_values_kws=None,
+                                               enforce_pulsar_restart=False,
                                                **kw):
     """
     Creates an instances of the MultiPollDetector with the detector classes
@@ -250,6 +251,13 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             raise Exception('Multi qubit detector can not be created with '
                             'multiple pulsar instances')
         AWG = qbAWG
+    trigger_dev = None
+    for qb in qubits:
+        qb_trigger = qb.instr_trigger.get_instr()
+        if trigger_dev is not None and qb_trigger is not trigger_dev:
+            raise Exception('Multi qubit detector can not be created with '
+                            'multiple trigger device instances')
+        trigger_dev = qb_trigger
 
     if df_name == 'int_log_det':
         return det.MultiPollDetector([
@@ -276,15 +284,18 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
-        # FIXME AWG=AWG unnecessarily slow, should find a way to only
-        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        # Can be used to force a hard sweep by explicitly setting to False
+        kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG,
+                acq_dev=uhf_instances[uhf],
+                AWG=AWG if enforce_pulsar_restart else uhf_instances[uhf],
                 channels=int_channels[uhf],
+                prepare_and_finish_pulsar=(not enforce_pulsar_restart),
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                polar=False, single_int_avg=True, **kw)
-            for uhf in uhfs])
+                polar=False, **kw)
+            for uhf in uhfs],
+            AWG=trigger_dev if len(uhfs) > 1 and not enforce_pulsar_restart else None)
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
