@@ -1834,7 +1834,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def process_single_shots(self, predict_proba=True,
                              classifier_params=None,
-                             states_map=None):
+                             states_map=None,
+                             thresholding=True):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -1859,6 +1860,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             states_map (dict):
                 list of states corresponding to the different integers output
                 by the classifier. Defaults to  {0: "g", 1: "e", 2: "f", 3: "h"}
+            thresholding (bool):
+                whether or not to threshold (i.e. classify) the shots. If True,
+                it will transform [0.01, 0.97, 0.02] into [0, 1, 0]. Note: in
+                case predict_probas = True, it expects raw voltages, in case
+                predict_probas = False, it expects probabilities.
 
         Other parameters taken from self.get_param_value:
             use_preselection (bool): whether or not preselection should be used
@@ -1970,10 +1976,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' a different number of channels than in the'
                               f' current measurement): {e}')
                     raise e
-                if not 'single_shots_per_qb_probs' in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_probs'] = {}
-                self.proc_data_dict['single_shots_per_qb_probs'][qbn] = shots
 
+            if thresholding:
+                # shots become one-hot encoded arrays with length n_states
+                # shots has shape (n_shots, n_states)
+
+                shots = a_tools.threshold_shots(shots)
+
+                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
+                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
+                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
+                    shots
 
             # TODO: Nathan: if predict_proba is activated then we should
             #  first classify, then do a count table and thereby estimate
