@@ -33,7 +33,7 @@ try:
 except Exception:
     ZI_HDAWG_core = type(None)
 try:
-    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
+    from pycqed.instrument_drivers.acquisition_devices.shf import SHFQA
 except Exception:
     SHFQA = type(None)
 
