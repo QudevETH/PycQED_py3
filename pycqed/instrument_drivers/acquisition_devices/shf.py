@@ -6,6 +6,7 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
+from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
@@ -569,6 +570,15 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+
+
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
     def __init__(self, *args, **kwargs):
