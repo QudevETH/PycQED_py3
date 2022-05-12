@@ -493,6 +493,8 @@ class CircuitBuilder:
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
                         reset_pulses.append(self.get_pulse(op + qbn))
+                        # TODO: add comment why
+                        reset_pulses[-1]['phaselock'] = False
                         reset_pulses[-1]['codeword'] = codeword
                         if j == 0:
                             reset_pulses[-1]['ref_point'] = 'start'

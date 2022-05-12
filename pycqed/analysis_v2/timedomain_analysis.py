@@ -1054,7 +1054,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
-        if self.num_cal_points == 0 and num_data_points != num_sp:
+        if self.num_cal_points == 0 and num_data_points != num_sp and \
+                self.get_param_value('data_type', 'averaged') != 'singleshot':
             # No cal_points information was provided but cal points were part
             # of the measurement.
             self.num_cal_points = num_data_points - num_sp
