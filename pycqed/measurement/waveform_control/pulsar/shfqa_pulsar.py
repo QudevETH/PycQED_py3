@@ -5,7 +5,7 @@ from copy import deepcopy
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
-    from zhinst.qcodes import SHFQA
+    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
 except Exception:
     SHFQA = type(None)
 
@@ -16,7 +16,15 @@ log = logging.getLogger(__name__)
 
 
 class SHFQAPulsar(PulsarAWGInterface):
-    """ZI SHFQA specific functionality for the Pulsar class."""
+    """ZI SHFQA specific functionality for the Pulsar class.
+
+    Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
+    objects with the following values for acquisition_mode:
+        'default' for a measurement in readout mode
+        dict in spectroscopy mode, with 'sweeper' key (allowed values:
+        'hardware', 'software'), see other allowed keys in
+        :class:`pycqed.measurement.waveform_control.segment.Segment`.
+    """
 
     AWG_CLASSES = [SHFQA]
     GRANULARITY = 4
@@ -32,15 +40,6 @@ class SHFQAPulsar(PulsarAWGInterface):
         "analog": (0, 0),
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
-
-    _shfqa_sequence_string_template = (
-        "// hardcoded value until we figure out user registers\n"
-        "var loop_cnt = {loop_count};\n"
-        "\n"
-        "repeat (loop_cnt) {{\n"
-        "  {playback_string}\n"
-        "}}\n"
-    )
 
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
@@ -85,7 +84,6 @@ class SHFQAPulsar(PulsarAWGInterface):
         # TODO: Not all AWGs provide an initial value. Should it be the case?
         self.pulsar[f"{ch_name}_amp"].set(1)
 
-    @staticmethod
     def awg_setter(self, id:str, param:str, value):
 
         # Sanity checks
@@ -94,7 +92,7 @@ class SHFQAPulsar(PulsarAWGInterface):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.qachannels[ch].output_range(20 * (np.log10(value) + 0.5))
+            self.awg.qachannels[ch].output.range(20 * (np.log10(value) + 0.5))
 
     def awg_getter(self, id:str, param:str):
 
@@ -105,9 +103,9 @@ class SHFQAPulsar(PulsarAWGInterface):
 
         if param == "amp":
             if self.pulsar.awgs_prequeried:
-                dbm = self.awg.qachannels[ch].output_range.get_latest()
+                dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
-                dbm = self.awg.qachannels[ch].output_range()
+                dbm = self.awg.qachannels[ch].output.range()
             return 10 ** (dbm /20 - 0.5)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
@@ -133,7 +131,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 for cw, chid_to_hash in codewords.items():
                     if cw == 'metadata':
                         acq = chid_to_hash.get('acq', False)
-                        if acq == 'sweeper':
+                        if 'sweeper' in acq:
                             is_spectroscopy = True
                     hi = chid_to_hash.get(chids[0], None)
                     hq = chid_to_hash.get(chids[1], None)
@@ -179,11 +177,86 @@ class SHFQAPulsar(PulsarAWGInterface):
                               f"waveforms. Clipping the waveform.")
                 waves_to_upload[h] = w[:max_len]
 
+            # This one needs to be defined here and not as a class constant,
+            # otherwise SHFQA.USER_REG_... would crash on setups which do not
+            # have an SHFQA object initialised
+            shfqa_sequence_string_template = (
+                f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
+                f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+                f" // only needed in sweeper mode\n"
+                "{prep_string}"
+                "\n"
+                "repeat (loop_cnt) {{\n"
+                "  {playback_string}\n"
+                "}}\n"
+            )
+            shfqa_sweeper_playback_string_template = (
+                "for(var i = 0; i < {n_step}; i++)" + " {{\n"
+                "    // self-triggering mode\n\n"
+                "    // define time from setting the oscillator "
+                "frequency to sending the spectroscopy trigger\n"
+                "    playZero(400);\n    \n"
+                "    // set the oscillator frequency depending "
+                "on the loop variable i\n"
+                "    setSweepStep(OSC0, i);\n    \n"
+                "    waitDigTrigger(1);\n"
+                "    resetOscPhase();\n\n"
+                "    // define time to the next iteration\n"
+                "    playZero(acq_len + 144);\n\n"
+                "    // trigger the integration unit and pulsed "
+                "playback in pulsed mode\n"
+                "    setTrigger(1);\n    setTrigger(0);\n"
+                "  }}"
+            )
+            shfqa_sweeper_prep_string = (
+                "const OSC0 = 0;\n"
+                "setTrigger(0);\n"
+                "configFreqSweep(OSC0, {f_start}, {f_step});\n"
+            )
+
+            self.awg.seqtrigger = None
+
             if is_spectroscopy:
+                for element in awg_sequence:
+                    # This is a light copy of the readout mode below,
+                    # not sure how to make this more general without a
+                    # use case.
+                    awg_sequence_element = deepcopy(awg_sequence[element])
+                    if awg_sequence_element is None:
+                        playback_strings.append(f'// Segment {element}')
+                        continue
+                    playback_strings.append(f'// Element {element}')
+                    metadata = awg_sequence_element.pop('metadata', {})
+                    # if list(awg_sequence_element.keys()) != ['no_codeword']:
+                    #     raise NotImplementedError('SHFQA sequencer does '
+                    #         'currently not support codewords!')
+                    # chid_to_hash = awg_sequence_element['no_codeword']
+                    acq = metadata.get('acq', False)
+                    break  # FIXME: assumes there is only one segment
+                if acq['sweeper'] == 'hardware':
+                    # FIXME: at some point, we need to test whether the freqs
+                    #  are supported by the sweeper
+                    playback_strings.append(
+                        shfqa_sweeper_playback_string_template.format(
+                            n_step=acq['n_step']))
+                    self.awg.set_awg_program(
+                        i,
+                        shfqa_sequence_string_template.format(
+                            prep_string=shfqa_sweeper_prep_string.format(
+                                f_start=acq['f_start'],
+                                f_step=acq['f_step'],
+                            ),
+                            playback_string='\n  '.join(playback_strings)))
+                    # The acquisition modules will each be triggered by their
+                    # sequencer
+                    self.awg.seqtrigger = True
+
+                # FIXME: check whether some of this code should be moved to
+                #  the SHFQA class in the next cleanup
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
                 qachannel.mode('spectroscopy')
-                daq = self.awg._controller._controller.connection._daq
+                daq = self.awg.daq
                 path = f"/{self.awg.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
@@ -195,7 +268,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 daq.sync()
                 continue
 
-            def play_element(element, playback_strings):
+            def play_element(element, playback_strings, acq_unit):
                 awg_sequence_element = deepcopy(awg_sequence[element])
                 if awg_sequence_element is None:
                     current_segment = element
@@ -216,11 +289,22 @@ class SHFQAPulsar(PulsarAWGInterface):
                     else '0x0'
                 int_mask = 'QA_INT_ALL' if acq else '0x0'
                 monitor = 'true' if acq else 'false'
+                # If 0x1, generates an internal trigger signal from the
+                # sequencer module
+                trig = '0x1' if (isinstance(acq, dict) and
+                                 acq.get('seqtrigger', False)) else '0x0'
                 playback_strings += [
                     f'waitDigTrigger(1);',
-                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, 0x0);'
+                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
                 ]
-
+                if trig == '0x1':
+                    if self.awg.seqtrigger is None:
+                        # The scope will be triggered by this single acq_unit
+                        self.awg.seqtrigger = acq_unit
+                    playback_strings += [
+                        f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
+                        f'setTrigger(0x0);'
+                    ]
                 return playback_strings
 
             qachannel.mode('readout')
@@ -230,16 +314,13 @@ class SHFQAPulsar(PulsarAWGInterface):
                 log.info("Repeat patterns not yet implemented on SHFQA, "
                          "ignoring it")
             for element in awg_sequence:
-                playback_strings = play_element(element, playback_strings)
-
-            # provide sequence data to SHFQA object for upload in
-            # acquisition_initialize
+                playback_strings = play_element(element, playback_strings, i)
             self.awg.set_awg_program(
                 i,
-                self._shfqa_sequence_string_template.format(
-                    loop_count='{loop_count}',  # will be replaced by SHFQA driver
-                    playback_string='\n  '.join(playback_strings)),
-                waves_to_upload)
+                shfqa_sequence_string_template.format(
+                    playback_string='\n  '.join(playback_strings),
+                    prep_string=''),
+                {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
 
         if any(grp_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
@@ -250,10 +331,10 @@ class SHFQAPulsar(PulsarAWGInterface):
         is_running = []
         for awg_nr in range(4):
             qachannel = self.awg.qachannels[awg_nr]
-            if qachannel.mode() == 'readout':
-                is_running.append(qachannel.generator.is_running)
+            if qachannel.mode().name == 'readout':
+                is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
-                daq = self.awg._controller._controller.connection._daq
+                daq = self.awg.daq
                 path = f"/{self.awg.get_idn()['serial']}/qachannels/{awg_nr}/" \
                        f"spectroscopy/result/enable"
                 is_running.append(daq.getInt(path) != 0)
@@ -266,4 +347,4 @@ class SHFQAPulsar(PulsarAWGInterface):
         chid = self.get(ch + '_id')
 
         # TODO: Should it be blablabla.output(on) instead of output(True) ?
-        self.awg.qachannels[int(chid[-2]) - 1].output(True)
+        self.awg.qachannels[int(chid[-2]) - 1].output.on(True)
