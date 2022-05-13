@@ -5,9 +5,10 @@ from copy import deepcopy
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
-    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
+    from pycqed.instrument_drivers.acquisition_devices.shf import \
+        SHF_AcquisitionDevice
 except Exception:
-    SHFQA = type(None)
+    SHF_AcquisitionDevice = type(None)
 
 from .pulsar import PulsarAWGInterface
 
@@ -26,7 +27,7 @@ class SHFQAPulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = [SHFQA]
+    AWG_CLASSES = [SHF_AcquisitionDevice]
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
@@ -61,7 +62,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                                        "'Dig1 for now.")
 
         # real and imaginary part of the wave form channel groups
-        for ch_nr in range(4):
+        for ch_nr in range(self.awg.n_acq_units):
             group = []
             for q in ["i", "q"]:
                 id = f"ch{ch_nr + 1}{q}"
@@ -181,8 +182,10 @@ class SHFQAPulsar(PulsarAWGInterface):
             # otherwise SHFQA.USER_REG_... would crash on setups which do not
             # have an SHFQA object initialised
             shfqa_sequence_string_template = (
-                f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
-                f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+                "var loop_cnt = "
+                f"getUserReg({SHF_AcquisitionDevice.USER_REG_LOOP_COUNT});\n"
+                "var acq_len = "
+                f"getUserReg({SHF_AcquisitionDevice.USER_REG_ACQ_LEN});"
                 f" // only needed in sweeper mode\n"
                 "{prep_string}"
                 "\n"
