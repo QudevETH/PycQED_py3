@@ -1,4 +1,6 @@
 import logging
+from typing import List, Tuple
+
 import numpy as np
 from copy import deepcopy
 
@@ -16,8 +18,8 @@ from .pulsar import PulsarAWGInterface
 log = logging.getLogger(__name__)
 
 
-class SHFQAPulsar(PulsarAWGInterface):
-    """ZI SHFQA specific functionality for the Pulsar class.
+class SHFAcquisitionModulePulsar(PulsarAWGInterface):
+    """ZI SHFQA and SHFQC acquisition module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
     objects with the following values for acquisition_mode:
@@ -27,7 +29,7 @@ class SHFQAPulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = [SHF_AcquisitionDevice]
+    AWG_CLASSES = []
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
@@ -62,10 +64,10 @@ class SHFQAPulsar(PulsarAWGInterface):
                                        "'Dig1 for now.")
 
         # real and imaginary part of the wave form channel groups
-        for ch_nr in range(self.awg.n_acq_units):
+        for ch_nr in range(len(self.awg.qachannels)):
             group = []
             for q in ["i", "q"]:
-                id = f"ch{ch_nr + 1}{q}"
+                id = f"ch{ch_nr + 1}r{q}"
                 ch_name = channel_name_map.get(id, f"{name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 pulsar.channels.add(ch_name)
@@ -107,7 +109,7 @@ class SHFQAPulsar(PulsarAWGInterface):
                 dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
                 dbm = self.awg.qachannels[ch].output.range()
-            return 10 ** (dbm /20 - 0.5)
+            return 10 ** (dbm / 20 - 0.5)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
@@ -117,10 +119,11 @@ class SHFQAPulsar(PulsarAWGInterface):
         # ignore channels_to_upload in spectroscopy mode, i.e., we always
         # re-upload in spectroscopy mode. This could be optimized in the future.
 
-        grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
+        grp_has_waveforms = {}
         for i, qachannel in enumerate(self.awg.qachannels):
-            grp = f'ch{i+1}'
-            chids = [f'ch{i+1}i', f'ch{i+1}q']
+            grp = f'ch{i+1}r'
+            chids = [f'ch{i+1}ri', f'ch{i+1}rq']
+            grp_has_waveforms[grp] = False
 
             playback_strings = []
 
@@ -328,11 +331,9 @@ class SHFQAPulsar(PulsarAWGInterface):
         if any(grp_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
-
     def is_awg_running(self):
-
         is_running = []
-        for awg_nr in range(4):
+        for awg_nr, qachannel in enumerate(self.awg.qachannels):
             qachannel = self.awg.qachannels[awg_nr]
             if qachannel.mode().name == 'readout':
                 is_running.append(qachannel.generator.enable())
@@ -347,7 +348,11 @@ class SHFQAPulsar(PulsarAWGInterface):
         return 2.0e9
 
     def sigout_on(self, ch, on=True):
-        chid = self.get(ch + '_id')
+        chid = self.pulsar.get(ch + '_id')
+        self.awg.qachannels[int(chid[2]) - 1].output.on(on)
 
-        # TODO: Should it be blablabla.output(on) instead of output(True) ?
-        self.awg.qachannels[int(chid[-2]) - 1].output.on(True)
+
+class SHFQAPulsar(SHFAcquisitionModulePulsar):
+    """ZI SHFQA specific Pulsar module"""
+
+    AWG_CLASSES = [SHF_AcquisitionDevice]
