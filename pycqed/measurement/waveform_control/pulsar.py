@@ -1780,7 +1780,7 @@ class SHFQAPulsar:
                 obj, awg_sequence, waveforms, repeat_pattern,
                 channels_to_upload=channels_to_upload, **kw)
 
-        grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
+        grp_has_waveforms = {f'ch{i+1}': False for i in range(obj.n_acq_units)}
         for i, qachannel in enumerate(obj.qachannels):
             grp = f'ch{i+1}'
             chids = [f'ch{i+1}i', f'ch{i+1}q']
@@ -1997,7 +1997,7 @@ class SHFQAPulsar:
         if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
             return super()._is_awg_running(obj)
         is_running = []
-        for awg_nr in range(4):
+        for awg_nr in range(obj.n_acq_units):
             qachannel = obj.qachannels[awg_nr]
             if qachannel.mode().name == 'readout':
                 is_running.append(qachannel.generator.enable())
