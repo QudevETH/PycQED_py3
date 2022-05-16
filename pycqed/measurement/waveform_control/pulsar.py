@@ -621,15 +621,26 @@ class HDAWG8Pulsar:
         self.add_parameter('{}_internal_modulation'.format(name), 
                            initial_value=False, vals=vals.Bool(),
                            parameter_class=ManualParameter)
+        awg_nr = int((int(id[2:]) - 1) / 2)
+        output_nr = int(id[2:]) - 2 * awg_nr - 1
+        self.add_parameter(
+            '{}_modulation_mode'.format(name),
+            vals=vals.Enum('Modulation Off', 'Sine 1', 'Sine 2', 'FG 1' ,
+                           'FG 2', 'Advanced', 'off', 'direct',
+                           0, 1, 2, 3, 4, 5),
+            initial_value='Modulation Off',
+            set_cmd=self._hdawg_mod_mode_setter(awg, awg_nr, output_nr),
+            get_cmd=self._hdawg_mod_mode_getter(awg, awg_nr, output_nr),
+            docstring=f"Modulation mode of channel {name}."
+        )
         if (int(id[2:]) - 1) % 2  == 0:  # first channel of a pair
-            awg_nr = int((int(id[2:]) - 1) / 2)
             param_name = '{}_mod_freq'.format(name)
             self.add_parameter(
                 param_name,
                 unit='Hz',
                 initial_value=None,
-                set_cmd=self._hdawg_mod_setter(awg, awg_nr),
-                get_cmd=self._hdawg_mod_getter(awg, awg_nr),
+                set_cmd=self._hdawg_mod_freq_setter(awg, awg_nr),
+                get_cmd=self._hdawg_mod_freq_getter(awg, awg_nr),
                 docstring=f"Carrier frequency of internal modulation for the "
                           f"channel pair starting with {name}. Positive "
                           f"(negative) sign corresponds to upper (lower) side "
@@ -641,6 +652,35 @@ class HDAWG8Pulsar:
             # switched off in the init.
             self.set(param_name, None)
 
+            param_name = '{}_direct_mod_freq'.format(name)
+            self.add_parameter(
+                param_name,
+                unit='Hz',
+                initial_value=None,
+                set_cmd=self._hdawg_mod_freq_setter(awg, awg_nr, direct=True),
+                get_cmd=self._hdawg_mod_freq_getter(awg, awg_nr),
+                docstring=f"Directly output I and Q signals for the "
+                          f"channel pair starting with {name}. The output is "
+                          f"not modulated according to the uploaded waveform. "
+                          f"Positive (negative) sign corresponds to upper "
+                          f"(lower) side band. Setting the frequency to "
+                          f"None disables the output."
+            )
+            # qcodes will not set the initial value if it is None, so we set
+            # it manually here to ensure that internal modulation gets
+            # switched off in the init.
+            self.set(param_name, None)
+
+            param_name = '{}_direct_IQ_output_amp'.format(name)
+            self.add_parameter(
+                param_name,
+                unit='V',
+                initial_value=0,
+                set_cmd=self._hdawg_direct_IQ_output_amp_setter(awg, awg_nr),
+                get_cmd=self._hdawg_direct_IQ_output_amp_getter(awg, awg_nr),
+                docstring=f"Amplitude of the sine generator output used in "
+                          f"direct output mode."
+            )
 
     def _hdawg_create_marker_channel_parameters(self, id, name, awg):
         self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
@@ -713,12 +753,36 @@ class HDAWG8Pulsar:
         return g
 
     @staticmethod
-    def _hdawg_mod_setter(obj, awg_nr):
+    def _hdawg_direct_IQ_output_amp_setter(obj, awg_nr):
+        def s(val):
+            obj.set(f'sines_{awg_nr * 2}_amplitudes_0', val)
+            obj.set(f'sines_{awg_nr * 2 + 1}_amplitudes_1', val)
+        return s
+
+    @staticmethod
+    def _hdawg_direct_IQ_output_amp_getter(obj, awg_nr):
+        def g():
+            amp0 = obj.get(f'sines_{awg_nr * 2}_amplitudes_0')
+            amp1 = obj.get(f'sines_{awg_nr * 2 + 1}_amplitudes_1')
+            if amp0 != amp1:
+                log.warning(f"Amplitude of sine generator 0 on awg {awg_nr * 2}"
+                            f"is {amp0} V and not equal to the amplitude of "
+                            f"sine generator 1 on awg {awg_nr * 2 + 1} which is"
+                            f" {amp1} V.")
+            return amp0
+        return g
+
+    @staticmethod
+    def _hdawg_mod_freq_setter(obj, awg_nr, direct=False, amp=0.0):
         def s(val):
             log.debug(f'{obj.name}_awgs_{awg_nr} modulation freq: {val}')
             if val == None:
                 obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
                 obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
+                obj.set(f'sines_{awg_nr * 2}_enables_0', 0)
+                obj.set(f'sines_{awg_nr * 2}_enables_1', 0)
+                obj.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
+                obj.set(f'sines_{awg_nr * 2 + 1}_enables_1', 0)
             else:
                 # FIXME: this currently only works for real-valued baseband
                 # signals (zero Q component), and it assumes that the the I
@@ -731,14 +795,6 @@ class HDAWG8Pulsar:
                 # first (second) channel of a pair.
                 sideband = np.sign(val)
                 freq = np.abs(val)
-                # see pycqed\instrument_drivers\physical_instruments\
-                #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
-                # for description of the nodes used below.
-                # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
-                # etc. Mode 1 (2) means that the AWG Output is multiplied with
-                # Sine Generator signal 0 (1) of this sub-awg
-                obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
-                obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
                 # For the oscillator, we can use any index, as long as the
                 # respective osc is not needed for anything else. Since we
                 # currently use oscs only here, the following index
@@ -746,6 +802,8 @@ class HDAWG8Pulsar:
                 # used for every channel pair for which we configure
                 # internal modulation.
                 osc_nr = awg_nr * 4
+                # configure the oscillator frequency
+                obj.set(f'oscs_{osc_nr}_freq', freq)
                 # set up the two sines of the channel pair with the same
                 # oscillator and with 90 phase shift
                 obj.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
@@ -754,12 +812,32 @@ class HDAWG8Pulsar:
                 # positive (negative) phase shift is needed for upper (
                 # lower) sideband
                 obj.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
-                # configure the oscillator frequency
-                obj.set(f'oscs_{osc_nr}_freq', freq)
+                # see pycqed\instrument_drivers\physical_instruments\
+                #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
+                # for description of the nodes used below.
+                # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
+                # etc. Mode 1 (2) means that the AWG Output is multiplied with
+                # Sine Generator signal 0 (1) of this sub-awg
+                if direct:
+                    obj.set(f'sines_{awg_nr * 2}_amplitudes_0', amp)
+                    obj.set(f'sines_{awg_nr * 2 + 1}_amplitudes_1', amp)
+                    obj.set(f'sines_{awg_nr * 2}_enables_0', 1)
+                    obj.set(f'sines_{awg_nr * 2}_enables_1', 0)
+                    obj.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
+                    obj.set(f'sines_{awg_nr * 2 + 1}_enables_1', 1)
+                    obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
+                    obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
+                else:
+                    obj.set(f'sines_{awg_nr * 2}_enables_0', 0)
+                    obj.set(f'sines_{awg_nr * 2}_enables_1', 0)
+                    obj.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
+                    obj.set(f'sines_{awg_nr * 2 + 1}_enables_1', 0)
+                    obj.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 1)
+                    obj.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
         return s
 
     @staticmethod
-    def _hdawg_mod_getter(obj, awg_nr):
+    def _hdawg_mod_freq_getter(obj, awg_nr):
         def g():
             m0 = obj.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
             m1 = obj.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
@@ -784,6 +862,29 @@ class HDAWG8Pulsar:
                         'supported by pulsar. Cannot retrieve modulation '
                         'frequency.')
             return None
+        return g
+
+    @staticmethod
+    def _hdawg_mod_mode_setter(obj, awg_nr, output_nr):
+        def s(val):
+            # see pycqed\instrument_drivers\physical_instruments\
+            #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
+            # for description of the nodes used below.
+            mod_mode_dict = {'Modulation Off': 0, 'Sine 1': 1, 'Sine 2': 2,
+                             'FG 1': 3, 'FG 2': 4, 'Advanced': 5, 'off':0,
+                             'direct':5}
+            if isinstance(val, str):
+                mode = mod_mode_dict[val]
+            else:
+                mode= val
+            log.debug(f'{obj.name}_awgs_{awg_nr} modulation mod: {val} ({mode})')
+            obj.set(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode', mode)
+        return s
+
+    @staticmethod
+    def _hdawg_mod_mode_getter(obj, awg_nr, output_nr):
+        def g():
+            return obj.get(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode')
         return g
 
     def get_divisor(self, chid, awg):
