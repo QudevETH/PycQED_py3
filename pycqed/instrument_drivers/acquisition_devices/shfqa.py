@@ -509,7 +509,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
-                    dataset.update({(i, 1): [np.imag(timetrace)]})
+                    # use sign convention as is used by UHFQA to ensure
+                    # compatibility with existing  analysis classes
+                    dataset.update({(i, 1): [-np.imag(timetrace)]})
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
