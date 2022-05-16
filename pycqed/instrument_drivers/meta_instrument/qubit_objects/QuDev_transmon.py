@@ -1028,7 +1028,7 @@ class QuDev_transmon(Qubit):
         if ge_lo() is not None:
             if drive is None:
                 ge_lo.get_instr().off()
-            elif drive == 'continuous_spec':
+            elif 'continuous_spec' in drive :
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
@@ -1048,7 +1048,9 @@ class QuDev_transmon(Qubit):
             else:
                 raise ValueError("Invalid drive parameter '{}'".format(drive)
                                  + ". Valid options are None, 'continuous_spec"
-                                 + "', 'pulsed_spec' and 'timedomain'.")
+                                 + "', 'pulsed_spec', "
+                                 + "'continuous_spec_modulated' and "
+                                 + "'timedomain'.")
 
 
         # other preparations
