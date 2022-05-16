@@ -396,6 +396,9 @@ class QuDev_transmon(Qubit):
         self.add_parameter('spec_power', unit='dBm', initial_value=-20,
                            parameter_class=ManualParameter,
                            label='Qubit spectroscopy power')
+        self.add_parameter('spec_mod_amp', unit='V', initial_value=0.1,
+                           parameter_class=ManualParameter,
+                           label='Modulated qubit spectroscopy amplitude of IF')
         self.add_operation('Spec')
         self.add_pulse_parameter('Spec', 'spec_pulse_type', 'pulse_type',
                                  initial_value='SquarePulse',
