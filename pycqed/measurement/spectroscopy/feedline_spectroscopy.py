@@ -207,6 +207,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                     # mod freq is the same for all acquisitions
                     self.temporary_values.append(
                         (self.get_mod_from_qb(qb), mod_freqs[0]))
+                    task['mod_freq'] = mod_freqs[0]
                 else:
                     mod_freq_key = task['prefix'] + 'mod_freq'
                     self.sweep_points.add_sweep_parameter(mod_freq_key, mod_freqs, unit='Hz', dimension=0)
@@ -447,16 +448,21 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     default_experiment_name = 'QubitSpectroscopy'
 
     def __init__(self, task_list,
-                 drive='continuous_spec',
+                 pulsed=False,
                  allowed_lo_freqs=None,
                  trigger_separation=10e-6,
+                 modulated=False,
                  **kw):
+        self.modulated = modulated
+        self.pulsed = pulsed
+        drive = 'pulsed' if self.pulsed else 'continous'
+        drive += '_spec'
+        drive += '_modulated' if self.modulated else ''
         super().__init__(task_list,
                          drive=drive,
                          allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
                          **kw)
-
         ro_lo_qubits_dict = {}
         for task in self.preprocessed_task_list:
             qb = self.get_qubits(task['qb'])[0][0]
@@ -508,3 +514,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def get_mod_from_qb(self, qb, **kw):
         return qb.ge_mod_freq
+
+    def _fill_temporary_values(self):
+        if self.modulated:
+            for task in self.preprocessed_task_list:
+                if task.get('mod_freq', None) is not None:
+                    qb = self.get_qubits(task['qb'])[0][0]
+                    mod_freq = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_mod_freq']
+                    self.temporary_values.append((mod_freq,
+                                                  task['mod_freq']))
+                    amp = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_IQ_output_amp')
+                    self.temporary_values.append((amp,
+                                                qb.spec_mod_amp()))
