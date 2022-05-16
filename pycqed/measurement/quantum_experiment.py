@@ -179,7 +179,7 @@ class QuantumExperiment(CircuitBuilder):
         self.filter_segments_mask = filter_segments_mask
         self.sweep_points = self.sequence_kwargs.get("sweep_points", None)
         self.mc_points = mc_points if mc_points is not None else [[], []]
-        self.sweep_functions = sweep_functions
+        self.sweep_functions = list(sweep_functions)
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
         self.harmonize_element_lengths = harmonize_element_lengths
@@ -428,6 +428,11 @@ class QuantumExperiment(CircuitBuilder):
                     extra sequences are compatible with the normal sequences
                     of the QuantumExperiment, e.g., in terms of number of
                     acquisition elements.
+                - aux_triggers (dict): a dict where each key is a tuple of a
+                    sequence index and segment index, and the corresponding
+                    value is a list of channel names. This will add trigger
+                    pulses on the given channels for the first pulse of
+                    the segment indicated by the key.
         Returns:
 
         """
@@ -466,6 +471,11 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.concatenate([
                     self.mc_points[1],
                     np.arange(len(extra_seqs)) + self.mc_points[1][-1] + 1])
+            aux_triggers = sequence_kwargs.get('aux_triggers', None)
+            if aux_triggers is not None:
+                for (i, j), v in aux_triggers.items():
+                    self.sequences[i][j].unresolved_pulses[
+                        0].pulse_obj.trigger_channels = v
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
@@ -521,8 +531,8 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.sequences) > 1:
             # compress 2D sweep
             if self.compression_seg_lim is not None:
-                if self.sweep_functions == (awg_swf.SegmentHardSweep,
-                                            awg_swf.SegmentSoftSweep):
+                if self.sweep_functions == [awg_swf.SegmentHardSweep,
+                                            awg_swf.SegmentSoftSweep]:
                     self.sequences, self.mc_points[0], \
                     self.mc_points[1], cf = \
                         self.sequences[0].compress_2D_sweep(self.sequences,
@@ -573,6 +583,19 @@ class QuantumExperiment(CircuitBuilder):
                 sweep_func_2nd_dim = self.sweep_functions[1](
                     sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
+                # Check whether it is a nested sweep function whose first
+                # sweep function is a SegmentSoftSweep class as placeholder.
+                swfs = getattr(self.sweep_functions[1], 'sweep_functions',
+                               [None])
+                if (swfs[0] == awg_swf.SegmentSoftSweep):
+                    # Replace the SegmentSoftSweep placeholder by a properly
+                    # configured instance of SegmentSoftSweep.
+                    if len(swfs) > 1:
+                        # make sure that units are compatible
+                        unit = getattr(swfs[1], 'unit', unit)
+                    swfs[0] = awg_swf.SegmentSoftSweep(
+                        sweep_func_1st_dim, self.sequences,
+                        sweep_param_name, unit)
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
@@ -626,8 +649,14 @@ class QuantumExperiment(CircuitBuilder):
 
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
+        if sweep_func_1st_dim.sweep_control == 'hard':
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            # Used by IntegratingAveragingPollDetector and its childen,
+            # detectors that don't implement this kwarg will ignore it
+            self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
-            self.meas_objs, **self.df_kwargs)[self.df_name]
+            self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(

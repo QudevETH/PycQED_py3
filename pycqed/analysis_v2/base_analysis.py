@@ -146,6 +146,10 @@ class BaseDataAnalysis(object):
                 self.options_dict = OrderedDict()
             else:
                 self.options_dict = options_dict
+            # The following dict can be populated by child classes to set
+            # default values that are different from the default behavior of
+            # the base class.
+            self.default_options = {}
 
             ################################################
             # These options determine what data to extract #
@@ -400,7 +404,10 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    def get_param_value(self, param_name, default_value=None, metadata_index=0):
+    def _get_param_value(self, param_name, default_value=None, metadata_index=0):
+        log.warning('Deprecation warning: please use new function '
+                    'self.get_param_value(). This function is intended to be '
+                    'used only in case of crashes with new function.')
         # no stored metadata
         if not hasattr(self, "metadata") or self.metadata is None:
             return self.options_dict.get(param_name, default_value)
@@ -414,6 +421,38 @@ class BaseDataAnalysis(object):
         else:
             return self.options_dict.get(param_name, self.metadata.get(
                 param_name, default_value))
+
+    def get_param_value(self, param_name, default_value=None, index=0,
+                        search_attrs=('options_dict', 'metadata',
+                                      'raw_data_dict', 'default_options')):
+        """
+        Gets a value from a set of searchable hashable attributes.
+        :param param_name: name of the parameter to be searched
+        :param default_value: value in case parameter is not found
+        :param index: in case the searchable attribute of interest is a list of
+        hashable (e.g. list of raw_data_dicts), index of the list in which one
+        should search the parameter
+        :param search_attrs (list, tuple): attributes to be searched by the
+        function. Priority is given to first entry, i.e. if a parameter
+        "timestamp" is both in the options_dict and in the metadata,
+        search_attrs =('options_dict', 'raw_data_dict') will return the
+        timestamp of the options dict while ('raw_data_dict', 'options_dict')
+        will return the timestamp of the raw data dict.
+        :return:
+        """
+        def recursive_search(param, p):
+            if hasattr(self, p):
+                d = getattr(self, p)
+                if isinstance(d, (list, tuple)):
+                    d = d[index]
+                if param in d:
+                    return d[param]
+            if p == search_attrs[-1]:
+                return default_value
+            else:
+                return recursive_search(param, search_attrs[search_attrs.index(p) +
+                                                         1])
+        return recursive_search(param_name, search_attrs[0])
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
         raw_data_dict = []
@@ -689,8 +728,8 @@ class BaseDataAnalysis(object):
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
-            if 'TwoD' not in self.options_dict:
-                self.options_dict['TwoD'] = TwoD
+            if 'TwoD' not in self.default_options:
+                self.default_options['TwoD'] = TwoD
         else:
             temp_dict_list = []
             twod_list = []
@@ -709,13 +748,13 @@ class BaseDataAnalysis(object):
                 temp_dict_list.append(rdd,)
                 twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
-            if 'TwoD' not in self.options_dict:
+            if 'TwoD' not in self.default_options:
                 if not all(twod_list):
                     log.info('Not all measurements have the same '
                              'number of sweep dimensions. TwoD flag '
                              'will remain unset.')
                 else:
-                    self.options_dict['TwoD'] = twod_list[0]
+                    self.default_options['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -806,7 +845,8 @@ class BaseDataAnalysis(object):
         axes_keys_to_pop = []
         for ax_key, ax in self.axs.items():
             for ax_to_pop in axes_to_pop:
-                if ax is ax_to_pop:
+                if (hasattr(ax, '__iter__') and ax_to_pop in ax)\
+                        or ax is ax_to_pop:
                     axes_keys_to_pop.append(ax_key)
                     break
         for ax_key in axes_keys_to_pop:

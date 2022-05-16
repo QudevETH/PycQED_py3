@@ -27,7 +27,7 @@ class Detector_Function(object):
         self.set_kw()
         self.value_names = ['val A', 'val B']
         self.value_units = ['arb. units', 'arb. units']
-        # to be used by MC.get_percdone()
+        # to be used by MC.get_percdone() and the IntegratingAveragingPollDetector
         self.acq_data_len_scaling = 1
         self.timer = Timer(self.name)
         # The following properties are not implemented in all detector
@@ -38,6 +38,7 @@ class Detector_Function(object):
             'progress_callback_interval', 5)  # in seconds
         # tells MC whether to show live plotting for the measurement
         self.live_plot_allowed = kw.get('live_plot_allowed', True)
+        self.extra_data_callback = None
 
     def set_kw(self, **kw):
         '''
@@ -77,13 +78,22 @@ class Detector_Function(object):
                     # UHFQC_multi_detector in the "detectors" attribute of
                     # UHFQC_Base since UHFQC_multi_detector does not have the
                     # attribute "UHFQC" (Steph, 23.10.2020)
-                    if 'UHFs' in d:
-                        # d["UHFs"] will always contain one item because of how
+                    if 'acq_devs' in d:
+                        # d["acq_devs"] will always contain one item because of how
                         # savable_attribute_value was written.
                         detectors_dict.update(
-                            {f'{d["UHFs"][0]} {d["name"]}': d})
+                            {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
@@ -557,146 +567,132 @@ class Function_Detector(Soft_Detector):
 
 
 # --------------------------------------------
-# Zurich Instruments UHFQC detector functions
+# Polling detector functions to be used with acquisition devices defined in
+# pycqed.instrument_drivers.acquisition_devices
 # --------------------------------------------
 
-class UHFQC_Base(Hard_Detector):
+class PollDetector(Hard_Detector):
     """
-    Base Class for all UHF detectors
+    Base Class for all polling detectors. A polling detector is one that calls
+    the poll method of an acquisition device.
     """
-    def __init__(self, UHFQC=None, detectors=None, **kw):
+
+    def __init__(self, acq_dev=None, detectors=None, **kw):
+        """
+        Init of the PollDetector base class.
+
+        Args
+            acq_dev: instance of AcquisitionDevice. Must be provided when a
+                single polling detector is passed to detectors.
+            detectors (list): poling detectors from this module to be used for
+                acquisition
+
+        Keyword args: passed to parent class
+
+        Creates self.det_from_acq_dev as a dict with values the polling
+        detectors in detectors, and keys the acquisition device names used by
+        these detectors.
+        """
         super().__init__(**kw)
+        self.always_prepare = False
+
         if detectors is None:
             # if no detector is provided then itself is the only detector
             self.detectors = [self]
-            assert UHFQC is not None, "UHFQC required when using single detector"
-            self.UHFQC = UHFQC
+            if acq_dev is None:
+                raise ValueError("An acquisition device is required when "
+                                 "using a single polling detector.")
+            self.acq_dev = acq_dev
         else:
-            # in multi uhf mode several detectors are passed.
+            # in multi acq_dev mode several detectors are passed.
             self.detectors = [p[1] for p in sorted(
-                [(d.UHFQC.devname, d) for d in detectors], reverse=True)]
+                [(d.acq_dev.name, d) for d in detectors])]
         self.AWG = None
 
-        self.UHFs = [d.UHFQC for d in self.detectors]
-        self.UHF_map = {UHF.name: i
-                   for UHF, i in zip(self.UHFs, range(len(self.detectors)))}
-        self.nr_averages = None
-        self.ro_mode = 'rl'
+        self.acq_devs = [d.acq_dev for d in self.detectors]
+        self.det_from_acq_dev = {k.name: v for k, v in zip(self.acq_devs,
+                                                           self.detectors)}
+        self.progress_scaling = None
 
-    def _check_hardware_limitations(self):
-        """
-        This method should be used to check whether the measurement settings
-        are supported by the hardware.
-        Currently, it only checks whether the total number of acquisitions in
-        case of a single-shot readout is supported by the UHF
-        (1048576 is hardcoded).
-        """
-
-        for i, d in enumerate(self.detectors):
-            if hasattr(d, 'nr_shots'):
-                # Either integration_logging_det or classifier_detector
-
-                # For the integration logging detector,
-                # nr_sweep_points = nr_shots * nr_segments
-                total_nr_shots_acq = d.nr_sweep_points
-                if hasattr(d, 'classified'):
-                    # For the classifier detector
-                    # nr_sweep_points = nr_segments like for the integrated
-                    # averaged detector, but the UHF is programmed to return
-                    # single shots.
-                    total_nr_shots_acq *= d.nr_shots
-                if total_nr_shots_acq > 2**20:
-                    raise ValueError(f'For detector function number {i}, '
-                                     f'({d.name}) nr. segments * nr. shots = '
-                                     f'{total_nr_shots_acq} > 1048576 '
-                                     f'supported by the UHF. Please reduce the '
-                                     f'compression_seg_lim, the number of 1D '
-                                     f'sweep points, or the nr_shots.')
+    def prepare(self, sweep_points=None):
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
 
     @Timer()
     def poll_data(self):
+        """
+        Acquire raw data from the acquisition device by calling its poll
+        function. Raises error if not all data was acquired as expected from
+        the nr_sweep_points attribute of the detector functions.
+
+        Returns:
+            raw data: dict of the form {acq_dev.name: raw data array}
+        """
         if self.AWG is not None:
-            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.start")
+            self.timer.checkpoint("PollDetector.poll_data.AWG_restart.start")
             self.AWG.stop()
 
-        for UHF in self.UHFs:
-            UHF.set('qas_0_result_enable', 1)
+        for acq_dev in self.acq_devs:
+            # Allow the acqusition device to store additional data
+            acq_dev.extra_data_callback = self.extra_data_callback
+            # Final preparations for an acquisition.
+            acq_dev.prepare_poll()
 
         if self.AWG is not None:
             self.AWG.start(stop_first=False)
-            self.timer.checkpoint("UHFQC_Base.poll_data.AWG_restart.end")
+            self.timer.checkpoint("PollDetector.poll_data.AWG_restart.end")
 
-        acq_paths = {UHF.name: UHF._acquisition_nodes for UHF in self.UHFs}
+        # Initialize dicts to store data and status
+        acq_paths = {acq_dev.name: acq_dev.acquisition_nodes()
+                     for acq_dev in self.acq_devs}
+        data = {k: {n: [] for n in range(len(v))}
+                for k, v in acq_paths.items()}
+        gotem = {k: [False] * len(v) for k, v in acq_paths.items()}
 
-        data = {UHF.name: {k: [] for k, dummy in enumerate(UHF._acquisition_nodes)}
-                for UHF in self.UHFs}
+        # Initialize variables for intermediate progress reporting
+        t_callback = time.time()
+        print_progress = (self.progress_callback is not None
+                          and self.progress_scaling is not None)
 
         # Acquire data
-        gotem = {UHF.name: [False] * len(UHF._acquisition_nodes) for UHF in
-                 self.UHFs}
         accumulated_time = 0
-
-        print_progress = (self.progress_callback is not None
-                          and self.nr_averages is not None)
-        if print_progress:
-            t_callback = time.time()
-            n_acq_last = [0] * len(self.UHFs)
-            n_acq_add = [0] * len(self.UHFs)
-        self.timer.checkpoint("UHFQC_Base.poll_data.loop.start")
-        while accumulated_time < self.UHFs[0].timeout() and \
+        self.timer.checkpoint("PollDetector.poll_data.loop.start")
+        # FIXME: why only check acq_devs[0].timeout()?
+        while accumulated_time < self.acq_devs[0].timeout() and \
                 not all(np.concatenate(list(gotem.values()))):
             dataset = {}
-            for UHF in self.UHFs:
-                if not all(gotem[UHF.name]):
+            for acq_dev in self.acq_devs:
+                if not all(gotem[acq_dev.name]):
                     time.sleep(0.01)
-                    dataset[UHF.name] = UHF.poll(0.01)
-            for UHFname in dataset.keys():
-                for n, p in enumerate(acq_paths[UHFname]):
-                    if p in dataset[UHFname]:
-                        for v in dataset[UHFname][p]:
-                            data[UHFname][n] = np.concatenate(
-                                (data[UHFname][n], v['vector']))
+                    dataset[acq_dev.name] = acq_dev.poll(0.01)
+            for acq_dev_name in dataset.keys():
+                n_sp = self.det_from_acq_dev[acq_dev_name].nr_sweep_points
+                for n, p in enumerate(acq_paths[acq_dev_name]):
+                    if p not in dataset[acq_dev_name]:
+                        continue
+                    data[acq_dev_name][n] = np.concatenate([
+                        data[acq_dev_name][n], *dataset[acq_dev_name][p]])
+                    n_data = len(data[acq_dev_name][n])
+                    if n_data >= n_sp:
+                        gotem[acq_dev_name][n] = True
+                        if n_data > n_sp:
+                            log.warning(f'Received more data than expected '
+                                        f'from {acq_dev_name}. Ignoring '
+                                        f'{n_data-n_sp} values.')
+                            data[acq_dev_name][n] = data[acq_dev_name][n][:n_sp]
 
-                            if len(data[UHFname][n]) >= self.detectors[
-                                self.UHF_map[UHFname]].nr_sweep_points:
-                                gotem[UHFname][n] = True
-            accumulated_time += 0.01 * len(self.UHFs)
+            accumulated_time += 0.01 * len(self.acq_devs)
             if print_progress:
                 t_now = time.time()
                 if t_now - t_callback > self.progress_callback_interval:
                     try:
-                        if self.ro_mode == 'rl':
-                            n_acq = [UHF.qas_0_result_acquired() for UHF in
-                                     self.UHFs]
-                        else:
-                            n_acq = [UHF.qas_0_monitor_acquired() for UHF in
-                                     self.UHFs]
-                        # Two special cases are treated in the following lines.
-                        # - The UHF reports 0 when it is done. In this case,
-                        #   we keep the last known progress values n_acq_last.
-                        #   This means that the progress indicator will stay
-                        #   at that last known progress value during data
-                        #   transfer, and MC will update the progress to the
-                        #   correct value once it takes over control after
-                        #   the end of the data transfer.
-                        # - A workaround is needed because the UHF truncates
-                        #   qas_0_result_acquired at 2**18 (and starts
-                        #   counting from 0 again). A decrease in n_acq
-                        #   compared to the last function call indicates
-                        #   that this has happened and that we need to add
-                        #   2**18 to the progess values.
-                        n_acq_add = [
-                            n_add + (2 ** 18 if n < n_last else 0) if n > 0
-                            else n_add + n_last
-                            for n, n_last, n_add in zip(n_acq, n_acq_last,
-                                                        n_acq_add)]
-                        n_acq_last = n_acq
-                        n_acq = np.array(n_acq) + np.array(n_acq_add)
+                        n_acq = [acq_dev.acquisition_progress()
+                                 for acq_dev in self.acq_devs]
                         if any([n > 0 for n in n_acq]):
                             # the following calculation works both if
-                            # self.nr_averages is a vector/list or a scalar
+                            # self.progress_scaling is a vector/list or a scalar
                             progress = np.mean(np.multiply(
-                                n_acq, 1 / np.array(self.nr_averages)))
+                                n_acq, 1 / np.array(self.progress_scaling)))
                             self.progress_callback(progress)
                     except NoProgressError:
                         raise
@@ -705,63 +701,148 @@ class UHFQC_Base(Hard_Detector):
                         log.debug(f'poll_data: Could not print progress: {e}')
                     t_callback = t_now
 
-        self.timer.checkpoint("UHFQC_Base.poll_data.loop.end")
+        self.timer.checkpoint("PollDetector.poll_data.loop.end")
 
         if not all(np.concatenate(list(gotem.values()))):
-            for UHF in self.UHFs:
-                UHF.acquisition_finalize()
-                for n, c in enumerate(UHF._acquisition_nodes):
-                    if n in data[UHF.name]:
-                        n_swp = len(data[UHF.name][n])
-                        tot_swp = self.detectors[
-                            self.UHF_map[UHF.name]].nr_sweep_points
+            if self.AWG is not None:
+                self.AWG.stop()
+            for acq_dev in self.acq_devs:
+                acq_dev.acquisition_finalize()
+                for n, c in enumerate(acq_paths[acq_dev.name]):
+                    if n in data[acq_dev.name]:
+                        n_swp = len(data[acq_dev.name][n])
+                        tot_swp = self.det_from_acq_dev[
+                            acq_dev.name].nr_sweep_points
                         log.info(f"\t: Channel {n}: Got {n_swp} of {tot_swp} "
                                  f"samples")
-                raise TimeoutError("Error: Didn't get all results!")
+            raise TimeoutError("Error: Didn't get all results!")
 
-        data_raw = {UHF.name: np.array([data[UHF.name][key]
-                    for key in sorted(data[UHF.name].keys())]) for UHF in
-                    self.UHFs}
+        data_raw = {acq_dev.name: np.array([data[acq_dev.name][key]
+                    for key in sorted(data[acq_dev.name].keys())])
+                    for acq_dev in self.acq_devs}
 
         return data_raw
 
+    def get_values(self):
+        """
+        Wrapper around poll_data and process_data. Used for getting the data
+        from a polling detector, which can process the raw data returned by
+        poll data.
+
+        Returns:
+            processed data array of the same shape as the raw data
+        """
+        if self.always_prepare:
+            self.prepare()
+        data_raw = self.poll_data()
+        data_processed = self.process_data(data_raw[self.acq_dev.name])
+        return data_processed
+
+    def process_data(self, data_raw):
+        """
+        Process a raw data array as returned by poll_data().
+
+        Args:
+            data_raw (array): raw data array to be processed
+
+        Returns:
+             processed data array
+
+        No processing done by default. Should be overwritten by child classes.
+        """
+        return data_raw
+
     def finish(self):
+        """
+        Takes care of setting instruments into a known state at the end of
+        acquisition.
+        """
         if self.AWG is not None:
             self.AWG.stop()
 
         for d in self.detectors:
-            d.UHFQC.acquisition_finalize()
+            d.acq_dev.acquisition_finalize()
 
 
-class UHFQC_multi_detector(UHFQC_Base):
+class MultiPollDetector(PollDetector):
     """
-    Combines several UHF detectors into a single detector
+    Combines several polling detectors into a single detector.
     """
-    def __init__(self, detectors, **kw):
+    class MultiAWGWrapper:
+        """
+        Wrapper to flexibly define the master AWG to be restarted by the
+        detector function.
+
+        This allows for instance to only restart the acquisition device (and
+        not the whole Pulsar) for measurements with only one segment.
+        """
+        def __init__(self, master_awg, awgs=()):
+            self.master_awg = master_awg
+            self.awgs = list(set(awgs))
+
+        def start(self, **kw):
+            for awg in self.awgs:
+                awg.start(**kw)
+            self.master_awg.start(**kw)
+
+        def stop(self):
+            for awg in self.awgs:
+                awg.stop()
+            self.master_awg.stop()
+
+    def __init__(self, detectors, AWG=None, **kw):
+        """
+        Init of the MultiPollDetector base class.
+
+        Args
+            detectors (list): polling detectors from this module to be used for
+                acquisition
+            AWG (qcodes instrument): AWG that will be treated as a master AWG
+                by wrapping it in a MultiAWGWrapper together with the AWGs of
+                the individual detectors
+
+        Keyword args: passed to parent class
+        """
         super().__init__(detectors=detectors, **kw)
-        self.AWG = None
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
 
+        if AWG is not None:  # treat as master AWG
+            self.AWG = self.MultiAWGWrapper(AWG,
+                                            [d.AWG for d in self.detectors])
+        else:
+            self.AWG = None
         for d in self.detectors:
-            self.value_names += [vn + ' ' + d.UHFQC.name for vn in d.value_names]
+            self.value_names += [vn + ' ' + d.acq_dev.name for vn in
+                                 d.value_names]
             self.value_units += d.value_units
             self.live_plot_allowed += [d.live_plot_allowed]
-            if d.AWG is not None:
+            if d.AWG is not None\
+                    and not isinstance(self.AWG, self.MultiAWGWrapper):
                 if self.AWG is None:
                     self.AWG = d.AWG
                 elif self.AWG != d.AWG:
-                    raise Exception('Not all AWG instances in UHFQC_multi_detector'
-                                    ' are the same')
+                    raise Exception('Not all AWG instances in '
+                                    'MultiPollDetector are the same.')
                 d.AWG = None
 
-        # if any of the detectors is doing an SSRO acquisition, then disable
-        # live plotting
+        # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
         # to be used in MC.get_percdone()
-        self.acq_data_len_scaling = \
-            self.detectors[0].acq_data_len_scaling
+        self.acq_data_len_scaling = self.detectors[0].acq_data_len_scaling
+        self.detector_control = self.detectors[0].detector_control
+        # Check that these are consistent over all detectors
+        # (can be made more compact if this is to be done for more params)
+        for det in self.detectors:
+            if det.acq_data_len_scaling != self.acq_data_len_scaling:
+                raise ValueError(f"Detectors {det} and {self.detectors} have" +
+                                 " a different acq_data_len_scaling which is" +
+                                 " currently not supported")
+            if det.detector_control != self.detector_control:
+                raise ValueError(f"Detectors {det} and {self.detectors} have" +
+                                 " a different detector_control which is" +
+                                 " currently not supported")
 
         # currently only has support for classifier detector data
         self.correlated = kw.get('correlated', False)
@@ -777,32 +858,74 @@ class UHFQC_multi_detector(UHFQC_Base):
             self.value_units += ['']
 
     @Timer()
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points=None):
+        """
+        Calls the prepare method of each polling detector in self.detectors
+        and defines self.progress_scaling to be used in poll_data to decide
+        whether to display the acquisition progress.
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
+        super().prepare()
+        if self.detector_control == 'hard' and sweep_points is None:
+            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
-        self.nr_averages = [
-            getattr(d, 'nr_averages', None) for d in self.detectors]
-        if any([a is None for a in self.nr_averages]):
-            self.nr_averages = None
+        self.progress_scaling = [
+            getattr(d, 'progress_scaling', None) for d in self.detectors]
+        if any([a is None for a in self.progress_scaling]):
+            self.progress_scaling = None
 
     def get_values(self):
-        raw_data = self.poll_data()
+        """
+        Get raw acquisition data from poll_data and process it by calling
+        process_data of each polling detectors in self.detectors.
+        In addition, calls get_correlations_classif_det if self.correlated is
+        True and the acquisition type was single shot.
 
-        processed_data = [self.detectors[self.UHF_map[UHF]].process_data(d)
-                          for UHF, d in raw_data.items()]
-        processed_data = np.concatenate(processed_data)
+        Returns:
+            processed data array of the same shape as the raw data + 1 if
+            self.correlated is True
+        """
+        data_raw = self.poll_data()
+
+        data_processed = [self.det_from_acq_dev[acq_dev].process_data(d)
+                          for acq_dev, d in data_raw.items()]
+        data_processed = np.concatenate(data_processed)
         if self.correlated:
             if not self.detectors[0].get_values_function_kwargs.get(
                     'averaged', True):
-                data_for_corr = processed_data
+                data_for_corr = data_processed
             else:
-                data_for_corr = np.concatenate([d for d in raw_data.values()])
+                data_for_corr = np.concatenate([d for d in data_raw.values()])
             corr_data = self.get_correlations_classif_det(data_for_corr)
-            processed_data = np.concatenate([processed_data, corr_data], axis=0)
+            data_processed = np.concatenate([data_processed, corr_data], axis=0)
 
-        return processed_data
+        return data_processed
+
+    def acquire_data_point(self):
+        return self.get_values()
 
     def get_correlations_classif_det(self, data):
+        """
+        Correlate the single shot data obtained with the ClassifyingPollDetector
+        for n qubits. Correlates all the measured qubits. It is currently not
+        implemented to correlate subsets of qubits.
+
+        For example, for two qubits:
+            - if both qubits are in g or f ---> correlator = 0
+            - if both qubits are in e ---> correlator = 0
+            - if one qubit is in g or f but the other in e ---> correlator = 1
+
+        Args:
+            data (numpy array): single shot data for n qubits which will be
+            correlated; must have shape (nr ro channels, nr data points)
+
+        Returns:
+            correlated data array of shape (1, nr single shots)
+        """
         classifier_params_list = []
         state_prob_mtx_list = []
         for d in self.detectors:
@@ -817,7 +940,7 @@ class UHFQC_multi_detector(UHFQC_Base):
         all_ch_pairs = [d.channel_str_mobj for d in self.detectors]
         all_ch_pairs = [e0 for e1 in all_ch_pairs for e0 in e1]
 
-        processed_data = data
+        data_processed = data
         if self.detectors[0].get_values_function_kwargs.get(
                 'averaged', True):
             ro_corrected_seq_cal_mtx = d0.get_values_function_kwargs.get(
@@ -839,18 +962,18 @@ class UHFQC_multi_detector(UHFQC_Base):
                 'classifier_params': classifier_params_list})
             d0.channel_str_mobj = all_ch_pairs
             d0.get_values_function_kwargs = get_values_function_kwargs
-            processed_data = d0.process_data(data)
+            data_processed = d0.process_data(data)
             d0.channel_str_mobj = d0_channel_str_mobj
             d0.get_values_function_kwargs = d0_get_values_function_kwargs
 
         # can only correlate corresponding probabilities on all channels;
         # it cannot correlate selected channels
-        q = processed_data.shape[0] // nr_states  # nr of qubits
-        # creates array with nr_sweep_points x nr_shots columns and
+        q = data_processed.shape[0] // nr_states  # nr of qubits
+        # creates array with nr_sweep_points columns and
         # nr_qubits rows, where all entries are 0, 1, or 2. The entry in each
         # column is the state of the respective qubit, 0=g, 1=e, 2=f.
         qb_states_list = [np.argmax(
-            processed_data[i * nr_states: i * nr_states + nr_states, :],
+            data_processed[i * nr_states: i * nr_states + nr_states, :],
             axis=0) for i in range(q)]
 
         # correlate the shots of the two qubits as follows:
@@ -859,63 +982,932 @@ class UHFQC_multi_detector(UHFQC_Base):
         # if one qubit is in g or f but the other in e ---> correlator = 1
         corr_data = np.sum(np.array(qb_states_list) % 2, axis=0) % 2
         if self.averaged:
-            corr_data = np.reshape(corr_data, (d0.nr_shots, d0.nr_sweep_points))
+            corr_data = np.reshape(corr_data,
+                                   (d0.nr_shots, d0.nr_sweep_points/d0.nr_shots))
             corr_data = np.mean(corr_data, axis=0)
         corr_data = np.reshape(corr_data, (1, corr_data.size))
 
         return corr_data
 
     def finish(self):
+        """
+        Takes care of setting instruments into a known state at the end of
+        acquisition by calling the finish method of each polling detector in
+        self.detectors.
+        TODO: shouldn't it call the super method?
+        """
         if self.AWG is not None:
             self.AWG.stop()
         for d in self.detectors:
             d.finish()
 
 
-class UHFQC_input_average_detector(UHFQC_Base):
+class AveragingPollDetector(PollDetector):
 
     """
-    Detector used for acquiring averaged timetraces withe the UHFQC
+    Polling detector used for acquiring averaged timetraces.
     """
 
-    def __init__(self, UHFQC, AWG=None, channels=(0, 1),
-                 nr_averages=1024, nr_samples=4096, **kw):
-        super(UHFQC_input_average_detector, self).__init__(UHFQC, **kw)
+    def __init__(self, acq_dev, AWG=None, channels=((0, 0), (0, 1)),
+                 nr_averages=1024, acquisition_length=2.275e-6, **kw):
+        """
+        Init of the AveragingPollDetector class.
+
+        Args:
+            acq_dev ()
+            :param AWG: instance of AcquisitionDevice. Must be provided when a
+                single polling detector is passed to detectors.
+            channels (tuple or list): Channels on which the acquisition should
+                be performed. Each channel is identified by a tuple of
+                acquisition unit and quadrature index (0=I, 1=Q). See also
+                the docstring of AcquisitionDevice.acquisition_initialize.
+            nr_averages (int): number of acquisition averages as a power of 2.
+            acquisition_length (float): acquisition duration in seconds
+
+        Keyword args: passed to parent class
+
+        """
+        super().__init__(acq_dev, **kw)
         self.channels = channels
         self.value_names = ['']*len(self.channels)
         self.value_units = ['']*len(self.channels)
-        for i, channel in enumerate(self.channels):
-            self.value_names[i] = f'{UHFQC.name}_ch{channel}'
+        for i, ch in enumerate(self.channels):
+            self.value_names[i] = f'{acq_dev.name}_{ch[0]}_ch{ch[1]}'
             self.value_units[i] = 'V'
-            # UHFQC returned data is in Volts
-            # January 2018 verified by Xavi
         self.AWG = AWG
-        self.nr_samples = nr_samples - nr_samples % 4
+        self.acquisition_length = acquisition_length
         self.nr_averages = nr_averages
-
-    def get_values(self):
-        raw_data = self.poll_data()
-        processed_data = self.process_data(raw_data[self.UHFQC.name])
-        return processed_data
-
-    def process_data(self, raw_data):
-        # IMPORTANT: No re-scaling factor needed for input average mode as
-        # the UHFQC returns volts
-        # Verified January 2018 by Xavi
-        return raw_data
+        self.progress_scaling = nr_averages
 
     @Timer()
     def prepare(self, sweep_points):
+        """
+        Prepares instruments for acquisition by calling
+        self.acq_dev.acquisition_initialize.
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
-        self.nr_sweep_points = self.nr_samples
-        self.ro_mode = 'iavg'
-        self._check_hardware_limitations()
-        self.UHFQC.acquisition_initialize(channels=self.channels,
-                                          samples=self.nr_samples,
-                                          averages=self.nr_averages,
-                                          loop_cnt=int(self.nr_averages),
-                                          mode=self.ro_mode)
+        self.nr_sweep_points = len(sweep_points)
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=1,
+            acquisition_length=self.acquisition_length,
+            averages=self.nr_averages,
+            loop_cnt=int(self.nr_averages),
+            mode='avg')
+
+
+class IntegratingAveragingPollDetector(PollDetector):
+    """
+    Detector used for integrated average acquisition.
+    """
+
+    def __init__(self, acq_dev, AWG=None,
+                 integration_length: float = 1e-6,
+                 nr_averages: int = 1024,
+                 channels: list = ((0, 0), (0, 1)),
+                 data_type: str = 'raw',  # FIXME: more general default value?
+                 real_imag: bool = True,
+                 single_int_avg: bool = False,
+                 chunk_size: int = None,
+                 values_per_point: int = 1,
+                 values_per_point_suffix: list = None,
+                 always_prepare: bool = False,
+                 prepare_function=None,
+                 prepare_function_kwargs: dict = None,
+                 **kw):
+        """
+        Init of the IntegratingAveragingPollDetector.
+
+        Args:
+            acq_dev (instrument) : data acquisition device
+            AWG   (instrument) : device responsible for starting and stopping
+                    the experiment, can also be a central controller
+            integration_length (float): integration length in seconds
+            nr_averages (int)         : nr of averages per data point
+                IMPORTANT: this must be a power of 2
+            data_type (str) :  options are
+                - raw            -> returns raw data in V
+                - raw_corr       -> correlations mode: multiplies results from
+                                    pairs of integration channels
+                - lin_trans      -> applies the linear transformation matrix and
+                                    subtracts the offsets defined in the UHFQC.
+                                    This is typically used for crosstalk
+                                    suppression and normalization. Requires
+                                    optimal weights.
+                - digitized      -> returns fraction of shots based on the
+                                    threshold defined in the UHFQC. Requires
+                                    optimal weights.
+                - digitized_corr -> correlations mode after threshold: XNOR of
+                                    thresholded results from pairs of
+                                    integration channels.
+                                    NOTE: thresholds need to be set outside the
+                                    detector object.
+            real_imag (bool)     : if False returns data in polar coordinates
+                                    useful for e.g., spectroscopy
+                                    FIXME -> should be named "polar"
+            single_int_avg (bool): if True makes this a soft detector
+
+            Args relating to changing the amount of points being detected:
+
+            chunk_size    (int)  : used in single shot readout experiments.
+            values_per_point (int): number of values to measure per sweep point.
+                    creates extra column/value_names in the dataset for each
+                    channel.
+            values_per_point_suffix (list): suffix to add to channel names for
+                    each value. should be a list of strings with lenght equal to
+                    values per point.
+            always_prepare (bool) : when True the acquire/get_values method will
+                first call the prepare statement. This is particularly important
+                when it is both a single_int_avg detector and acquires multiple
+                segments per point.
+            prepare_function (callable): function to be called in prepare
+            prepare_function_kwargs (dict): kwargs for prepare_function
+        """
+        super().__init__(acq_dev, **kw)
+        self.name = '{}_integrated_average'.format(data_type)
+        self.channels = deepcopy(channels)
+
+        self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} w{ch[1]}'
+                            for ch in self.channels]
+        value_properties = acq_dev.get_value_properties(
+            data_type, integration_length)
+        self.value_units = ([value_properties['value_unit']] *
+                            len(self.channels))
+        self.scaling_factor = value_properties['scaling_factor']
+        self.value_names, self.value_units = self._add_value_name_suffix(
+            value_names=self.value_names, value_units=self.value_units,
+            values_per_point=values_per_point,
+            values_per_point_suffix=values_per_point_suffix)
+
+        self.single_int_avg = single_int_avg
+        if self.single_int_avg:
+            self.detector_control = 'soft'
+        # useful in combination with single int_avg
+        self.always_prepare = always_prepare
+        self.values_per_point = values_per_point
+
+        self.AWG = AWG
+        self.nr_averages = nr_averages
+        self.progress_scaling = nr_averages
+        self.nr_shots = 1
+        self.integration_length = integration_length
+        self.data_type = data_type
+        self.chunk_size = chunk_size
+
+        self.prepare_function = prepare_function
+        self.prepare_function_kwargs = prepare_function_kwargs
+        self.set_real_imag(real_imag)
+
+    def _add_value_name_suffix(self, value_names: list, value_units: list,
+                               values_per_point: int,
+                               values_per_point_suffix: list):
+        """
+        For use with multiple values_per_point. Adds the strings provided in
+        the values_per_point_suffix list.
+        """
+        if values_per_point == 1:
+            return value_names, value_units
+        else:
+            new_value_names = []
+            new_value_units = []
+            if values_per_point_suffix is None:
+                values_per_point_suffix = ascii_uppercase[:len(value_names)]
+
+            for vn, vu in zip(value_names, value_units):
+                for val_suffix in values_per_point_suffix:
+                    new_value_names.append('{} {}'.format(vn, val_suffix))
+                    new_value_units.append(vu)
+            return new_value_names, new_value_units
+
+    def set_real_imag(self, real_imag=False):
+        """
+        Function so that real_imag can be changed after initialization.
+        """
+        self.real_imag = real_imag
+        if not self.real_imag:
+            if len(self.channels) != 2:
+                raise ValueError('Length of "{}" is not 2'.format(
+                                 self.channels))
+            self.value_names[0] = 'Magn'
+            self.value_names[1] = 'Phase'
+            self.value_units[1] = 'deg'
+
+    def process_data(self, data_raw, real_imag=None, reshape_data=True):
+        """
+        Process the raw data array as returned by poll_data().
+         - multiplies by self.scaling_factor
+         - calls acq_dev.correct_offset (see docstring there)
+         - calls convert_to_polar if needed
+         - reshapes data if needed
+
+        Args:
+            data_raw (array): raw data array to be processed
+            real_imag (bool): whether to convert to polar data (True), see
+                docstring of convert_to_polar. Defaults to self.real_imag if
+                None.
+            reshape_data (bool): whether to reshape the processed data based on
+                len(self.value_names) // len(self.channels).
+
+        Returns:
+             processed data array of the same shape as data_raw
+        """
+        data = data_raw * self.scaling_factor
+        data = self.acq_dev.correct_offset(self.channels, data)
+
+        if real_imag is None:
+            real_imag = self.real_imag
+        if not real_imag:
+            data = self.convert_to_polar(data)
+
+        if reshape_data:
+            n_virtual_channels = len(self.value_names) // len(self.channels)
+            data = np.reshape(
+                data.T, (-1, n_virtual_channels, len(self.channels))).T
+            data = data.reshape((len(self.value_names), -1))
+
+        return data
+
+    def convert_to_polar(self, data):
+        """
+        Convert 2-channel IQ data to signal magnitude and phase.
+
+        Args:
+            data (array): 2-channel IQ data array to be converted
+
+        Returns:
+            converted data as array of shape (2, nr points) where the first row
+                is the signal magnitude and the second is the signal phase
+        """
+        if len(data) != 2:
+            raise ValueError(
+                'Expect 2 channels for rotation. Got {}'.format(len(data)))
+        I = data[0]
+        Q = data[1]
+        S21 = I + 1j*Q
+        data[0] = np.abs(S21)
+        data[1] = np.angle(S21) * 180 / np.pi
+        return data
+
+    def acquire_data_point(self):
+        """
+        Calls self.get_values().
+        """
+        return self.get_values()
+
+    @Timer()
+    def prepare(self, sweep_points=None):
+        """
+        Prepares instruments for acquisition:
+         - defines self.nr_sweep_points based on sweep_points,
+            self.values_per_point, self.single_int_avg, self.chunk_size,
+            self.acq_data_len_scaling, and self.nr_shots. Will be checked in
+            poll_data of the parent class.
+         - calls prepare_function if defined
+         - calls self.acq_dev.acquisition_initialize
+
+        Args:
+            sweep_points (numpy array): array of sweep points as passed by
+                MeasurementControl
+        """
+        super().prepare()
+        if self.AWG is not None:
+            self.AWG.stop()
+        # Determine the number of sweep points and set them
+        if sweep_points is None or self.single_int_avg:
+            # this case will be used when it is a soft detector
+            # Note: single_int_avg overrides chunk_size
+            # single_int_avg = True is equivalent to chunk_size = 1
+            self.nr_sweep_points = self.values_per_point
+        else:
+            self.nr_sweep_points = len(sweep_points) * self.values_per_point
+            if (self.chunk_size is not None and
+                    self.chunk_size < self.nr_sweep_points):
+                # Chunk size is defined and smaller than total number of sweep
+                # points -> only acquire one chunk
+                self.nr_sweep_points = self.chunk_size * self.values_per_point
+
+        # Optionally perform extra actions on prepare
+        # This snippet is placed here so that it has a chance to modify the
+        # nr_sweep_points
+        if self.prepare_function_kwargs is not None:
+            if self.prepare_function is not None:
+                self.prepare_function(**self.prepare_function_kwargs)
+        else:
+            if self.prepare_function is not None:
+                self.prepare_function()
+
+        # Determine the true number of sweep points in cases where MC has
+        # tiled the sweep points for SSRO. This does not have an effect in
+        # the current class (where acq_data_len_scaling is 1), but it
+        # might be relevant for child classes.
+        if self.acq_data_len_scaling != 1:
+            assert self.nr_sweep_points % self.acq_data_len_scaling == 0
+            self.nr_sweep_points = (self.nr_sweep_points //
+                                    self.acq_data_len_scaling)
+        self.nr_sweep_points *= self.nr_shots
+        # Note that self.nr_shots is 1 in this class, but might be different
+        # in child classes.
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=self.nr_sweep_points,
+            acquisition_length=self.integration_length,
+            averages=self.nr_averages,
+            loop_cnt=int(self.nr_shots * self.nr_averages),
+            mode='int_avg', data_type=self.data_type,
+        )
+
+
+class ScopePollDetector(PollDetector):
+    """
+    Detector for scope measurements.
+
+    Attributes:
+        data_type (str) :  options are
+            - timedomain: Returns time traces (possibly averaged and/or
+              single-shot)
+            - fft: Returns the absolute value of the Fourier' transform
+                       of the data.
+            - fft_power: Squares the data before averaging and taking the
+                             Fourier' transform.
+    """
+
+    def __init__(self,
+                 acq_dev,
+                 AWG,
+                 channels,
+                 nr_shots,
+                 integration_length,
+                 nr_averages,
+                 data_type,
+                 **kw):
+        super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
+        self.channels = channels
+        self.integration_length = integration_length
+        self.nr_averages = nr_averages
+        self.data_type = data_type
+        self.AWG = AWG
+        self.nr_sweep_points = None
+        self.values_per_point = 1
+        self.nr_shots = nr_shots
+        if self.data_type == 'timedomain':
+            # Normal number of shots (MC will expect that many timetraces)
+            self.acq_data_len_scaling = self.nr_shots
+        elif self.data_type == 'fft':
+            raise NotImplementedError("Amplitude FFT mode not implemented!")
+        elif self.data_type == 'fft_power':
+            # Multiple shots aren't implemented for power spectrum measurements
+            self.acq_data_len_scaling = 1
+
+    def prepare(self, sweep_points=None):
+
+        super().prepare()
+        self.nr_sweep_points = len(sweep_points)
+        if self.data_type == 'fft_power':
+            # Number of points of the spectrum to be returned
+            n_results = self.nr_sweep_points
+        elif self.data_type == 'timedomain':
+            # Meaning 1 timetrace. Could be extended e.g. if hardware allows
+            # TV-mode avg of timetraces
+            n_results = 1
+        else:
+            raise ValueError
+
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=n_results,
+            acquisition_length=self.integration_length,
+            averages=self.nr_averages,
+            loop_cnt=self.nr_shots * self.nr_averages,
+            mode='scope', data_type=self.data_type,
+        )
+
+
+class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
+    """
+    Detector used for correlation mode with the UHFQC.
+    The argument 'correlations' is a list of tuples specifying which channels
+    are correlated, and on which channel the correlated signal is output.
+    For instance, 'correlations=[(0, 1, 3)]' will put the correlation of
+    channels 0 and 1 on channel 3.
+    """
+
+    def __init__(self, acq_dev, AWG=None, integration_length=1e-6,
+                 nr_averages=1024,  real_imag=True,
+                 channels: list = ((0, 0), (0, 1)),
+                 correlations: list = (((0, 0), (0, 1))),
+                 data_type: str = 'raw_corr',
+                 used_channels=None, value_names=None, single_int_avg=False,
+                 **kw):
+        if not acq_dev.IDN()['model'].startswith('UHF'):
+            raise NotImplementedError(
+                f'UHFQC_correlation_detector is not implemented for '
+                f'{acq_dev.name}, but only for ZI UHF devices.')
+        if data_type not in ['raw_corr', 'digitized_corr']:
+            raise ValueError('data_type can only be "raw_corr" or '
+                             '"digitized_corr" for this detector.')
+
+        super().__init__(
+            acq_dev, AWG=AWG, integration_length=integration_length,
+            nr_averages=nr_averages, real_imag=real_imag,
+            channels=channels, single_int_avg=single_int_avg,
+            data_type=data_type,
+            **kw)
+
+        self.name = '{}_UHFQC_correlation_detector'.format(data_type)
+        self.correlations = correlations
+        self.thresholding = self.data_type == 'digitized_corr'
+
+        self.used_channels = used_channels
+        if self.used_channels is None:
+            self.used_channels = self.channels
+
+        if value_names is not None:
+            self.value_names = value_names
+        else:
+            for corr in correlations:
+                self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
+        value_unit = acq_dev.get_value_properties(
+            self.data_type, self.integration_length)['value_unit']
+        for _ in correlations:
+            self.value_units += [f'({value_unit})^2']
+
+        self.define_correlation_channels()
+
+    def prepare(self, sweep_points=None):
+        super().prepare(sweep_points=sweep_points)
+        self.set_up_correlation_weights()
+
+    def define_correlation_channels(self):
+        self.correlation_channels = []
+        used_channels = deepcopy(self.used_channels)
+        for corr in self.correlations:
+            # Start by assigning channels
+            # We can assume that channels belong to acquisition unit 0 because
+            # this detector is specific to the UHF. (The acquisition device
+            # would raise an error otherwise.)
+            if corr[0] not in used_channels or corr[1] not in used_channels:
+                raise ValueError('Correlations should be in used channels')
+
+            correlation_channel = None
+
+            for ch in range(self.acq_dev.n_acq_int_channels):
+                ch = (0, ch)
+                # Find the first unused channel to set up as correlation
+                if ch not in used_channels:
+                    # selects the lowest available free channel
+                    correlation_channel = ch
+                    self.channels += [ch]
+                    self.correlation_channels += [correlation_channel]
+
+                    print('Using channel {} for correlation ({}, {}).'
+                          .format(ch, corr[0], corr[1]))
+                    # correlation mode is turned on in the
+                    # set_up_correlation_weights method
+                    break
+                    # FIXME, can currently only use one correlation
+
+            if correlation_channel is None:
+                raise ValueError('No free channel available for correlation.')
+            else:
+                used_channels += [correlation_channel]
+
+    def set_up_correlation_weights(self):
+        # Configure correlation mode
+        for ch in self.channels:
+            if ch not in self.correlation_channels:
+                # Disable correlation mode as this is used for normal
+                # acquisition
+                self.acq_dev.set(f'qas_0_correlations_{ch[1]}_enable', 0)
+
+        for correlation_channel, corr in zip(self.correlation_channels,
+                                             self.correlations):
+            # Duplicate source channel to the correlation channel and select
+            # second channel as channel to correlate with.
+            copy_int_weights_real = \
+                np.array(self.acq_dev.get(
+                    f'qas_0_integration_weights_{corr[0][1]}_real')).astype(float)
+            copy_int_weights_imag = \
+                np.array(self.acq_dev.get(
+                    f'qas_0_integration_weights_{corr[0][1]}_imag')).astype(float)
+
+            copy_rot_matrix = self.acq_dev.get(f'qas_0_rotations_{corr[0][1]}')
+
+            self.acq_dev.set(
+                f'qas_0_integration_weights_{correlation_channel[1]}_real',
+                copy_int_weights_real)
+            self.acq_dev.set(
+                f'qas_0_integration_weights_{correlation_channel[1]}_imag',
+                copy_int_weights_imag)
+
+            self.acq_dev.set(
+                f'qas_0_rotations_{correlation_channel[1]}',
+                copy_rot_matrix)
+
+            # Enable correlation mode one the correlation output channel and
+            # set the source to the second source channel
+            self.acq_dev.set(
+                f'qas_0_correlations_{correlation_channel[1]}_enable', 1)
+            self.acq_dev.set(
+                f'qas_0_correlations_{correlation_channel[1]}_source', corr[1][1])
+
+            # If thresholding is enabled, set the threshold for the correlation
+            # channel.
+            if self.thresholding:
+                thresh_level = \
+                    self.acq_dev.get(f'qas_0_thresholds_{corr[0][1]}_level')
+                self.acq_dev.set(
+                    f'qas_0_thresholds_{correlation_channel[1]}_level',
+                    thresh_level)
+
+    def process_data(self, data_raw):
+        if self.thresholding:
+            data = data_raw
+        else:
+            data = []
+            for n, ch in enumerate(self.used_channels):
+                if ch in self.correlation_channels:
+                    # 1.5 is a workaround due to a bug in the UHF
+                    data.append(1.5 * np.array(data_raw[n]) *
+                                self.scaling_factor**2)
+                else:
+                    data.append(np.array(data_raw[n]) * self.scaling_factor)
+        return data
+
+
+class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
+    """
+    Detector used for integrated single-shot acquisition.
+    """
+
+    def __init__(self, acq_dev, nr_shots: int = 4094, **kw):
+        """
+        Init of the IntegratingSingleShotPollDetector.
+        See the IntegratingAveragingPollDetector for the full dostring of the
+        accepted input parameters.
+
+        Args:
+            acq_dev (instrument): data acquisition device
+            nr_shots (int)     : number of acquisition shots
+
+        Keyword args:
+            passed to the init of the parent class. In addition,
+            the following keyword arguments are understood:
+            - live_plot_allowed: (bool, default: False) whether to allow MC to
+              use live plotting
+        """
+        super().__init__(acq_dev, nr_averages=1, **kw)
+
+        self.name = '{}_integration_logging_det'.format(self.data_type)
+        self.nr_shots = nr_shots
+        self.acq_data_len_scaling = self.nr_shots  # to be used in MC
+        # Disable MC live plotting by default for SSRO acquisition
+        self.live_plot_allowed = kw.get('live_plot_allowed', False)
+
+
+class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
+    """
+    Hybrid detector function:
+     - the acq_dev is configured to return single shots, but this function can
+     then return either single shots, or averaged sweep points (can average
+     over the shots for each segment)
+     - This class always performs classification of each single shot data
+     into either a 3 state probability tuple (shot_i_pg, shot_i_pe, shot_i_pf)
+     if qutrit is True, or a 2 state probability tuple (shot_i_pg, shot_i_pe).
+     Here shot_i_pg, shot_i_pe, (shot_i_pf) \in [0, 1] and
+     shot_i_pg + shot_i_pe (+ shot_i_pf) = 1.
+
+    See the IntegratingPollDetector for the full dostring of the accepted
+    input parameters.
+
+    The only additional keyword argument that is used by this class but not by
+    its parent class is get_values_function_kwargs. This parameter is a dict
+    where the user can specify how he wants this detector function to process
+    the shots.
+    get_values_function_kwargs can contain:
+     - classifier_params_list (list or dict): THIS ENTRY MUST EXIST. This class
+        always classifies into state probabilities and it does so based on this
+        parameter. It is either the QuDev_transmon acq_classifier_params
+        attribute (if only one qubit is measured), or list of these dictionaries
+        (if multiple qubits are measured).
+     - averaged (bool; default: True): decides whether to average over the
+        shots of each segment. If True, this class returns averaged data with
+        size == len(sweep_points). If False, this class returns single shot
+        data with size == len(sweep_points)*nr_shots
+     - thresholded (bool; default: False): decides whether to assign each shot
+        to only one state. This is different from classification, and comes
+        after the classification step.
+        If True, for each classified shot (shot_i_pg, shot_i_pe, shot_i_pf),
+        sets the entry corresponding to the max of the three probabilities to 1
+        and the other two entries to 0.
+        Ex: For (shot_i_pg, shot_i_pe, shot_i_pf) = (0.04, 0.9, 0.06),
+        this options produces (0, 1, 0).
+        FIXME: (Steph 14.05.2020) Should we rename this param to "assigned"?
+     - state_prob_mtx_list (np.ndarray or list or None; default: None)
+        If not None, the data can be corrected with the inverse of these arrays.
+        Either the QuDev_transmon acq_state_prob_mtx attribute (if only
+        one qubit is measured), or list of these arrays (if multiple
+        qubits are measured).
+     - ro_corrected_stored_mtx (bool: default: False): decides whether to
+        correct the data with the inverse of the matrices in state_prob_mtx_list
+     - ro_corrected_seq_cal_mtx (bool: default: False): decides whether to
+        correct the data with the inverse of the calibration state_prob_mtx '
+        extracted from the measurement sequence. THIS CAN ONLY BE DONE IF
+        THE DATA IS AVERAGED FIRST (averaged == True)
+
+    Keyword args:
+        kw is passed to the init of the parent class. In addition,
+        the following keyword arguments are understood:
+            - live_plot_allowed: (bool) whether to allow MC to use live plotting
+              By default, True if averaged acquisition and False if single shot.
+    """
+
+    def __init__(self, acq_dev, *args, **kw):
+        self.qutrit = kw.pop('qutrit', True)
+        super().__init__(acq_dev, *args, **kw)
+
+        self.get_values_function_kwargs = kw.get('get_values_function_kwargs',
+                                                 None)
+        self.name = '{}_classifier_det'.format(self.data_type)
+
+        self.state_labels = ['pg', 'pe', 'pf'] if self.qutrit else ['pg', 'pe']
+        classifier_params = self.get_values_function_kwargs.get(
+            'classifier_params', [])
+        self.n_meas_objs = 1 if not len(classifier_params) else \
+                len(classifier_params)
+        k = len(self.channels) // self.n_meas_objs
+        # this will give <acq unit>_<1st wint ch><2nd wint ch>, e.g., '0_01'
+        self.channel_str_mobj = [(
+            str(self.channels[k*j][0]),
+            ''.join([str(ch[1]) for ch in self.channels[k*j:k*j+k]])
+        ) for j in range(self.n_meas_objs)]
+
+        self.classified = self.get_values_function_kwargs.get('classified',
+                                                              True)
+        if self.classified:
+            self.value_names = ['']*(
+                    len(self.state_labels) * len(self.channel_str_mobj))
+            idx = 0
+            for ch_pair in self.channel_str_mobj:
+                for state in self.state_labels:
+                    self.value_names[idx] = \
+                        f'{acq_dev.name}_{ch_pair[0]}_{state} w{ch_pair[1]}'
+                    idx += 1
+            self.value_units = [self.value_units[0]] * len(self.value_names)
+
+        if self.get_values_function_kwargs.get('averaged', True):
+            self.acq_data_len_scaling = 1
+            # The following value is only used for correct progress
+            # calculation in poll_data.
+            self.progress_scaling = self.nr_shots
+            self.live_plot_allowed = kw.get('live_plot_allowed', True)
+        else:
+            # Disable MC live plotting by default for SSRO acquisition
+            self.live_plot_allowed = kw.get('live_plot_allowed', False)
+
+    def process_data(self, data_raw, **kw):
+        """
+        Process the raw data array as returned by poll_data().
+        Calls the following methods (if enabled) in the order given here:
+         - self.classify_shots if self.classified is True
+         - self.threshold_shots if both thresholded and self.classified are True
+         - self.average_shots if averaged is True
+         - self.reshapes data if needed
+         - readout correction:
+            - only if averaged is True and thresholded is False
+            - self.correct_readout_stored_mtx if ro_corrected_stored_mtx is True
+            - self.correct_readout_stored_mtx if ro_corrected_seq_cal_mtx
+                is True and averaged is True
+
+        Args:
+            data_raw (array): raw data array to be processed
+
+        Keyword args:
+            taken from self.get_values_function_kwargs (see docstring in init)
+
+        Returns:
+             processed data array of the same shape as data_raw
+        """
+        data_processed = super().process_data(data_raw, real_imag=True,
+                                              reshape_data=False).T
+        nr_states = len(self.state_labels)
+        thresholded = self.get_values_function_kwargs.get('thresholded', True)
+        averaged = self.get_values_function_kwargs.get('averaged', True)
+        if self.classified:
+            # Classify data into qutrit states
+            self.classifier_params_list = self.get_values_function_kwargs.get(
+                'classifier_params', None)
+            if self.classifier_params_list is None:
+                raise ValueError('Please specify the classifier '
+                                 'parameters list.')
+            if not isinstance(self.classifier_params_list, list):
+                self.classifier_params_list = [self.classifier_params_list]
+            data_processed = self.classify_shots(data_processed,
+                                                 self.classifier_params_list,
+                                                 nr_states)
+
+        if thresholded:
+            if not self.classified:
+                raise NotImplementedError(
+                    'Currently the threshold_shots only works if the data '
+                    'was first classified.')
+            data_processed = self.threshold_shots(data_processed, nr_states)
+
+        if averaged:
+            data_processed = self.average_shots(data_processed)
+
+        # do readout correction
+        ro_corrected_seq_cal_mtx = self.get_values_function_kwargs.get(
+            'ro_corrected_seq_cal_mtx', False)
+        ro_corrected_stored_mtx = self.get_values_function_kwargs.get(
+            'ro_corrected_stored_mtx', False)
+        if ro_corrected_seq_cal_mtx and ro_corrected_stored_mtx:
+            raise ValueError('"ro_corrected_seq_cal_mtx" and '
+                             '"ro_corrected_stored_mtx" cannot both be True.')
+        ro_corrected = ro_corrected_seq_cal_mtx or ro_corrected_stored_mtx
+        if (ro_corrected and thresholded) and not averaged:
+            raise ValueError('It does not make sense to apply readout '
+                             'correction if thresholded==True and '
+                             'averaged==False.')
+        if ro_corrected_stored_mtx:
+            # correct data with matrices from state_prob_mtx_list
+            data_processed = self.correct_readout_stored_mtx(data_processed,
+                                                             nr_states)
+        elif ro_corrected_seq_cal_mtx:
+            # correct data with the calibration matrix extracted from
+            # the data array
+            if not averaged:
+                raise NotImplementedError(
+                    'Data correction based on calibration state_prob_mtx '
+                    'from measurement sequence is currently only '
+                    'implemented for averaged data (averaged==True).')
+            data_processed = self.correct_readout_seq_cal_mtx(data_processed,
+                                                              nr_states)
+
+        return data_processed.T
+
+    def classify_shots(self, data, classifier_params_list, nr_states):
+        """
+        Classify raw single shots into qubit or qutrit state probabilities.
+
+        Args:
+            data (numpy array): single shot data to be classified with shape
+                (nr acquisition channels, nr shots)
+            classifier_params_list (list or dict): either the QuDev_transmon
+                acq_classifier_params attribute (if only one qubit is measured),
+                or list of these dictionaries (if multiple qubits are measured).
+                Passed to a_tools.predict_gm_proba_from_clf.
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            classified data as array of shape (nr shots, nr_states)
+        """
+        classified_data = np.zeros((self.nr_sweep_points,
+                                    nr_states*len(self.channel_str_mobj)))
+        k = len(self.channels) // self.n_meas_objs
+        for i in range(len(self.channel_str_mobj)):
+            # classify each shot into (pg, pe, pf)
+            # clf_data will have shape
+            # (self.nr_sweep_points, nr_states)
+            # where len(nr_sweep_points) = len(mc_sweep_points) * nr_shots
+            mobj_data = data[:, k*i: k*i+k]
+            clf_data = a_tools.predict_gm_proba_from_clf(
+                mobj_data, classifier_params_list[i])
+            classified_data[:, nr_states * i: nr_states * i + nr_states] = \
+                clf_data
+
+        return classified_data
+
+    def threshold_shots(self, data, nr_states):
+        """
+        Assign each classified shot to a given state. For example,
+        (0.01, 0.98, 0.01) --> (0, 1, 0), i.e. qutrit in e.
+
+        Args:
+            data (numpy array): data classified into state probabilities
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns:
+            assigned data of the same shape as data
+        """
+        thresholded_data = np.zeros_like(data)
+        for i in range(len(self.channel_str_mobj)):
+            # For each shot, set the largest probability entry to 1, and the
+            # other two to 0. I.e. assign to one state.
+            # clf_data must be 2 dimensional, rows are shots*sweep_points,
+            # columns are nr_states
+            thresh_data = np.isclose(np.repeat(
+                [np.arange(nr_states)],
+                data[:, nr_states*i: nr_states*(i+1)].shape[0], axis=0).T,
+                     np.argmax(data[:, nr_states*i: nr_states*(i+1)], axis=1)).T
+            thresholded_data[:, nr_states * i: nr_states * i + nr_states] = \
+                thresh_data
+
+        return thresholded_data
+
+    def average_shots(self, data):
+        """
+        Average single shot data.
+
+        Args:
+            data (numpy array): single shot data
+
+        Returns
+            averaged data of shape
+            (self.nr_sweep_points//self.nr_shots, data.shape[1])
+        """
+        # reshape into
+        # (nr_shots, nr_sweep_points//self.nr_shots, nr_data_columns)
+        # then average over nr_shots
+        averaged_data = np.reshape(
+            data, (self.nr_shots, self.nr_sweep_points//self.nr_shots,
+                   data.shape[-1]))
+        # average over shots
+        averaged_data = np.mean(averaged_data, axis=0)
+
+        return averaged_data
+
+    def correct_readout_stored_mtx(self, data, nr_states):
+        """
+        Correct for readout errors by multiplying with the inverse of
+            state_prob_mtx given in get_values_function_kwargs
+            (see init docstring)
+
+        Args:
+            data (numpy array): averaged data with
+                self.nr_sweep_points//self.nr_shots rows, and columns given
+                by nr acquisition channels or nr of transmon states
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            readout corrected data array of the same shape as data
+        """
+        corrected_data = np.zeros_like(data)
+
+        self.state_prob_mtx_list = self.get_values_function_kwargs.get(
+            'state_prob_mtx', None)
+        if self.state_prob_mtx_list is not None and \
+                not isinstance(self.state_prob_mtx_list, list):
+            self.state_prob_mtx_list = [self.state_prob_mtx_list]
+
+        for i in range(len(self.channel_str_mobj)):
+            if self.state_prob_mtx_list is not None and \
+                    self.state_prob_mtx_list[i] is not None:
+                corr_data = np.linalg.inv(self.state_prob_mtx_list[i]).T @ \
+                            data[:, nr_states*i: nr_states*(i+1)].T
+                log.info('Data corrected based on previously-measured '
+                         'state_prob_mtx.')
+            else:
+                raise ValueError(f'state_prob_mtx for index {i} is None.')
+            corrected_data[:, nr_states * i: nr_states * i + nr_states] = \
+                corr_data.T
+
+        return corrected_data
+
+    def correct_readout_seq_cal_mtx(self, data, nr_states):
+        """
+        Correct for readout errors by multiplying with the inverse of the
+        calibration matrix extracted from the data array, if calibration
+        segments were measured.
+
+        Args:
+            data (numpy array): averaged data with
+                self.nr_sweep_points//self.nr_shots rows, and columns given
+                by nr acquisition channels or nr of transmon states
+            nr_states (int): number of transmon states:
+                2 for qubit, 3 for qutrit.
+
+        Returns
+            readout corrected data array of the same shape as data
+        """
+        corrected_data = np.zeros_like(data)
+        for i in range(len(self.channel_str_mobj)):
+            # get cal matrix
+            calibration_matrix = data[:, nr_states*i: nr_states*(i+1)][
+                                 -nr_states:, :]
+            # normalize
+            calibration_matrix = calibration_matrix.astype('float') / \
+                                 calibration_matrix.sum(axis=1)[:, np.newaxis]
+            # correct data
+            # corr_data = np.linalg.inv(calibration_matrix).T @ \
+            #             data[:, nr_states*i: nr_states*(i+1)].T
+            corr_data = calibration_matrix.T @ \
+                        data[:, nr_states*i: nr_states*(i+1)].T
+            log.info('Data corrected based on calibration state_prob_mtx '
+                     'from measurement sequence.')
+            corrected_data[:, nr_states * i: nr_states * i + nr_states] = \
+                corr_data.T
+
+        return corrected_data
 
 
 class UHFQC_scope_detector(Hard_Detector):
@@ -958,14 +1950,15 @@ class UHFQC_scope_detector(Hard_Detector):
 
     """
     def __init__(self, UHFQC, AWG=None, channels=(0, 1),
-                 nr_averages=20, nr_samples=4096, fft_mode='timedomain',
-                 **kw):
+                 nr_averages=20, acquisition_length=2.275e-6,
+                 fft_mode='timedomain', **kw):
         super().__init__(**kw)
 
         self.UHFQC = UHFQC
         self.scope = UHFQC.daq.scopeModule()
         self.AWG = AWG
         self.channels = channels
+        nr_samples = self.UHFQC.convert_time_to_n_samples(acquisition_length)
         self.nr_samples = max(int(2**np.floor(np.log2(nr_samples))), 4096)
         self.nr_averages = nr_averages
         self.fft_mode = fft_mode
@@ -1037,827 +2030,3 @@ class UHFQC_scope_detector(Hard_Detector):
             return np.linspace(0, self.nr_samples/1.8e9, self.nr_samples, endpoint=False)
         elif self.fft_mode in ('fft', 'fft_power'):
             return np.linspace(0, 0.9e9, self.nr_samples//2, endpoint=False)
-
-
-class UHFQC_integrated_average_detector(UHFQC_Base):
-
-    """
-    Detector used for integrated average results with the UHFQC
-
-    Args:
-        UHFQC (instrument) : data acquisition device
-        AWG   (instrument) : device responsible for starting and stopping
-                the experiment, can also be a central controller
-
-        integration_length (float): integration length in seconds
-        nr_averages (int)         : nr of averages per data point
-            IMPORTANT: this must be a power of 2
-
-        result_logging_mode (str) :  options are
-            - raw        -> returns raw data in V
-            - lin_trans  -> applies the linear transformation matrix and
-                            subtracts the offsets defined in the UFHQC.
-                            This is typically used for crosstalk suppression
-                            and normalization. Requires optimal weights.
-            - digitized  -> returns fraction of shots based on the threshold
-                            defined in the UFHQC. Requires optimal weights.
-
-        real_imag (bool)     : if False returns data in polar coordinates
-                                useful for e.g., spectroscopy
-                                #FIXME -> should be named "polar"
-        single_int_avg (bool): if True makes this a soft detector
-
-        Args relating to changing the amoung of points being detected:
-
-        seg_per_point (int)  : number of segments per sweep point,
-                does not do any renaming or reshaping.
-                Here for deprecation reasons.
-        chunk_size    (int)  : used in single shot readout experiments.
-        values_per_point (int): number of values to measure per sweep point.
-                creates extra column/value_names in the dataset for each channel.
-        values_per_point_suffex (list): suffex to add to channel names for
-                each value. should be a list of strings with lenght equal to
-                values per point.
-        always_prepare (bool) : when True the acquire/get_values method will
-            first call the prepare statement. This is particularly important
-            when it is both a single_int_avg detector and acquires multiple
-            segments per point.
-    """
-
-    def __init__(self, UHFQC, AWG=None,
-                 integration_length: float=1e-6, nr_averages: int=1024,
-                 channels: list=(0, 1, 2, 3), result_logging_mode: str='raw',
-                 real_imag: bool=True,
-                 seg_per_point: int =1, single_int_avg: bool =False,
-                 chunk_size: int=None,
-                 values_per_point: int=1, values_per_point_suffex: list=None,
-                 always_prepare: bool=False,
-                 prepare_function=None, prepare_function_kwargs: dict=None,
-                 **kw):
-
-        super().__init__(UHFQC, **kw)
-
-        self.name = '{}_UHFQC_integrated_average'.format(result_logging_mode)
-        self.channels = deepcopy(channels)
-        self.value_names = ['']*len(self.channels)
-        for i, channel in enumerate(self.channels):
-            self.value_names[i] = \
-                '{}_{} w{}'.format(UHFQC.name, result_logging_mode, channel)
-        if result_logging_mode == 'raw':
-            # Units are only valid when using SSB or DSB demodulation.
-            # value corrsponds to the peak voltage of a cosine with the
-            # demodulation frequency.
-            self.value_units = ['Vpeak']*len(self.channels)
-            self.scaling_factor = 1/(1.8e9*integration_length)
-        elif result_logging_mode == 'lin_trans':
-            self.value_units = ['a.u.']*len(self.channels)
-            self.scaling_factor = 1
-        elif result_logging_mode == 'digitized':
-            self.value_units = ['frac']*len(self.channels)
-            self.scaling_factor = 1#/0.00146484375
-
-        self.value_names, self.value_units = self._add_value_name_suffex(
-            value_names=self.value_names, value_units=self.value_units,
-            values_per_point=values_per_point,
-            values_per_point_suffex=values_per_point_suffex)
-        self.single_int_avg = single_int_avg
-        if self.single_int_avg:
-            self.detector_control = 'soft'
-        # useful in combination with single int_avg
-        self.always_prepare = always_prepare
-        # Directly specifying seg_per_point is deprecated. values_per_point
-        # replaces this functionality -MAR Dec 2017
-        self.seg_per_point = max(seg_per_point, values_per_point)
-
-        self.AWG = AWG
-        self.nr_averages = nr_averages
-        self.integration_length = integration_length
-        # 0/1/2 crosstalk supressed /digitized/raw
-        res_logging_indices = {'lin_trans': 0, 'digitized': 1, 'raw': 2}
-        self.result_logging_mode_idx = res_logging_indices[result_logging_mode]
-        self.result_logging_mode = result_logging_mode
-        self.chunk_size = chunk_size
-
-        self.prepare_function = prepare_function
-        self.prepare_function_kwargs = prepare_function_kwargs
-        self._set_real_imag(real_imag)
-
-    def _add_value_name_suffex(self, value_names: list, value_units: list,
-                               values_per_point: int,
-                               values_per_point_suffex: list):
-        """
-        For use with multiple values_per_point. Adds
-        """
-        if values_per_point == 1:
-            return value_names, value_units
-        else:
-            new_value_names = []
-            new_value_units = []
-            if values_per_point_suffex is None:
-                values_per_point_suffex = ascii_uppercase[:len(value_names)]
-
-            for vn, vu in zip(value_names, value_units):
-                for val_suffix in values_per_point_suffex:
-                    new_value_names.append('{} {}'.format(vn, val_suffix))
-                    new_value_units.append(vu)
-            return new_value_names, new_value_units
-
-    def _set_real_imag(self, real_imag=False):
-        """
-        Function so that real imag can be changed after initialization
-        """
-
-        self.real_imag = real_imag
-        # Commented this out as it is already done in the init -MAR Dec 2017
-        # if self.result_logging_mode == 'raw':
-        #     self.value_units = ['V']*len(self.channels)
-        # else:
-        #     self.value_units = ['']*len(self.channels)
-
-        if not self.real_imag:
-            if len(self.channels) != 2:
-                raise ValueError('Length of "{}" is not 2'.format(
-                                 self.channels))
-            self.value_names[0] = 'Magn'
-            self.value_names[1] = 'Phase'
-            self.value_units[1] = 'deg'
-
-    def get_values(self):
-        if self.always_prepare:
-            self.prepare()
-        data_raw = self.poll_data()
-        data_processed = self.process_data(data_raw[self.UHFQC.name])
-
-        # if self.AWG is not None:
-        #     self.AWG.stop()
-        #
-        #
-        # # starting AWG
-        # if self.AWG is not None:
-        #     # self.AWG.start(exclude=['UHF1'])
-        #     self.AWG.start()
-
-        # time.sleep(0.1)
-        #
-        # data_raw = self.UHFQC.acquisition_poll(
-        #     samples=self.nr_sweep_points, arm=False, acquisition_time=0.1)
-        # the self.channels should be the same as data_raw.keys().
-        # this is to be tested (MAR 26-9-2017)
-        return data_processed
-
-    def process_data(self, data_raw):
-        data = data_raw * self.scaling_factor
-        # Corrects offsets after crosstalk suppression matrix in UFHQC
-        if self.result_logging_mode == 'lin_trans':
-            for i, channel in enumerate(self.channels):
-                data[i] = data[i]-self.UHFQC.get(
-                    'qas_0_trans_offset_weightfunction_{}'.format(channel))
-        if not self.real_imag:
-            data = self.convert_to_polar(data)
-
-        no_virtual_channels = len(self.value_names)//len(self.channels)
-
-        data = np.reshape(data.T,
-                          (-1, no_virtual_channels, len(self.channels))).T
-        data = data.reshape((len(self.value_names), -1))
-
-        return data
-
-    def convert_to_polar(self, data):
-        if len(data) != 2:
-            raise ValueError('Expect 2 channels for rotation. Got {}'.format(
-                             len(data)))
-        I = data[0]
-        Q = data[1]
-        S21 = I + 1j*Q
-        data[0] = np.abs(S21)
-        data[1] = np.angle(S21)/(2*np.pi)*360
-        return data
-
-    def acquire_data_point(self):
-        return self.get_values()
-
-    def prepare(self, sweep_points=None):
-        if self.AWG is not None:
-            self.AWG.stop()
-
-        # Determine the number of sweep points and set them
-        if sweep_points is None or self.single_int_avg:
-            # this case will be used when it is a soft detector
-            # Note: single_int_avg overrides chunk_size
-            # single_int_avg = True is equivalent to chunk_size = 1
-            self.nr_sweep_points = self.seg_per_point
-        else:
-            self.nr_sweep_points = len(sweep_points)*self.seg_per_point
-
-        # this sets the result to integration and rotation outcome
-            if (self.chunk_size is not None and
-                    self.chunk_size < self.nr_sweep_points):
-                # Chunk size is defined and smaller than total number of sweep
-                # points -> only acquire one chunk
-                self.nr_sweep_points = self.chunk_size * self.seg_per_point
-
-            if (self.chunk_size is not None and
-                    self.chunk_size < self.nr_sweep_points):
-                # Chunk size is defined and smaller than total number of sweep
-                # points -> only acquire one chunk
-                self.nr_sweep_points = self.chunk_size * self.seg_per_point
-
-        # Optionally perform extra actions on prepare
-        # This snippet is placed here so that it has a chance to modify the
-        # nr_sweep_points in a UHFQC detector
-        if self.prepare_function_kwargs is not None:
-            if self.prepare_function is not None:
-                self.prepare_function(**self.prepare_function_kwargs)
-        else:
-            if self.prepare_function is not None:
-                self.prepare_function()
-
-        self.ro_mode = 'rl'
-        self._check_hardware_limitations()
-
-        # Do not enable the rerun button; the AWG program uses userregs/0 to
-        # define the number of iterations in the loop
-        self.UHFQC.awgs_0_single(1)
-        self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
-        self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.acquisition_initialize(channels=self.channels,
-                                          samples=self.nr_sweep_points,
-                                          averages=self.nr_averages,
-                                          loop_cnt=int(self.nr_averages),
-                                          mode=self.ro_mode)
-
-
-class UHFQC_correlation_detector(UHFQC_integrated_average_detector):
-    """
-    Detector used for correlation mode with the UHFQC.
-    The argument 'correlations' is a list of tuples specifying which channels
-    are correlated, and on which channel the correlated signal is output.
-    For instance, 'correlations=[(0, 1, 3)]' will put the correlation of
-    channels 0 and 1 on channel 3.
-    """
-
-    def __init__(self, UHFQC, AWG=None, integration_length=1e-6,
-                 nr_averages=1024,  real_imag=True,
-                 channels: list = [0, 1], correlations: list=[(0, 1)],
-                 result_logging_mode: str='raw',
-                 used_channels=None, value_names=None,
-                 seg_per_point=1, single_int_avg=False,
-                 **kw):
-        super().__init__(
-            UHFQC, AWG=AWG, integration_length=integration_length,
-            nr_averages=nr_averages, real_imag=real_imag,
-            channels=channels,
-            seg_per_point=seg_per_point, single_int_avg=single_int_avg,
-            result_logging_mode=result_logging_mode,
-            **kw)
-
-        self.name = '{}_UHFQC_correlation_detector'.format(result_logging_mode)
-        self.result_logging_mode = result_logging_mode
-        self.correlations = correlations
-        self.thresholding = self.result_logging_mode == 'digitized'
-        res_logging_indices = {'lin_trans': 0, 'digitized': 1, 'raw': 2}
-        self.result_logging_mode_idx = res_logging_indices[
-            self.result_logging_mode]
-
-        self.used_channels = used_channels
-        if self.used_channels is None:
-            self.used_channels = self.channels
-
-        if value_names is None:
-            self.value_names = []
-            for ch in channels:
-                self.value_names += ['{}_{} w{}'.format(
-                    UHFQC.name, self.result_logging_mode, ch)]
-        else:
-            self.value_names = value_names
-
-        # Note that V^2 is in brackets to prevent confusion with unit prefixes
-        if self.result_logging_mode == 'raw':
-            self.value_units = ['V']*len(self.value_names) + \
-                               ['(V^2)']*len(self.correlations)
-            self.scaling_factor = 1/(1.8e9*integration_length)
-        elif self.result_logging_mode == 'lin_trans':
-            self.value_units = ['a.u.']*len(self.value_names) + \
-                               ['a.u.']*len(self.correlations)
-            self.scaling_factor = 1
-        elif self.result_logging_mode == 'digitized':
-            self.value_units = ['frac']*len(self.value_names) + \
-                               ['normalized']*len(self.correlations)
-            self.scaling_factor = 1
-
-        for corr in correlations:
-            self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
-
-        self.define_correlation_channels()
-
-    def prepare(self, sweep_points=None):
-        if self.AWG is not None:
-            self.AWG.stop()
-        if sweep_points is None or self.single_int_avg:
-            self.nr_sweep_points = self.seg_per_point
-        else:
-            self.nr_sweep_points = len(sweep_points) * self.seg_per_point
-        self._check_hardware_limitations()
-
-        self.UHFQC.qas_0_integration_length(int(self.integration_length*(1.8e9)))
-
-        self.set_up_correlation_weights()
-
-        self.ro_mode = 'rl'
-        self.UHFQC.acquisition_initialize(channels=self.channels,
-                                          samples=self.nr_sweep_points,
-                                          averages=self.nr_averages,
-                                          loop_cnt=int(self.nr_averages*self.nr_sweep_points),
-                                          mode=self.ro_mode)
-
-    def define_correlation_channels(self):
-        self.correlation_channels = []
-        used_channels = deepcopy(self.used_channels)
-        for corr in self.correlations:
-            # Start by assigning channels
-            if corr[0] not in used_channels or corr[1] not in used_channels:
-                raise ValueError('Correlations should be in used channels')
-
-            correlation_channel = -1
-
-            # # 9 is the (current) max number of weights in the UHFQA
-            for ch in range(9):
-                # Find the first unused channel to set up as correlation
-                if ch not in used_channels:
-                    # selects the lowest available free channel
-                    correlation_channel = ch
-                    self.channels += [ch]
-                    self.correlation_channels += [correlation_channel]
-
-                    print('Using channel {} for correlation ({}, {}).'
-                          .format(ch, corr[0], corr[1]))
-                    # correlation mode is turned on in the
-                    # set_up_correlation_weights method
-                    break
-                    # FIXME, can currently only use one correlation
-
-            if correlation_channel < 0:
-                raise ValueError('No free channel available for correlation.')
-            else:
-                used_channels += [ch]
-
-    def set_up_correlation_weights(self):
-        if self.thresholding:
-            # correlations mode after threshold
-            # NOTE: thresholds need to be set outside the detctor object.
-            self.UHFQC.qas_0_result_source(5)
-        else:
-            # correlations mode before threshold
-            self.UHFQC.qas_0_result_source(4)
-        # Configure correlation mode
-        for ch in self.channels:
-            if ch not in self.correlation_channels:
-                # Disable correlation mode as this is used for normal
-                # acquisition
-                self.UHFQC.set('qas_0_correlations_{}_enable'.format(ch), 0)
-
-        for correlation_channel, corr in zip(self.correlation_channels,
-                                             self.correlations):
-            # Duplicate source channel to the correlation channel and select
-            # second channel as channel to correlate with.
-            copy_int_weights_real = \
-                np.array(self.UHFQC.get(
-                    f'qas_0_integration_weights_{corr[0]}_real')).astype(float)
-            copy_int_weights_imag = \
-                np.array(self.UHFQC.get(
-                    f'qas_0_integration_weights_{corr[0]}_imag')).astype(float)
-
-            copy_rot_matrix = self.UHFQC.get('qas_0_rotations_{}'.format(corr[0]))
-
-            self.UHFQC.set(
-                'qas_0_integration_weights_{}_real'.format(correlation_channel),
-                copy_int_weights_real)
-            self.UHFQC.set(
-                'qas_0_integration_weights_{}_imag'.format(correlation_channel),
-                copy_int_weights_imag)
-
-            self.UHFQC.set(
-                'qas_0_rotations_{}'.format(correlation_channel),
-                copy_rot_matrix)
-
-            # Enable correlation mode one the correlation output channel and
-            # set the source to the second source channel
-            self.UHFQC.set(f'qas_0_correlations_{correlation_channel}_enable', 1)
-            self.UHFQC.set(f'qas_0_correlations_{correlation_channel}_source',
-                           corr[1])
-
-            # If thresholding is enabled, set the threshold for the correlation
-            # channel.
-            if self.thresholding:
-                thresh_level = \
-                    self.UHFQC.get('qas_0_thresholds_{}_level'.format(corr[0]))
-                self.UHFQC.set(
-                    'qas_0_thresholds_{}_level'.format(correlation_channel),
-                    thresh_level)
-
-    def get_values(self):
-        data_raw = self.poll_data()
-        data_processed = self.process_data(data_raw[self.UHFQC.name])
-        return data_processed
-
-    def process_data(self, data_raw):
-        if self.thresholding:
-            data = data_raw
-        else:
-            data = []
-            for n, ch in enumerate(self.used_channels):
-                if ch in self.correlation_channels:
-                    data.append(1.5 * np.array(data_raw[n]) *
-                                self.scaling_factor**2)
-                else:
-                    data.append(np.array(data_raw[n]) * self.scaling_factor)
-        return data
-
-
-class UHFQC_integration_logging_det(UHFQC_Base):
-
-    """
-    Detector used for integrated single-shot results with the UHFQC
-
-    Args:
-        UHFQC (instrument) : data acquisition device
-        AWG   (instrument) : device responsible for starting and stopping
-                             the experiment, can also be a central controller.
-        integration_length (float): integration length in seconds
-        nr_shots (int)     : nr of shots (max is 4095)
-        channels (list)    : index (channel) of UHFQC weight functions to use
-
-        result_logging_mode (str):  options are
-            - raw        -> returns raw data in V
-            - lin_trans  -> applies the linear transformation matrix and
-                            subtracts the offsets defined in the UFHQC.
-                            This is typically used for crosstalk suppression
-                            and normalization. Requires optimal weights.
-            - digitized  -> returns fraction of shots based on the threshold
-                            defined in the UFHQC. Requires optimal weights.
-        always_prepare (bool) : when True the acquire/get_values method will
-            first call the prepare statement. This is particularly important
-            when it is both a single_int_avg detector and acquires multiple
-            segments per point.
-    """
-
-    def __init__(self, UHFQC, AWG=None,
-                 integration_length: float=1e-6,
-                 nr_shots: int=4094,
-                 channels: list=(0, 1),
-                 result_logging_mode: str='raw',
-                 always_prepare: bool=False,
-                 prepare_function=None,
-                 prepare_function_kwargs: dict=None,
-                 **kw):
-
-        super().__init__(UHFQC, **kw)
-
-        self.name = '{}_UHFQC_integration_logging_det'.format(
-            result_logging_mode)
-        self.channels = channels
-
-        self.value_names = ['']*len(self.channels)
-        for i, channel in enumerate(self.channels):
-            self.value_names[i] = \
-                '{}_{} w{}'.format(UHFQC.name, result_logging_mode, channel)
-        if result_logging_mode == 'raw':
-            self.value_units = ['V']*len(self.channels)
-            self.scaling_factor = 1  # /(1.8e9*integration_length)
-        else:
-            self.value_units = ['']*len(self.channels)
-            self.scaling_factor = 1
-
-        self.AWG = AWG
-        self.integration_length = integration_length
-        self.nr_shots = nr_shots
-        self.nr_averages = 1  # for single shot readout
-        # to be used in MC
-        self.acq_data_len_scaling = self.nr_shots
-
-        # 0/1/2 crosstalk supressed /digitized/raw
-        res_logging_indices = {'lin_trans': 0, 'digitized': 1, 'raw': 2}
-        # mode 3 is statistics logging, this is implemented in a
-        # different detector
-        self.result_logging_mode_idx = res_logging_indices[result_logging_mode]
-        self.result_logging_mode = result_logging_mode
-
-        self.always_prepare = always_prepare
-        self.prepare_function = prepare_function
-        self.prepare_function_kwargs = prepare_function_kwargs
-        # Disable MC live plotting by default for SSRO acquisition
-        self.live_plot_allowed = kw.get('live_plot_allowed', False)
-
-    def prepare(self, sweep_points):
-        if self.AWG is not None:
-            self.AWG.stop()
-
-        if self.prepare_function_kwargs is not None:
-            if self.prepare_function is not None:
-                self.prepare_function(**self.prepare_function_kwargs)
-        else:
-            if self.prepare_function is not None:
-                self.prepare_function()
-
-        self.nr_sweep_points = len(sweep_points)
-        self._check_hardware_limitations()
-
-        # The averaging-count is used to specify how many times the AWG program
-        # should run
-        self.UHFQC.awgs_0_single(1)
-        self.ro_mode = 'rl'
-        self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
-        self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.acquisition_initialize(channels=self.channels,
-                                          samples=self.nr_sweep_points,
-                                          averages=self.nr_averages,
-                                          loop_cnt=int(self.nr_shots),
-                                          mode=self.ro_mode)
-
-    def get_values(self):
-        if self.always_prepare:
-            self.prepare()
-        data_raw = self.poll_data()
-        data_processed = self.process_data(data_raw[self.UHFQC.name])
-        return data_processed
-
-    def process_data(self, data_raw):
-        data = data_raw * self.scaling_factor
-
-        # Corrects offsets after crosstalk suppression matrix in UFHQC
-        if self.result_logging_mode == 'lin_trans':
-            for i, channel in enumerate(self.channels):
-                data[i] = data[i]-self.UHFQC.get(
-                    'qas_0_trans_offset_weightfunction_{}'.format(channel))
-        return data
-
-
-class UHFQC_classifier_detector(UHFQC_integration_logging_det):
-    """
-    Hybrid detector function to be used for qutrit readout:
-     - only works with 2 readout channels per qutrit!
-     - the UHF is configured to return single shots, but this function can then
-     return either single shots, or averaged sweep points (can average over the
-     shots for each segment)
-     - This class always performs classification of 2-channel single shots data
-     (shot_i_ch0, shot_i_ch1) into a 3 state probability
-     (shot_i_pg, shot_i_pe, shot_i_pf), for all recorded shots. Here
-     shot_i_pg, shot_i_pe, shot_i_pf \in [0, 1] and
-     shot_i_pg + shot_i_pe + shot_i_pf = 1.
-
-    See the UHFQC_integration_logging_det for the full dostring of the accepted
-    input parameters.
-
-    The only additional keyword argument that is used by this class but not by
-    its parent class is get_values_function_kwargs. This parameter is a dict
-    where the user can specify how he wants this detector function to process
-    the shots.
-    get_values_function_kwargs can contain:
-     - classifier_params_list (list or dict): THIS ENTRY MUST EXIST. This class
-        always classifies qutrits and it does so based on this parameter.
-        It is either the QuDev_transmon acq_classifier_params attribute (if only
-        one qubit is measured), or list of these dictionaries (if multiple
-        qubits are measured).
-     - averaged (bool; default: True): decides whether to average over the
-        shots of each segment. If True, this class returns averaged data with
-        size == len(sweep_points). If False, this class returns single shot
-        data with size == len(sweep_points)*nr_shots
-     - thresholded (bool; default: False): decides whether to assign each shot
-        to only one state. This is different from classification, and comes
-        after the classification step.
-        If True, for each classified shot (shot_i_pg, shot_i_pe, shot_i_pf),
-        sets the entry corresponding to the max of the three probabilities to 1
-        and the other two entries to 0.
-        Ex: For (shot_i_pg, shot_i_pe, shot_i_pf) = (0.04, 0.9, 0.06),
-        this options produces (0, 1, 0).
-        FIXME: (Steph 14.05.2020) Should we rename this param to "assigned"?
-     - state_prob_mtx_list (np.ndarray or list or None; default: None)
-        If not None, the data can be corrected with the inverse of these arrays.
-        Either the QuDev_transmon acq_state_prob_mtx attribute (if only
-        one qubit is measured), or list of these arrays (if multiple
-        qubits are measured).
-     - ro_corrected_stored_mtx (bool: default: False): decides whether to
-        correct the data with the inverse of the matrices in state_prob_mtx_list
-     - ro_corrected_seq_cal_mtx (bool: default: False): decides whether to
-        correct the data with the inverse of the calibration state_prob_mtx '
-        extracted from the measurement sequence. THIS CAN ONLY BE DONE IF
-        THE DATA IS AVERAGED FIRST (averaged == True)
-    """
-
-    def __init__(self, UHFQC, *args, **kw):
-        self.qutrit = kw.pop('qutrit', True)
-        super().__init__(UHFQC, *args, **kw)
-
-        self.get_values_function_kwargs = kw.get('get_values_function_kwargs',
-                                                 None)
-        self.name = '{}_UHFQC_classifier_det'.format(self.result_logging_mode)
-
-        self.state_labels = ['pg', 'pe', 'pf'] if self.qutrit else ['pg', 'pe']
-        classifier_params = self.get_values_function_kwargs.get(
-            'classifier_params', [])
-        self.n_meas_objs = 1 if not len(classifier_params) else \
-                len(classifier_params)
-        k = len(self.channels) // self.n_meas_objs
-        self.channel_str_mobj = [str(ch) for ch in self.channels]
-        self.channel_str_mobj = [''.join(self.channel_str_mobj[k*j: k*j+k])
-                                 for j in range(self.n_meas_objs)]
-
-        self.classified = self.get_values_function_kwargs.get('classified', True)
-        if self.classified:
-            self.value_names = ['']*(
-                    len(self.state_labels) * len(self.channel_str_mobj))
-            idx = 0
-            for ch_pair in self.channel_str_mobj:
-                for state in self.state_labels:
-                    self.value_names[idx] = '{}_{} w{}'.format(UHFQC.name,
-                                                               state, ch_pair)
-                    idx += 1
-            self.value_units = [self.value_units[0]] * len(self.value_names)
-
-        if self.get_values_function_kwargs.get('averaged', True):
-            self.acq_data_len_scaling = 1  # to be used in MC
-            # The following value is only used for correct progress
-            # calculation in poll_data. It will not influence the behavior of
-            # the acquisition device since UHFQC_classifier_detector.prepare
-            # passes averages=1 to qudev_acquisition_initialize.
-            self.nr_averages = self.nr_shots
-            self.live_plot_allowed = kw.get('live_plot_allowed', True)
-        else:
-            # Disable MC live plotting by default for SSRO acquisition
-            self.live_plot_allowed = kw.get('live_plot_allowed', False)
-
-    def prepare(self, sweep_points):
-        if self.AWG is not None:
-            self.AWG.stop()
-
-        if self.prepare_function_kwargs is not None:
-            if self.prepare_function is not None:
-                self.prepare_function(**self.prepare_function_kwargs)
-        else:
-            if self.prepare_function is not None:
-                self.prepare_function()
-
-        assert len(sweep_points) % self.acq_data_len_scaling == 0
-        self.nr_sweep_points = len(sweep_points) // self.acq_data_len_scaling
-        self.ro_mode = 'rl'
-        self._check_hardware_limitations()
-
-        # The averaging-count is used to specify how many times the AWG program
-        # should run
-        self.UHFQC.awgs_0_single(1)
-        self.UHFQC.qas_0_integration_length(int(self.integration_length*1.8e9))
-
-        self.UHFQC.qas_0_result_source(self.result_logging_mode_idx)
-        self.UHFQC.acquisition_initialize(
-            channels=self.channels,
-            samples=self.nr_shots * self.nr_sweep_points,
-            averages=1,  # for single shot readout
-            loop_cnt=int(self.nr_shots), mode=self.ro_mode)
-
-    def process_data(self, data_raw):
-        processed_data = super().process_data(data_raw).T
-        nr_states = len(self.state_labels)
-        thresholded = self.get_values_function_kwargs.get('thresholded', True)
-        averaged = self.get_values_function_kwargs.get('averaged', True)
-        if self.classified:
-            # Classify data into qutrit states
-            self.classifier_params_list = self.get_values_function_kwargs.get(
-                'classifier_params', None)
-            if self.classifier_params_list is None:
-                raise ValueError('Please specify the classifier '
-                                 'parameters list.')
-            if not isinstance(self.classifier_params_list, list):
-                self.classifier_params_list = [self.classifier_params_list]
-            processed_data = self.classify_shots(processed_data,
-                                                 self.classifier_params_list,
-                                                 nr_states)
-
-        if thresholded:
-            if not self.classified:
-                raise NotImplementedError(
-                    'Currently the threshold_shots only works if the data '
-                    'was first classified.')
-            processed_data = self.threshold_shots(processed_data, nr_states)
-
-        if averaged:
-            processed_data = self.average_shots(processed_data)
-
-        # do readout correction
-        ro_corrected_seq_cal_mtx = self.get_values_function_kwargs.get(
-            'ro_corrected_seq_cal_mtx', False)
-        ro_corrected_stored_mtx = self.get_values_function_kwargs.get(
-            'ro_corrected_stored_mtx', False)
-        if ro_corrected_seq_cal_mtx and ro_corrected_stored_mtx:
-            raise ValueError('"ro_corrected_seq_cal_mtx" and '
-                             '"ro_corrected_stored_mtx" cannot both be True.')
-        ro_corrected = ro_corrected_seq_cal_mtx or ro_corrected_stored_mtx
-        if (ro_corrected and thresholded) and not averaged:
-            raise ValueError('It does not make sense to apply readout '
-                             'correction if thresholded==True and '
-                             'averaged==False.')
-        if ro_corrected_stored_mtx:
-            # correct data with matrices from state_prob_mtx_list
-            processed_data = self.correct_readout_stored_mtx(processed_data,
-                                                             nr_states)
-        elif ro_corrected_seq_cal_mtx:
-            # correct data with the calibration matrix extracted from
-            # the data array
-            if not averaged:
-                raise NotImplementedError(
-                    'Data correction based on calibration state_prob_mtx '
-                    'from measurement sequence is currently only '
-                    'implemented for averaged data (averaged==True).')
-            processed_data = self.correct_readout_seq_cal_mtx(processed_data,
-                                                              nr_states)
-
-        return processed_data.T
-
-    def classify_shots(self, data, classifier_params_list, nr_states):
-        classified_data = np.zeros((self.nr_sweep_points*self.nr_shots,
-                                    nr_states*len(self.channel_str_mobj)))
-        k = len(self.channels) // self.n_meas_objs
-        for i in range(len(self.channel_str_mobj)):
-            # classify each shot into (pg, pe, pf)
-            # clf_data will have shape
-            # (nr_shots * self.nr_sweep_points, nr_states)
-            mobj_data = data[:, k*i: k*i+k]
-            clf_data = a_tools.predict_gm_proba_from_clf(
-                mobj_data, classifier_params_list[i])
-            classified_data[:, nr_states * i: nr_states * i + nr_states] = \
-                clf_data
-
-        return classified_data
-
-    def threshold_shots(self, data, nr_states):
-        thresholded_data = np.zeros_like(data)
-        for i in range(len(self.channel_str_mobj)):
-            # For each shot, set the largest probability entry to 1, and the
-            # other two to 0. I.e. assign to one state.
-            # clf_data must be 2 dimensional, rows are shots*sweep_points,
-            # columns are nr_states
-            thresh_data = np.isclose(np.repeat(
-                [np.arange(nr_states)],
-                data[:, nr_states*i: nr_states*(i+1)].shape[0], axis=0).T,
-                     np.argmax(data[:, nr_states*i: nr_states*(i+1)], axis=1)).T
-            thresholded_data[:, nr_states * i: nr_states * i + nr_states] = \
-                thresh_data
-
-        return thresholded_data
-
-    def average_shots(self, data):
-        # reshape into (nr_shots, nr_sweep_points, nr_data_columns) then
-        # average over nr_shots
-        averaged_data = np.reshape(
-            data, (self.nr_shots, self.nr_sweep_points, data.shape[-1]))
-        # average over shots
-        averaged_data = np.mean(averaged_data, axis=0)
-
-        return averaged_data
-
-    def correct_readout_stored_mtx(self, data, nr_states):
-        # correct data with matrices from state_prob_mtx_list
-        corrected_data = np.zeros_like(data)
-
-        self.state_prob_mtx_list = self.get_values_function_kwargs.get(
-            'state_prob_mtx', None)
-        if self.state_prob_mtx_list is not None and \
-                not isinstance(self.state_prob_mtx_list, list):
-            self.state_prob_mtx_list = [self.state_prob_mtx_list]
-
-        for i in range(len(self.channel_str_mobj)):
-            if self.state_prob_mtx_list is not None and \
-                    self.state_prob_mtx_list[i] is not None:
-                corr_data = np.linalg.inv(self.state_prob_mtx_list[i]).T @ \
-                            data[:, nr_states*i: nr_states*(i+1)].T
-                log.info('Data corrected based on previously-measured '
-                         'state_prob_mtx.')
-            else:
-                raise ValueError(f'state_prob_mtx for index {i} is None.')
-            corrected_data[:, nr_states * i: nr_states * i + nr_states] = \
-                corr_data.T
-
-        return corrected_data
-
-    def correct_readout_seq_cal_mtx(self, data, nr_states):
-        # correct data with the calibration matrix extracted from
-        # the data array
-        corrected_data = np.zeros_like(data)
-        for i in range(len(self.channel_str_mobj)):
-            # get cal matrix
-            calibration_matrix = data[:, nr_states*i: nr_states*(i+1)][
-                                 -nr_states:, :]
-            # normalize
-            calibration_matrix = calibration_matrix.astype('float') / \
-                                 calibration_matrix.sum(axis=1)[:, np.newaxis]
-            # correct data
-            # corr_data = np.linalg.inv(calibration_matrix).T @ \
-            #             data[:, nr_states*i: nr_states*(i+1)].T
-            corr_data = calibration_matrix.T @ \
-                        data[:, nr_states*i: nr_states*(i+1)].T
-            log.info('Data corrected based on calibration state_prob_mtx '
-                     'from measurement sequence.')
-            corrected_data[:, nr_states * i: nr_states * i + nr_states] = \
-                corr_data.T
-
-        return corrected_data

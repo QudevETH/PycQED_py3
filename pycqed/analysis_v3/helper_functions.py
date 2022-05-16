@@ -93,6 +93,8 @@ def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
             param_value = OrderedDict()
             if isinstance(group, h5py._hl.dataset.Dataset):
                 param_value = list(np.array(group).flatten())
+                param_value = [x.decode('utf-8') if isinstance(x, bytes)
+                               else x for x in param_value]
             else:
                 param_value = read_dict_from_hdf5(param_value, group)
         elif param_name in group.attrs:
@@ -160,6 +162,46 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r', file_id=
     return h5py.File(filepath, mode)
 
 
+def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
+                                    acq_dev_name=None, th_path=None,
+                                    th_scaling=1, **params):
+    """
+    Extracts the state classification threshold value for the qubits in
+    meas_obj_names.
+    :param meas_obj_names: list of measured object names
+    :param timestamp: timestamp string of an HDF file from which to extract
+    :param acq_dev_name: name of acquisition device
+    :param th_path: path inside HDF file to the threshold attribute of acq dev
+    :param th_scaling: float by which to scale the threshold values
+    :param params: passed to get_instr_param_from_hdf_file. See docstring there.
+    :return: thresholds of the form
+        {meas_obj_name: classification threshold value).
+    """
+    thresholds = {}
+    for mobjn in meas_obj_names:
+        if acq_dev_name is None:
+            # take the one defined in mobjn
+            acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'acq_dev',
+                                                         timestamp, **params)
+
+        if th_path is None:
+            # try to figure out the correct path for the acquisition instrument
+            if 'uhf' in acq_dev_name.lower():
+                # acquisition device is a UHFQA
+                ro_ch = get_instr_param_from_hdf_file(mobjn, 'acq_I_channel',
+                                                      timestamp, **params)
+                th_path = f'qas_0_thresholds_{ro_ch}_level'
+            else:
+                raise NotImplementedError('Currently only UHFQA is supported.')
+
+        thresholds[mobjn] = get_instr_param_from_hdf_file(acq_dev_name, th_path,
+                                                          timestamp, **params)
+        if thresholds[mobjn] is not None:
+            thresholds[mobjn] *= th_scaling
+
+    return thresholds
+
+
 def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
                                   folder=None, **params):
     """
@@ -182,7 +224,7 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
         d, {'instr_param_val': f'Instrument settings.{instr_name}.{param_name}'},
         folder=folder)
 
-    if d['instr_param_val'] == 0:
+    if 'instr_param_val' not in d:
         raise KeyError(f'Parameter {param_name} not found for instrument '
                        f'{instr_name}.')
     return d['instr_param_val']
@@ -324,7 +366,6 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
 
             if all_keys[-1] not in epd:
                 log.warning(f'Parameter {file_par} was not found.')
-                epd[all_keys[-1]] = 0
         data_file.close()
     except Exception as e:
         data_file.close()
@@ -389,7 +430,7 @@ def get_data_to_process(data_dict, keys_in):
     return data_to_proc_dict
 
 
-def get_param(param, data_dict, default_value=None,
+def get_param(param, data_dict, default_value=None, split_char='.',
               raise_error=False, error_message=None, **params):
     """
     Get the value of the parameter "param" from params, data_dict, or metadata.
@@ -397,6 +438,7 @@ def get_param(param, data_dict, default_value=None,
     :param data_dict: OrderedDict where param is to be searched
     :param default_value: default value for the parameter being sought in case
         it is not found.
+    :param split_char: the character around which to split param
     :param raise_error: whether to raise error if the parameter is not found
     :param params: keyword args where parameter is to be sough
     :return: the value of the parameter
@@ -419,7 +461,7 @@ def get_param(param, data_dict, default_value=None,
     # or list then the check value == 'not found' raises an "elementwise
     # comparison failed" warning in the notebook
     if isinstance(value, str) and value == 'not found':
-        all_keys = param.split('.')
+        all_keys = param.split(split_char)
         if len(all_keys) > 1:
             for i in range(len(all_keys)-1):
                 if all_keys[i] in p:
@@ -449,7 +491,7 @@ def get_param(param, data_dict, default_value=None,
     return value
 
 
-def pop_param(param, data_dict, default_value=None,
+def pop_param(param, data_dict, default_value=None, split_char='.',
               raise_error=False, error_message=None, node_params=None):
     """
     Pop the value of the parameter "param" from params, data_dict, or metadata.
@@ -457,6 +499,7 @@ def pop_param(param, data_dict, default_value=None,
     :param data_dict: OrderedDict where param is to be searched
     :param default_value: default value for the parameter being sought in case
         it is not found.
+    :param split_char: the character around which to split param
     :param raise_error: whether to raise error if the parameter is not found
     :param params: keyword args where parameter is to be sough
     :return: the value of the parameter
@@ -481,7 +524,7 @@ def pop_param(param, data_dict, default_value=None,
     # or list then the check value == 'not found' raises an "elementwise
     # comparison failed" warning in the notebook
     if isinstance(value, str) and value == 'not found':
-        all_keys = param.split('.')
+        all_keys = param.split(split_char)
         if len(all_keys) > 1:
             for i in range(len(all_keys)-1):
                 if all_keys[i] in p:
@@ -506,13 +549,15 @@ def pop_param(param, data_dict, default_value=None,
     return value
 
 
-def add_param(name, value, data_dict, add_param_method=None, **params):
+def add_param(name, value, data_dict, split_char='.',
+              add_param_method=None, **params):
     """
     Adds a new key-value pair to the data_dict, with key = name.
     If update, it will try data_dict[name].update(value), else raises KeyError.
     :param name: key of the new parameter in the data_dict
     :param value: value of the new parameter
     :param data_dict: OrderedDict containing data to be processed
+    :param split_char: the character around which to split param
     :param add_param_method: str specifying how to add the value if name
         already exists in data_dict:
             'skip': skip adding this parameter without raising an error
@@ -530,7 +575,7 @@ def add_param(name, value, data_dict, add_param_method=None, **params):
             data_dict need to be dicts.
     """
     dd = data_dict
-    all_keys = name.split('.')
+    all_keys = name.split(split_char)
     if len(all_keys) > 1:
         for i in range(len(all_keys)-1):
             if isinstance(dd, list):

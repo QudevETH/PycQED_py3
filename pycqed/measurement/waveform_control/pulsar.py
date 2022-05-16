@@ -14,6 +14,7 @@ import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
 import time
 from copy import deepcopy
+from collections import OrderedDict as odict
 
 from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
     VirtualAWG5014
@@ -31,6 +32,10 @@ try:
         ZI_HDAWG_core import ZI_HDAWG_core
 except Exception:
     ZI_HDAWG_core = type(None)
+try:
+    from pycqed.instrument_drivers.acquisition_devices.shfqa import SHFQA
+except Exception:
+    SHFQA = type(None)
 
 try:
     from pycqed.instrument_drivers.physical_instruments.ZurichInstruments. \
@@ -442,9 +447,9 @@ class UHFQCPulsar:
             return super()._clock(obj)
         return obj.clock_freq()
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, **kw):
         if not isinstance(obj, UHFQCPulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return [(f'awgs_0_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_0_userregs_{obj.USER_REG_LAST_SEGMENT}')]
 
@@ -893,6 +898,18 @@ class HDAWG8Pulsar:
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
                         if wave == (None, None, None, None):
                             continue
+                        if nr_cw != 0:
+                            w1, w2 = self._zi_waves_to_wavenames(wave)
+                            if cw not in codeword_table:
+                                codeword_table_defs += \
+                                    self._zi_codeword_table_entry(
+                                        cw, wave, use_placeholder_waves)
+                                codeword_table[cw] = (w1, w2)
+                            elif codeword_table[cw] != (w1, w2) \
+                                    and self.reuse_waveforms():
+                                log.warning('Same codeword used for different '
+                                            'waveforms. Using first waveform. '
+                                            f'Ignoring element {element}.')
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch1mid] |= wave[1] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
@@ -929,19 +946,6 @@ class HDAWG8Pulsar:
                                 else None for h, chid in zip(wave, chids))
                             wave_definitions += self._zi_wave_definition(
                                 wave, defined_waves)
-                        
-                        if nr_cw != 0:
-                            w1, w2 = self._zi_waves_to_wavenames(wave)
-                            if cw not in codeword_table:
-                                codeword_table_defs += \
-                                    self._zi_codeword_table_entry(
-                                        cw, wave, use_placeholder_waves)
-                                codeword_table[cw] = (w1, w2)
-                            elif codeword_table[cw] != (w1, w2) \
-                                    and self.reuse_waveforms():
-                                log.warning('Same codeword used for different '
-                                            'waveforms. Using first waveform. '
-                                            f'Ignoring element {element}.')
 
                     if not len(channels_to_upload):
                         # _program_awg was called only to decide which
@@ -1111,12 +1115,13 @@ class HDAWG8Pulsar:
     def _hdawg_active_awgs(self, obj):
         return [0,1,2,3]
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, include_inactive=False, **kw):
         if not isinstance(obj, HDAWG8Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return [(f'awgs_{i}_userregs_{obj.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{obj.USER_REG_LAST_SEGMENT}')
-                for i in range(4) if obj._awg_program[i] is not None]
+                for i in range(4)
+                if include_inactive or obj._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
         awg = self.find_instrument(self.get(ch + '_awg'))
@@ -1212,7 +1217,8 @@ class AWG5014Pulsar:
         self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
         self.add_parameter('{}_offset_mode'.format(name), 
                            parameter_class=ManualParameter, 
-                           vals=vals.Enum('software', 'hardware'))
+                           vals=vals.Enum('software', 'hardware'),
+                           initial_value='software')
         offset_mode_func = self.parameters['{}_offset_mode'.format(name)]
         self.add_parameter('{}_offset'.format(name),
                            label='{} offset'.format(name), unit='V',
@@ -1221,11 +1227,38 @@ class AWG5014Pulsar:
                            get_cmd=self._awg5014_getter(awg, id, 'offset', 
                                                         offset_mode_func),
                            vals=vals.Numbers())
+        scale_param = '{}_amplitude_scaling'.format(name)
+
+        # The set_cmd of the amplitude scaling makes sure that the AWG amp
+        # parameter gets updated when the scaling is changed.
+        # The product of the amp and scaling paraemeters is
+        # rounded to the nearest 0.001 when passed to the AWG to prevent
+        # a build-up of rounding errors caused by the AWG.
+        self.add_parameter(
+            scale_param,
+            label='{} amplitude scaling'.format(name),
+            set_cmd=(lambda v, g=self._awg5014_getter(awg, id, 'amp',
+                                                      scale_param=scale_param),
+                            s=self._awg5014_setter(awg, id, 'amp'):
+                     s(np.round(v * g(), decimals=3))),
+            vals=vals.Numbers(0.01 / 2.25, 1.0))
+
+        # Passing scale_param to  _awg5014_setter and _awg5014_getter
+        # translates between the scale amp set in the hardware and the
+        # non-scaled amp represented by the amp parameter of pulsar.
         self.add_parameter('{}_amp'.format(name),
-                            label='{} amplitude'.format(name), unit='V',
-                            set_cmd=self._awg5014_setter(awg, id, 'amp'),
-                            get_cmd=self._awg5014_getter(awg, id, 'amp'),
-                            vals=vals.Numbers(0.01, 2.25))
+                           label='{} amplitude'.format(name), unit='V',
+                           set_cmd=self._awg5014_setter(
+                               awg, id, 'amp',
+                               scale_param=scale_param),
+                           get_cmd=self._awg5014_getter(
+                               awg, id, 'amp',
+                               scale_param=scale_param),
+                           vals=vals.Numbers(0.01, 2.25))
+
+        # Due to its set_cmd, amplitude scaling can be set to its initial
+        # value only now after the amp param has been created.
+        self.parameters[scale_param](1.0)
         self.add_parameter('{}_distortion'.format(name),
                             label='{} distortion mode'.format(name),
                             initial_value='off',
@@ -1263,8 +1296,8 @@ class AWG5014Pulsar:
                             get_cmd=self._awg5014_getter(awg, id, 'amp'),
                             vals=vals.Numbers(-5.4, 5.4))
 
-    @staticmethod
-    def _awg5014_setter(obj, id, par, offset_mode_func=None):
+    def _awg5014_setter(self, obj, id, par, offset_mode_func=None,
+                        scale_param=None):
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
             if par == 'offset':
                 def s(val):
@@ -1277,7 +1310,14 @@ class AWG5014Pulsar:
                                         '{}'.format(offset_mode_func()))
             elif par == 'amp':
                 def s(val):
-                    obj.set('{}_amp'.format(id), 2*val)
+                    scale = 1 if scale_param is None else self.get(scale_param)
+                    if scale != 1:
+                        raise ValueError(
+                            'Amplitude cannot be changed while amplitude '
+                            'scaling is enabled. '
+                            f'Current scaling factor {scale_param}: {scale}')
+                    else:
+                        obj.set(f'{id}_amp', 2 * val * scale)
             else:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         else:
@@ -1296,7 +1336,8 @@ class AWG5014Pulsar:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         return s
 
-    def _awg5014_getter(self, obj, id, par, offset_mode_func=None):
+    def _awg5014_getter(self, obj, id, par, offset_mode_func=None,
+                        scale_param=None):
         if id in ['ch1', 'ch2', 'ch3', 'ch4']:
             if par == 'offset':
                 def g():
@@ -1311,10 +1352,14 @@ class AWG5014Pulsar:
             elif par == 'amp':
                 def g():
                     if self._awgs_prequeried_state:
-                        return obj.parameters['{}_amp'.format(id)] \
-                                   .get_latest()/2
+                        amp = obj.parameters['{}_amp'.format(id)] \
+                                  .get_latest()/2
                     else:
-                        return obj.get('{}_amp'.format(id))/2
+                        amp = obj.get('{}_amp'.format(id))/2
+                    if scale_param is not None and self.get(scale_param) is \
+                            not None:
+                        amp /= self.get(scale_param)
+                    return amp
             else:
                 raise NotImplementedError('Unknown parameter {}'.format(par))
         else:
@@ -1471,7 +1516,9 @@ class AWG5014Pulsar:
             if self.get('{}_type'.format(channel)) == 'analog':
                 offset_mode = self.get('{}_offset_mode'.format(channel))
                 channel_cfg['ANALOG_METHOD_' + cid[2]] = 1
-                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = amp * 2
+                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = (
+                    self._awg5014_getter(self.AWG_obj(awg=awg), cid, 'amp')()
+                    * 2)
                 if offset_mode == 'software':
                     channel_cfg['ANALOG_OFFSET_' + cid[2]] = off
                     channel_cfg['DC_OUTPUT_LEVEL_' + cid[2]] = 0
@@ -1497,9 +1544,9 @@ class AWG5014Pulsar:
                 channel_cfg['CHANNEL_STATE_' + cid[2]] = 1
         return channel_cfg
 
-    def _get_segment_filter_userregs(self, obj):
+    def _get_segment_filter_userregs(self, obj, **kw):
         if not isinstance(obj, AWG5014Pulsar._supportedAWGtypes):
-            return super()._get_segment_filter_userregs(obj)
+            return super()._get_segment_filter_userregs(obj, **kw)
         return []
 
     def sigout_on(self, ch, on=True):
@@ -1521,7 +1568,465 @@ class AWG5014Pulsar:
         return
 
 
-class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
+class SHFQAPulsar:
+    """
+    Defines the Zurich Instruments SHFQA specific functionality for the Pulsar
+    class
+
+    Supports :class:`pycqed.measurement.waveform_control.pulsar.Segment`
+    objects with the following values for acquisition_mode:
+        'default' for a measurement in readout mode
+        dict in spectroscopy mode, with 'sweeper' key (allowed values:
+        'hardware', 'software'), see other allowed keys in
+        :class:`pycqed.measurement.waveform_control.pulsar.Segment`.
+    """
+    _supportedAWGtypes = (SHFQA,)
+
+    def _create_awg_parameters(self, awg, channel_name_map):
+        """Create parameters in the pulsar specific to the added AWG
+
+        Args:
+           awg:
+                Instance of the AWG to be added to the pulsar.
+            channel_name_map: dict
+                Mapping from channel ids (keys, as string) to channels names
+                (values, as string) to be used for this AWG. Names for missing
+                ids default to `f'{awg.name}_{chid}'`.
+        """
+
+        if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
+            return super()._create_awg_parameters(awg, channel_name_map)
+
+        name = awg.name
+
+        self.add_parameter('{}_reuse_waveforms'.format(awg.name),
+                           initial_value=True, vals=vals.Bool(),
+                           parameter_class=ManualParameter)
+        # Repeat pattern support is not yet implemented for the SHFQA
+        # self.add_parameter('{}_minimize_sequencer_memory'.format(awg.name),
+        #                    initial_value=True, vals=vals.Bool(),
+        #                    parameter_class=ManualParameter,
+        #                    docstring="Minimizes the sequencer "
+        #                              "memory by repeating specific sequence "
+        #                              "patterns (eg. readout) passed in "
+        #                              "'repeat dictionary'")
+        self.add_parameter('{}_enforce_single_element'.format(awg.name),
+                           initial_value=False, vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           docstring="Group all the pulses on this AWG into "
+                                     "a single element. Useful for making sure "
+                                     "that the master AWG has only one waveform"
+                                     " per segment.")
+        self.add_parameter('{}_granularity'.format(awg.name),
+                           get_cmd=lambda: 4)  # from manual
+        self.add_parameter('{}_element_start_granularity'.format(awg.name),
+                           initial_value=4 / 2.0e9,
+                           parameter_class=ManualParameter)  # unverified!
+        self.add_parameter('{}_min_length'.format(awg.name),
+                           get_cmd=lambda: 4 / 2.0e9)  # from manual
+        self.add_parameter('{}_inter_element_deadtime'.format(awg.name),
+                           # get_cmd=lambda: 80 / 2.4e9)
+                           get_cmd=lambda: 0 / 2.0e9)  # unverified!
+                           # get_cmd=lambda: 0 / 2.4e9)
+        self.add_parameter('{}_precompile'.format(awg.name),
+                           initial_value=False, vals=vals.Bool(),
+                           label='{} precompile segments'.format(awg.name),
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_delay'.format(awg.name),
+                           initial_value=0, label='{} delay'.format(name),
+                           unit='s', parameter_class=ManualParameter,
+                           docstring='Global delay applied to this '
+                                     'channel. Positive values move pulses'
+                                     ' on this channel forward in time')
+        self.add_parameter('{}_trigger_channels'.format(awg.name),
+                           initial_value=[],
+                           label='{} trigger channel'.format(awg.name),
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_active'.format(awg.name), initial_value=True,
+                           label='{} active'.format(awg.name),
+                           vals=vals.Bool(),
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_compensation_pulse_min_length'.format(name),
+                           initial_value=0, unit='s',
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_trigger_source'.format(awg.name),
+                           initial_value='Dig1',
+                           vals=vals.Enum('Dig1',),
+                           parameter_class=ManualParameter,
+                           docstring='Defines for which trigger source \
+                                      the AWG should wait, before playing \
+                                      the next waveform. Only allowed value \
+                                      is "Dig1" for now.')
+
+        # real and imaginary part of the wave form channel groups
+        for ch_nr in range(4):
+            group = []
+            for q in ['i', 'q']:
+                id = f'ch{ch_nr + 1}{q}'
+                name = channel_name_map.get(id, awg.name + '_' + id)
+                self._shfqa_create_channel_parameters(id, name, awg)
+                self.channels.add(name)
+                group.append(name)
+            for name in group:
+                self.channel_groups.update({name: group})
+
+    def _shfqa_create_channel_parameters(self, id, name, awg):
+        """Create parameters in the pulsar specific to one added channel
+
+        Args:
+            id:
+                Channel id. For the SHFQA, valid channel ids are ch#i and ch#q,
+                where # is a number from 1 to 4. This defines the harware port
+                used.
+            name:
+                Name of the channel to address it by in rest of the codebase.
+            awg:
+                Instance of the AWG this channel is on.
+
+        """
+        self.add_parameter('{}_id'.format(name), get_cmd=lambda _=id: _)
+        self.add_parameter('{}_awg'.format(name), get_cmd=lambda _=awg.name: _)
+        self.add_parameter('{}_type'.format(name), get_cmd=lambda: 'analog')
+        self.add_parameter('{}_amp'.format(name),
+                           label='{} amplitude'.format(name), unit='V',
+                           set_cmd=self._shfqa_setter(awg, id, 'amp'),
+                           get_cmd=self._shfqa_getter(awg, id, 'amp'),
+                           vals=vals.Numbers(0.001, 1),
+                           initial_value=1)
+        self.add_parameter('{}_distortion'.format(name),
+                           label='{} distortion mode'.format(name),
+                           initial_value='off',
+                           vals=vals.Enum('off', 'precalculate'),
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_distortion_dict'.format(name),
+                           label='{} distortion dictionary'.format(name),
+                           vals=vals.Dict(),
+                           parameter_class=ManualParameter)
+        self.add_parameter('{}_charge_buildup_compensation'.format(name),
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(), initial_value=False)
+        self.add_parameter('{}_compensation_pulse_scale'.format(name),
+                           parameter_class=ManualParameter,
+                           vals=vals.Numbers(0., 1.), initial_value=0.5)
+        self.add_parameter('{}_compensation_pulse_delay'.format(name),
+                           initial_value=0, unit='s',
+                           parameter_class=ManualParameter)
+        self.add_parameter(
+            '{}_compensation_pulse_gaussian_filter_sigma'.format(name),
+            initial_value=0, unit='s',
+            parameter_class=ManualParameter)
+
+    @staticmethod
+    def _shfqa_setter(obj, id, par):
+        """Generate a function to set the output amplitude of a channel.
+                Converts the input in volts to dBm."""
+        if par == 'amp':
+            def s(val):
+                obj.qachannels[int(id[2]) - 1].output.range(
+                    20 * (np.log10(val) + 0.5)
+                )
+        else:
+            raise NotImplementedError('Unknown parameter {}'.format(par))
+        return s
+
+    def _shfqa_getter(self, obj, id, par):
+        """Generate a function to get the output amplitude of a channel.
+                Converts the output in dBm to volts."""
+        if par == 'amp':
+            def g():
+                if self._awgs_prequeried_state:
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range\
+                        .get_latest()
+                else:
+                    dbm = obj.qachannels[int(id[2]) - 1].output.range()
+                return 10**(dbm/20 - 0.5)
+        else:
+            raise NotImplementedError('Unknown parameter {}'.format(par))
+        return g
+
+    def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
+                     channels_to_upload='all', **kw):
+        """Upload the waveforms to the SHFQA.
+
+        Args:
+            obj:
+                AWG instance
+            awg_sequence:
+                AWG sequence data (not waveforms) as returned from
+                `Sequence.generate_waveforms_sequences`. The key-structure
+                of the nested dictionary is like this:
+                `awg_sequence[elname][cw][chid]`,
+                where elname is the elment name, cw is the codeword, or the
+                string `'no_codeword'` and chid is the channel id. The values
+                are hashes of waveforms to be played
+            waveforms:
+                A dictionary of waveforms, keyed by their hash.
+            repeat_pattern:
+                Not used for now
+            channels_to_upload:
+                list of channel names to upload or 'all'
+
+        Keyword args:
+            No keyword arguments are used.
+        """
+        # Note: For now, we only check for channels_to_upload and always
+        # re-program when re-uploading (i.e., we ignore channels_to_program).
+        # This could be further optimized in the future. Moreover, we currently
+        # ignore channels_to_upload in spectroscopy mode, i.e., we always
+        # re-upload in spectroscopy mode. This could be optimized in the future.
+        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
+            return super()._program_awg(
+                obj, awg_sequence, waveforms, repeat_pattern,
+                channels_to_upload=channels_to_upload, **kw)
+
+        grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
+        for i, qachannel in enumerate(obj.qachannels):
+            grp = f'ch{i+1}'
+            chids = [f'ch{i+1}i', f'ch{i+1}q']
+
+            playback_strings = []
+
+            waves_to_upload = {}
+            is_spectroscopy = False
+            for codewords in awg_sequence.values():
+                if codewords is None:
+                    continue
+                for cw, chid_to_hash in codewords.items():
+                    if cw == 'metadata':
+                        acq = chid_to_hash.get('acq', False)
+                        if 'sweeper' in acq:
+                            is_spectroscopy = True
+                    hi = chid_to_hash.get(chids[0], None)
+                    hq = chid_to_hash.get(chids[1], None)
+                    if hi is None and hq is None:
+                        continue
+                    grp_has_waveforms[grp] = True
+                    if not len(channels_to_upload):
+                        # _program_awg was called only to decide which
+                        # sub-AWGs are active, and the rest of this loop
+                        # can be skipped
+                        continue
+                    wi = waveforms.get(hi, np.zeros(1))
+                    wq = waveforms.get(hq, np.zeros(1))
+                    wlen = max(len(wi), len(wq))
+                    w = np.pad(wi, [(0, wlen - len(wi))], mode='constant') - \
+                        np.pad(wq, [(0, wlen - len(wq))], mode='constant')*1j
+                    waves_to_upload[(hi, hq)] = w
+            if not grp_has_waveforms[grp]:
+                log.debug(f'{obj.name}: no waveforms on group {i}')
+                obj.awg_active[i] = False
+                continue
+            obj.awg_active[i] = True
+
+            # Having determined whether the group should be started or
+            # not, we can now skip in case no channels need to be uploaded.
+            if channels_to_upload != 'all' and not any(
+                    [ch in channels_to_upload for ch in chids]):
+                log.debug(f'{obj.name}: skip programming group {i}')
+                continue
+            log.debug(f'{obj.name}: programming group {i}')
+
+            hash_to_index_map = {h: i for i, h in enumerate(waves_to_upload)}
+
+            if is_spectroscopy and len(waves_to_upload) > 1:
+                log.error(f"Can not have multiple elements in spectroscopy mode"
+                          f"on {obj.name}, channel {i+1}")
+                continue
+
+            for h, w in waves_to_upload.items():
+                max_len = 16*4096 if is_spectroscopy else 4096
+                if len(w) > max_len:
+                    log.error(f"SHFQA supports max {max_len} sample long "
+                              f"waveforms. Clipping the waveform.")
+                waves_to_upload[h] = w[:max_len]
+
+            # This one needs to be defined here and not as a class constant,
+            # otherwise SHFQA.USER_REG_... would crash on setups which do not
+            # have an SHFQA object initialised
+            shfqa_sequence_string_template = (
+                f"var loop_cnt = getUserReg({SHFQA.USER_REG_LOOP_COUNT});\n"
+                f"var acq_len = getUserReg({SHFQA.USER_REG_ACQ_LEN});"
+                f" // only needed in sweeper mode\n"
+                "{prep_string}"
+                "\n"
+                "repeat (loop_cnt) {{\n"
+                "  {playback_string}\n"
+                "}}\n"
+            )
+            shfqa_sweeper_playback_string_template = (
+                "for(var i = 0; i < {n_step}; i++)" + " {{\n"
+                "    // self-triggering mode\n\n"
+                "    // define time from setting the oscillator "
+                "frequency to sending the spectroscopy trigger\n"
+                "    playZero(400);\n    \n"
+                "    // set the oscillator frequency depending "
+                "on the loop variable i\n"
+                "    setSweepStep(OSC0, i);\n    \n"
+                "    waitDigTrigger(1);\n"
+                "    resetOscPhase();\n\n"
+                "    // define time to the next iteration\n"
+                "    playZero(acq_len + 144);\n\n"
+                "    // trigger the integration unit and pulsed "
+                "playback in pulsed mode\n"
+                "    setTrigger(1);\n    setTrigger(0);\n"
+                "  }}"
+            )
+            shfqa_sweeper_prep_string = (
+                "const OSC0 = 0;\n"
+                "setTrigger(0);\n"
+                "configFreqSweep(OSC0, {f_start}, {f_step});\n"
+            )
+
+            obj.seqtrigger = None
+
+            if is_spectroscopy:
+                for element in awg_sequence:
+                    # This is a light copy of the readout mode below,
+                    # not sure how to make this more general without a
+                    # use case.
+                    awg_sequence_element = deepcopy(awg_sequence[element])
+                    if awg_sequence_element is None:
+                        playback_strings.append(f'// Segment {element}')
+                        continue
+                    playback_strings.append(f'// Element {element}')
+                    metadata = awg_sequence_element.pop('metadata', {})
+                    # if list(awg_sequence_element.keys()) != ['no_codeword']:
+                    #     raise NotImplementedError('SHFQA sequencer does '
+                    #         'currently not support codewords!')
+                    # chid_to_hash = awg_sequence_element['no_codeword']
+                    acq = metadata.get('acq', False)
+                    break  # FIXME: assumes there is only one segment
+                if acq['sweeper'] == 'hardware':
+                    # FIXME: at some point, we need to test whether the freqs
+                    #  are supported by the sweeper
+                    playback_strings.append(
+                        shfqa_sweeper_playback_string_template.format(
+                            n_step=acq['n_step']))
+                    obj.set_awg_program(
+                        i,
+                        shfqa_sequence_string_template.format(
+                            prep_string=shfqa_sweeper_prep_string.format(
+                                f_start=acq['f_start'],
+                                f_step=acq['f_step'],
+                            ),
+                            playback_string='\n  '.join(playback_strings)))
+                    # The acquisition modules will each be triggered by their
+                    # sequencer
+                    obj.seqtrigger = True
+
+                # FIXME: check whether some of this code should be moved to
+                #  the SHFQA class in the next cleanup
+                w = list(waves_to_upload.values())
+                w = w[0] if len(w) > 0 else None
+                qachannel.mode('spectroscopy')
+                daq = obj.daq
+                path = f"/{obj.get_idn()['serial']}/qachannels/{i}/" \
+                       f"spectroscopy/envelope"
+                if w is not None:
+                    daq.setVector(path + "/wave", w.astype("complex128"))
+                    daq.setInt(path + "/enable", 1)
+                    daq.setDouble(path + "/delay", 0)
+                else:
+                    daq.setInt(path + "/enable", 0)
+                daq.sync()
+                continue
+
+            def play_element(element, playback_strings, acq_unit):
+                awg_sequence_element = deepcopy(awg_sequence[element])
+                if awg_sequence_element is None:
+                    current_segment = element
+                    playback_strings.append(f'// Segment {current_segment}')
+                    return playback_strings
+                playback_strings.append(f'// Element {element}')
+
+                metadata = awg_sequence_element.pop('metadata', {})
+                if list(awg_sequence_element.keys()) != ['no_codeword']:
+                    raise NotImplementedError('SHFQA sequencer does currently\
+                                                       not support codewords!')
+                chid_to_hash = awg_sequence_element['no_codeword']
+
+                acq = metadata.get('acq', False)
+                h = tuple([chid_to_hash.get(chid, None) for chid in chids])
+                wave_idx = hash_to_index_map.get(h, None)
+                wave_mask = f'QA_GEN_{wave_idx}' if wave_idx is not None \
+                    else '0x0'
+                int_mask = 'QA_INT_ALL' if acq else '0x0'
+                monitor = 'true' if acq else 'false'
+                # If 0x1, generates an internal trigger signal from the
+                # sequencer module
+                trig = '0x1' if (isinstance(acq, dict) and
+                                 acq.get('seqtrigger', False)) else '0x0'
+                playback_strings += [
+                    f'waitDigTrigger(1);',
+                    f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
+                ]
+                if trig == '0x1':
+                    if obj.seqtrigger is None:
+                        # The scope will be triggered by this single acq_unit
+                        obj.seqtrigger = acq_unit
+                    playback_strings += [
+                        f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
+                        f'setTrigger(0x0);'
+                    ]
+                return playback_strings
+
+            qachannel.mode('readout')
+            self._filter_segment_functions[obj.name] = None
+
+            if repeat_pattern is not None:
+                log.info("Repeat patterns not yet implemented on SHFQA, "
+                         "ignoring it")
+            for element in awg_sequence:
+                playback_strings = play_element(element, playback_strings, i)
+            obj.set_awg_program(
+                i,
+                shfqa_sequence_string_template.format(
+                    playback_string='\n  '.join(playback_strings),
+                    prep_string=''),
+                {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
+
+        if any(grp_has_waveforms.values()):
+            self.awgs_with_waveforms(obj.name)
+
+
+    def _is_awg_running(self, obj):
+        """Checks whether the sequencer of AWG `obj` is running"""
+        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
+            return super()._is_awg_running(obj)
+        is_running = []
+        for awg_nr in range(4):
+            qachannel = obj.qachannels[awg_nr]
+            if qachannel.mode().name == 'readout':
+                is_running.append(qachannel.generator.enable())
+            else:  # spectroscopy
+                daq = obj.daq
+                path = f"/{obj.get_idn()['serial']}/qachannels/{awg_nr}/" \
+                       f"spectroscopy/result/enable"
+                is_running.append(daq.getInt(path) != 0)
+        return any(is_running)
+
+    def _clock(self, obj, cid=None):
+        """Returns the sample clock of the SHFQA: 2 GHz."""
+        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
+            return super()._clock(obj)
+        return 2.0e9
+
+    def _get_segment_filter_userregs(self, obj, **kw):
+        """Segment filter currently not supported on SHFQA"""
+        if not isinstance(obj, SHFQAPulsar._supportedAWGtypes):
+            return super()._get_segment_filter_userregs(obj, **kw)
+        return []
+
+    def sigout_on(self, ch, on=True):
+        """Turn channel outputs on or off."""
+        awg = self.find_instrument(self.get(ch + '_awg'))
+        if not isinstance(awg, SHFQAPulsar._supportedAWGtypes):
+            return super().sigout_on(ch, on)
+        chid = self.get(ch + '_id')
+        awg.qachannels[int(chid[-2]) - 1].output.on(True)
+
+
+class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, SHFQAPulsar, Instrument):
     """
     A meta-instrument responsible for all communication with the AWGs.
     Contains information about all the available awg-channels in the setup.
@@ -1563,6 +2068,13 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                            initial_value=None, parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_shift_mtx',
                            initial_value=None, parameter_class=ManualParameter)
+        self.add_parameter('resolve_overlapping_elements', vals=vals.Bool(),
+                           initial_value=False, parameter_class=ManualParameter,
+                           docstring='Flag determining whether overlapping '
+                                     'elements should be resolved by '
+                                     'combining them into one element. NB: '
+                                     'overlap resolution only applies to'
+                                     'non-trigger elements!')
         # This parameter can be used to record only a specified consecutive
         # subset of segments of a programmed hard sweep. This is used by the
         # sweep function FilteredSweep. The parameter expects a tuple of indices
@@ -1580,6 +2092,16 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
                                      'False to save time if it is ensured '
                                      'that the channels are switched on '
                                      'somewhere else.')
+        self.add_parameter(
+            'trigger_pulse_parameters', initial_value={},
+            label='trigger pulse parameters', parameter_class=ManualParameter,
+            docstring='A dict whose keys are channel names and whose values '
+                      'are dicts of pulse parameters to overwrite the '
+                      'default trigger pulse parameters whenever a trigger '
+                      'pulse is played on the respective channel. In '
+                      'addition, the dict can contain keys of the form '
+                      '{channel}_first to provide different parameters for '
+                      'the first trigger pulse on that channel in a sequence.')
 
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
@@ -1596,6 +2118,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self._hash_to_wavename_table = {}
         self._filter_segments = None
         self._filter_segment_functions = {}
+        self._filter_segments_emulation_cache = {}
 
         self.num_seg = 0
 
@@ -2052,7 +2575,7 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         self.AWGs_prequeried(False)
 
     def _program_awg(self, obj, awg_sequence, waveforms, repeat_pattern=None,
-                     **kw):
+                     filter_segments=None, **kw):
         """
         Program the AWG with a sequence of segments.
 
@@ -2073,6 +2596,60 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
         # if fail is not None:
         #     raise TypeError('Unsupported AWG instrument: {} of type {}. '
         #                     .format(obj.name, type(obj)) + str(fail))
+
+        # store data for filter segments emulation if needed
+        if len(self._get_segment_filter_userregs(obj,
+                                                 include_inactive=True)) == 0:
+            # AWG does not support segment filtering in hardware
+            use_filter = any([e is not None and
+                              e.get('metadata', {}).get('allow_filter', False)
+                              for e in awg_sequence.values()])
+            if use_filter:
+                # filter segments emulation needed
+                if repeat_pattern is not None:
+                    raise NotImplementedError(
+                        f'{obj.name} does not support filter_segments and an '
+                        f'emulation is needed, but the combination of '
+                        f'filter_segments emulation and repeat_pattern is not '
+                        f'implemented.')
+
+                if filter_segments is None:
+                    # _program_awg was called from self._program_awgs
+                    # (otherwise, it would have been called from
+                    # self._set_filter_segments)
+                    self._filter_segments_emulation_cache[
+                        f'{obj.name}'] = dict(
+                        awg_sequence=awg_sequence,
+                        waveforms=waveforms)
+                    self._filter_segments_emulation_cache[
+                        f'{obj.name}'].update(kw)
+                    # We skip the programming, and it will be done in the
+                    # next update of filter_segments.
+                    # FIXME: This assumes that filter_segments will be set
+                    #  after the call to program_awgs (as it is the case in
+                    #  FilteredSweep). Find a more general solution.
+                    self._awgs_with_waveforms.add(obj.name)
+                    return
+                new_awg_sequence = odict()
+                i_seg = -1
+                for k, v in awg_sequence.items():
+                    if v is None:
+                        i_seg += 1
+                    else:
+                        metadata = v.get('metadata', {})
+                        if metadata.get('allow_filter', False) and (
+                                i_seg < filter_segments[0] or
+                                i_seg > filter_segments[1]):
+                            continue
+                    new_awg_sequence[k] = deepcopy(v)
+                self._filter_segments_emulation_cache[
+                    f'{obj.name}']['filter_segments'] = filter_segments
+                return super()._program_awg(obj, new_awg_sequence,
+                                            waveforms=waveforms, **kw)
+        # If we are here, it means that the current sequence does not use
+        # segment filtering or that no emulation is needed for this AWG.
+        # Reset the _filter_segments_emulation_cache for this AWG.
+        self._filter_segments_emulation_cache[f'{obj.name}'] = None
         if repeat_pattern is not None:
             super()._program_awg(obj, awg_sequence, waveforms,
                                  repeat_pattern=repeat_pattern, **kw)
@@ -2325,9 +2902,21 @@ class Pulsar(AWG5014Pulsar, HDAWG8Pulsar, UHFQCPulsar, Instrument):
             AWG = self.AWG_obj(awg=AWG_name)
             fnc = self._filter_segment_functions.get(AWG_name, None)
             if fnc is None:
-                for regs in self._get_segment_filter_userregs(AWG):
-                    AWG.set(regs[0], val[0])
-                    AWG.set(regs[1], val[1])
+                all_regs = self._get_segment_filter_userregs(AWG)
+                if len(all_regs) == 0:
+                    # Emulate filter segments for this AWG
+                    fsec = self._filter_segments_emulation_cache.get(
+                        f'{AWG.name}', None)
+                    if fsec is not None and fsec.get(
+                            'filter_segments', None) != val:
+                        self._program_awg(
+                            AWG, filter_segments=val,
+                            **{k: v for k, v in fsec.items()
+                               if k != 'filter_segments'})
+                else:  # filter segments supported by the hardware for this AWG
+                    for regs in all_regs:
+                        AWG.set(regs[0], val[0])
+                        AWG.set(regs[1], val[1])
             else:
                 # used in case of a repeat pattern
                 for regs in self._get_segment_filter_userregs(AWG):

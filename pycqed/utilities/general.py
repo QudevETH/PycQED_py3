@@ -753,24 +753,47 @@ def configure_qubit_mux_drive(qubits, lo_freqs_dict):
 
 
 def configure_qubit_mux_readout(qubits, lo_freqs_dict):
-    mwgs_set = set()
-    idx = {}
-    for lo in lo_freqs_dict:
-        idx[lo] = 0
+    """Configure qubits for multiplexed readout.
 
-    for i, qb in enumerate(qubits):
+    This helper function configures the given qubits for multiplexed readout
+    as follows:
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
+    - assign unique acquisition channels for qubits sharing an LO. This
+      assumes that qubits sharing an LO also share an acquisition unit of an
+      acquisition decvice.
+
+    By passing a list with only a single qubit, the function can also be
+    used to ensure that a given LO frequency is used for a qubit, even in a
+    non-multiplexed readout setting. Note that the acquisition I/Q channel
+    indices of the qubit are set to 0 and 1 in this case.
+
+    Args:
+        qubits (list of qubit objects): The qubits for which the readout
+            should be configured.
+        lo_freqs_dict (dict): A dict where each key identifies a readout LO
+            in one of the following formats, and the corresponding value
+            determines the LO frequency that this LO should use. Keys can be:
+            - str indicating the instrument name of an external LO
+            - tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+    """
+    idx = {lo: 0 for lo in lo_freqs_dict}
+    for qb in qubits:
+        # try whether the external LO name is found in the lo_freqs_dict
         qb_ro_mwg = qb.instr_ro_lo()
         if qb_ro_mwg not in lo_freqs_dict:
-            raise ValueError(
-                f'{qb_ro_mwg} for {qb.name} not found in lo_freqs_dict.')
-        else:
-            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
-            qb.acq_I_channel(2 * idx[qb_ro_mwg])
-            qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
-            idx[qb_ro_mwg] += 1
-            if qb_ro_mwg not in mwgs_set:
-                qb.instr_ro_lo.get_instr().frequency(lo_freqs_dict[qb_ro_mwg])
-                mwgs_set.add(qb_ro_mwg)
+            # try whether the acquisition device & unit is in the lo_freqs_dict
+            qb_ro_mwg2 = (qb.instr_acq(), qb.acq_unit())
+            if qb_ro_mwg2 not in lo_freqs_dict:
+                raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
+                                 f'{qb_ro_mwg2} found in lo_freqs_dict.')
+            qb_ro_mwg = qb_ro_mwg2
+        qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
+        qb.acq_I_channel(2 * idx[qb_ro_mwg])
+        qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
+        idx[qb_ro_mwg] += 1
 
 
 def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
@@ -785,8 +808,8 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
             AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1) #
             # assumes channel I and Q are consecutive on same AWG.
-        UHF = qb.instr_uhf.get_instr()
-        UHF.dios_0_mode(2)
+        acq_dev = qb.instr_acq.get_instr()
+        acq_dev.dios_0_mode(2)
         if set_thresholds:
             if for_ef:
                 log.warning('This function sets only thresholds for ge. Please '
@@ -796,7 +819,7 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
             if threshs is not None:
                 threshs = threshs.get('thresholds', None)
             if threshs is not None:
-                UHF.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
+                acq_dev.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
 
 
 def find_symmetry_index(data):
@@ -818,6 +841,15 @@ def get_pycqed_appdata_dir():
         path = os.path.expandvars(r'%LOCALAPPDATA%\pycqed')
     else:
         path = os.path.expanduser('~/.pycqed')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def default_awg_dir():
+    """
+    Returns the path of an awg subfolder in the pycqed application data dir.
+    """
+    path = os.path.join(get_pycqed_appdata_dir(), 'awg')
     os.makedirs(path, exist_ok=True)
     return path
 

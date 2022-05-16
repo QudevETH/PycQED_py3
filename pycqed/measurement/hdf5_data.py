@@ -150,6 +150,9 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
             where to write to.
     """
     for key, item in data_dict.items():
+        if isinstance(key, tuple):
+            key = str(key)
+
         # Basic types
         if isinstance(item, (str, float, int, bool, np.number,
                              np.float_, np.int_, np.bool_)):
@@ -237,7 +240,7 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                         ds.attrs['list_type'] = 'str'
                         ds[:] = data
                     else:
-                        log.warning(
+                        log.debug(
                             'List of type "{}" for "{}":"{}" not '
                             'supported, storing as string'.format(
                                 elt_type, key, item))
@@ -270,7 +273,7 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 entry_point.attrs[key] = 'NoneType:__emptylist__'
 
         else:
-            log.warning(
+            log.debug(
                 'Type "{}" for "{}" (key): "{}" (item) at location {} '
                 'not supported, '
                 'storing as string'.format(type(item), key, item,

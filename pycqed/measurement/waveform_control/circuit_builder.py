@@ -26,6 +26,13 @@ class CircuitBuilder:
             here, the default is False.
          prep_params: (dict) custom preparation params (default: from
             instrument settings)
+         fast_mode: (bool, default: False) activate faster processing by
+            - creating segments with fast_mode=True in self.sweep_n_dim
+                (see fast_mode parameter in Segment class)
+            - deactivating the following features:
+                - addressing qubits via logical indices (spin indices)
+                - resolution of ParametricValues in self.sweep_n_dim if
+                  body_block_func is used
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
@@ -42,6 +49,7 @@ class CircuitBuilder:
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name', 'upCZ')
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
+        self.fast_mode = kw.get('fast_mode', False)
         self.prep_params = kw.get('prep_params', None)
 
     @staticmethod
@@ -168,7 +176,8 @@ class CircuitBuilder:
             if op_split[0] != 'CZ':
                 cz_pulse_name = op_split[0]
 
-        _, (qb1, qb2) = self.get_qubits([qb1, qb2])
+        if not self.fast_mode:
+            _, (qb1, qb2) = self.get_qubits([qb1, qb2])
         if f"{cz_pulse_name} {qb1} {qb2}" in self.operation_dict:
             return f"{cz_pulse_name} {qb1} {qb2}"
         elif f"{cz_pulse_name} {qb2} {qb1}" in self.operation_dict:
@@ -214,12 +223,15 @@ class CircuitBuilder:
 
         """
         op_info = op.split(" ") if isinstance(op, str) else op
-        # the call to get_qubits resolves qubits indices if needed
-        _, op_info[1:] = self.get_qubits(op_info[1:])
+        if not self.fast_mode:
+            # the call to get_qubits resolves qubits indices if needed
+            _, op_info[1:] = self.get_qubits(op_info[1:])
         op_name = op_info[0][1:] if op_info[0][0] == 's' else op_info[0]
         op = op_name + ' ' + ' '.join(op_info[1:])
 
-        if op_info[0].rstrip('0123456789.') == 'CZ' or \
+        if op in self.operation_dict:
+            p = deepcopy(self.operation_dict[op])
+        elif op_info[0].rstrip('0123456789.') == 'CZ' or \
                 op_info[0].startswith('CZ:'):
             operation = self.get_cz_operation_name(op_info[1], op_info[2])
             p = deepcopy(self.operation_dict[operation])
@@ -297,7 +309,7 @@ class CircuitBuilder:
                         # configure drive pulse amplitude for this angle
                         p['amplitude'] *= ((angle + 180) % (-360) + 180) / 180
         else:
-            p = deepcopy(self.operation_dict[op])
+            raise KeyError(f"Operation {' '.join(op_info)} not found.")
         p['op_code'] = op
         if op_info[0][0] == 's':
             p['ref_point'] = 'start'
@@ -370,7 +382,7 @@ class CircuitBuilder:
                 if simultaneous:
                     tmp_block.pulses[0]['ref_pulse'] = 'start'
                 pulses += tmp_block.pulses
-        block = Block(block_name, pulses)
+        block = Block(block_name, pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
         blocks = []
         if len(prep_params) != 0:
@@ -528,7 +540,7 @@ class CircuitBuilder:
                     ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
                     pulse_delay=ro_separation, ref_point="start")
                 prep_pulse_list += [block_end]
-            return Block(block_name, prep_pulse_list)
+            return Block(block_name, prep_pulse_list, copy_pulses=False)
 
         # preselection
         elif preparation_type == 'preselection':
@@ -545,7 +557,7 @@ class CircuitBuilder:
                              pulse_delay=ro_separation,
                              ref_point='start')
             preparation_pulses += [block_end]
-            return Block(block_name, preparation_pulses)
+            return Block(block_name, preparation_pulses, copy_pulses=False)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
                     **pulse_pars):
@@ -560,7 +572,7 @@ class CircuitBuilder:
             else:
                 ro_pulse['ref_point'] = 'start'
             ro_pulses.append(ro_pulse)
-        block = Block(block_name, ro_pulses)
+        block = Block(block_name, ro_pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
         return block
 
@@ -639,25 +651,31 @@ class CircuitBuilder:
             of the first one.
         :return: The created block
         """
-        def op_format(op, **fill_values):
-            if isinstance(op, str):
-                return op.format(**fill_values)
-            else:
-                return [s.format(**fill_values) for s in op]
-
-        if fill_values is None:
-            fill_values = {}
         if pulse_modifs is None:
             pulse_modifs = {}
         if isinstance(operations, str):
             operations = [operations]
-        pulses = [self.get_pulse(op_format(op, **fill_values), True)
-                  for op in operations]
+        if fill_values is not None and len(fill_values):
+            def op_format(op, **fill_values):
+                if isinstance(op, str):
+                    return op.format(**fill_values)
+                else:
+                    return [s.format(**fill_values) for s in op]
 
-        return Block(block_name, pulses, pulse_modifs)
+            pulses = [self.get_pulse(op_format(op, **fill_values), True)
+                      for op in operations]
+        else:
+            # the shortcut if op in self.operation_dict is for speed reasons
+            pulses = [deepcopy(self.operation_dict[op])
+                      if op in self.operation_dict
+                      else self.get_pulse(op, True)
+                      for op in operations]
+
+        return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
 
     def seg_from_cal_points(self, cal_points, init_state='0', ro_kwargs=None,
                             block_align='end', segment_prefix='calibration_',
+                            sweep_dicts_list=None, sweep_index_list=None,
                             **kw):
         """
         Returns a list of segments for each cal state in cal_points.states.
@@ -668,6 +686,12 @@ class CircuitBuilder:
             mux_readout().
         :param block_align: passed to simultaneous_blocks; see docstring there
         :param segment_prefix: prefix for segment name (string)
+        :param sweep_dicts_list: Sweep dicts passed on to Block.build for the
+            complete cal_state_block to build a block that corresponds to a
+            point of an N-dimensional sweep.
+        :param sweep_index_list: Passed on to Block.build for the complete
+            cal_state_block. Determines for which sweep points from
+            sweep_dicts_list the block should be build.
         :param kw: keyword arguments (to allow pass through kw even if it
             contains entries that are not needed)
         :return: list of Segment instances
@@ -692,7 +716,9 @@ class CircuitBuilder:
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
             seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
-                          cal_state_block.build())
+                          cal_state_block.build(
+                              sweep_dicts_list=sweep_dicts_list,
+                              sweep_index_list=sweep_index_list))
             segments.append(seg)
 
         return segments
@@ -809,7 +835,7 @@ class CircuitBuilder:
 
     def simultaneous_blocks(self, block_name, blocks, block_align='start',
                             set_end_after_all_pulses=False,
-                            disable_block_counter=False):
+                            disable_block_counter=False, destroy=False):
         """
         Creates a block with name :block_name: that consists of the parallel
         execution of the given :blocks:. Ensures that any pulse or block
@@ -834,19 +860,24 @@ class CircuitBuilder:
                 blocks, correct the end pulse to happen after the last pulse.
             disable_block_counter (bool, default False): prevent block.build
                 from appending a counter to the block name.
+            destroy (bool or list of bools, default False): whether the
+                individual blocks can be destroyed (speedup by avoiding
+                copying pulses, see Block.build).
         """
 
         simultaneous = Block(block_name, [])
+        if not hasattr(destroy, '__iter__'):
+            destroy = [destroy] * len(blocks)
         simultaneous_end_pulses = []
         if block_align == 'start':
             # saves computation time in Segment.resolve_timing
             block_align = None
-        for block in blocks:
+        for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
             simultaneous.extend(block.build(
                 ref_pulse=f"start", block_start=dict(block_align=block_align),
-                name=block.name if disable_block_counter else None))
+                name=block.name if disable_block_counter else None, destroy=d))
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
@@ -861,7 +892,7 @@ class CircuitBuilder:
 
     def sequential_blocks(self, block_name, blocks,
                           set_end_after_all_pulses=False,
-                          disable_block_counter=False):
+                          disable_block_counter=False, destroy=False):
         """
         Creates a block with name :block_name: that consists of the serial
         execution of the given :blocks:.
@@ -881,14 +912,19 @@ class CircuitBuilder:
                 blocks, correct the end pulse to happen after the last pulse.
             disable_block_counter (bool, default False): prevent block.build
                 from appending a counter to the block name.
+            destroy (bool or list of bools with same len as blocks, default
+                False): whether the individual blocks can be destroyed
+                (speedup by avoiding copying pulses, see Block.build).
         """
 
         sequential = Block(block_name, [])
-        for block in blocks:
+        if not hasattr(destroy, '__iter__'):
+            destroy = [destroy] * len(blocks)
+        for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
             sequential.extend(block.build(
-                name=block.name if disable_block_counter else None))
+                name=block.name if disable_block_counter else None, destroy=d))
         return sequential
 
     def sweep_n_dim(self, sweep_points, body_block=None, body_block_func=None,
@@ -936,9 +972,9 @@ class CircuitBuilder:
                 1D: list of segments, number of 1d sweep points or
                 2D: list of list of segments, list of numbers of sweep points
             - else:
-                1D: sequence, number acquisition elements
-                2D: list of sequences, number of acquisition elements, number
-                    of sequences
+                1D: sequence, np.arange(number of acquisition elements)
+                2D: list of sequences, [np.arange(number of acquisition elements),
+                                        np.arange(number of sequences)]
         """
         sweep_dims = len(sweep_points)
         if sweep_dims > 2:
@@ -1012,9 +1048,13 @@ class CircuitBuilder:
                 # sequential_blocks with disable_block_counter=True.
                 segblock = self.sequential_blocks(
                     'segblock', [prep, this_body_block, final, ro],
-                    disable_block_counter=True)
+                    disable_block_counter=True,
+                    destroy=[False, body_block is None, False, False])
                 seg = Segment(f'seg{j}', segblock.build(
-                    sweep_dicts_list=sweep_points, sweep_index_list=[j, i]))
+                    sweep_dicts_list=(
+                        None if (body_block is None and self.fast_mode)
+                        else sweep_points), sweep_index_list=[j, i],
+                    destroy=True), fast_mode=self.fast_mode)
                 # apply Segment sweep points
                 for dim in [0, 1]:
                     for param in sweep_points[dim]:
@@ -1029,7 +1069,9 @@ class CircuitBuilder:
                 block_align_cal_pts = kw.get('block_align_cal_pts', 'end')
                 seq.extend(self.seg_from_cal_points(
                     cal_points, init_state, ro_kwargs,
-                    block_align=block_align_cal_pts, **kw))
+                    block_align=block_align_cal_pts,
+                    sweep_dicts_list=sweep_points[1:], sweep_index_list=[i],
+                    **kw))
             seqs.append(seq)
 
         if return_segments:
