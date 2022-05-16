@@ -455,7 +455,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                  **kw):
         self.modulated = modulated
         self.pulsed = pulsed
-        drive = 'pulsed' if self.pulsed else 'continous'
+        drive = 'pulsed' if self.pulsed else 'continuous'
         drive += '_spec'
         drive += '_modulated' if self.modulated else ''
         super().__init__(task_list,
