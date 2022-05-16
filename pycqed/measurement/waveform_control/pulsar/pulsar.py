@@ -199,17 +199,19 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
         pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
         pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
-        pulsar.add_parameter(f"{ch_name}_amp",
-                             label=f"{ch_name} amplitude", unit='V',
-                             set_cmd=partial(self.awg_setter, id, "amp"),
-                             get_cmd=partial(self.awg_getter, id, "amp"),
-                             vals=vals.Numbers(
-                                 *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
-        pulsar.add_parameter(f"{ch_name}_offset", unit='V',
-                             set_cmd=partial(self.awg_setter, id, "offset"),
-                             get_cmd=partial(self.awg_getter, id, "offset"),
-                             vals=vals.Numbers(
-                                 *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
+        if 'amp' in self.IMPLEMENTED_ACCESSORS:
+            pulsar.add_parameter(f"{ch_name}_amp",
+                                 label=f"{ch_name} amplitude", unit='V',
+                                 set_cmd=partial(self.awg_setter, id, "amp"),
+                                 get_cmd=partial(self.awg_getter, id, "amp"),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
+        if 'offset' in self.IMPLEMENTED_ACCESSORS:
+            pulsar.add_parameter(f"{ch_name}_offset", unit='V',
+                                 set_cmd=partial(self.awg_setter, id, "offset"),
+                                 get_cmd=partial(self.awg_getter, id, "offset"),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
 
         if ch_type == "analog":
             pulsar.add_parameter(f"{ch_name}_distortion",

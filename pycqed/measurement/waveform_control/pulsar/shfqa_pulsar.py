@@ -7,8 +7,7 @@ from copy import deepcopy
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
-    from pycqed.instrument_drivers.acquisition_devices.shf import \
-        SHF_AcquisitionDevice
+    from zhinst.qcodes import SHFQA as SHFQA_core
 except Exception:
     SHF_AcquisitionDevice = type(None)
 
@@ -29,7 +28,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = []
+    AWG_CLASSES = [SHFQA_core]
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
@@ -40,12 +39,13 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
     # TODO: SHFQA had no parameter for offset, should we delete it for this
     # subclass, or just force it to 0 ?
     CHANNEL_OFFSET_BOUNDS = {
-        "analog": (0, 0),
+        "analog": (0, 1e-16),
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
 
     def create_awg_parameters(self, channel_name_map: dict):
-        super().create_awg_parameters(channel_name_map)
+        PulsarAWGInterface.create_awg_parameters(self, channel_name_map)
+
 
         pulsar = self.pulsar
         name = self.awg.name
@@ -135,7 +135,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                 for cw, chid_to_hash in codewords.items():
                     if cw == 'metadata':
                         acq = chid_to_hash.get('acq', False)
-                        if 'sweeper' in acq:
+                        if acq and 'sweeper' in acq:
                             is_spectroscopy = True
                     hi = chid_to_hash.get(chids[0], None)
                     hq = chid_to_hash.get(chids[1], None)
@@ -334,7 +334,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
     def is_awg_running(self):
         is_running = []
         for awg_nr, qachannel in enumerate(self.awg.qachannels):
-            qachannel = self.awg.qachannels[awg_nr]
             if qachannel.mode().name == 'readout':
                 is_running.append(qachannel.generator.enable())
             else:  # spectroscopy
@@ -354,5 +353,3 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
-
-    AWG_CLASSES = [SHF_AcquisitionDevice]

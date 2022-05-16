@@ -25,12 +25,12 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     # TODO: SHFQC has no parameter for offset, should we delete it for this
     # subclass, or just force it to 0 ?
     CHANNEL_OFFSET_BOUNDS = {
-        "analog": (0, 0),
+        "analog": (0, 1e-16),
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
 
     def create_awg_parameters(self, channel_name_map: dict):
-        SHFAcquisitionModulePulsar.create_awg_parameters(self)
+        SHFAcquisitionModulePulsar.create_awg_parameters(self, channel_name_map)
 
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(len(self.awg.sgchannels)):
@@ -44,25 +44,25 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
             for ch_name in group:
                 self.pulsar.channel_groups.update({ch_name: group})
 
+    @classmethod
+    def _get_superclass(cls, id):
+        return SHFAcquisitionModulePulsar if 'r' in id \
+            else SHFGeneratorModulePulsar
+
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
 
         For the SHFQC, valid channel ids are ch#i and ch#q, where # is a number
         from 1 to 8 except 2. This defines the harware port used.
         """
-        fn = SHFAcquisitionModulePulsar.create_channel_parameters \
-            if 'r' in id else SHFGeneratorModulePulsar.create_channel_parameters
-        return staticmethod(fn)(self, id, ch_name, ch_type)
+        return self._get_superclass(id).create_channel_parameters(
+            self, id, ch_name, ch_type)
 
     def awg_setter(self, id:str, param:str, value):
-        fn = SHFAcquisitionModulePulsar.awg_setter if 'r' in id else \
-            SHFGeneratorModulePulsar.awg_setter
-        return staticmethod(fn)(self, id, param, value)
+        return self._get_superclass(id).awg_setter(self, id, param, value)
 
     def awg_getter(self, id:str, param:str):
-        fn = SHFAcquisitionModulePulsar.awg_getter if 'r' in id else \
-            SHFGeneratorModulePulsar.awg_getter
-        return staticmethod(fn)(self, id, param)
+        return self._get_superclass(id).awg_getter(self, id, param)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
@@ -79,7 +79,12 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
 
     def sigout_on(self, ch, on=True):
         id = self.pulsar.get(ch + '_id')
-        fn = SHFAcquisitionModulePulsar.sigout_on if 'r' in id else \
-            SHFGeneratorModulePulsar.sigout_on
-        return staticmethod(fn)(self, ch, on=on)
+        return self._get_superclass(id).sigout_on(self, ch, on=on)
 
+    def start(self):
+        SHFAcquisitionModulePulsar.start(self)
+        SHFGeneratorModulePulsar.start(self)
+
+    def stop(self):
+        SHFAcquisitionModulePulsar.stop(self)
+        SHFGeneratorModulePulsar.stop(self)
