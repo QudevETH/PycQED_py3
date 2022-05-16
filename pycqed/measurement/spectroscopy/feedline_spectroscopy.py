@@ -516,6 +516,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         return qb.ge_mod_freq
 
     def _fill_temporary_values(self):
+        super()._fill_temporary_values()
         if self.modulated:
             for task in self.preprocessed_task_list:
                 if task.get('mod_freq', None) is not None:
@@ -523,6 +524,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     mod_freq = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_mod_freq']
                     self.temporary_values.append((mod_freq,
                                                   task['mod_freq']))
-                    amp = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_IQ_output_amp')
+                    amp = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_IQ_output_amp']
                     self.temporary_values.append((amp,
-                                                qb.spec_mod_amp()))
+                                                  qb.spec_mod_amp()))
