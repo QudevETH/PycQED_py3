@@ -87,6 +87,9 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3.9/", None),
     # Can be used to add links to qcodes objects
     "qcodes": ("https://qcodes.github.io/Qcodes/", None),
+    "h5py": ('https://docs.h5py.org/en/latest', None),
+    "numpy": ('https://numpy.org/doc/stable', None),
+    "matplotlib": ('https://matplotlib.org/stable', None),
 }
 
 
