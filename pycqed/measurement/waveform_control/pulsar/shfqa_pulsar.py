@@ -7,9 +7,14 @@ from copy import deepcopy
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
-    from zhinst.qcodes import SHFQA as SHFQA_core
+    from pycqed.instrument_drivers.acquisition_devices.shf \
+        import SHF_AcquisitionDevice
 except Exception:
     SHF_AcquisitionDevice = type(None)
+try:
+    from zhinst.qcodes import SHFQA as SHFQA_core
+except Exception:
+    SHFQA_core = type(None)
 
 from .pulsar import PulsarAWGInterface
 
@@ -67,7 +72,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         for ch_nr in range(len(self.awg.qachannels)):
             group = []
             for q in ["i", "q"]:
-                id = f"ch{ch_nr + 1}r{q}"
+                id = f"qa{ch_nr + 1}{q}"
                 ch_name = channel_name_map.get(id, f"{name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 pulsar.channels.add(ch_name)
@@ -78,7 +83,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
 
-        For the SHFQA, valid channel ids are ch#i and ch#q, where # is a number
+        For the SHFQA, valid channel ids are qa#i and qa#q, where # is a number
         from 1 to 4. This defines the harware port used.
         """
 
@@ -121,8 +126,8 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
         grp_has_waveforms = {}
         for i, qachannel in enumerate(self.awg.qachannels):
-            grp = f'ch{i+1}r'
-            chids = [f'ch{i+1}ri', f'ch{i+1}rq']
+            grp = f'qa{i+1}'
+            chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
 
             playback_strings = []

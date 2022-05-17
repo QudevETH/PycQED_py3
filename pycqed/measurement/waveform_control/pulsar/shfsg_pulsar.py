@@ -10,12 +10,12 @@ from qcodes.instrument.parameter import ManualParameter
 from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
+import zhinst
+
 try:
     from zhinst.qcodes import SHFSG as SHFSG_core
 except Exception:
     SHFSG_core = type(None)
-
-
 
 
 log = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         for ch_nr in range(len(self.awg.sgchannels)):
             group = []
             for q in ["i", "q"]:
-                id = f"ch{ch_nr + 1}d{q}"
+                id = f"sg{ch_nr + 1}{q}"
                 ch_name = channel_name_map.get(id, f"{name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 pulsar.channels.add(ch_name)
@@ -90,7 +90,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
 
-        For the SHFSG, valid channel ids are ch#i and ch#q, where # is a number
+        For the SHFSG, valid channel ids are sg#i and sg#q, where # is a number
         from 1 to 8. This defines the harware port used.
         """
 
@@ -123,11 +123,12 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
-        chids = [f'ch{i + 1}d{iq}' for i in range(len(self.awg.sgchannels))
+        chids = [f'sg{i + 1}{iq}' for i in range(len(self.awg.sgchannels))
                  for iq in ['i', 'q']]
 
         ch_has_waveforms = {chid: False for chid in chids}
-        use_placeholder_waves = False
+        use_placeholder_waves = self.pulsar\
+            .get(f"{self.awg.name}_use_placeholder_waves")
         if not use_placeholder_waves:
             if not self.zi_waves_cleared:
                 self._zi_clear_waves()
@@ -152,8 +153,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     f'{self.awg.USER_REG_LAST_SEGMENT});',
                 ]
 
-            ch1id = f'ch{awg_nr+1}di'
-            ch2id = f'ch{awg_nr+1}dq'
+            ch1id = f'sg{awg_nr+1}i'
+            ch2id = f'sg{awg_nr+1}q'
             chids = [ch1id, ch2id]
             channels = [self.pulsar._id_channel(chid, self.awg.name)
                         for chid in [ch1id, ch2id]]
@@ -376,7 +377,43 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             sgchannel.awg.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
-        raise NotImplementedError()
+        if self.pulsar.use_sequence_cache():
+            if wave_hashes == self._shfsg_waveform_cache[
+                f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
+                log.debug(
+                    f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
+                return
+            log.debug(
+                f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
+                wave_idx] = wave_hashes
+        a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
+        n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
+        if m1 is not None and a1 is None:
+            a1 = np.zeros(n)
+        if m1 is None and a1 is None and (m2 is not None or a2 is not None):
+            # Hack needed to work around an HDAWG bug where programming only
+            # m2 channel does not work. Remove once bug is fixed.
+            a1 = np.zeros(n)
+        if m2 is not None and a2 is None:
+            a2 = np.zeros(n)
+        if m1 is not None or m2 is not None:
+            m1 = np.zeros(n) if m1 is None else np.pad(m1, n - m1.size)
+            m2 = np.zeros(n) if m2 is None else np.pad(m2, n - m2.size)
+            if a1 is None:
+                mc = m2
+            else:
+                mc = m1 + 4 * m2
+        else:
+            mc = None
+        a1 = None if a1 is None else np.pad(a1, n - a1.size)
+        a2 = None if a2 is None else np.pad(a2, n - a2.size)
+        assert mc is None # marker not yet supported on SG
+
+        sgchannel = self.awg.sgchannels[awg_nr]
+        waveforms = sgchannel.awg.read_from_waveform_memory()
+        waveforms[wave_idx] = (a1, a2)
+        sgchannel.awg.write_to_waveform_memory(waveforms)
 
 
 class SHFSGPulsar(SHFGeneratorModulePulsar):

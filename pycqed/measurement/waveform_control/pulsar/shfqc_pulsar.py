@@ -1,5 +1,8 @@
 import logging
 
+from qcodes import ManualParameter
+import qcodes.utils.validators as vals
+
 from .shfqa_pulsar import SHFAcquisitionModulePulsar
 from .shfsg_pulsar import SHFGeneratorModulePulsar
 
@@ -32,11 +35,18 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     def create_awg_parameters(self, channel_name_map: dict):
         SHFAcquisitionModulePulsar.create_awg_parameters(self, channel_name_map)
 
+        pulsar = self.pulsar
+        name = self.awg.name
+
+        pulsar.add_parameter(f"{name}_use_placeholder_waves",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter)
+
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(len(self.awg.sgchannels)):
             group = []
             for q in ["i", "q"]:
-                id = f"ch{ch_nr + 1}d{q}"
+                id = f"sg{ch_nr + 1}{q}"
                 ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 self.pulsar.channels.add(ch_name)
@@ -46,14 +56,14 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
 
     @classmethod
     def _get_superclass(cls, id):
-        return SHFAcquisitionModulePulsar if 'r' in id \
+        return SHFAcquisitionModulePulsar if 'qa' in id \
             else SHFGeneratorModulePulsar
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
 
-        For the SHFQC, valid channel ids are ch#i and ch#q, where # is a number
-        from 1 to 8 except 2. This defines the harware port used.
+        For the SHFQC, valid channel ids are sg#i, sg#q, qa1i and qa1q, where #
+        is a number from 1 to 6. This defines the harware port used.
         """
         return self._get_superclass(id).create_channel_parameters(
             self, id, ch_name, ch_type)
