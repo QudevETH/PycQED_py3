@@ -194,9 +194,12 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                     # if told not to optimize or only one task is using this LO
                     # we use the mod. freq. of the first qb in the task to set
                     # the LO
-                    lo_freqs = tasks[0]['freqs'] \
-                                - self.get_mod_from_qb(
-                                    self.get_qubits(tasks[0]['qb'])[0][0])()
+                    if not getattr(self, 'modulated', True):
+                        lo_freqs = tasks[0]['freqs']
+                    else:
+                        lo_freqs = tasks[0]['freqs'] \
+                                    - self.get_mod_from_qb(
+                                        self.get_qubits(tasks[0]['qb'])[0][0])()
 
             qubits = []
             for task in tasks:
