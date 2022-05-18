@@ -1899,7 +1899,7 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(hard_sweep_points)
 
         MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
-            hard_sweep_func, sequences, 'Nr. Seeds', ''))
+            sequences, 'Nr. Seeds', ''))
         MC.set_sweep_points_2D(soft_sweep_points)
         if thresholded:
             det_func = self.dig_avg_det
