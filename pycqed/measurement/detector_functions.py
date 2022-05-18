@@ -626,6 +626,9 @@ class PollDetector(Hard_Detector):
                 single polling detector is passed to detectors.
             detectors (list): poling detectors from this module to be used for
                 acquisition
+            prepare_and_finish_pulsar (bool, optional): Whether to start and
+                stop all other AWGs in pulsar in addition to the AWGs being part
+                of the df itself. Defaults to False.
 
         Keyword args: passed to parent class
 
