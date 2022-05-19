@@ -1661,7 +1661,7 @@ class MeasurementControl(Instrument):
                      len(self.detector_function.value_names)),
             maxshape=(None, len(self.sweep_functions) +
                       len(self.detector_function.value_names)),
-            dtype='float64')
+            dtype='float64', compression="gzip", compression_opts=9)
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
         # Added to tell analysis how to extract the data
@@ -1731,7 +1731,8 @@ class MeasurementControl(Instrument):
             group = data_group.create_group(group_name)
         if dataset_name not in group:
             dset = group.create_dataset(dataset_name, data=data,
-                                        maxshape=[None] * len(data.shape))
+                                        maxshape=[None] * len(data.shape),
+                                        compression="gzip", compression_opts=9)
             if column_names is not None:
                 dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
         else:
