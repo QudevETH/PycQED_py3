@@ -349,11 +349,10 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
             qb = self.get_qubits(task['qb'])[0][0]
             acq_instr = qb.instr_acq.get_instr()
             if (hasattr(acq_instr, 'use_hardware_sweeper') and \
-                acq_instr.use_hardware_sweeper()) or False: # TODO: remove or bool
+                acq_instr.use_hardware_sweeper()):
                 freqs = task['freqs']
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
-                acq_instr.set_lo_freq(self.acq_unit(),
-                                                        lo_freq)
+                acq_instr.set_lo_freq(qb.acq_unit(), lo_freq)
                 self.segment_kwargs['acquisition_mode']= dict(
                         sweeper='hardware',
                         f_start=freqs[0] - lo_freq,
