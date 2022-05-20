@@ -669,7 +669,8 @@ class PollDetector(Hard_Detector):
 
     def prepare(self, sweep_points=None):
         if self.prepare_and_finish_pulsar:
-            ps.Pulsar.get_instance().start(exclude=self.get_awgs())
+            ps.Pulsar.get_instance().start(
+                exclude=[awg.name for awg in self.get_awgs()])
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
 
@@ -874,6 +875,9 @@ class MultiPollDetector(PollDetector):
         else:
             self.AWG = None
         for d in self.detectors:
+            if d.prepare_and_finish_pulsar:
+                self.prepare_and_finish_pulsar = True
+                d.prepare_and_finish_pulsar = False
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
