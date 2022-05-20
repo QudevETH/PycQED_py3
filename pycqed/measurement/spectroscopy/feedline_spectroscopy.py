@@ -354,12 +354,6 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # create prepended pulses (pb)
         pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
-        # create pulses for initial rotations (ir)
-        pulse_modifs = {'all': {'element_name': 'initial_rots_el'}}
-        ir = self.block_from_ops('initial_rots',
-                                 [f'{self.STD_INIT[init_state][0]} {qb}'],
-                                 pulse_modifs=pulse_modifs)
-
         pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
@@ -373,7 +367,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         pulse_dict[param_name] = ParametricValue(param_name)
 
         # return all generated blocks (parallel_sweep will arrange them)
-        return [pb, ir, ro]
+        return [pb, ro]
 
     def configure_qubit_mux(self, qubits, lo_freqs_dict):
         idx = {lo: 0 for lo in lo_freqs_dict}
