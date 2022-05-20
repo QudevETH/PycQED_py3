@@ -38,6 +38,7 @@ class Detector_Function(object):
             'progress_callback_interval', 5)  # in seconds
         # tells MC whether to show live plotting for the measurement
         self.live_plot_allowed = kw.get('live_plot_allowed', True)
+        self.extra_data_callback = None
 
     def set_kw(self, **kw):
         '''
@@ -84,6 +85,15 @@ class Detector_Function(object):
                             {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
@@ -602,8 +612,11 @@ class PollDetector(Hard_Detector):
         self.acq_devs = [d.acq_dev for d in self.detectors]
         self.det_from_acq_dev = {k.name: v for k, v in zip(self.acq_devs,
                                                            self.detectors)}
-
         self.progress_scaling = None
+
+    def prepare(self, sweep_points=None):
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
 
     @Timer()
     def poll_data(self):
@@ -620,6 +633,9 @@ class PollDetector(Hard_Detector):
             self.AWG.stop()
 
         for acq_dev in self.acq_devs:
+            # Allow the acqusition device to store additional data
+            acq_dev.extra_data_callback = self.extra_data_callback
+            # Final preparations for an acquisition.
             acq_dev.prepare_poll()
 
         if self.AWG is not None:
@@ -752,28 +768,58 @@ class MultiPollDetector(PollDetector):
     """
     Combines several polling detectors into a single detector.
     """
-    def __init__(self, detectors, **kw):
+    class MultiAWGWrapper:
         """
-        Init of the PollDetector base class.
+        Wrapper to flexibly define the master AWG to be restarted by the
+        detector function.
+
+        This allows for instance to only restart the acquisition device (and
+        not the whole Pulsar) for measurements with only one segment.
+        """
+        def __init__(self, master_awg, awgs=()):
+            self.master_awg = master_awg
+            self.awgs = list(set(awgs))
+
+        def start(self, **kw):
+            for awg in self.awgs:
+                awg.start(**kw)
+            self.master_awg.start(**kw)
+
+        def stop(self):
+            for awg in self.awgs:
+                awg.stop()
+            self.master_awg.stop()
+
+    def __init__(self, detectors, AWG=None, **kw):
+        """
+        Init of the MultiPollDetector base class.
 
         Args
-            detectors (list): poling detectors from this module to be used for
+            detectors (list): polling detectors from this module to be used for
                 acquisition
+            AWG (qcodes instrument): AWG that will be treated as a master AWG
+                by wrapping it in a MultiAWGWrapper together with the AWGs of
+                the individual detectors
 
         Keyword args: passed to parent class
         """
         super().__init__(detectors=detectors, **kw)
-        self.AWG = None
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
 
+        if AWG is not None:  # treat as master AWG
+            self.AWG = self.MultiAWGWrapper(AWG,
+                                            [d.AWG for d in self.detectors])
+        else:
+            self.AWG = None
         for d in self.detectors:
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
             self.live_plot_allowed += [d.live_plot_allowed]
-            if d.AWG is not None:
+            if d.AWG is not None\
+                    and not isinstance(self.AWG, self.MultiAWGWrapper):
                 if self.AWG is None:
                     self.AWG = d.AWG
                 elif self.AWG != d.AWG:
@@ -822,6 +868,7 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.detector_control == 'hard' and sweep_points is None:
             raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
@@ -1002,6 +1049,7 @@ class AveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = len(sweep_points)
@@ -1114,7 +1162,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
-        self._set_real_imag(real_imag)
+        self.set_real_imag(real_imag)
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
@@ -1137,7 +1185,7 @@ class IntegratingAveragingPollDetector(PollDetector):
                     new_value_units.append(vu)
             return new_value_names, new_value_units
 
-    def _set_real_imag(self, real_imag=False):
+    def set_real_imag(self, real_imag=False):
         """
         Function so that real_imag can be changed after initialization.
         """
@@ -1212,6 +1260,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         """
         return self.get_values()
 
+    @Timer()
     def prepare(self, sweep_points=None):
         """
         Prepares instruments for acquisition:
@@ -1226,6 +1275,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
@@ -1273,6 +1323,72 @@ class IntegratingAveragingPollDetector(PollDetector):
         )
 
 
+class ScopePollDetector(PollDetector):
+    """
+    Detector for scope measurements.
+
+    Attributes:
+        data_type (str) :  options are
+            - timedomain: Returns time traces (possibly averaged and/or
+              single-shot)
+            - fft: Returns the absolute value of the Fourier' transform
+                       of the data.
+            - fft_power: Squares the data before averaging and taking the
+                             Fourier' transform.
+    """
+
+    def __init__(self,
+                 acq_dev,
+                 AWG,
+                 channels,
+                 nr_shots,
+                 integration_length,
+                 nr_averages,
+                 data_type,
+                 **kw):
+        super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
+        self.channels = channels
+        self.integration_length = integration_length
+        self.nr_averages = nr_averages
+        self.data_type = data_type
+        self.AWG = AWG
+        self.nr_sweep_points = None
+        self.values_per_point = 1
+        self.nr_shots = nr_shots
+        if self.data_type == 'timedomain':
+            # Normal number of shots (MC will expect that many timetraces)
+            self.acq_data_len_scaling = self.nr_shots
+        elif self.data_type == 'fft':
+            raise NotImplementedError("Amplitude FFT mode not implemented!")
+        elif self.data_type == 'fft_power':
+            # Multiple shots aren't implemented for power spectrum measurements
+            self.acq_data_len_scaling = 1
+
+    def prepare(self, sweep_points=None):
+
+        super().prepare()
+        self.nr_sweep_points = len(sweep_points)
+        if self.data_type == 'fft_power':
+            # Number of points of the spectrum to be returned
+            n_results = self.nr_sweep_points
+        elif self.data_type == 'timedomain':
+            # Meaning 1 timetrace. Could be extended e.g. if hardware allows
+            # TV-mode avg of timetraces
+            n_results = 1
+        else:
+            raise ValueError
+
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=n_results,
+            acquisition_length=self.integration_length,
+            averages=self.nr_averages,
+            loop_cnt=self.nr_shots * self.nr_averages,
+            mode='scope', data_type=self.data_type,
+        )
+
+
 class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     """
     Detector used for correlation mode with the UHFQC.
@@ -1285,7 +1401,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     def __init__(self, acq_dev, AWG=None, integration_length=1e-6,
                  nr_averages=1024,  real_imag=True,
                  channels: list = ((0, 0), (0, 1)),
-                 correlations: list = ((0, 1)),
+                 correlations: list = (((0, 0), (0, 1))),
                  data_type: str = 'raw_corr',
                  used_channels=None, value_names=None, single_int_avg=False,
                  **kw):
@@ -1314,12 +1430,13 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
         if value_names is not None:
             self.value_names = value_names
-        for corr in correlations:
-            self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
-        value_properties = acq_dev.get_value_properties(
-            self.data_type, self.integration_length)
-        self.value_units = ([value_properties['value_unit']] *
-                            len(self.correlations))
+        else:
+            for corr in correlations:
+                self.value_names += ['corr ({},{})'.format(corr[0], corr[1])]
+        value_unit = acq_dev.get_value_properties(
+            self.data_type, self.integration_length)['value_unit']
+        for _ in correlations:
+            self.value_units += [f'({value_unit})^2']
 
         self.define_correlation_channels()
 
@@ -1335,11 +1452,10 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             # We can assume that channels belong to acquisition unit 0 because
             # this detector is specific to the UHF. (The acquisition device
             # would raise an error otherwise.)
-            if (0, corr[0]) not in used_channels or (0, corr[1]) not in \
-                   used_channels:
+            if corr[0] not in used_channels or corr[1] not in used_channels:
                 raise ValueError('Correlations should be in used channels')
 
-            correlation_channel = -1
+            correlation_channel = None
 
             for ch in range(self.acq_dev.n_acq_int_channels):
                 ch = (0, ch)
@@ -1357,7 +1473,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
                     break
                     # FIXME, can currently only use one correlation
 
-            if correlation_channel < 0:
+            if correlation_channel is None:
                 raise ValueError('No free channel available for correlation.')
             else:
                 used_channels += [correlation_channel]
@@ -1376,12 +1492,12 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             # second channel as channel to correlate with.
             copy_int_weights_real = \
                 np.array(self.acq_dev.get(
-                    f'qas_0_integration_weights_{corr[0]}_real')).astype(float)
+                    f'qas_0_integration_weights_{corr[0][1]}_real')).astype(float)
             copy_int_weights_imag = \
                 np.array(self.acq_dev.get(
-                    f'qas_0_integration_weights_{corr[0]}_imag')).astype(float)
+                    f'qas_0_integration_weights_{corr[0][1]}_imag')).astype(float)
 
-            copy_rot_matrix = self.acq_dev.get(f'qas_0_rotations_{corr[0]}')
+            copy_rot_matrix = self.acq_dev.get(f'qas_0_rotations_{corr[0][1]}')
 
             self.acq_dev.set(
                 f'qas_0_integration_weights_{correlation_channel[1]}_real',
@@ -1399,13 +1515,13 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
             self.acq_dev.set(
                 f'qas_0_correlations_{correlation_channel[1]}_enable', 1)
             self.acq_dev.set(
-                f'qas_0_correlations_{correlation_channel[1]}_source', corr[1])
+                f'qas_0_correlations_{correlation_channel[1]}_source', corr[1][1])
 
             # If thresholding is enabled, set the threshold for the correlation
             # channel.
             if self.thresholding:
                 thresh_level = \
-                    self.acq_dev.get(f'qas_0_thresholds_{corr[0]}_level')
+                    self.acq_dev.get(f'qas_0_thresholds_{corr[0][1]}_level')
                 self.acq_dev.set(
                     f'qas_0_thresholds_{correlation_channel[1]}_level',
                     thresh_level)

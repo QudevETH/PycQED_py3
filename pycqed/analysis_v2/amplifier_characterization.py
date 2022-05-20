@@ -72,11 +72,11 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
             self.raw_data_dict[1]['measured_data']['Q'] ** 2
         correlator_scale = self.options_dict.get('correlator_scale', 1)
         self.proc_data_dict['total_power'] = \
-            (self.raw_data_dict[0]['measured_data']['corr (0,0)'] +
-             self.raw_data_dict[0]['measured_data']['corr (1,1)']) * correlator_scale
+            (self.raw_data_dict[0]['measured_data']['I^2'] +
+             self.raw_data_dict[0]['measured_data']['Q^2']) * correlator_scale
         self.proc_data_dict['total_power_ref'] = \
-            (self.raw_data_dict[1]['measured_data']['corr (0,0)'] +
-             self.raw_data_dict[1]['measured_data']['corr (1,1)']) * correlator_scale
+            (self.raw_data_dict[1]['measured_data']['I^2'] +
+             self.raw_data_dict[1]['measured_data']['Q^2']) * correlator_scale
         if self.proc_data_dict['dim'] > 1:
             for key in ['signal_power', 'total_power']:
                 self.proc_data_dict[key] = np.reshape(
