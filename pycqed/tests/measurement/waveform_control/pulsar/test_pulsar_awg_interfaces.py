@@ -48,13 +48,13 @@ class TestPulsarAWGInterface(TestCase):
         self.awg5014 = VirtualAWG5014(f"awg5014_{id}", timeout=20,
                                       address='TCPIP0::192.168.1.4')
 
-        self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8188",
+        self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8000",
                                     interface="1GbE", server="emulator")
 
         # TODO: SHFQ currently has no virtual driver, so we do not unit test it.
-        # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12043", host="localhost")
+        # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12000", host="localhost")
 
-        self.uhfqc = UHFQA_core(f"uhfqc_{id}", device='dev2268',
+        self.uhfqc = UHFQA_core(f"uhfqc_{id}", device='dev2000',
                                 interface='1GbE', server="emulator")
 
         self.awgs:List[Tuple[Instrument, Type[PulsarAWGInterface]]] = [
