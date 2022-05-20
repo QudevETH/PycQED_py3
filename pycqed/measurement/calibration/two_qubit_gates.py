@@ -335,7 +335,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         return task
 
     def parallel_sweep(self, preprocessed_task_list=(), block_func=None,
-                       block_align=None, **kw):
+                       block_align=None, segment_kwargs=dict(), **kw):
         """
         Calls a block creation function for each task in a task list,
         puts these blocks in parallel and sweeps over the given sweep points.
@@ -437,7 +437,8 @@ class MultiTaskingExperiment(QuantumExperiment):
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(self.get_sweep_points_for_sweep_n_dim(),
                                 body_block=self.all_main_blocks,
-                                cal_points=self.cal_points, **kw)
+                                cal_points=self.cal_points,
+                                segment_kwargs=segment_kwargs, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
         return self.sweep_points

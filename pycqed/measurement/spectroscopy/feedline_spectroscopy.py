@@ -47,6 +47,10 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         self.lo_frequencies = {}
         self.mod_frequencies = {}
 
+        # Used to set the acquisition mode in the segment, e.g. for fast
+        # SHFQA spectroscopy. Default is 'software' sweeper.
+        self.segment_kwargs = {'acquisition_mode': dict(sweeper='software')}
+
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
         self.generate_lo_task_dict()
@@ -68,7 +72,8 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         with temporary_value(*self.temporary_values):
             self.update_operation_dict()
             self.sequences, _ = self.parallel_sweep(
-                self.preprocessed_task_list, self.sweep_block, **kw)
+                self.preprocessed_task_list, self.sweep_block,
+                segment_kwargs=self.segment_kwargs, **kw)
 
         self.mc_points = [np.arange(n) for n in self.sweep_points.length()]
 
@@ -337,6 +342,26 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                          **kw)
         self.autorun(**kw)
 
+    def resolve_freq_sweep_points(self, **kw):
+        if len(self.preprocessed_task_list) == 1:
+            task = self.preprocessed_task_list[0]
+            qb = self.get_qubits(task['qb'])[0][0]
+            acq_instr = qb.instr_acq.get_instr()
+            if (hasattr(acq_instr, 'use_hardware_sweeper') and \
+                acq_instr.use_hardware_sweeper()) or False: # TODO: remove or bool
+                freqs = task['freqs']
+                lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
+                acq_instr.set_lo_freq(self.acq_unit(),
+                                                        lo_freq)
+                self.segment_kwargs['acquisition_mode']= dict(
+                        sweeper='hardware',
+                        f_start=freqs[0] - lo_freq,
+                        f_step=delta_f,
+                        n_step=len(freqs),
+                        seqtrigger=True,
+                    )
+                return
+        return super().resolve_freq_sweep_points(**kw)
 
     def sweep_block(self, sweep_points, qb, init_state='0',
                     prepend_pulse_dicts=None , **kw):
