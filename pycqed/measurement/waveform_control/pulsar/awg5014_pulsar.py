@@ -76,8 +76,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
             pulsar.add_parameter(f"{ch_name}_offset_mode",
                                  parameter_class=ManualParameter,
                                  initial_value="software",
-                                 vals=vals.Enum("software", "hardware"),
-                                 initial_value="software")
+                                 vals=vals.Enum("software", "hardware"))
 
         else: # ch_type == "marker"
             # So far no additional parameters specific to marker channels
