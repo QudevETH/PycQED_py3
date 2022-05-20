@@ -88,6 +88,15 @@ class Detector_Function(object):
                             {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
@@ -846,11 +855,11 @@ class MultiPollDetector(PollDetector):
         Init of the MultiPollDetector base class.
 
         Args
-            detectors (list): poling detectors from this module to be used for
+            detectors (list): polling detectors from this module to be used for
                 acquisition
-            AWG (qcodes instrument): master AWG to be restarted before each
-                hard sweep (this is often Pulsar, to ensure that all
-                instruments start on the same segment).
+            AWG (qcodes instrument): AWG that will be treated as a master AWG
+                by wrapping it in a MultiAWGWrapper together with the AWGs of
+                the individual detectors
 
         Keyword args: passed to parent class
         """
@@ -1409,6 +1418,7 @@ class ScopePollDetector(PollDetector):
                  data_type,
                  **kw):
         super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
         self.channels = channels
         self.integration_length = integration_length
         self.nr_averages = nr_averages

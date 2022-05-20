@@ -1955,7 +1955,7 @@ class SHFQAPulsar:
                 "}}\n"
             )
             shfqa_sweeper_playback_string_template = (
-                "for(var i = 0; i < {n_step}; i++)" + " {\n"
+                "for(var i = 0; i < {n_step}; i++)" + " {{\n"
                 "    // self-triggering mode\n\n"
                 "    // define time from setting the oscillator "
                 "frequency to sending the spectroscopy trigger\n"
@@ -1970,13 +1970,15 @@ class SHFQAPulsar:
                 "    // trigger the integration unit and pulsed "
                 "playback in pulsed mode\n"
                 "    setTrigger(1);\n    setTrigger(0);\n"
-                "  }"
+                "  }}"
             )
             shfqa_sweeper_prep_string = (
                 "const OSC0 = 0;\n"
                 "setTrigger(0);\n"
                 "configFreqSweep(OSC0, {f_start}, {f_step});\n"
             )
+
+            obj.seqtrigger = None
 
             if is_spectroscopy:
                 for element in awg_sequence:
@@ -2008,8 +2010,10 @@ class SHFQAPulsar:
                                 f_start=acq['f_start'],
                                 f_step=acq['f_step'],
                             ),
-                            playback_string='\n  '.join(playback_strings)),
-                        {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
+                            playback_string='\n  '.join(playback_strings)))
+                    # The acquisition modules will each be triggered by their
+                    # sequencer
+                    obj.seqtrigger = True
 
                 # FIXME: check whether some of this code should be moved to
                 #  the SHFQA class in the next cleanup
@@ -2059,6 +2063,7 @@ class SHFQAPulsar:
                 ]
                 if trig == '0x1':
                     if obj.seqtrigger is None:
+                        # The scope will be triggered by this single acq_unit
                         obj.seqtrigger = acq_unit
                     playback_strings += [
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
@@ -2072,7 +2077,6 @@ class SHFQAPulsar:
             if repeat_pattern is not None:
                 log.info("Repeat patterns not yet implemented on SHFQA, "
                          "ignoring it")
-            obj.seqtrigger = None
             for element in awg_sequence:
                 playback_strings = play_element(element, playback_strings, i)
             obj.set_awg_program(

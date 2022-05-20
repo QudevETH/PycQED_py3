@@ -11093,7 +11093,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
         self.nr_averages = nr_averages
-        n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+        # metadata['detectors'] is a dict for MultiPollDetector and else a list
+        df_names = list(det_metadata['detectors'])
+        # Testing the first detector, since detectors in a MultiPollDetector
+        # should all be the same
+        if 'scope' in df_names[0]:
+            # No scaling needed, since all hsp are contained in one hardware run
+            n_hsp = 1
+        else:
+            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
