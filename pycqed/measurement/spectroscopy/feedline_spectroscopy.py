@@ -517,3 +517,43 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     amp = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_IQ_output_amp']
                     self.temporary_values.append((amp,
                                                   qb.spec_mod_amp()))
+
+class ReadoutCalibration(FeedlineSpectroscopy):
+    """
+
+    """
+    kw_for_sweep_points = {'states':  dict(param_name='initialize', unit='',
+                           label=r'qubit state',
+                           dimension=1),}
+    default_experiment_name = 'ReadoutCalibration'
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None, **kw):
+        """If the task does not provide the states that are to be measured it
+        fills the states with the default of `['0', '1']`.
+        """
+        # FIXME: sweep_n_dim only looks for sweep points 'initialize' but the
+        # sweep points we add to a task will have an additional prefix,
+        # e.g. 'qb1_initialize'
+        if task.get('states', None) is None:
+            task['states'] = ['0', '1']
+        return super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
+
+    def get_sweep_points_for_sweep_n_dim(self):
+        # FIXME: only temporary solution until the prefix problem (see fixme
+        # in preprocess_task) is solved.
+        if self.sweep_points_pulses.find_parameter('initilize') is None:
+            self.sweep_points_pulses.add_sweep_parameter(param_name='initialize',
+                            values=['0', '1'], unit='',
+                            label=r'qubit init state',
+                            dimension=1)
+        return self.sweep_points_pulses
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 'options_dict' not in analysis_kwargs:
+            analysis_kwargs['options_dict'] = {}
+        # make sure that spectroscopies for all states are ploted in one plot
+        analysis_kwargs['options_dict']['plot_all_traces'] = True
+        return super().run_analysis(analysis_kwargs, **kw)
