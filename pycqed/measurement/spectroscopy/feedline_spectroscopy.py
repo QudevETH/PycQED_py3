@@ -33,6 +33,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         # Passing keyword arguments to the super class (even if they are not
         # needed there) makes sure that they are stored in the metadata.
         df_name = kw.pop('df_name', 'int_avg_det_spec')
+        self.df_kwargs = kw.pop('df_kwargs', dict())
         cal_states = kw.pop('cal_states', [])
         super().__init__(task_list, df_name=df_name, cal_states=cal_states,
                          **kw)
@@ -360,6 +361,8 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         n_step=len(freqs),
                         seqtrigger=True,
                     )
+                # adopt df kwargs to hard sweep
+                self.df_kwargs['single_int_avg'] = False
                 return
         return super().resolve_freq_sweep_points(**kw)
 
