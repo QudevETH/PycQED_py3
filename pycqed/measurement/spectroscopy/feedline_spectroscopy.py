@@ -537,15 +537,15 @@ class ReadoutCalibration(FeedlineSpectroscopy):
         # FIXME: sweep_n_dim only looks for sweep points 'initialize' but the
         # sweep points we add to a task will have an additional prefix,
         # e.g. 'qb1_initialize'
-        if task.get('states', None) is None:
-            task['states'] = ['0', '1']
+        # if task.get('states', None) is None:
+        #     task['states'] = ['0', '1']
         return super().preprocess_task(task, global_sweep_points,
                                        sweep_points, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
         # FIXME: only temporary solution until the prefix problem (see fixme
         # in preprocess_task) is solved.
-        if self.sweep_points_pulses.find_parameter('initilize') is None:
+        if self.sweep_points_pulses.find_parameter('initialize') is None:
             self.sweep_points_pulses.add_sweep_parameter(param_name='initialize',
                             values=['0', '1'], unit='',
                             label=r'qubit init state',
