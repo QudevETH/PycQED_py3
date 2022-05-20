@@ -66,8 +66,6 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         # temp value ensure that mod_freqs etc are set corretcly
         with temporary_value(*self.temporary_values):
-            # the block alignments are for: prepended pulses, initial
-            # rotations, ro pulse.
             self.update_operation_dict()
             self.sequences, _ = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
@@ -339,37 +337,6 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                          **kw)
         self.autorun(**kw)
 
-    # def preprocess_task_list(self, **kw):
-    #     """Calls super method and afterwards checks that the preprocessed task
-    #     list does not contain more than one qubit per feedline by comparing the
-    #     ro_I_channel and ro_q_channel parameter between the qubits.
-    #     """
-    #     task_list = super().preprocess_task_list()
-    #     ftd = self.feedline_task_dict
-    #     ro_channels = []
-    #     for task in task_list:
-    #         qb = self.get_qubits(task['qb'])[0][0]
-    #         ro_I_channel = qb.ro_I_channel()
-    #         ro_Q_channel = qb.ro_Q_channel()
-    #         if ro_I_channel in ro_channels or ro_Q_channel in ro_channels:
-    #             # Feedline already exists in preprocessed_task_list
-    #             log.warning('Several qubits on the same AWG channel were specified'
-    #                         ' in task_list. The experiment will assume they belong'
-    #                         ' to the same feedline and will measure the frequencies'
-    #                         ' specified for the first task on that feedline and'
-    #                         ' ignore other frequencies of other tasks on that feedline.')
-    #             qb = self.get_qubits(task['qb'])[0][0]
-    #             qb.instr_ro_lo.get_instr()
-    #             ftd[qb.instr_ro_lo.get_instr()]['qbs'].append(task.pop('qb'))
-    #             for k, v in task.items():
-    #                 if k in ftd
-    #         else:
-    #             ro_channels += [ro_I_channel, ro_Q_channel]
-    #             task = deepcopy(task)
-    #             task['qbs'] = [task.pop('qb')]
-    #             ftd[qb.instr_ro_lo.get_instr()] = {task}
-
-    #     return self.preprocessed_task_list
 
     def sweep_block(self, sweep_points, qb, init_state='0',
                     prepend_pulse_dicts=None , **kw):
@@ -523,6 +490,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         if self.modulated:
             for task in self.preprocessed_task_list:
                 if task.get('mod_freq', None) is not None:
+                    # FIXME: HDAWG specific code
                     qb = self.get_qubits(task['qb'])[0][0]
                     mod_freq = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_mod_freq']
                     self.temporary_values.append((mod_freq,
