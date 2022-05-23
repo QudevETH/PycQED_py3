@@ -9243,13 +9243,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
 
+            means = [mu for _, mu in
+                                self.proc_data_dict['analysis_params']
+                                    ['means'][qb_name].items()]
+
+            # calculate delta of means and set tol and cov based on this
+            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                    for mu_j in means]).flatten().max()
+
+            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            reg_covar = tol**2
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=tol,
+                    reg_covar=reg_covar,
                     weights_init=weights_init,
-                    means_init=[mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()], **kw)
+                    means_init=means, **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
