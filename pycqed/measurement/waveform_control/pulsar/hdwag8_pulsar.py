@@ -284,9 +284,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         else:
             return 1
 
-
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
-                    channels_to_upload="all", channels_to_program="all"):
+                    channels_to_upload="all", channels_to_program="all",
+                    filter_segments=None):
+        awg_sequence = self.get_filtered_awg_sequence(
+            awg_sequence, waveforms, filter_segments, repeat_pattern,
+            channels_to_upload=channels_to_upload,
+            channels_to_program=channels_to_program
+        )
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
@@ -587,10 +592,11 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     def _hdawg_active_awgs(self):
         return [0,1,2,3]
 
-    def get_segment_filter_userregs(self):
+    def get_segment_filter_userregs(self, include_inactive=False):
         return [(f'awgs_{i}_userregs_{self.awg.USER_REG_FIRST_SEGMENT}',
                  f'awgs_{i}_userregs_{self.awg.USER_REG_LAST_SEGMENT}')
-                for i in range(4) if self.awg._awg_program[i] is not None]
+                for i in range(4) if include_inactive or
+                self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
         chid = self.pulsar.get(ch + '_id')

@@ -109,12 +109,19 @@ class SHFQAPulsar(PulsarAWGInterface):
             return 10 ** (dbm /20 - 0.5)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
-                    channels_to_upload="all", channels_to_program="all"):
+                    channels_to_upload="all", channels_to_program="all",
+                    filter_segments=None):
         # TODO: For now, we only check for channels_to_upload and always
         # re-program when re-uploading (i.e., we ignore channels_to_program).
         # This could be further optimized in the future. Moreover, we currently
         # ignore channels_to_upload in spectroscopy mode, i.e., we always
         # re-upload in spectroscopy mode. This could be optimized in the future.
+
+        awg_sequence = self.get_filtered_awg_sequence(
+            awg_sequence, waveforms, filter_segments, repeat_pattern,
+            channels_to_upload=channels_to_upload,
+            channels_to_program=channels_to_program
+        )
 
         grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
         for i, qachannel in enumerate(self.awg.qachannels):
