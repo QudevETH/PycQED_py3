@@ -285,16 +285,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             return 1
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
-                    channels_to_upload="all", channels_to_program="all",
-                    filter_segments=None):
-        awg_sequence = self.get_filtered_awg_sequence(
-            awg_sequence, waveforms, filter_segments, repeat_pattern,
-            channels_to_upload=channels_to_upload,
-            channels_to_program=channels_to_program
-        )
-        if awg_sequence is None:
-            return
-
+                    channels_to_upload="all", channels_to_program="all"):
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}

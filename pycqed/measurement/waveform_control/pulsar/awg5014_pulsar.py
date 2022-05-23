@@ -189,15 +189,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 self.awg.set(f"{id_raw}_high", l + value)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
-                    channels_to_upload="all", channels_to_program="all",
-                    filter_segments=None):
-        awg_sequence = self.get_filtered_awg_sequence(
-            awg_sequence, waveforms, filter_segments, repeat_pattern,
-            channels_to_upload=channels_to_upload,
-            channels_to_program=channels_to_program
-        )
-        if awg_sequence is None:
-            return
+                    channels_to_upload="all", channels_to_program="all"):
 
         pars = {
             'ch{}_m{}_low'.format(ch + 1, m + 1)

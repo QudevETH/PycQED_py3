@@ -126,16 +126,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 return self.awg.get(f"sigouts_{ch}_range") / 2
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
-                    channels_to_upload="all", channels_to_program="all",
-                    filter_segments=None):
-        awg_sequence = self.get_filtered_awg_sequence(
-            awg_sequence, waveforms, filter_segments, repeat_pattern,
-            channels_to_upload=channels_to_upload,
-            channels_to_program=channels_to_program
-        )
-        if awg_sequence is None:
-            return
-
+                    channels_to_upload="all", channels_to_program="all"):
 
         if not self.zi_waves_cleared:
             self._zi_clear_waves()

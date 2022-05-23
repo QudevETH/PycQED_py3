@@ -267,11 +267,10 @@ class PulsarAWGInterface(ABC):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
-    def program_awg(self, awg_sequence:dict, waveforms:dict,
+    def program_awg(self, awg_sequence: dict, waveforms: dict,
                     repeat_pattern=None,
-                    channels_to_upload:Union[List[str], str]="all",
-                    channels_to_program:Union[List[str], str]="all",
-                    filter_segments=None):
+                    channels_to_upload: Union[List[str], str] = "all",
+                    channels_to_program: Union[List[str], str] = "all"):
         """Upload the waveforms to the AWG.
 
         Args:
@@ -287,8 +286,27 @@ class PulsarAWGInterface(ABC):
             channels_to_upload: list of channel names to upload or ``"all"``.
             channels_to_program: List of channel to program. Only relevant for
                 the HDAWG.
-            filter_segments: TODO: Document.
         """
+
+    def _program_awg(self, awg_sequence:dict, waveforms:dict,
+                     repeat_pattern=None,
+                     channels_to_upload:Union[List[str], str]="all",
+                     channels_to_program:Union[List[str], str]="all",
+                     filter_segments=None):
+        """Preprocess filter segments before programming actual hardware"""
+        awg_sequence = self.get_filtered_awg_sequence(
+            awg_sequence, waveforms, filter_segments, repeat_pattern,
+            channels_to_upload=channels_to_upload,
+            channels_to_program=channels_to_program
+        )
+        if awg_sequence is not None:
+            self.program_awg(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                repeat_pattern=repeat_pattern,
+                channels_to_upload=channels_to_upload,
+                channels_to_program=channels_to_program
+            )
 
     def get_filtered_awg_sequence(self, awg_sequence, waveforms,
                                   filter_segments, repeat_pattern, **kwargs):
@@ -386,7 +404,7 @@ class PulsarAWGInterface(ABC):
                 fsec = self._filter_segments_emulation_cache
                 if fsec is not None and fsec.get('filter_segments', None) \
                         != val:
-                    self.program_awg(
+                    self._program_awg(
                         **{k: v for k, v in fsec.items()
                            if k != 'filter_segments'},
                         filter_segments=val,
@@ -961,7 +979,7 @@ class Pulsar(Instrument):
                 ch_prg = [self.get(f'{ch}_id') for ch in channels_to_program
                           if self.get(f'{ch}_awg') == awg]
 
-            self.awg_interfaces[awg].program_awg(
+            self.awg_interfaces[awg]._program_awg(
                 awg_sequences.get(awg, {}),
                 waveforms,
                 repeat_dict.get(awg, None),
