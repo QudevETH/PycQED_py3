@@ -133,6 +133,9 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             channels_to_upload=channels_to_upload,
             channels_to_program=channels_to_program
         )
+        if awg_sequence is None:
+            return
+
 
         if not self.zi_waves_cleared:
             self._zi_clear_waves()

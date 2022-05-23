@@ -335,7 +335,8 @@ class PulsarAWGInterface(ABC):
                                 i_seg > filter_segments[1]):
                             continue
                     new_awg_sequence[k] = deepcopy(v)
-                self._filter_segments_emulation_cache = filter_segments
+                self._filter_segments_emulation_cache['filter_segments'] = \
+                    filter_segments
                 return new_awg_sequence
         # If we are here, it means that the current sequence does not use
         # segment filtering or that no emulation is needed for this AWG.

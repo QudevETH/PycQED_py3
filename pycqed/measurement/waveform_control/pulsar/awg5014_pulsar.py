@@ -196,6 +196,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
             channels_to_upload=channels_to_upload,
             channels_to_program=channels_to_program
         )
+        if awg_sequence is None:
+            return
 
         pars = {
             'ch{}_m{}_low'.format(ch + 1, m + 1)

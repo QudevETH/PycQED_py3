@@ -122,6 +122,9 @@ class SHFQAPulsar(PulsarAWGInterface):
             channels_to_upload=channels_to_upload,
             channels_to_program=channels_to_program
         )
+        if awg_sequence is None:
+            return
+
 
         grp_has_waveforms = {f'ch{i+1}': False for i in range(4)}
         for i, qachannel in enumerate(self.awg.qachannels):

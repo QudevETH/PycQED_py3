@@ -292,6 +292,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             channels_to_upload=channels_to_upload,
             channels_to_program=channels_to_program
         )
+        if awg_sequence is None:
+            return
+
 
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
