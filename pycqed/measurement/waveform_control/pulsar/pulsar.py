@@ -1,4 +1,7 @@
 import os
+from copy import deepcopy
+from collections import OrderedDict as odict
+
 import numpy as np
 import logging
 import time
@@ -87,6 +90,7 @@ class PulsarAWGInterface(ABC):
         self.pulsar = pulsar
 
         self._filter_segment_functions = None
+        self._filter_segments_emulation_cache = None
 
     def __init_subclass__(cls, **kwargs):
         """Hook to auto-register a new pulsar AWG interface class.
@@ -265,9 +269,10 @@ class PulsarAWGInterface(ABC):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
-    def program_awg(self, awg_sequence:dict, waveforms:dict, repeat_pattern=None,
-                    channels_to_upload:Union[List[str], str]="all",
-                    channels_to_program:Union[List[str], str]="all"):
+    def program_awg(self, awg_sequence: dict, waveforms: dict,
+                    repeat_pattern=None,
+                    channels_to_upload: Union[List[str], str] = "all",
+                    channels_to_program: Union[List[str], str] = "all"):
         """Upload the waveforms to the AWG.
 
         Args:
@@ -284,6 +289,80 @@ class PulsarAWGInterface(ABC):
             channels_to_program: List of channel to program. Only relevant for
                 the HDAWG.
         """
+
+    def _program_awg(self, awg_sequence:dict, waveforms:dict,
+                     repeat_pattern=None,
+                     channels_to_upload:Union[List[str], str]="all",
+                     channels_to_program:Union[List[str], str]="all",
+                     filter_segments=None):
+        """Preprocess filter segments before programming actual hardware"""
+        awg_sequence = self.get_filtered_awg_sequence(
+            awg_sequence, waveforms, filter_segments, repeat_pattern,
+            channels_to_upload=channels_to_upload,
+            channels_to_program=channels_to_program
+        )
+        if awg_sequence is not None:
+            self.program_awg(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                repeat_pattern=repeat_pattern,
+                channels_to_upload=channels_to_upload,
+                channels_to_program=channels_to_program
+            )
+
+    def get_filtered_awg_sequence(self, awg_sequence, waveforms,
+                                  filter_segments, repeat_pattern, **kwargs):
+        # store data for filter segments emulation if needed
+        if len(self.get_segment_filter_userregs(include_inactive=True)) == 0:
+            # AWG does not support segment filtering in hardware
+            use_filter = any([e is not None and
+                              e.get('metadata', {}).get('allow_filter', False)
+                              for e in awg_sequence.values()])
+            if use_filter:
+                # filter segments emulation needed
+                if repeat_pattern is not None:
+                    raise NotImplementedError(
+                        f'{self.awg.name} does not support filter_segments and '
+                        f'an emulation is needed, but the combination of '
+                        f'filter_segments emulation and repeat_pattern is not '
+                        f'implemented.')
+
+                if filter_segments is None:
+                    # _program_awg was called from self._program_awgs
+                    # (otherwise, it would have been called from
+                    # self._set_filter_segments)
+                    self._filter_segments_emulation_cache = {
+                        'awg_sequence': awg_sequence,
+                        'waveforms': waveforms,
+                        **kwargs,
+                    }
+                    # We skip the programming, and it will be done in the
+                    # next update of filter_segments.
+                    # FIXME: This assumes that filter_segments will be set
+                    #  after the call to program_awgs (as it is the case in
+                    #  FilteredSweep). Find a more general solution.
+                    self.pulsar._awgs_with_waveforms.add(self.awg.name)
+                    return
+                new_awg_sequence = odict()
+                i_seg = -1
+                for k, v in awg_sequence.items():
+                    if v is None:
+                        i_seg += 1
+                    else:
+                        metadata = v.get('metadata', {})
+                        if metadata.get('allow_filter', False) and (
+                                i_seg < filter_segments[0] or
+                                i_seg > filter_segments[1]):
+                            continue
+                    new_awg_sequence[k] = deepcopy(v)
+                self._filter_segments_emulation_cache['filter_segments'] = \
+                    filter_segments
+                return new_awg_sequence
+        # If we are here, it means that the current sequence does not use
+        # segment filtering or that no emulation is needed for this AWG.
+        # Reset the _filter_segments_emulation_cache for this AWG.
+        self._filter_segments_emulation_cache = None
+        return awg_sequence
 
     def start(self):
         """Start the AWG."""
@@ -307,36 +386,40 @@ class PulsarAWGInterface(ABC):
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
 
-    @abstractmethod
-    def get_segment_filter_userregs(self) -> List[Tuple[str, str]]:
+    def get_segment_filter_userregs(self, include_inactive=False) \
+            -> List[Tuple[str, str]]:
         """Returns the list of segment filter userregs.
 
         Returns:
             List of tuples ``(first, last)`` where ``first`` and ``last`` are
             formatted strings. TODO: More accurate description.
         """
+        return []
 
     def set_filter_segments(self, val):
         """TODO: Document"""
 
-        if val is None:
-            val = self.DEFAULT_SEGMENT
-        self._filter_segments = val
-
-        fnc = self._filter_segment_functions
-        if fnc is None:
-            for regs in self.get_segment_filter_userregs():
-                self.awg.set(regs[0], val[0])
-                self.awg.set(regs[1], val[1])
+        if self._filter_segment_functions is None:
+            all_regs = self.get_segment_filter_userregs()
+            if len(all_regs) == 0:
+                # Emulate filter segments for this AWG
+                fsec = self._filter_segments_emulation_cache
+                if fsec is not None and fsec.get('filter_segments', None) \
+                        != val:
+                    self._program_awg(
+                        **{k: v for k, v in fsec.items()
+                           if k != 'filter_segments'},
+                        filter_segments=val,
+                    )
+            else:  # filter segments supported by the hardware for this AWG
+                for regs in all_regs:
+                    self.awg.set(regs[0], val[0])
+                    self.awg.set(regs[1], val[1])
         else:
             # used in case of a repeat pattern
             for regs in self.get_segment_filter_userregs():
-                self.awg.set(regs[1], fnc(val[0], val[1]))
-
-    def get_segment_filter_userregs(self) -> List[Tuple[str, str]]:
-        """TODO: Document"""
-
-        return []
+                self.awg.set(regs[1], self._filter_segment_functions(val[0],
+                                                                     val[1]))
 
 
 class Pulsar(Instrument):
@@ -898,7 +981,7 @@ class Pulsar(Instrument):
                 ch_prg = [self.get(f'{ch}_id') for ch in channels_to_program
                           if self.get(f'{ch}_awg') == awg]
 
-            self.awg_interfaces[awg].program_awg(
+            self.awg_interfaces[awg]._program_awg(
                 awg_sequences.get(awg, {}),
                 waveforms,
                 repeat_dict.get(awg, None),

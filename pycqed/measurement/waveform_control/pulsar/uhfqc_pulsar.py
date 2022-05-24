@@ -5,10 +5,9 @@ import numpy as np
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
-    from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
-        UHFQA_core import UHFQA_core
+    from pycqed.instrument_drivers.acquisition_devices.uhfqa import UHFQA
 except Exception:
-    UHFQA_core = type(None)
+    UHFQA = type(None)
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin
@@ -20,7 +19,7 @@ log = logging.getLogger(__name__)
 class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
-    AWG_CLASSES = [UHFQA_core]
+    AWG_CLASSES = [UHFQA]
     GRANULARITY = 16
     ELEMENT_START_GRANULARITY = 8 / 1.8e9
     MIN_LENGTH = 16 / 1.8e9
@@ -351,7 +350,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
     def clock(self):
         return self.awg.clock_freq()
 
-    def get_segment_filter_userregs(self):
+    def get_segment_filter_userregs(self, include_inactive=False):
         return [(f"awgs_0_userregs_{self.awg.USER_REG_FIRST_SEGMENT}",
                  f"awgs_0_userregs_{self.awg.USER_REG_LAST_SEGMENT}")]
 

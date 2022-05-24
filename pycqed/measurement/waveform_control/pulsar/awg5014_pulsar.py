@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 import logging
 from qcodes.instrument.parameter import ManualParameter
@@ -77,12 +79,42 @@ class AWG5014Pulsar(PulsarAWGInterface):
                                  parameter_class=ManualParameter,
                                  initial_value="software",
                                  vals=vals.Enum("software", "hardware"))
+            scale_param = f'{ch_name}_amplitude_scaling'
+
+            # The set_cmd of the amplitude scaling makes sure that the AWG amp
+            # parameter gets updated when the scaling is changed.
+            # The product of the amp and scaling paraemeters is
+            # rounded to the nearest 0.001 when passed to the AWG to prevent
+            # a build-up of rounding errors caused by the AWG.
+            pulsar.add_parameter(
+                scale_param,
+                label=f'{ch_name} amplitude scaling',
+                set_cmd=(lambda v,
+                                g=partial(self.awg_getter, id, "amp",
+                                          scale_param=scale_param),
+                                s=partial(self.awg_setter, id, "amp"):
+                         s(np.round(v * g(), decimals=3))),
+                vals=vals.Numbers(*self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
+
+            del pulsar.parameters[f"{ch_name}_amp"]
+            pulsar.add_parameter(f"{ch_name}_amp",
+                                 label=f"{ch_name} amplitude", unit='V',
+                                 set_cmd=partial(self.awg_setter, id, "amp",
+                                                 scale_param=scale_param),
+                                 get_cmd=partial(self.awg_getter, id, "amp",
+                                                 scale_param=scale_param),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
+
+            # Due to its set_cmd, amplitude scaling can be set to its initial
+            # value only now after the amp param has been created.
+            pulsar.parameters[scale_param](1.0)
 
         else: # ch_type == "marker"
             # So far no additional parameters specific to marker channels
             pass
 
-    def awg_getter(self, id:str, param:str):
+    def awg_getter(self, id:str, param:str, scale_param=None):
 
         # Sanity checks
         super().awg_getter(id, param)
@@ -99,9 +131,13 @@ class AWG5014Pulsar(PulsarAWGInterface):
                     raise ValueError(f"Invalid {offset_mode=} mode for AWG5014.")
             elif param == 'amp':
                 if self.pulsar.awgs_prequeried:
-                    return self.awg.parameters[f"{id}_amp"].get_latest() / 2
+                    amp = self.awg.parameters[f"{id}_amp"].get_latest() / 2
                 else:
-                    return self.awg.get(f"{id}_amp") / 2
+                    amp = self.awg.get(f"{id}_amp") / 2
+                if scale_param is not None and self.pulsar.get(scale_param) is \
+                        not None:
+                    amp /= self.pulsar.get(scale_param)
+                return amp
         else:
             # Convert ch1m1 to ch1_m1
             id_raw = id[:3] + '_' + id[3:]
@@ -116,7 +152,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                     l = self.awg.get(f"{id_raw}_low")
                 return h - l
 
-    def awg_setter(self, id:str, param:str, value):
+    def awg_setter(self, id:str, param:str, value, scale_param=None):
 
         # Sanity checks
         super().awg_setter(id, param, value)
@@ -132,7 +168,14 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 else:
                     raise ValueError(f"Invalid {offset_mode=} mode for AWG5014.")
             elif param == 'amp':
-                self.awg.set(f"{id}_amp", 2 * value)
+                scale = 1 if scale_param is None else self.pulsar.get(scale_param)
+                if scale != 1:
+                    raise ValueError(
+                        'Amplitude cannot be changed while amplitude '
+                        'scaling is enabled. '
+                        f'Current scaling factor {scale_param}: {scale}')
+                else:
+                    self.awg.set(f'{id}_amp', 2 * value * scale)
         else:
             # Convert ch1m1 to ch1_m1
             id_raw = id[:3] + '_' + id[3:]
@@ -275,7 +318,9 @@ class AWG5014Pulsar(PulsarAWGInterface):
             if self.pulsar.get(f"{channel}_type") == 'analog':
                 offset_mode = self.pulsar.get(f"{channel}_offset_mode")
                 channel_cfg['ANALOG_METHOD_' + cid[2]] = 1
-                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = amp * 2
+                channel_cfg['ANALOG_AMPLITUDE_' + cid[2]] = (
+                    self.awg_getter(cid, 'amp') * 2
+                )
                 if offset_mode == 'software':
                     channel_cfg['ANALOG_OFFSET_' + cid[2]] = off
                     channel_cfg['DC_OUTPUT_LEVEL_' + cid[2]] = 0

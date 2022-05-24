@@ -17,8 +17,7 @@ from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
     VirtualAWG5014
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .ZI_HDAWG_qudev import ZI_HDAWG_qudev
-from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
-    .UHFQA_core import UHFQA_core
+from pycqed.instrument_drivers.acquisition_devices.uhfqa import UHFQA
 # from pycqed.instrument_drivers.acquisition_devices.shfqa import \
 #     SHFQA
 
@@ -48,14 +47,14 @@ class TestPulsarAWGInterface(TestCase):
         self.awg5014 = VirtualAWG5014(f"awg5014_{id}", timeout=20,
                                       address='TCPIP0::192.168.1.4')
 
-        self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8188",
+        self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8000",
                                     interface="1GbE", server="emulator")
 
         # TODO: SHFQ currently has no virtual driver, so we do not unit test it.
-        # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12043", host="localhost")
+        # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12000", host="localhost")
 
-        self.uhfqc = UHFQA_core(f"uhfqc_{id}", device='dev2268',
-                                interface='1GbE', server="emulator")
+        self.uhfqc = UHFQA(f"uhfqc_{id}", device='dev2000',
+                           interface='1GbE', server="emulator")
 
         self.awgs:List[Tuple[Instrument, Type[PulsarAWGInterface]]] = [
             (self.awg5014, AWG5014Pulsar),
