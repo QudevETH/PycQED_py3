@@ -265,7 +265,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                             codeword=(nr_cw != 0),
                             prepend_zeros=prepend_zeros,
                             placeholder_wave=use_placeholder_waves,
-                            allow_filter=metadata.get('allow_filter', False))
+                            allow_filter=metadata.get('allow_filter', False),
+                            negate_q=True,
+                        )
                     elif not use_placeholder_waves:
                         pb_string, interleave_string = \
                             self._zi_interleaved_playback_string(
