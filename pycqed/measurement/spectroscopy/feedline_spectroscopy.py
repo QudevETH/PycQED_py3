@@ -312,6 +312,9 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                                          **analysis_kwargs)
         return self.analysis
 
+    def get_qubit(self, task):
+        return self.get_qubits(task['qb'])[0][0]
+
 
 class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """
