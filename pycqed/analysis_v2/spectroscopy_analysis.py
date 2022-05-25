@@ -1697,3 +1697,47 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         if data_key is None:
             return 'Measured Data (arb.)'
         return data_key
+
+
+class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
+    def prepare_plots(self):
+        pdd = self.proc_data_dict
+        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        for qb_name in self.qb_names:
+            fig_title = f'Magnitude and Phase Plot {qb_name}'
+            plot_name = f'raw_mag_phase_{qb_name}'
+            frequency = pdd['sweep_points_dict'][qb_name]['sweep_points']
+            for ax_id, key in enumerate(pdd['projected_data_dict'][qb_name].keys()):
+                data = pdd['projected_data_dict'][qb_name][key]
+                sp2d_key = f'{qb_name}_initialize'
+                if sp2d_key not in pdd['sweep_points_2D_dict'][qb_name].keys():
+                    sp2d_key = 'initialize'
+                for i, state in enumerate(pdd['sweep_points_2D_dict'][qb_name] \
+                                             [sp2d_key]):
+                    yvals = data[:, i]
+                    self.plot_dicts[f'raw_{key}_{state}_{qb_name}'] = {
+                            'fig_id': plot_name,
+                            'ax_id': ax_id,
+                            'plotfn': self.plot_line,
+                            'xvals': frequency,
+                            'xlabel': 'RO frequency',
+                            'xunit': 'Hz',
+                            'yvals': yvals,
+                            'ylabel': key,
+                            'yunit': '',
+                            'line_kws': {'color': self.get_state_color(state)},
+                            'numplotsx': 1,
+                            'numplotsy': 2,
+                            'plotsize': (plotsize[0],
+                                        plotsize[1]*2),
+                            'title': fig_title if not ax_id else None
+                    }
+
+    def get_state_color(self, state):
+        state_colors = {'g': 'blue', 'e': 'green', 'f': 'orange'}
+        INT_TO_STATE = 'gef'
+        if isinstance(state, int):
+            state = INT_TO_STATE[state]
+        if state not in state_colors.keys():
+            state = INT_TO_STATE[int(state)]
+        return state_colors[state]
