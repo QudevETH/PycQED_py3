@@ -365,7 +365,11 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 acq_instr = qb.instr_acq.get_instr()
                 freqs = task['freqs']
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
-                acq_instr.set_lo_freq(qb.acq_unit(), lo_freq)
+                #print(f'Setting lo freq of unit {qb.acq_unit()} to {lo_freq/1e9} GHz.')
+                # acq_instr.set_lo_freq(qb.acq_unit(), lo_freq)
+                # adjust ro_freq in tmp_vals such that qb.prepare will set the correct lo_freq
+                self.temporary_values.append(
+                    (qb.ro_freq, lo_freq + qb.ro_mod_freq()))
                 self.segment_kwargs['acquisition_mode']= dict(
                         sweeper='hardware',
                         f_start=freqs[0] - lo_freq,
