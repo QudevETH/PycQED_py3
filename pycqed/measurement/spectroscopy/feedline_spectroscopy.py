@@ -47,13 +47,13 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         self.analysis = {}
 
         self.trigger_separation = trigger_separation
-        self.lo_task_dict = {}
+        self.grouped_tasks = {}
         self.lo_frequencies = {}
         self.mod_frequencies = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
-        self.generate_lo_task_dict()
+        self.group_tasks()
         # self.check_all_freqs_per_lo()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
@@ -233,23 +233,25 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         self.update_operation_dict()
 
-    def generate_lo_task_dict(self, **kw):
+    def group_tasks(self, **kw):
         """Fills the lo_task_dict with a list of tasks from
         preprocessed_task_list per LO found in the preprocessed_task_list.
         """
         for task in self.preprocessed_task_list:
-            qb = self.get_qubits(task['qb'])[0][0]
-            lo = self.get_lo_from_qb(qb)()
-            if lo not in self.lo_task_dict:
-                self.lo_task_dict[lo] = [task]
-            else:
-                self.lo_task_dict[lo] += [task]
+            qb = self.get_qubit(task)
+            lo_instr = self.get_lo_from_qb(qb)
+            if lo_instr is not None:
+                lo_name = lo_instr()
+                if lo_name not in self.grouped_tasks:
+                    self.grouped_tasks[lo_name] = [task]
+                else:
+                    self.grouped_tasks[lo_name] += [task]
 
     def check_all_freqs_per_lo(self, **kw):
         """Checks if all frequency sweeps assigned to one LO have the same
         increment in each step.
         """
-        for lo, tasks in self.lo_task_dict.items():
+        for lo, tasks in self.grouped_tasks.items():
             all_freqs = np.array([task['freqs'] for task in tasks])
             if np.ndim(all_freqs) == 1:
                 all_freqs = [all_freqs]
@@ -346,6 +348,26 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                         dict(sweeper='software')},
                          **kw)
         self.autorun(**kw)
+
+    def group_tasks(self, **kw):
+        """Groups tasks that share an LO ar an acq. device & unit.
+        """
+        for task in self.preprocessed_task_list:
+            qb = self.get_qubit(task)
+            lo_instr = qb.instr_ro_lo
+            if lo_instr is not None:
+                qb_ro_mwg = lo_instr()
+                if qb_ro_mwg not in self.grouped_tasks:
+                    self.grouped_tasks[qb_ro_mwg] = [task]
+                else:
+                    self.grouped_tasks[qb_ro_mwg] += [task]
+            else:
+                # no external LO, use acq device instead
+                qb_ro_mwg = (qb.instr_acq(), qb.acq_unit())
+                if qb_ro_mwg not in self.grouped_tasks:
+                    self.grouped_tasks[qb_ro_mwg] = [task]
+                else:
+                    self.grouped_tasks[qb_ro_mwg] += [task]
 
     def resolve_freq_sweep_points(self, **kw):
         if len(self.preprocessed_task_list) == 1:
