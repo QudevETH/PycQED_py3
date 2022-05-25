@@ -406,22 +406,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         return [pb, ro]
 
     def configure_qubit_mux(self, qubits, lo_freqs_dict):
-        idx = {lo: 0 for lo in lo_freqs_dict}
-        for qb in qubits:
-            # try whether the external LO name is found in the lo_freqs_dict
-            qb_ro_mwg = qb.instr_ro_lo()
-            if qb_ro_mwg not in lo_freqs_dict:
-                # try whether the acquisition device & unit is in the lo_freqs_dict
-                qb_ro_mwg2 = (qb.instr_acq(), qb.acq_unit())
-                if qb_ro_mwg2 not in lo_freqs_dict:
-                    raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
-                                    f'{qb_ro_mwg2} found in lo_freqs_dict.')
-                qb_ro_mwg = qb_ro_mwg2
-            # qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
-            qb.acq_I_channel(2 * idx[qb_ro_mwg])
-            qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
-            idx[qb_ro_mwg] += 1
-#        return configure_qubit_mux_readout(qubits, lo_freqs_dict)
+        return configure_qubit_mux_readout(qubits, lo_freqs_dict, False)
 
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ro_lo
