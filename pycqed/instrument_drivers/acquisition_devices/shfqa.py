@@ -22,8 +22,9 @@ class SHFQASpectroscopyHardSweep(swf.UploadingSweepFunctionMixin,
     frequency range, allowing Pulsar to program the corresponding frequency
     parameters in the seqc code.
     """
-    def __init__(self, acq_dev, acq_unit, parameter_name='None'):
-        super().__init__()
+    def __init__(self, acq_dev, acq_unit, parameter_name='None', upload_first=False,
+                 start_pulsar=False):
+        super().__init__(upload_first=upload_first, start_pulsar=start_pulsar)
         self.parameter_name = parameter_name
         self.unit = 'Hz'
         self.acq_dev = acq_dev
