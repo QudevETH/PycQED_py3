@@ -12,7 +12,8 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHFQASpectroscopyHardSweep(swf.Hard_Sweep):
+class SHFQASpectroscopyHardSweep(swf.UploadingSweepFunctionMixin,
+                                 swf.Hard_Sweep):
     """Defines a hard sweep function specific to the SHFQA hard spectroscopy.
 
     The frequency range over which this sweep function should sweep is not
