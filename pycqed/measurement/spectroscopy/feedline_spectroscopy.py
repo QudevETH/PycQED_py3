@@ -35,6 +35,9 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         df_name = kw.pop('df_name', 'int_avg_det_spec')
         self.df_kwargs = kw.pop('df_kwargs', dict())
         cal_states = kw.pop('cal_states', [])
+        # Used to set the acquisition mode in the segment, e.g. for fast
+        # SHFQA spectroscopy. Default is 'software' sweeper.
+        self.segment_kwargs = kw.pop('segment_kwargs', dict())
         super().__init__(task_list, df_name=df_name, cal_states=cal_states,
                          **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
@@ -47,10 +50,6 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         self.lo_task_dict = {}
         self.lo_frequencies = {}
         self.mod_frequencies = {}
-
-        # Used to set the acquisition mode in the segment, e.g. for fast
-        # SHFQA spectroscopy. Default is 'software' sweeper.
-        self.segment_kwargs = {'acquisition_mode': dict(sweeper='software')}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
@@ -343,6 +342,8 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         super().__init__(task_list,
                          allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
+                         segment_kwargs={'acquisition_mode': \
+                                        dict(sweeper='software')},
                          **kw)
         self.autorun(**kw)
 
