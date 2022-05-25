@@ -752,7 +752,7 @@ def configure_qubit_mux_drive(qubits, lo_freqs_dict):
                 mwgs_set.add(qb_ge_mwg)
 
 
-def configure_qubit_mux_readout(qubits, lo_freqs_dict):
+def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
     """Configure qubits for multiplexed readout.
 
     This helper function configures the given qubits for multiplexed readout
@@ -778,6 +778,9 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
             - tuple of acquisition device name (str) and acquisition
               unit index (int), identifying the internal LO in an
               acquisition unit of an acquisition device
+        set_mod_freq (bool): Specifies whether the qubits modulation frequency
+            is adjusted according to the Lo freq. in lo_freqs_dict or not.
+            Defaults to True.
     """
     idx = {lo: 0 for lo in lo_freqs_dict}
     for qb in qubits:
@@ -790,7 +793,8 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
                 raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
                                  f'{qb_ro_mwg2} found in lo_freqs_dict.')
             qb_ro_mwg = qb_ro_mwg2
-        qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
+        if set_mod_freq:
+            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
         qb.acq_I_channel(2 * idx[qb_ro_mwg])
         qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
         idx[qb_ro_mwg] += 1
