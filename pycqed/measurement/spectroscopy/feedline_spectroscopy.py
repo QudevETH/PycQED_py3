@@ -158,13 +158,10 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                 will be optimized for the following situations:
         """
         for lo, tasks in self.grouped_tasks.items():
-            # skip those tasks that contain a hard_sweep
-            if np.any([task.get('hard_sweep', False) for task in tasks]):
+            if np.any([task.get('hard_sweep', False) for task in tasks]) or \
+                    len(tasks) == 1:
                 # hard sweeps are taken care of by the child before calling this
                 # parent function
-                continue
-
-            if len(tasks) == 1:
                 # No need to coordinate the mod freq of different qubits. We
                 # can use the swf returned by the qubit itself.
                 qb = self.get_qubit(tasks[0])
