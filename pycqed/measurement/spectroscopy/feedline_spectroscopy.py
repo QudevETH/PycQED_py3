@@ -458,22 +458,21 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                          allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
                          **kw)
+        # configure RO LOs for potential multiplexed RO
         ro_lo_qubits_dict = {}
         for task in self.preprocessed_task_list:
-            qb = self.get_qubits(task['qb'])[0][0]
+            qb = self.get_qubit(task)
             ro_lo = qb.instr_ro_lo()
-            if ro_lo not in self.lo_task_dict:
+            if ro_lo not in self.ro_lo_qubits_dict:
                 ro_lo_qubits_dict[ro_lo] = [qb]
             else:
-                ro_lo_qubits_dict[ro_lo][0] += [task]
-                ro_lo_qubits_dict[ro_lo][1] += [qb]
-
+                ro_lo_qubits_dict[ro_lo] += [qb]
         for ro_lo, qubits in ro_lo_qubits_dict.items():
             freqs_all = np.array([qb.ro_freq() for qb in qubits])
             if len(freqs_all) >= 2:
                 ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
             else:
-                ro_lo_freq = freqs_all[0] - qubits[0].ro_mod_freq()
+                ro_lo_freq = freqs_all[0] + qubits[0].ro_mod_freq()
             configure_qubit_mux_readout(qubits, {ro_lo: ro_lo_freq})
 
         self.autorun(**kw)  # run measurement & analysis if requested in kw
@@ -511,11 +510,21 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_mod_from_qb(self, qb, **kw):
         return qb.ge_mod_freq
 
+    def get_swf_from_qb(self, qb: QuDev_transmon):
+        if getattr(self, 'modulated', True):
+            return swf.Offset_Sweep(
+                self.get_lo_from_qb(qb).get_instr().frequency,
+                -self.get_mod_from_qb(qb)(),
+                name='Drive frequency',
+                parameter_name='Drive frequency')
+        else:
+            return self.get_lo_from_qb(qb).get_instr().frequency
+
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
         if self.modulated:
             for task in self.preprocessed_task_list:
-                if task.get('mod_freq', None) is not None:
+                if task.get('mod_freq', False):
                     # FIXME: HDAWG specific code
                     qb = self.get_qubits(task['qb'])[0][0]
                     mod_freq = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_mod_freq']
@@ -524,6 +533,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     amp = qb.instr_pulsar.get_instr().parameters[f'{qb.ge_I_channel()}_direct_IQ_output_amp']
                     self.temporary_values.append((amp,
                                                   qb.spec_mod_amp()))
+                else:
+                    log.error('Task for modulated spectroscopy does not contain'
+                              'mod_freq.')
 
 class ReadoutCalibration(FeedlineSpectroscopy):
     default_experiment_name = 'ReadoutCalibration'
