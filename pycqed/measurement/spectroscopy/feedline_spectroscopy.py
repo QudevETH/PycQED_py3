@@ -526,13 +526,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                                   qb.spec_mod_amp()))
 
 class ReadoutCalibration(FeedlineSpectroscopy):
-    """
-
-    """
-    kw_for_sweep_points = {'states':  dict(param_name='initialize', unit='',
-                           label=r'qubit state',
-                           dimension=1),}
     default_experiment_name = 'ReadoutCalibration'
+
+    def __init__(self, task_list, allowed_lo_freqs=None,
+                 trigger_separation=10e-6, **kw):
+        self.kw_for_sweep_points['states'] = dict(param_name='initialize',
+                                                  unit='',
+                                                  label=r'qubit state',
+                                                  dimension=1)
+        super().__init__(task_list, allowed_lo_freqs, trigger_separation, **kw)
 
     def preprocess_task(self, task, global_sweep_points, sweep_points=None, **kw):
         """If the task does not provide the states that are to be measured it
@@ -551,7 +553,7 @@ class ReadoutCalibration(FeedlineSpectroscopy):
         # in preprocess_task) is solved.
         if self.sweep_points_pulses.find_parameter('initialize') is None:
             self.sweep_points_pulses.add_sweep_parameter(param_name='initialize',
-                            values=['0', '1'], unit='',
+                            values=['g', 'e'], unit='',
                             label=r'qubit init state',
                             dimension=1)
         return self.sweep_points_pulses
@@ -561,6 +563,6 @@ class ReadoutCalibration(FeedlineSpectroscopy):
             analysis_kwargs = {}
         if 'options_dict' not in analysis_kwargs:
             analysis_kwargs['options_dict'] = {}
-        # make sure that spectroscopies for all states are ploted in one plot
-        analysis_kwargs['options_dict']['plot_all_traces'] = True
-        return super().run_analysis(analysis_kwargs, **kw)
+        self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(qb_names=self.qb_names,
+                                         **analysis_kwargs)
+        return self.analysis
