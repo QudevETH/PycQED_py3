@@ -107,7 +107,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                         parameter_name=f"{i}. dim multi sweep"
                     )
                 )
-            else:
+            elif not isinstance(self.sweep_functions[i], swf.multi_sweep_function):
                 # refactor current sweep function into multi_sweep_function
                 self.sweep_functions[i] = swf.multi_sweep_function(
                     [self.sweep_functions[i]],
@@ -128,11 +128,11 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                     # Probably qb frequency that is now contained in an lo sweep
                     pass
                 else:
-                    if len(self.sweep_functions[i].sweep_functions) == 0 \
-                        or self.sweep_functions[i].sweep_functions[0] != awg_swf.SegmentSoftSweep:
-                        # assuming that this parameter is a pulse paramater and we
-                        # therefore need a SegmentSoftSweep as the first sweep
-                        # function in our multi_sweep_function
+                    # assuming that this parameter is a pulse parameter and we
+                    # therefore need a SegmentSoftSweep as the first sweep
+                    # function in our multi_sweep_function
+                    if not self.sweep_functions[i].sweep_functions \
+                    or self.sweep_functions[i].sweep_functions[0] != awg_swf.SegmentSoftSweep:
                         self.sweep_functions[i].insert_sweep_function(
                             pos=0,
                             sweep_function=awg_swf.SegmentSoftSweep
