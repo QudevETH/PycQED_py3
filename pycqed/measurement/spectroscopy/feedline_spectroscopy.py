@@ -42,6 +42,9 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                          **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
+        # seep points that are passed to sweep_n_dim and used to generate
+        # segments. This reduced set is introduce to prevent that a segment
+        # is generated for every frequency sweep point.
         self.sweep_points_pulses = SweepPoints(min_length=2, )
         self.allowed_lo_freqs = allowed_lo_freqs
         self.analysis = {}
