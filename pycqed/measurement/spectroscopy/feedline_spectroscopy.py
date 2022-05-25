@@ -452,6 +452,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         drive = 'pulsed' if self.pulsed else 'continuous'
         drive += '_spec'
         drive += '_modulated' if self.modulated else ''
+        self.default_experiment_name += '_pulsed' if self.pulsed else '_continuous'
         super().__init__(task_list,
                          drive=drive,
                          allowed_lo_freqs=allowed_lo_freqs,
@@ -486,18 +487,19 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         :param qb: target qubit
         :param kw: further keyword arguments
         """
+        # add marker pulse in case we perform pulsed spectroscopy
+        if self.pulsed:
+            pulse_modifs = {'all': {'element_name': 'spec_el'}}
+            spec = self.block_from_ops('spec', [f"Spec {qb}"],
+                                       pulse_modifs=pulse_modifs)
+
         pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
-        # create ParametricValues from param_name in sweep_points
-        for sweep_dict in sweep_points:
-            for param_name in sweep_dict:
-                for pulse_dict in ro.pulses:
-                    if param_name in pulse_dict:
-                        pulse_dict[param_name] = ParametricValue(param_name)
-
         # return all generated blocks (parallel_sweep will arrange them)
+        if self.pulsed:
+            return [spec, ro]
         return [ro]
 
     def configure_qubit_mux(self, qubits, lo_freqs_dict):
