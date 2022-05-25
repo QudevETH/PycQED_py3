@@ -1281,7 +1281,7 @@ class QuDev_transmon(Qubit):
         else:
             # The following ensures that we use a hard detector if the acq
             # dev provided a sweep function for a hardware IF sweep.
-            self.int_avg_det.set_real_imag(False)
+            self.int_avg_det.set_polar(True)
             self.int_avg_det.AWG = self.int_avg_det_spec.AWG
             MC.set_detector_function(self.int_avg_det)
 
