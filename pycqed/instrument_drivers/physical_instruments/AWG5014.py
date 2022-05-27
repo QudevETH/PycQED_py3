@@ -49,6 +49,13 @@ class Tektronix_AWG5014(AWG5014.Tektronix_AWG5014):
                            get_parser=int,
                            vals=vals.Ints(1, 240))
 
+    def start(self, **kwargs) -> str:
+        """Convenience function, identical to self.run()
+        :param kwargs: currently ignored, added for compatibilty with other
+            instruments that accept kwargs in start().
+        """
+        return super().start()
+
     def generate_sequence_cfg(self, *args, **kwargs):
         """
         This function is inherited from qcodes. It is used to generate a config file, that is used when
