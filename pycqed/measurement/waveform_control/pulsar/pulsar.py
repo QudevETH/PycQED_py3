@@ -736,10 +736,11 @@ class Pulsar(Instrument):
                          if awg.awg.name != self.master_awg()]
         try:
             with WatchdogTimer(10) as timer:
-                timer.check()
-                awgs_to_check = [awg for awg in awgs_to_check
-                                 if not awg.is_awg_running()]
-                time.sleep(0.1)
+                while len(awgs_to_check):
+                    timer.check()
+                    awgs_to_check = [awg for awg in awgs_to_check
+                                     if not awg.is_awg_running()]
+                    time.sleep(0.1)
         except WatchdogException:
             raise WatchdogException(f"AWGs {awgs_to_check} did not start in 10s.")
 
