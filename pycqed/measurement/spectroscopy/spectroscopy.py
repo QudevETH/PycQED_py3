@@ -49,13 +49,11 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         self.trigger_separation = trigger_separation
         self.grouped_tasks = {}
-        self.lo_frequencies = {}
-        self.mod_frequencies = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
         self.group_tasks()
-        # self.check_all_freqs_per_lo()
+        self.check_all_freqs_per_lo()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
         if len(self.sweep_points_pulses[0]) == 0:
@@ -205,7 +203,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                                                   unit='Hz',
                                                   dimension=0)
             self.sweep_functions_dict[lo_freq_key] = \
-                    self.get_lo_from_qb(self.get_qubit(tasks[0])).get_instr().frequency
+                self.get_lo_from_qb(self.get_qubit(tasks[0])).get_instr().frequency
 
             # We resolve the modulation frequency of the different qubits.
             qubits = []
