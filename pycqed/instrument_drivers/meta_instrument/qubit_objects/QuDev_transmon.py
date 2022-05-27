@@ -61,17 +61,20 @@ class QuDev_transmon(Qubit):
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ge_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_pulsar',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_acq',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ro_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
 
         # device parameters for user only
         # could be cleaned up
@@ -4922,10 +4925,10 @@ class QuDev_transmon(Qubit):
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
+            elif ge_lo() is not None:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
