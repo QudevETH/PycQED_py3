@@ -69,6 +69,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
             self.sweep_points_pulses.add_sweep_parameter('dummy_soft_sweep', [0],
                                                   dimension=1)
 
+        self._fill_temporary_values()
         # temp value ensure that mod_freqs etc are set corretcly
         with temporary_value(*self.temporary_values):
             # configure RO LOs for potential multiplexed RO
@@ -95,8 +96,6 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                 segment_kwargs=self.segment_kwargs, **kw)
 
         self.mc_points = [np.arange(n) for n in self.sweep_points.length()]
-
-        self._fill_temporary_values()
 
     def get_sweep_points_for_sweep_n_dim(self):
         return self.sweep_points_pulses
