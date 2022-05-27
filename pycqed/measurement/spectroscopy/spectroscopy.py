@@ -1,9 +1,7 @@
 import numpy as np
-from copy import copy
-from copy import deepcopy
-from pycqed.utilities.general import assert_not_none, configure_qubit_mux_readout, configure_qubit_mux_drive
+from pycqed.utilities.general import assert_not_none, configure_qubit_mux_readout
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
-from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
