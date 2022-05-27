@@ -1,6 +1,7 @@
 import numpy as np
 import datetime as dt
 import logging
+import time
 from collections import OrderedDict
 from matplotlib.transforms import blended_transform_factory
 from pycqed.measurement.hdf5_data import write_dict_to_hdf5
@@ -8,8 +9,8 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import functools
 
-log = logging.getLogger(__name__)
 
+log = logging.getLogger(__name__)
 
 
 class Timer(OrderedDict):
@@ -627,3 +628,70 @@ class TimedMetaClass(type):
             if method_name in attrs:
                 attrs[method_name] = Timer()(attrs[method_name])
         return super(TimedMetaClass, mcs).__new__(mcs, name, bases, attrs)
+
+
+class WatchdogException(Exception):
+    """Exception raised by :class:`WatchdogTimer` when its timer expires."""
+    pass
+
+
+class WatchdogTimer:
+    """Watchdog timer that can be used to make sure operation are not too long.
+
+    Attributes:
+        timeout: Timeout in seconds before the watchdog timer expires.
+        mode: Watchdog mode: ``"raise"`` or ``"check"``. In raise mode, calling
+            :meth:`check` will raise a :class:`WatchdogException`, while in
+            check mode the function merely returns a boolean.
+        error_msg: Optional error message of the raised exception.
+
+    Example:
+
+        import time
+        from pycqed.utilities.timer import WatchdogTimer, WatchdogException
+
+        try:
+            with WatchdogTimer(2) as timer:
+                for i in range(10):
+                    print(i)
+                    if i <= 2:
+                        timer.reset()
+                    time.sleep(0.5)
+                    timer.check()
+        except WatchdogException:
+            print("WatchdogException was raised.")
+    """
+
+    ALLOWED_MODES = ["raise", "check"]
+    DEFAULT_ERROR = "Watchdog timer has expired."
+
+    def __init__(self, timeout:float, mode:str="raise", error_msg:str=None):
+
+        if error_msg is None:
+            error_msg = self.DEFAULT_ERROR
+        self.timeout = timeout
+        self.mode = mode
+        self.start = 0
+        self.error_msg = error_msg
+
+    def __enter__(self):
+        self.reset()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def reset(self):
+        self.start = time.time()
+
+    def check(self) -> bool:
+        """Check if the timer has expired."""
+        expired = time.time() - self.start > self.timeout
+        if expired:
+            if self.mode == "raise":
+                raise WatchdogException(self.error_msg)
+            else:
+                return True
+        else:
+            return False
+
