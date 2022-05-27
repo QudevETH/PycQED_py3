@@ -73,6 +73,24 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
         # temp value ensure that mod_freqs etc are set corretcly
         with temporary_value(*self.temporary_values):
+            # configure RO LOs for potential multiplexed RO
+            # This is especially necessary for qubit spectroscopies as they do
+            # not take care of the RO LO and mode freqs.
+            ro_lo_qubits_dict = {}
+            for task in self.preprocessed_task_list:
+                qb = self.get_qubit(task)
+                ro_lo = qb.instr_ro_lo()
+                if ro_lo not in ro_lo_qubits_dict:
+                    ro_lo_qubits_dict[ro_lo] = [qb]
+                else:
+                    ro_lo_qubits_dict[ro_lo] += [qb]
+            for ro_lo, qubits in ro_lo_qubits_dict.items():
+                freqs_all = np.array([qb.ro_freq() for qb in qubits])
+                if len(freqs_all) >= 2:
+                    ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
+                else:
+                    ro_lo_freq = freqs_all[0] + qubits[0].ro_mod_freq()
+                configure_qubit_mux_readout(qubits, {ro_lo: ro_lo_freq})
             self.update_operation_dict()
             self.sequences, _ = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block,
@@ -208,12 +226,8 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                         dimension=0
                     )
 
-            self.configure_qubit_mux(qubits, {lo: lo_freqs[0]})
-
-        self.update_operation_dict()
-
     def group_tasks(self, **kw):
-        """Fills the lo_task_dict with a list of tasks from
+        """Fills the grouped_tasks dict with a list of tasks from
         preprocessed_task_list per LO found in the preprocessed_task_list.
         """
         for task in self.preprocessed_task_list:
@@ -412,9 +426,6 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ro]
 
-    def configure_qubit_mux(self, qubits, lo_freqs_dict):
-        return configure_qubit_mux_readout(qubits, lo_freqs_dict, False)
-
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ro_lo
 
@@ -459,23 +470,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                          allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
                          **kw)
-        # configure RO LOs for potential multiplexed RO
-        ro_lo_qubits_dict = {}
-        for task in self.preprocessed_task_list:
-            qb = self.get_qubit(task)
-            ro_lo = qb.instr_ro_lo()
-            if ro_lo not in self.ro_lo_qubits_dict:
-                ro_lo_qubits_dict[ro_lo] = [qb]
-            else:
-                ro_lo_qubits_dict[ro_lo] += [qb]
-        for ro_lo, qubits in ro_lo_qubits_dict.items():
-            freqs_all = np.array([qb.ro_freq() for qb in qubits])
-            if len(freqs_all) >= 2:
-                ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
-            else:
-                ro_lo_freq = freqs_all[0] + qubits[0].ro_mod_freq()
-            configure_qubit_mux_readout(qubits, {ro_lo: ro_lo_freq})
-
         self.autorun(**kw)  # run measurement & analysis if requested in kw
 
     def sweep_block(self, sweep_points, qb, **kw):
@@ -501,9 +495,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         if self.pulsed:
             return [spec, ro]
         return [ro]
-
-    def configure_qubit_mux(self, qubits, lo_freqs_dict):
-        pass
 
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ge_lo
