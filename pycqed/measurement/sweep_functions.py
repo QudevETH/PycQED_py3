@@ -36,6 +36,31 @@ class Sweep_function(object):
         '''
         pass
 
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        """Try to configure the sequence upload. Returns True if successful.
+
+        This method on the highest level of dependencies allows for recursive
+        search. Child classes that require special handling of this task need
+        to implement their own configure_upload method.
+
+        Args:
+            upload (bool, optional): Determines whether the sweep function will
+                upload in general. Defaults to True.
+            upload_first (bool, optional): Determines if method prepare should
+                upload the first sequence. Is governed by upload parameter.
+                Defaults to True.
+            start_pulsar (bool, optional): Whether to start pulsar in prepare.
+                Defaults to True.
+
+        Returns:
+            bool: Whether the configuration was successful or not.
+        """
+        if hasattr(self, 'sweep_function'):
+            return self.sweep_function.configure_upload(upload, upload_first,
+                                                        start_pulsar)
+        return False
+
 class UploadingSweepFunctionMixin:
     def __init__(self, sequence=None, upload=True, upload_first=True,
                  start_pulsar=False, start_exclude_awgs=(), **kw):
