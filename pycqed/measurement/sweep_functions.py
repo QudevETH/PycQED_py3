@@ -337,6 +337,18 @@ class multi_sweep_function(Soft_Sweep):
         self.set_unit()
         self.check_units()
 
+    def prepare(self, **kw):
+        for sweep_function in self.sweep_functions:
+            sweep_function.prepare(**kw)
+
+    def configure_upload(self, upload=True, upload_first=True,
+                        start_pulsar=True):
+        for sweep_function in self.sweep_functions:
+            if sweep_function.configure_upload(upload, upload_first,
+                                               start_pulsar):
+                return True
+        return False
+
 
 class two_par_joint_sweep(Soft_Sweep):
     """
