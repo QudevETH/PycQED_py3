@@ -151,6 +151,9 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_mod_freq', 'mod_frequency',
                                  initial_value=100e6,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+        self.add_pulse_parameter(
+            'RO', 'ro_fixed_lo_freq', 'fixed_lo_freq',
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
         self.add_pulse_parameter('RO', 'ro_phase', 'phase',
                                  initial_value=0,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -378,6 +381,9 @@ class QuDev_transmon(Qubit):
                                          'mod_frequency',
                                          initial_value=-100e6,
                                          vals=vals.Numbers())
+                self.add_pulse_parameter(
+                    f'X180{tn}', f'{tr_name}_fixed_lo_freq', 'fixed_lo_freq',
+                    vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
                                          'phi_skew',
                                          initial_value=0,
@@ -1001,6 +1007,7 @@ class QuDev_transmon(Qubit):
                 'no_drive' if drive is None and a switch mode 'no_drive' is
                 configured for this qubit; 'modulated' in all other cases).
         """
+        self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -1148,6 +1155,7 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
+        self.configure_mod_freqs()
         if operation_dict is None:
             operation_dict = {}
         operation_dict = super().get_operation_dict(operation_dict)
@@ -4819,6 +4827,13 @@ class QuDev_transmon(Qubit):
         MC.run_2D('Flux_scope_nzcz_alpha' + self.msmt_suffix)
 
         ma.MeasurementAnalysis(TwoD=True)
+
+    def configure_mod_freqs(self):
+        for op in ['ge', 'ro']:
+            fixed_lo = self.get(f'{op}_fixed_lo_freq')
+            if fixed_lo is not None:
+                self.set(f'{op}_mod_freq',
+                         self.get(f'{op}_freq') - fixed_lo)
 
     def configure_pulsar(self):
         """
