@@ -567,6 +567,10 @@ class QuantumExperiment(CircuitBuilder):
             sweep_func_1st_dim = self.sweep_functions[0](
                 sequence=self.sequences[0], upload=self.upload,
                 parameter_name=sweep_param_name, unit=unit)
+        elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunctionMixin):
+            print('Writting sequence to SHFQA swf')
+            sweep_func_1st_dim = self.sweep_functions[0]
+            sweep_func_1st_dim.sequence = self.sequences[0]
         else:
             # Check whether it is a nested sweep function whose first
             # sweep function is a SegmentHardSweep class as placeholder.
