@@ -10,3 +10,4 @@ from .shfqa_pulsar import SHFQAPulsar
 from .shfsg_pulsar import SHFSGPulsar
 from .shfqc_pulsar import SHFQCPulsar
 from .uhfqc_pulsar import UHFQCPulsar
+from .awg70k_pulsar import AWG70kPulsar
