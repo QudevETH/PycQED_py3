@@ -135,17 +135,20 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
 
             for param in self.sweep_points[i].keys():
                 if self.sweep_functions_dict.get(param, None) is not None:
-                    if self.sweep_functions_dict[param].sweep_control == 'soft':
+                    if self.sweep_functions_dict[param].sweep_control == 'hard':
+                        # hard sweep is not encapsulated by Indexed_Sweep
+                        sweep_function = self.sweep_functions_dict[param]
+                        self.sweep_functions[i] = self.sweep_functions_dict[param]
+                        # there can only be one hard sweep per dimension
+                        break
+                    else:
                         sweep_function = swf.Indexed_Sweep(
                             self.sweep_functions_dict[param],
                             values=self.sweep_points[i][param][0],
                             name=self.sweep_points[i][param][2],
                             parameter_name=param
                         )
-                    else:
-                        # hard sweep is not compatible with Indexed_Sweep
-                        sweep_function = self.sweep_functions_dict[param]
-                    self.sweep_functions[i].add_sweep_function(sweep_function)
+                        self.sweep_functions[i].add_sweep_function(sweep_function)
                 elif 'freq' in param and 'mod' not in param:
                     # Probably qb frequency that is now contained in an lo sweep
                     pass
@@ -154,7 +157,8 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                     # therefore need a SegmentSoftSweep as the first sweep
                     # function in our multi_sweep_function
                     if not self.sweep_functions[i].sweep_functions \
-                    or self.sweep_functions[i].sweep_functions[0] != awg_swf.SegmentSoftSweep:
+                            or self.sweep_functions[i].sweep_functions[0] != \
+                                awg_swf.SegmentSoftSweep:
                         self.sweep_functions[i].insert_sweep_function(
                             pos=0,
                             sweep_function=awg_swf.SegmentSoftSweep
