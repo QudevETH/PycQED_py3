@@ -41,7 +41,7 @@ class ValueNodeCreator:
                 ) and 'T2_star' in qubit_results['exp_decay'].keys():
                     property_values_dict['property_value'].append(
                         node_creator.create_node(
-                            property_type='t2_star',
+                            property_type='T2_star',
                             value=qubit_results['exp_decay']['T2_star']))
 
                 if 'exp_decay' in qubit_results.keys(
@@ -53,7 +53,7 @@ class ValueNodeCreator:
 
                 if 'T2_echo' in qubit_results.keys():
                     property_values_dict['property_values'].append(
-                        node_creator.create_node(property_type='t2_echo',
+                        node_creator.create_node(property_type='T2_echo',
                                                 value=qubit_results['T2_echo']))
                 return property_values_dict
 

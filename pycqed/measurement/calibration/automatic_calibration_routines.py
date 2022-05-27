@@ -480,14 +480,14 @@ class Step:
                     'property_values': [{
                         'qubits': 'qb2',
                         'component_type': 'qb',
-                        'property_type': 'ge_t2_star_time',
+                        'property_type': 'ge_T2_star',
                         'value': 6.216582600129854e-05,
                         'timestamp': '20220101_101500',
                         'rawdata_folder_path': 'Q:\\....\\20220101\\101500_...',
                     }, {
                         'qubits': 'qb7',
                         'component_type': 'qb',
-                        'property_type': 'ge_t2_star_time',
+                        'property_type': 'ge_T2_star',
                         'value': 1.9795263942036515e-05,
                         'timestamp': '20220101_101500',
                         'rawdata_folder_path': 'Q:\\....\\20220101\\101500_...',
@@ -1140,7 +1140,7 @@ class AutomaticCalibrationRoutine(Step):
                                 {
                                     'qubits': ['qb1'],
                                     'component_type': 'qb',
-                                    'property_type': 'ge_t1_time',
+                                    'property_type': 'ge_T1_time',
                                     'value': 1.6257518120474107e-05,
                                     'timestamp': '20220101_163859',
                                     'folder_name': 'Q:\\....',
@@ -1366,7 +1366,7 @@ class RamseyStep(qbcal.Ramsey,Step):
                 ) and 'T2_star' in qubit_results['exp_decay'].keys():
                     results['property_values'].append(
                         node_creator.create_node(
-                            property_type='t2_star',
+                            property_type='T2_star',
                             value=qubit_results['exp_decay']['T2_star']))
 
                 # Updated qubit frequency
@@ -1382,7 +1382,7 @@ class RamseyStep(qbcal.Ramsey,Step):
                 if 'T2_echo' in qubit_results.keys():
                     results['property_values'].append(
                         node_creator.create_node(
-                            property_type='t2_echo',
+                            property_type='T2_echo',
                             value=qubit_results['T2_echo']))
         return results
 
@@ -1525,7 +1525,7 @@ class T1Step(qbcal.T1,Step):
                     transition=transition,
                 )
                 results['property_values'].append(
-                    node_creator.create_node(property_type='t1_time',
+                    node_creator.create_node(property_type='T1',
                                              value=qubit_results['T1']))
 
         return results
