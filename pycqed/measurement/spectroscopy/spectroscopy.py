@@ -19,7 +19,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
     mod. freq. or both are swept.
 
     Child classes implement the spectroscopy experiment and need to implement
-    sweep_block and adjust_sweep_functions.
+    sweep_block.
 
     Args:
         MultiTaskingExperiment (_type_): _description_
@@ -40,7 +40,7 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
                          **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
-        # seep points that are passed to sweep_n_dim and used to generate
+        # sweep points that are passed to sweep_n_dim and used to generate
         # segments. This reduced set is introduce to prevent that a segment
         # is generated for every frequency sweep point.
         self.sweep_points_pulses = SweepPoints(min_length=2, )
@@ -112,6 +112,15 @@ class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
         return preprocessed_task
 
     def generate_sweep_functions(self):
+        """Loops over all sweep points and adds the according sweep function to
+        self.sweep_functions. The appropriate sweep function is taken from
+        self.sweep_function_dict. For multiple sweep points in one dimension a
+        multi_sweep is used. Caution: Special behaviour if the sweep point
+        param_name is not found in self.sweep_function_dict.keys(): We assume
+        that this sweep point is a pulse parameter and insert the class
+        SegmentSoftSweep as placeholder that will be replaced by an instance
+        in QE._configure_mc.
+        """
         # loop over all sweep_points dimensions
         for i in range(len(self.sweep_points)):
             if i >= len(self.sweep_functions):
@@ -372,6 +381,8 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     self.grouped_tasks[qb_ro_mwg] += [task]
 
     def resolve_freq_sweep_points(self, **kw):
+        """Configures potential hard_sweeps and afterwards calls super method
+        """
         for task in self.preprocessed_task_list:
             if task['hard_sweep']:
                 qb = self.get_qubits(task['qb'])[0][0]
