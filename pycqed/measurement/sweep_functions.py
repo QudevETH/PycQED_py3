@@ -99,6 +99,13 @@ class UploadingSweepFunctionMixin:
         if self.upload or force_upload:
             self.sequence.upload()
 
+    def configure_upload(self, upload=True, upload_first=True,
+                        start_pulsar=True):
+        self.upload = upload
+        self.upload_first = upload_first
+        self.start_pulsar = start_pulsar
+        return True
+
 
 class Soft_Sweep(Sweep_function):
     def __init__(self, **kw):
