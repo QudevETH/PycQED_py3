@@ -52,6 +52,8 @@ class MockDAQServer(zibase.MockDAQServer):
     def connectDevice(self, device, interface):
         if device.lower().startswith('dev12'):
             self.devtype = 'SHFQA4'
+        elif device.lower().startswith('dev14'):
+            self.devtype = 'SHFQC'
         super().connectDevice(device, interface)
 
     def listNodesJSON(self, path):
