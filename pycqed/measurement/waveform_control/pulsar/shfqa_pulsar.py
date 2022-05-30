@@ -34,7 +34,6 @@ class SHFQAPulsar(PulsarAWGInterface):
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
     }
-    CHANNEL_OFFSET_BOUNDS = {}
     IMPLEMENTED_ACCESSORS = ["amp"]
 
     def create_awg_parameters(self, channel_name_map: dict):
