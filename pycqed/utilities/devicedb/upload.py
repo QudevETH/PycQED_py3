@@ -272,6 +272,7 @@ class PropertyValueUploader:
                     host=self.host,
                     path=value_node['rawdata_folder_path'],
                     is_file=False,
+                    timestamp=value_node['timestamp'],
                 )
                 raw_data = self.client.get_or_create_filefolder_raw_data(
                     raw_data)
@@ -279,7 +280,7 @@ class PropertyValueUploader:
                     value=float(value_node['value']),
                     type=property_type.id,
                     experiment=self.db_experiment.id,
-                    raw_data=raw_data.id,
+                    raw_data=[raw_data.id],
                     component=component.id,
                 )
                 try:
