@@ -594,3 +594,17 @@ class ReadoutCalibration(FeedlineSpectroscopy):
         self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(qb_names=self.qb_names,
                                          **analysis_kwargs)
         return self.analysis
+
+    def run_update(self, **kw):
+        """
+        Updates the RO frequency of the qubit in each task with the value
+        maximizing the g-e S21 distance, found in the analysis.
+        :param kw: keyword arguments
+        """
+        for task in self.preprocessed_task_list:
+            qb = self.get_qubit(task)
+            pdd = self.analysis.proc_data_dict
+            ro_freq = pdd['sweep_points_dict'][qb.name]['sweep_points'][
+                pdd['projected_data_dict'][qb.name]['distance']['g-e'][1]
+            ]
+            qb.set(f'ro_freq', ro_freq)
