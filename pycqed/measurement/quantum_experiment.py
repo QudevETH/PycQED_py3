@@ -667,9 +667,9 @@ class QuantumExperiment(CircuitBuilder):
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
 
-        if sweep_func_1st_dim.configure_upload(): pass
+        if sweep_func_1st_dim.configure_upload(start_pulsar=False): pass
         elif len(self.mc_points[1]) > 0 \
-            and sweep_func_2nd_dim.configure_upload(): pass
+            and sweep_func_2nd_dim.configure_upload(start_pulsar=False): pass
         else:
             self._upload_first_sequence()
             # separate method so that children can override
