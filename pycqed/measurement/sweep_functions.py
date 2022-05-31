@@ -61,9 +61,10 @@ class Sweep_function(object):
                                                         start_pulsar)
         return False
 
+
 class UploadingSweepFunctionMixin:
     def __init__(self, sequence=None, upload=True, upload_first=True,
-                 start_pulsar=False, start_exclude_awgs=(), **kw):
+                 start_pulsar=False, start_exclude_awgs=tuple(), **kw):
         """A mixin to extend any sweep function to be able to upload sequences.
 
         Args:
@@ -80,7 +81,8 @@ class UploadingSweepFunctionMixin:
                 switching to the next segment in the sweep. Defaults to False.
             start_exclude_awgs (collection[str], optional):
                 A collection of AWG names that will not be started directly
-                after upload in case start_pulsar is True. Defaults to ().
+                after upload in case start_pulsar is True. Defaults to empty
+                tuple.
         """
         super().__init__(**kw)
         self.sequence = sequence
@@ -90,6 +92,13 @@ class UploadingSweepFunctionMixin:
         self.start_exclude_awgs = start_exclude_awgs
 
     def prepare(self, **kw):
+        """Takes care of uploading the first sequence and starting the pulsar.
+
+        Behaviour depends on self.upload_first and self.start_pulsar.
+
+        Raises:
+            ValueError: Raised if start_pulsar but sequence is None.
+        """
         if self.upload_first:
             self.upload_sequence()
         if self.start_pulsar:
@@ -99,6 +108,16 @@ class UploadingSweepFunctionMixin:
                 raise ValueError('Cannot start pulsar with sequence being None')
 
     def upload_sequence(self, force_upload=False):
+        """Wrapper around meth:sequence.upload to ensure correct behaviour
+        depending on self.upload
+
+        Args:
+            force_upload (bool, optional): Overwrites self.upload.
+                Defaults to False.
+
+        Raises:
+            ValueError: Raised sequence is None.
+        """
         if self.sequence is not None:
             raise ValueError('Cannot start pulsar with sequence being None')
         if self.upload or force_upload:
@@ -106,6 +125,18 @@ class UploadingSweepFunctionMixin:
 
     def configure_upload(self, upload=True, upload_first=True,
                         start_pulsar=True):
+        """Overwrites parent method
+        :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
+        and sets the correspoding attributes.
+
+        Args:
+            upload (bool, optional): Defaults to True.
+            upload_first (bool, optional): Defaults to True.
+            start_pulsar (bool, optional): Defaults to True.
+
+        Returns:
+            bool: True, because UploadingSweepFunctionMixin can upload sequences.
+        """
         self.upload = upload
         self.upload_first = upload_first
         self.start_pulsar = start_pulsar
