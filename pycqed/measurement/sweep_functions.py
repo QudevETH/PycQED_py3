@@ -93,9 +93,14 @@ class UploadingSweepFunctionMixin:
         if self.upload_first:
             self.upload_sequence()
         if self.start_pulsar:
-            self.sequence.pulsar.start(exclude=self.start_exclude_awgs)
+            if self.sequence is not None:
+                self.sequence.pulsar.start(exclude=self.start_exclude_awgs)
+            else:
+                raise ValueError('Cannot start pulsar with sequence being None')
 
     def upload_sequence(self, force_upload=False):
+        if self.sequence is not None:
+            raise ValueError('Cannot start pulsar with sequence being None')
         if self.upload or force_upload:
             self.sequence.upload()
 
