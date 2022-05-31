@@ -141,7 +141,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
             for param in self.sweep_points[i].keys():
                 if self.sweep_functions_dict.get(param, None) is not None:
-                    if self.sweep_functions_dict[param].sweep_control == 'hard':
+                    if getattr(self.sweep_functions_dict[param], 'sweep_control', 'soft') == 'hard':
                         # hard sweep is not encapsulated by Indexed_Sweep
                         sweep_function = self.sweep_functions_dict[param]
                         self.sweep_functions[i] = self.sweep_functions_dict[param]
