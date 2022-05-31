@@ -20,9 +20,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
     Child classes implement the spectroscopy experiment and need to implement
     sweep_block.
-
-    Args:
-        MultiTaskingExperiment (_type_): _description_
     """
     task_mobj_keys = ['qb']
     @assert_not_none('task_list')
@@ -310,8 +307,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
             analysis_kwargs['options_dict']['TwoD'] = True
-        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(qb_names=self.qb_names,
-                                         **analysis_kwargs)
+        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(
+            qb_names=self.qb_names, **analysis_kwargs
+        )
         return self.analysis
 
     def get_qubit(self, task):
