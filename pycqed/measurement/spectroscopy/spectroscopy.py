@@ -1,6 +1,6 @@
 import numpy as np
 from pycqed.utilities.general import assert_not_none, configure_qubit_mux_readout
-from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
+from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
@@ -13,7 +13,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class MultiTaskingSpectroscopyExperiment(MultiTaskingExperiment):
+class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     """Adds functionality to sweep LO and modulation frequencies in
     a spectroscopy experiment. Automatically determines whether the LO, the
     mod. freq. or both are swept.
