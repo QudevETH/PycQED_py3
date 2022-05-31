@@ -5,6 +5,7 @@ This file contains the Spectroscopy class that forms the basis analysis of all
 the spectroscopy measurement analyses.
 """
 
+from copy import copy
 import logging
 import re
 import numpy as np
@@ -12,6 +13,7 @@ import lmfit
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.analysis_v2.timedomain_analysis as tda
 import pycqed.analysis.fitting_models as fit_mods
+from itertools import combinations
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1698,8 +1700,36 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             return 'Measured Data (arb.)'
         return data_key
 
-
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
+    def process_data(self):
+        super().process_data()
+
+        mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
+        for qb, raw_data in mdata_per_qb.items():
+            sp2d_key = f'{qb}_initialize'
+            if sp2d_key not in self.proc_data_dict['sweep_points_2D_dict'][qb].keys():
+                sp2d_key = 'initialize'
+            states = self.proc_data_dict['sweep_points_2D_dict'][qb][sp2d_key]
+            self.proc_data_dict['projected_data_dict'][qb]['distance'] = \
+                self._compute_s21_distance(raw_data, states)
+
+    def _compute_s21_distance(self, data, states):
+        distances = dict()
+        if len(states) < 2:
+            log.error('At least two states need to be measured to compute a'
+                      'distance in transmission.')
+        state_index_map = {state: i for i, state in enumerate(states)}
+        for state_1, state_2 in combinations(states, 2):
+            ind_1 = state_index_map[state_1]
+            ind_2 = state_index_map[state_2]
+            I, Q = list(data.values())
+            S21_1 = I[:, ind_1] + 1j * Q[:, ind_1]
+            S21_2 = I[:, ind_2] + 1j * Q[:, ind_2]
+            distance = np.abs(S21_1-S21_2)
+            argmax = np.argmax(distance)
+            distances[f'{state_1}-{state_2}'] = (distance, argmax)
+        return distances
+
     def prepare_plots(self):
         pdd = self.proc_data_dict
         plotsize = self.get_default_plot_params(set=False)['figure.figsize']
@@ -1707,7 +1737,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
             fig_title = f'Magnitude and Phase Plot {qb_name}'
             plot_name = f'raw_mag_phase_{qb_name}'
             frequency = pdd['sweep_points_dict'][qb_name]['sweep_points']
-            for ax_id, key in enumerate(pdd['projected_data_dict'][qb_name].keys()):
+            for ax_id, key in enumerate(['Magnitude', 'Phase']):
                 data = pdd['projected_data_dict'][qb_name][key]
                 sp2d_key = f'{qb_name}_initialize'
                 if sp2d_key not in pdd['sweep_points_2D_dict'][qb_name].keys():
@@ -1732,9 +1762,38 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                                         plotsize[1]*2),
                             'title': fig_title if not ax_id else None
                     }
+            fig_title = f'S21 distance {qb_name}'
+            plot_name = f's21_distance_{qb_name}'
+            for dkey, val in pdd['projected_data_dict'][qb_name]['distance'].items():
+                distance, argmax = val
+                self.plot_dicts[f's21_distance_{dkey}_{qb_name}'] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': frequency,
+                        'xlabel': 'RO frequency',
+                        'xunit': 'Hz',
+                        'yvals': distance,
+                        'ylabel': 'S21 distance',
+                        'label': dkey,
+                        'title': fig_title,
+                        'setlabel': f'S21 distance {dkey}',
+                }
+                self.plot_dicts[f's21_distance_{dkey}_{qb_name}_max'] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': frequency[argmax] * np.ones(2),
+                        'yvals': [0.95 * np.min(distance),
+                                  1.05 * np.max(distance)],
+                        'color': 'red',
+                        'linestyle': 'dotted',
+                        'marker': 'None',
+                        'setlabel': '$f_{RO}$ = ' \
+                                    + f'{(frequency[argmax]/1e9):.3f} GHz',
+                        'do_legend': True,
+                }
 
     def get_state_color(self, state):
-        state_colors = {'g': 'blue', 'e': 'green', 'f': 'orange'}
+        state_colors = {'g': 'blue', 'e': 'orange', 'f': 'green'}
         INT_TO_STATE = 'gef'
         if isinstance(state, int):
             state = INT_TO_STATE[state]
