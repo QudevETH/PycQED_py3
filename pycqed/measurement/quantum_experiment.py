@@ -15,7 +15,10 @@ import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
 from pycqed.measurement.waveform_control import pulsar as ps
 from copy import deepcopy
+from collections import OrderedDict as odict
+from pycqed.measurement.sweep_points import SweepPoints
 import logging
+from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
 
 
@@ -221,6 +224,7 @@ class QuantumExperiment(CircuitBuilder):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type})
+        self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
@@ -680,6 +684,12 @@ class QuantumExperiment(CircuitBuilder):
 
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
+        if sweep_func_1st_dim.sweep_control == 'hard':
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            # Used by IntegratingAveragingPollDetector and its childen,
+            # detectors that don't implement this kwarg will ignore it
+            self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
             self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
@@ -895,3 +905,30 @@ class QuantumExperiment(CircuitBuilder):
     def __repr__(self):
         return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
                f"qubits={getattr(self, 'qubits', None)})"
+
+    def spawn_waveform_viewer(self, **kwargs):
+        if self.waveform_viewer is None:
+            self.waveform_viewer = WaveformViewer(self, **kwargs)
+        else:
+            self.waveform_viewer.spawn_waveform_viewer(**kwargs)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        return {
+            'kwargs': odict({
+                QuantumExperiment.__name__: {
+                    # kwarg: (fieldtype, default_value),
+                    'label': (str, None),
+                    'sweep_points': (SweepPoints, None),
+                    'upload': (bool, True),
+                    'measure': (bool, True),
+                    'analyze': (bool, True),
+                    'delegate_plotting': (bool, False),
+                    'compression_seg_lim': (int, None),
+                    'cz_pulse_name': (set(device.two_qb_gates()),
+                                      device.two_qb_gates()[0])
+                },
+            }),
+            'task_list_fields': odict({}),
+            'sweeping_parameters': odict({}),
+        }

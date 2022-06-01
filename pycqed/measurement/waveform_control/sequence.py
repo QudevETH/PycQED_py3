@@ -246,10 +246,13 @@ class Sequence:
             pulse=pulse_name
         else:
             pulse = operation_dict[pulse_name]
-        repeat = dict()
-        for ch in pulse_channel_names:
-            repeat[pulse[ch]] = pattern
-        self.repeat_patterns.update(repeat)
+        if not pulse.get('disable_repeat_pattern', False):
+            repeat = dict()
+            for ch in pulse_channel_names:
+                if pulse[ch] is None:
+                    continue
+                repeat[pulse[ch]] = pattern
+            self.repeat_patterns.update(repeat)
         return self.repeat_patterns
 
     def repeat_ro(self, pulse_name, operation_dict):

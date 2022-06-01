@@ -1,5 +1,4 @@
 import lmfit
-import matplotlib.cm
 import numpy as np
 from numpy.linalg import inv
 import scipy as sp
@@ -920,14 +919,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         suffix = "_corrected" if self.get_param_value("correction_matrix")\
                                  is not None else ""
         self.proc_data_dict['data_to_fit'] = OrderedDict()
-        try:
-            for qbn, prob_data in self.proc_data_dict[
-                    'projected_data_dict' + suffix].items():
-                if len(prob_data) and qbn in self.data_to_fit:
-                    self.proc_data_dict['data_to_fit'][qbn] = prob_data[
-                        self.data_to_fit[qbn]]
-        except:
-            pass
+        for qbn, prob_data in self.proc_data_dict[
+                'projected_data_dict' + suffix].items():
+            if len(prob_data) and qbn in self.data_to_fit:
+                self.proc_data_dict['data_to_fit'][qbn] = prob_data[
+                    self.data_to_fit[qbn]]
+
         # handle data splitting if needed
         self.split_data()
 
@@ -1057,8 +1054,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
-        if self.num_cal_points == 0 and num_data_points != num_sp and \
-                self.get_param_value('data_type', 'averaged') != 'singleshot':
+        if self.num_cal_points == 0 and num_data_points != num_sp:
             # No cal_points information was provided but cal points were part
             # of the measurement.
             self.num_cal_points = num_data_points - num_sp
@@ -1927,8 +1923,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             classifier_params = {}
             from numpy import array  # for eval
             for qbn in self.qb_names:
-                classifier_params[qbn] = self.get_hdf_param_value(
-                f'Instrument settings/{qbn}', "acq_classifier_params")
+                classifier_params[qbn] = eval(self.get_hdf_param_value(
+                f'Instrument settings/{qbn}', "acq_classifier_params"))
 
         # prepare preselection mask
         if preselection:
@@ -2341,7 +2337,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             'unit', dimension=1, param_names=pn)
                         ylabel = self.sp.get_sweep_params_property(
                             'label', dimension=1, param_names=pn)
-                    yvals = yvals.reshape((len(ssp), len(xvals)))
                     self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
                         'plotfn': self.plot_colorxy,
                         'fig_id': fig_name + '_' + pn,
@@ -5040,7 +5035,8 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # make matrix out of vector
         data_reshaped_no_cp = {qb: np.reshape(
-            deepcopy(pdd['data_to_fit'][qb][:-nr_cp]).flatten(),
+            deepcopy(pdd['data_to_fit'][qb][
+                     :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
             (nr_amps, nr_lengths, nr_phases)) for qb in self.qb_names}
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
@@ -5082,48 +5078,29 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
-        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
-                                       decay=dict(value=1e-6),
-                                       ) for qb in self.qb_names}
-
-        gaussian_decay_func = \
-            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
-
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
-            exp_mod = self.get_param_value('exp_fit_mod',
-                                           lmfit.Model(gaussian_decay_func))
-            # exp_mod = fit_mods.ExponentialModel()
-            guess_pars_dict = self.get_param_value("guess_pars_dict",
-                                                   guess_pars_dict_default)[qb]
+            exp_mod = fit_mods.ExponentialModel()
             for i in range(nr_amps):
                 pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])
-                for par, params in guess_pars_dict.items():
-                    exp_mod.set_param_hint(par, **params)
-                guess_pars = exp_mod.make_params()
 
                 self.fit_dicts[f'exp_fit_{qb}_{i}'] = {
-                    'fit_fn': exp_mod.func,
-                    'guess_pars': guess_pars,
-                    'fit_xvals': {'x': self.get_param_value('flux_lengths')},
+                    'model': exp_mod,
+                    'fit_xvals': {'x': self.metadata['flux_lengths']},
                     'fit_yvals': {'data': np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])}}
 
-
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
                 abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
-                for i in range(len(self.metadata['amplitudes']))])
-            pdd['T2_err'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
                 for i in range(len(self.metadata['amplitudes']))])
 
             pdd['mask'][qb] = []
@@ -5131,11 +5108,9 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 try:
                     if self.fit_res[f'exp_fit_{qb}_{i}']\
                                             .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb].append(False)
-                    else:
-                        pdd['mask'][qb].append(True)
+                        pdd['mask'][qb][i] = False
                 except TypeError:
-                    pdd['mask'][qb][i].append(False)
+                    pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
@@ -5155,7 +5130,6 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 'linestyle': '-',
                 'xvals': xvals,
                 'yvals': pdd['T2'][qb][mask],
-                'yerr': pdd['T2_err'][qb][mask],
                 'xlabel': xlabel,
                 'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
                 'ylabel': r'T2',
@@ -5169,11 +5143,11 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
-                color = colormap(i/(len(self.metadata['amplitudes'])-1))
-                label = f'exp_fit_{qb}_{i}'
-                freqs = self.get_param_value('frequencies')
-                fitid = self.metadata['amplitudes'][i] if freqs is None else \
-                        self.get_param_value('frequencies')[i]
+                color = colormap(i/(len(self.metadata['frequencies'])-1))
+                label = f'exp_fit_{qb}_amp_{i}'
+                freqs = self.metadata['frequencies'] is not None
+                fitid = self.metadata.get('frequencies',
+                                          self.metadata['amplitudes'])[i]
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
@@ -5191,44 +5165,18 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, 1),
                     'legend_pos': 'upper left',
                     }
-                delays = self.get_param_value('flux_lengths')
-                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                                            ].best_values['amplitude']
-                                            for j in
-                                            range(len(delays))])
-                phase_contrasts_stderr = \
-                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                              ].params['amplitude'].stderr
-                              for j in
-                              range(len(delays))])
-                self.plot_dicts[label + 'data'] = {
-                    'ax_id': f'T2_fits_{qb}',
-                    'plotfn': self.plot_line,
-                    "xvals": delays,
-                    "yvals": phase_contrasts,
-                    "yerr": phase_contrasts_stderr,
-                    "marker": "o",
-                    'plot_init': self.options_dict.get('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                    else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    'linestyle': "none",
-                }
 
                 label = f'freq_scatter_{qb}_{i}'
-                # self.plot_dicts[label] = {
-                #     'ax_id': f'T2_fits_{qb}',
-                #     'plotfn': self.plot_line,
-                #     'xvals': self.metadata['phases'],
-                #     'linestyle': '',
-                #     'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
-                #     'color': color,
-                #     'setlabel': f'freq={fitid:.4f}' if freqs
-                #                         else f'amp={fitid:.4f}',
-                # }
+                self.plot_dicts[label] = {
+                    'ax_id': f'T2_fits_{qb}',
+                    'plotfn': self.plot_line,
+                    'xvals': self.metadata['phases'],
+                    'linestyle': '',
+                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
+                    'color': color,
+                    'setlabel': f'freq={fitid:.4f}' if freqs
+                                        else f'amp={fitid:.4f}',
+                }
 
 
 class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9295,13 +9243,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
 
+            means = [mu for _, mu in
+                                self.proc_data_dict['analysis_params']
+                                    ['means'][qb_name].items()]
+
+            # calculate delta of means and set tol and cov based on this
+            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                    for mu_j in means]).flatten().max()
+
+            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            reg_covar = tol**2
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=tol,
+                    reg_covar=reg_covar,
                     weights_init=weights_init,
-                    means_init=[mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()], **kw)
+                    means_init=means, **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -9583,15 +9542,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                      'or the metadata under "qb_names" '
                                      'or "ro_qubits"')
 
-        if self.options_dict["correction_matrix"] is True:
-            self.options_dict["correction_matrix"] = {}
-            for qbn in self.qb_names:
-                corr_mtx = self.get_hdf_param_value(f"Instrument settings/{qbn}",
-                    "acq_state_prob_mtx")
-                self.options_dict["correction_matrix"].update({qbn: corr_mtx})
-        elif self.options_dict["correction_matrix"] is False:
-            self.options_dict["correction_matrix"] = None
-
     def process_data(self):
         super().process_data()
 
@@ -9619,74 +9569,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
             if len(projdd_per_prep_state):
                 self.proc_data_dict[pdd + '_per_prep_state' + suffix] = \
                     projdd_per_prep_state
-
-        from itertools import combinations
-        for suffix in ["", "_corrected"]:
-            projdd_shd = dict()
-            projdd_max_shd_per_state = dict()
-            projdd_max_shd = dict()
-            for qbn, data_qbi in \
-                    self.proc_data_dict.get(pdd + suffix, {}).items():
-                projdd_shd[qbn] = dict()
-                projdd_max_shd_per_state[qbn] = dict()
-                prep_states = self.sp.get_values("initialize")
-                for j, (state, data) in enumerate(data_qbi.items()):
-                    n_ro = data.shape[0] # infer number of readouts per sequence
-                    projdd_shd[qbn][state] = dict()
-                    for prep_state_pair in combinations(enumerate(prep_states), 2):
-                        abs_diff = abs(data[prep_state_pair[0][0] * n_ro // len(prep_states):
-                              (prep_state_pair[0][0] + 1) * n_ro // len(
-                                  prep_states), :] - \
-                                   data[prep_state_pair[1][0] * n_ro // len(prep_states):
-                              (prep_state_pair[1][0] + 1) * n_ro // len(
-                                  prep_states), :])
-                        projdd_shd[qbn][state].update({
-                            f"abs_diff_{prep_state_pair[0][1]}{prep_state_pair[1][1]}":
-                            abs_diff})
-                    abs_diffs = tuple()
-                    for abs_diff in projdd_shd[qbn][state].values():
-                        abs_diffs += (np.array([abs_diff]), )
-                    concat_abs_diffs = np.concatenate(abs_diffs, axis=0)
-                    projdd_max_shd_per_state[qbn].update({state: np.max(
-                        concat_abs_diffs, axis=0
-                    )})
-                max_abs_diffs = tuple()
-                for max_abs_diff in projdd_max_shd_per_state[qbn].values():
-                    max_abs_diffs += (np.array([max_abs_diff]),)
-                concat_max_abs_diffs = np.concatenate(max_abs_diffs, axis=0)
-                projdd_max_shd.update(
-                    {qbn: np.max(concat_max_abs_diffs, axis=0)})
-
-            if len(projdd_shd):
-                self.proc_data_dict[pdd + '_shd' + suffix] = projdd_shd
-            if len(projdd_max_shd_per_state):
-                self.proc_data_dict[pdd + '_max_shd_per_state' + suffix] = \
-                    projdd_max_shd_per_state
-            if len(projdd_max_shd):
-                self.proc_data_dict[pdd + '_max_shd' + suffix] = \
-                    projdd_max_shd
-
-            if self.proc_data_dict.get(pdd + suffix, None) is not None:
-                satisfaction_indices = np.argwhere(
-                    self.proc_data_dict[pdd + '_max_shd' + suffix][qbn][:, 1] < \
-                    self.options_dict["max_tol_shd"]).T[0]
-                violation_indices = np.argwhere(
-                    self.proc_data_dict[pdd + '_max_shd' + suffix][qbn][:, 1] > \
-                    self.options_dict["max_tol_shd"]).T[0]
-
-                if len(satisfaction_indices) == 0:
-                    w = f"Maximum tolerated state history dependence (SHD) of {self.options_dict['max_tol_shd']} cannot be" \
-                        f" reached for {qbn}{suffix} within {len(abs_diff) - 1} cycles."
-                    log.warning(w)
-                else:
-                    info = f"Maximum tolerated state history dependence (SHD) of {self.options_dict['max_tol_shd']} reached" \
-                          f" for {qbn}{suffix} after {satisfaction_indices[0]} cycles."
-                    log.info(info)
-                    if self.verbose:
-                        print(info)
-                    if len(violation_indices) > satisfaction_indices[0]:
-                        log.warning(f"Maximum tolerated state history dependence (SHD) of {self.options_dict['max_tol_shd']} " \
-                          f"is exceeded again for {qbn}{suffix} at cycle number(s) {violation_indices[satisfaction_indices[0]:]}.")
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -9783,36 +9665,12 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         legend_bbox_to_anchor = (1, -0.20)
         legend_pos = 'upper right'
         legend_ncol = 2 #len(self.sp.get_values("initialize"))
-        do_legend = True
         # overwrite baseAnalysis plots
         self.plot_dicts = OrderedDict()
-
-        def _plot_max_tol_shd(plt_key_arg, fig_key_arg, ax_id_arg=None):
-            self.plot_dicts[plt_key_arg] = \
-                {'plotfn': self.plot_line,
-                 'fig_id': fig_key_arg,
-                 'ax_id': ax_id_arg,
-                 'xvals': np.arange(len(abs_diff)),
-                 'xlabel': "Reset cycle, $n$",
-                 'xunit': "",
-                 'yvals': np.repeat(self.options_dict["max_tol_shd"],
-                                    len(abs_diff)),
-                 'yerr': 0.,
-                 'setlabel': 'Max. tol. SHD',
-                 'linestyle': '--',
-                 'color': 'black',
-                 'alpha': 0.5,
-                 'marker': '',
-                 'do_legend': False,
-                 'legend_ncol': legend_ncol,
-                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                 'legend_pos': legend_pos}
-
         basekey = 'projected_data_dict_per_prep_state'
         suffixes = ('', '_corrected')
         keys = {basekey + suffix: suffix for suffix in suffixes
                  if basekey + suffix in self.proc_data_dict}
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
         for k in keys:
             for qbn, data_qbi in self.proc_data_dict[k].items():
                 for i, (state, data) in enumerate(data_qbi.items()):
@@ -9835,81 +9693,26 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
                                 'setlabel': self._get_pop_label(state, k,
-                                        not self._has_reset_pulses(seq_nr), ),
+                                                                not self._has_reset_pulses(seq_nr),
+                                                                ),
                                 'title': self.raw_data_dict['timestamp'] + ' ' +
                                          self.raw_data_dict['measurementstring']
                                          + " " + prep_state,
                                 'titlepad': 0.2,
-                                'linestyle': '-' if
-                                self._has_reset_pulses(seq_nr) else '--',
-                                'marker': 'o' if self._has_reset_pulses(
-                                    seq_nr) else 'x',
-                                'color': self._get_color(state),
-                                'alpha': 1,
-                                'do_legend': do_legend,
+                                'linestyle': '-',
+                                'color': f'C{i}',
+                                'alpha': 0.5 if seq_nr == 0 else 1,
+                                'do_legend': True,
                                 'legend_ncol': legend_ncol,
                                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                 'legend_pos': legend_pos,
-                                'legend_fontsize': 13}
-
-                            # Residual population of state for every prep state
-                            plt_key_res_pop = 'data_{}_{}_{}_{}_{}'.format(k,
-                                              qbn, state, prep_state, seq_nr) +\
-                                              f"_res_pop_{state}"
-                            fig_key_res_pop = f"residual_pop_{qbn}_{state}" + \
-                                              f"{keys[k]}"
-                            fig_key_res_pop = f"residual_pop_{qbn}" +\
-                                              f"{keys[k]}"
-                            self.plot_dicts[plt_key_res_pop] = {
-                                'plotfn': self.plot_line,
-                                'fig_id': fig_key_res_pop,
-                                'numplotsx': 3,
-                                'plotsize': (plotsize[0] * 1.5,
-                                             plotsize[1] * 1.5),
-                                'sharey': False,
-                                'ax_id': i,
-                                'xvals': np.arange(len(pop)),
-                                'xlabel': "Reset cycle, $n$",
-                                'xunit': "",
-                                'yvals': 1. - pop if state == "pg" and \
-                                         self.options_dict["1-pg"] else pop,
-                                'yerr': self._std_error(pop,
-                                    self.get_param_value('n_shots')),
-                                'ylabel': f"Residual population $P_x$" if i == 0
-                                          else "",
-                                'yunit': '',
-                                'yscale': self.get_param_value("yscale", "log"),
-                                'setlabel': self._get_res_pop_label(
-                                    state, prep_state,
-                                    k, not self._has_reset_pulses(seq_nr), ),
-                                'title': f"$1 - P_{state[-1]}$"
-                                         if state == "pg" and
-                                         self.options_dict["1-pg"] else
-                                         f"$P_{state[-1]}$",
-                                'titlepad': 0.02,
-                                'fig_title': self.raw_data_dict[
-                                                 'timestamp'] + ' ' +
-                                             self.raw_data_dict[
-                                                 'measurementstring'] + " " +
-                                             state,
-                                'fig_titlepad': 0.05,
-                                'linestyle': '-' if
-                                self._has_reset_pulses(seq_nr) else '--',
-                                'marker': 'o' if self._has_reset_pulses(
-                                    seq_nr) else 'x',
-                                'color': self._get_color(
-                                    state, j, len(data)),
-                                'alpha': 1,
-                                'do_legend': do_legend, 'legend_ncol': 2,
-                                'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                'legend_pos': legend_pos, 'legend_fontsize': 16}
+                                'legend_fontsize': 5}
 
                             # add feedback params info to plot
                             textstr = self._get_feedback_params_text_str(qbn)
                             self.plot_dicts[f'text_msg_{qbn}_' \
                                             f'{prep_state}{keys[k]}'] = {
-                                'fig_id': f"populations_{qbn}_{prep_state}"
-                                          f"{keys[k]}",
+                                'fig_id': f"populations_{qbn}_{prep_state}{keys[k]}",
                                 'ypos': -0.21,
                                 'xpos': 0,
                                 'horizontalalignment': 'left',
@@ -9934,17 +9737,15 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'linestyle': '--',
                                     'marker': "",
                                     'color': 'k',
-                                    'do_legend': do_legend,
+                                    'do_legend': True,
                                     'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor':
-                                        legend_bbox_to_anchor,
+                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                    'legend_fontsize': 13}
+                                    'legend_fontsize': 5}
 
                             # plot fit results
                             fit_key = \
-                                f'fit_rate_{qbn}_{prep_state}_seq_{seq_nr}' \
-                                f'{keys[k]}'
+                                f'fit_rate_{qbn}_{prep_state}_seq_{seq_nr}{keys[k]}'
                             if fit_key in self.fit_res and \
                                     not fit_key in self.plot_dicts:
                                 res = self.fit_res[fit_key]
@@ -9968,23 +9769,17 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'fit_res': res,
                                     'xunit': "s",
                                     'ylabel': 'Population, $P$',
-                                    'yscale': self.get_param_value("yscale",
-                                                                   "log"),
+                                    'yscale': self.get_param_value("yscale", "log"),
                                     'setlabel': label,
-                                    'title': self.raw_data_dict['timestamp'] +
-                                             ' ' + f"Reset rates {qbn}" +
-                                        f"{keys[k]}",
-                                    'linestyle': '-' if self._has_reset_pulses(
-                                        seq_nr) else '--',
-                                    'color': self._get_color(state, j,
-                                                             len(data)-1),
-                                    'alpha': 1,
-                                    'do_legend': seq_nr in [0, 1] and do_legend,
+                                    'title': self.raw_data_dict['timestamp'] + ' ' +
+                                             f"Reset rates {qbn}{keys[k]}",
+                                    'color': f'C{j}',
+                                    'alpha': 1 if self._has_reset_pulses(seq_nr) else 0.5,
+                                    'do_legend': seq_nr in [0, 1],
                                     'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor':
-                                        legend_bbox_to_anchor,
+                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                'legend_fontsize': 13}
+                                'legend_fontsize': 5}
 
                                 self.plot_dicts[fit_key + 'data'] = {
                                     'plotfn': self.plot_line,
@@ -9995,180 +9790,24 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'xunit': "s",
                                     'yvals': res.data,
                                     'yerr': self._std_error(
-                                        res.data, self.get_param_value(
-                                            'n_shots')),
-                                    'ylabel': 'Excited Pop., '
-                                              '$P_\mathrm{exc} = 1 - P_g$',
+                                        res.data, self.get_param_value('n_shots')),
+                                    'ylabel': 'Excited Pop., $P_\mathrm{exc}$',
                                     'yunit': '',
                                     'setlabel':
                                         "data" if
                                         self._has_reset_pulses(seq_nr)
                                         else "data NR",
                                     'linestyle': 'none',
-                                    'marker': 'o' if self._has_reset_pulses(
-                                        seq_nr) else 'x',
-                                    'color': self._get_color(state, j,
-                                                             len(data)-1),
-                                    'alpha': 1,
-                                    "do_legend": do_legend,
+                                    'color': f'C{j}',
+                                    'alpha': 1 if self._has_reset_pulses(seq_nr) else 0.5,
+                                    "do_legend": True,
                                     'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor':
-                                        legend_bbox_to_anchor,
+                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                    'legend_fontsize': 13
+                                    'legend_fontsize': 5
                                     }
 
-        basekey = 'projected_data_dict_shd'
-        suffixes = ('', '_corrected')
-        keys = {basekey + suffix: suffix for suffix in suffixes if
-                basekey + suffix in self.proc_data_dict}
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
-        for k in keys:
-            for qbn, data_qbi in self.proc_data_dict[k].items():
-                for i, (state, data) in enumerate(data_qbi.items()):
-                    for j, (prep_state_pair, data_prep_state) in \
-                            enumerate(data.items()):
-                        for seq_nr, abs_diff in enumerate(data_prep_state.T):
-                            if self._has_reset_pulses(seq_nr):
-                                plt_key = 'data_{}_{}_{}_{}_{}'.format(k, qbn,
-                                    state, prep_state_pair, seq_nr)
-                                fig_key = f"shd_{qbn}_{keys[k]}"
-                                self.plot_dicts[plt_key] = {
-                                    'plotfn': self.plot_line,
-                                    'fig_id': fig_key,
-                                    'numplotsx': 3,
-                                    'plotsize': (plotsize[0]*1.5,
-                                                 plotsize[1]*1.5),
-                                    'sharey': True,
-                                    'ax_id': i,
-                                    'xvals': np.arange(len(abs_diff)),
-                                    'xlabel': "Reset cycle, $n$",
-                                    'xunit': "",
-                                    'yvals': abs_diff,
-                                    'yerr': 1.4 * self._std_error(abs_diff,
-                                        self.get_param_value('n_shots')),
-                                    'ylabel': f'Abs. diff. of $P_x$ for'
-                                              ' different prep states' if i == 0
-                                    else '',
-                                    'yunit': '',
-                                    'yscale': self.get_param_value("yscale",
-                                                                   "log"),
-                                    'setlabel': self._get_shd_label(state,
-                                                prep_state_pair, k, not
-                                                self._has_reset_pulses(seq_nr),
-                                                                    ),
-                                    'title': f'$P_{state[-1]}$',
-                                    'titlepad': 0.02,
-                                    'fig_title': self.raw_data_dict['timestamp']
-                                                 + ' ' + self.raw_data_dict[
-                                                 'measurementstring'] + " " +
-                                                 state,
-                                    'fig_titlepad': 0.05,
-                                    'linestyle': '-' if
-                                    self._has_reset_pulses(seq_nr) else '--',
-                                    'marker': 'o' if self._has_reset_pulses(
-                                        seq_nr) else 'x',
-                                    'color': self._get_color(
-                                        state, j, len(data)),
-                                    'alpha': 0.5 if seq_nr == 0 else 1,
-                                    'do_legend': do_legend, 'legend_ncol': 1,
-                                    'legend_bbox_to_anchor':
-                                        legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos,
-                                    'legend_fontsize': 18}
-
-                    _plot_max_tol_shd(plt_key + "_max_tol_shd", fig_key, i)
-
-        basekey = 'projected_data_dict_max_shd_per_state'
-        suffixes = ('', '_corrected')
-        keys = {basekey + suffix: suffix for suffix in suffixes if
-                basekey + suffix in self.proc_data_dict}
-        for k in keys:
-            for qbn, data_qbi in self.proc_data_dict[k].items():
-                for i, (state, data) in enumerate(data_qbi.items()):
-                    for seq_nr, abs_diff in enumerate(data.T):
-                        if self._has_reset_pulses(seq_nr):
-                            plt_key = 'data_max_shd_per_state_{}_{}_{}_{}'\
-                                .format(k, qbn, state, seq_nr)
-                            fig_key = f"max_shd_per_state_{qbn}{keys[k]}"
-                            self.plot_dicts[plt_key] = {
-                                'plotfn': self.plot_line,
-                                'fig_id': fig_key,
-                                'xvals': np.arange(len(abs_diff)),
-                                'xlabel': "Reset cycle, $n$",
-                                'xunit': "",
-                                'yvals': abs_diff,
-                                'yerr': 1.4 * self._std_error(abs_diff,
-                                                        self.get_param_value(
-                                                            'n_shots')),
-                                'ylabel': f'Max. abs. diff. for $P_x$',
-                                'yunit': '',
-                                'yscale': self.get_param_value("yscale", "log"),
-                                'setlabel': self._get_max_shd_label(state, k,
-                                            not self._has_reset_pulses(seq_nr),
-                                                                    ),
-                                'title': self.raw_data_dict['timestamp'] + ' ' +
-                                         self.raw_data_dict['measurementstring']
-                                         + " " + "max_shd" + keys[k],
-                                'titlepad': 0.2,
-                                'linestyle': '-' if
-                                self._has_reset_pulses(seq_nr) else '--',
-                                'marker': 'o' if self._has_reset_pulses(
-                                    seq_nr) else 'x',
-                                'color': self._get_color(state),
-                                'alpha': 0.5,
-                                'do_legend': do_legend, 'legend_ncol': legend_ncol,
-                                'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                'legend_pos': legend_pos,
-                                'legend_fontsize': 13}
-
-        basekey = 'projected_data_dict_max_shd'
-        suffixes = ('', '_corrected')
-        keys = {basekey + suffix: suffix for suffix in suffixes if
-                basekey + suffix in self.proc_data_dict}
-        for k in keys:
-            for qbn, data_qbi in self.proc_data_dict[k].items():
-                for seq_nr, abs_diff in enumerate(data_qbi.T):
-                    if self._has_reset_pulses(seq_nr):
-                        plt_key = 'data_max_shd_{}_{}_{}_{}'\
-                            .format(k, qbn, state, seq_nr)
-                        fig_key = f"max_shd_per_state_{qbn}{keys[k]}"
-                        # fig_key = f"max_shd_{qbn}{keys[k]}"
-                        self.plot_dicts[plt_key] = {
-                            'plotfn': self.plot_line,
-                            'fig_id': fig_key,
-                            'xvals': np.arange(len(abs_diff)),
-                            'xlabel': "Reset cycle, $n$", 'xunit': "",
-                            'yvals': abs_diff,
-                            'yerr': 1.4 * self._std_error(abs_diff,
-                                                    self.get_param_value(
-                                                        'n_shots')),
-                            'ylabel': f'Max. SHD',
-                            'yunit': '',
-                            'yscale': self.get_param_value("yscale", "log"),
-                            'setlabel': 'Max. SHD ' + (
-                                "(NR)" if not self._has_reset_pulses(seq_nr)
-                                else "(c)" if "corrected" in k else ""),
-                            'title': self.raw_data_dict['timestamp'] + ' ' +
-                                     self.raw_data_dict[
-                                         'measurementstring'] + " " +
-                                     "max_shd" +
-                                     keys[k], 'titlepad': 0.2,
-                            'linestyle': '-' if
-                                self._has_reset_pulses(seq_nr) else '--',
-                            'marker': '',
-                            'color': 'red',
-                            'alpha': 1,
-                            'do_legend': do_legend, 'legend_ncol': legend_ncol,
-                            'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                            'legend_pos': legend_pos, 'legend_fontsize': 13}
-
-            _plot_max_tol_shd(plt_key + "_max_tol_shd", fig_key)
-
     def _has_reset_pulses(self, seq_nr):
-        if self.sp.find_parameter("pulse_off") is None:
-            # by default, feedback pulses are ON
-            return True
         return not self.sp.get_values('pulse_off')[seq_nr]
 
 
@@ -10249,54 +9888,10 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         return str
 
     @staticmethod
-    def _get_color(state, counter=None, tot_n_states=3):
-        state = state[-1]
-
-        if counter is not None:
-            val = float(0.2 + counter * 0.6/ (tot_n_states - 1))
-
-        if state == "g":
-            if counter is None:
-                color = "tab:blue"
-            else:
-                color = matplotlib.cm.get_cmap('Blues')(val)
-        if state == "e":
-            if counter is None:
-                color = "tab:orange"
-            else:
-                color = matplotlib.cm.get_cmap('Oranges')(val)
-        if state == "f":
-            if counter is None:
-                color = "tab:green"
-            else:
-                color = matplotlib.cm.get_cmap('Greens')(val)
-
-        return color
-
-    @staticmethod
     def _get_pop_label(state, key, no_reset=False):
         superscript = "{NR}" if no_reset else "{c}" \
             if "corrected" in key else "{}"
         return f'$P_{state[-1]}^{superscript}$'
-
-    @staticmethod
-    def _get_res_pop_label(state, prep_state, key, no_reset=False):
-        addendum = "(NR)" if no_reset else "(c)" if "corrected" in key \
-            else ""
-        prep_state = "{prep(" + prep_state[-1] + ")}"
-        return fr'$P_{state[-1]}^{prep_state}$' + f' {addendum}'
-
-    @staticmethod
-    def _get_shd_label(state, state_pair, key, no_reset=False):
-        state_pair_1 = "{prep(" + state_pair[-2] + ")}"
-        state_pair_2 = "{prep(" + state_pair[-1] + ")}"
-        addendum = "(NR)" if no_reset else "(c)" if "corrected" in key else ""
-        return fr'$|P_{state[-1]}^{state_pair_1} - P_{state[-1]}^{state_pair_2}|$' + f' {addendum}'
-
-    @staticmethod
-    def _get_max_shd_label(state, key, no_reset=False):
-        addendum = "(NR)" if no_reset else "(c)" if "corrected" in key else ""
-        return fr'$P_{state[-1]}$' + addendum
 
     @staticmethod
     def _std_error(p, nshots=10000):
@@ -11601,7 +11196,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         }
 
         if self.do_fitting:
-            # define grid with limits based on measurement points
+            # define grid with limits based on measurement points 
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))

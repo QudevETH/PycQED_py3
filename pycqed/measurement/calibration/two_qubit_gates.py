@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict as odict
 from copy import copy
 from copy import deepcopy
 from itertools import zip_longest
@@ -14,6 +15,7 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
@@ -163,27 +165,22 @@ class MultiTaskingExperiment(QuantumExperiment):
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
-        def replace_qc_params(obj):
-            obj = copy(obj)
-            if isinstance(obj, list):
-                ind = range(len(obj))
-            elif isinstance(obj, dict):
-                ind = obj.keys()
-            for i in ind:
-                if isinstance(obj[i], (dict, list)):
-                    obj[i] = replace_qc_params(obj[i])
-                elif isinstance(obj[i], qcodes.Parameter):
-                    obj[i] = repr(obj[i])
-            return(obj)
-
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
-            tl = replace_qc_params(self.preprocessed_task_list)
+            tl = [copy(t) for t in self.preprocessed_task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
             self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
-            tl = replace_qc_params(self.task_list)
+            tl = [copy(t) for t in self.task_list]
+            for t in tl:
+                for k, v in t.items():
+                    if isinstance(v, qcodes.Parameter):
+                        t[k] = repr(v)
             self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
@@ -335,7 +332,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         return task
 
     def parallel_sweep(self, preprocessed_task_list=(), block_func=None,
-                       block_align=None, segment_kwargs=dict(), **kw):
+                       block_align=None, **kw):
         """
         Calls a block creation function for each task in a task list,
         puts these blocks in parallel and sweeps over the given sweep points.
@@ -435,13 +432,9 @@ class MultiTaskingExperiment(QuantumExperiment):
             kw['ro_qubits'] = [m for m in self.meas_obj_names if f'RO {m}'
                                not in op_codes]
         # call sweep_n_dim to perform the actual sweep
-        return self.sweep_n_dim(self.get_sweep_points_for_sweep_n_dim(),
+        return self.sweep_n_dim(self.sweep_points,
                                 body_block=self.all_main_blocks,
-                                cal_points=self.cal_points,
-                                segment_kwargs=segment_kwargs, **kw)
-
-    def get_sweep_points_for_sweep_n_dim(self):
-        return self.sweep_points
+                                cal_points=self.cal_points, **kw)
 
     @staticmethod
     def find_qubits_in_tasks(qubits, task_list, search_in_operations=True):
@@ -550,11 +543,7 @@ class MultiTaskingExperiment(QuantumExperiment):
          - val: dict of kwargs for SweepPoints.add_sweep_parameter, with the
            additional possibility of specifying 'values_func', a lambda
            function that processes the values in kw before using them as
-           sweep values. You can also specify 'sweep_function_2D', which can
-           either be a SweepFunction, a qcodes.Parameter instance or a string,
-           if specified as a string it is assumed that it is the name of an
-           qcodes.Parameter of the first measurement object returned by
-           self.get_meas_obj_from_task
+           sweep values
         or a list of such dicts to create multiple sweep points based on a
         single keyword argument.
 
@@ -596,6 +585,23 @@ class MultiTaskingExperiment(QuantumExperiment):
                         values = task[k_list[0]]
                     task['sweep_points'].add_sweep_parameter(
                         values=values, **v)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            MultiTaskingExperiment.__name__: odict({
+                'n_cal_points_per_state': (int, 1),
+                'cal_states': (str, None),
+                'ro_qubits': ((Qubit, 'multi_select'), None),
+            })
+        })
+        d['task_list_fields'].update({
+            MultiTaskingExperiment.__name__: odict({
+                'sweep_points': (SweepPoints, None),
+            })
+        })
+        return d
 
 
 class CalibBuilder(MultiTaskingExperiment):
@@ -735,6 +741,16 @@ class CalibBuilder(MultiTaskingExperiment):
         # them if they exist already)
         sweep_points.update(hard_sweep_dict + [{}])
         return sweep_points
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            CalibBuilder.__name__: odict({
+                'update': (bool, False),
+            })
+        })
+        return d
 
 
 class CPhase(CalibBuilder):
@@ -1598,3 +1614,44 @@ class Chevron(CalibBuilder):
             qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        pulse_pars = odict({
+            'pulse_length': 's',
+            'amplitude': 'V',
+            'amplitude2': 'V',
+            'trans_amplitude': 'V',
+            'trans_amplitude2': 'V',
+            'amplitude_offset': 'V',
+            'amplitude_offset2': 'V',
+            'trans_length': 's',
+            'buffer_length_start': 's',
+            'buffer_length_end': 's',
+            'extra_buffer_aux_pulse': 's',
+            'channel_relative_delay': 's',
+            'gaussian_filter_sigma': 's',
+        })
+        # move first param to the end for the second sweep dimension
+        first_param = list(pulse_pars.keys())[0]
+        pulse_pars2 = deepcopy(pulse_pars)
+        pulse_pars2.pop(first_param)
+        pulse_pars2[first_param] = pulse_pars[first_param]
+        d = super().gui_kwargs(device)
+        d['kwargs'][MultiTaskingExperiment.__name__]['cal_states'] = (str, 'gef')
+        d['task_list_fields'].update({
+            Chevron.__name__: odict({
+                'qbc': ((Qubit, 'single_select'), None),
+                'qbt': ((Qubit, 'single_select'), None),
+                'num_cz_gates': (int, 1),
+                'init_state': (CircuitBuilder.STD_INIT, '11'),
+                'max_flux_length': (float, None),
+            })
+        })
+        d['sweeping_parameters'].update({
+            Chevron.__name__: {
+                0: pulse_pars,
+                1: pulse_pars2,
+            }
+        })
+        return d
