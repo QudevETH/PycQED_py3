@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict as odict
 from copy import copy, deepcopy
 import traceback
 
@@ -13,6 +14,7 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -1672,6 +1674,20 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         # To be overloaded by children.
         pass
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({})
+            })
+        d['task_list_fields'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({
+                'qb': ((Qubit, 'single_select'), None),
+                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
+            })
+        })
+        return d
+
 
 class Rabi(SingleQubitGateCalibExperiment):
     """
@@ -1721,6 +1737,7 @@ class Rabi(SingleQubitGateCalibExperiment):
         - amps
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + ['n']
     kw_for_sweep_points = {
         'amps': dict(param_name='amplitude', unit='V',
                      label='Pulse Amplitude', dimension=0)
@@ -1730,7 +1747,6 @@ class Rabi(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, **kw):
         try:
-            self.kw_for_task_keys += ['n']
             if 'n' not in kw:
                 # add default n to kw before passing to init of parent
                 kw['n'] = 1
@@ -1813,6 +1829,26 @@ class Rabi(SingleQubitGateCalibExperiment):
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
             qubit.set(f'{task["transition_name_input"]}_amp90_scale', 0.5)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['task_list_fields'].update({
+            Rabi.__name__: odict({
+                'n': (int, 1),
+            })
+        })
+        d['sweeping_parameters'].update({
+            Rabi.__name__: {
+                0: {
+                    'amplitude': 'V',
+                },
+                1: {
+                    'sigma': 's',
+                },
+            }
+        })
+        return d
+
 
 class Ramsey(SingleQubitGateCalibExperiment):
     """
@@ -1878,6 +1914,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         - delays
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + [
+        'artificial_detuning']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0)
@@ -1887,7 +1925,6 @@ class Ramsey(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, echo=False, **kw):
         try:
-            self.kw_for_task_keys += ['artificial_detuning']
             if 'artificial_detuning' not in kw:
                 # add default artificial_detuning to kw before passing to
                 # init of parent
@@ -2023,6 +2060,29 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            Ramsey.__name__: odict({
+                'echo': (bool, False),
+            })
+        })
+        d['task_list_fields'].update({
+            Ramsey.__name__: odict({
+                'artificial_detuning': (float, None),
+            })
+        })
+        d['sweeping_parameters'].update({
+            Ramsey.__name__: {
+                0: {
+                    'pulse_delay': 's',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class ReparkingRamsey(Ramsey):
     """
@@ -2064,6 +2124,7 @@ class ReparkingRamsey(Ramsey):
         - dc_voltage_offsets
     """
 
+    kw_for_task_keys = Ramsey.kw_for_task_keys + ['fluxline']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0),
@@ -2079,7 +2140,6 @@ class ReparkingRamsey(Ramsey):
                  delays=None, dc_voltages=None, dc_voltage_offsets=None,  **kw):
 
         try:
-            self.kw_for_task_keys += ['fluxline']
             if 'fluxline' not in kw:
                 # add default value for fluxline to kw before passing to
                 # init of parent
@@ -2333,6 +2393,19 @@ class T1(SingleQubitGateCalibExperiment):
                 qubit.name]['T1']
             qubit.set(f'T1{task["transition_name"]}', T1)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            T1.__name__: {
+                0: {
+                    'pulse_delay': 's',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class QScale(SingleQubitGateCalibExperiment):
     """
@@ -2502,6 +2575,19 @@ class QScale(SingleQubitGateCalibExperiment):
             qscale = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['qscale']
             qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QScale.__name__: {
+                0: {
+                    'motzoi': 'V',
+                },
+                1: {},
+            }
+        })
+        return d
 
 
 class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
