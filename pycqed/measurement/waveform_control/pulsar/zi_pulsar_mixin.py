@@ -129,6 +129,51 @@ class ZIPulsarMixin:
     def _zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
+    @staticmethod
+    def _zi_playback_string_osc_sweep_prepare(metadata):
+        osc_sweep_params = metadata.get("osc_sweep_params", False)
+        if not osc_sweep_params:
+            return []
+        playback_string = []
+        playback_string.append('//set up frequency sweep')
+        osc = str(osc_sweep_params.get('osc', '0'))
+        playback_string.append(f'const SWEEP_OSC = {osc};\n')
+        start_freq = osc_sweep_params['start_freq']
+        freq_inc = osc_sweep_params['freq_inc']
+        playback_string.append(
+            f'configFreqSweep(SWEEP_OSC,{start_freq},{freq_inc});')
+        return playback_string
+
+    @staticmethod
+    def _zi_playback_string_osc_sweep_body(metadata):
+        osc_sweep_params = metadata.get("osc_sweep_params", False)
+        if not osc_sweep_params:
+            return []
+        playback_string = []
+        playback_string.append('  waitWave();\n')
+        playback_string.append('  setSweepStep(SWEEP_OSC, i_sweep);\n')
+        osc_sweep_params = metadata.get("osc_sweep_params", {})
+        if osc_sweep_params.get('reset_osc', False):
+            # The reset_mask can be used to specify the subset of oscillators
+            # that will be reset in each iteration of the loop
+            # (e.g. 0b00000101, for only reseting oscillator 0 and 2).
+            # If not specified it will reset the oscillator specified in the
+            # osc_sweep_params. If this is not given, all oscillators will be
+            # reset. TODO: move to docstring
+            reset_mask = osc_sweep_params.get('reset_osc_mask', False)
+            if not reset_mask:
+                # reset_osc_mask not specified
+                if 'osc' in osc_sweep_params.keys():
+                    # reset only the osc used in the sweep
+                    reset_mask = "0b{:08b}".format(
+                        1 << int(osc_sweep_params['osc'])
+                    )
+                else:
+                    # do not specify mask, thereby resetting all oscillators
+                    reset_mask = ''
+            playback_string.append(f'  resetOscPhase({reset_mask});\n')
+        return playback_string
+
     def _zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False):
         w1, w2 = self._zi_waves_to_wavenames(wave)
         use_hack = True
