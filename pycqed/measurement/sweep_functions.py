@@ -118,7 +118,7 @@ class UploadingSweepFunctionMixin:
         Raises:
             ValueError: Raised sequence is None.
         """
-        if self.sequence is not None:
+        if self.sequence is None:
             raise ValueError('Cannot start pulsar with sequence being None')
         if self.upload or force_upload:
             self.sequence.upload()
