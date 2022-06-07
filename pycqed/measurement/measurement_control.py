@@ -120,6 +120,10 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
+        self.add_parameter('compress_dataset',
+                           vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           initial_value=True)
         self.add_parameter(
             'max_attempts', docstring=
             'Maximum number of attempts. Values larger than 1 will mean that '
@@ -1654,6 +1658,19 @@ class MeasurementControl(Instrument):
         else:
             return self.data_object.create_group(EXPERIMENTAL_DATA_GROUP_NAME)
 
+    def _get_create_dataset_kwargs(self):
+        """
+        Get the kwargs to pass to create_dataset in
+        create_experimentaldata_dataset and save_extra_data.
+
+        Returns:
+            dict with the kwargs
+        """
+        kwargs = {'dtype': 'float64'}
+        if self.compress_dataset():
+            kwargs.update({'compression': "gzip", 'compression_opts': 9})
+        return kwargs
+
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
@@ -1661,7 +1678,7 @@ class MeasurementControl(Instrument):
                      len(self.detector_function.value_names)),
             maxshape=(None, len(self.sweep_functions) +
                       len(self.detector_function.value_names)),
-            dtype='float64', compression="gzip", compression_opts=9)
+            **self._get_create_dataset_kwargs())
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
         # Added to tell analysis how to extract the data
@@ -1732,7 +1749,7 @@ class MeasurementControl(Instrument):
         if dataset_name not in group:
             dset = group.create_dataset(dataset_name, data=data,
                                         maxshape=[None] * len(data.shape),
-                                        compression="gzip", compression_opts=9)
+                                        **self._get_create_dataset_kwargs())
             if column_names is not None:
                 dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
         else:
