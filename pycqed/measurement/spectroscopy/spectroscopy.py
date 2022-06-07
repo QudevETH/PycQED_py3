@@ -85,7 +85,11 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                     ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
                 else:
                     ro_lo_freq = freqs_all[0] + qubits[0].ro_mod_freq()
-                configure_qubit_mux_readout(qubits, {ro_lo: ro_lo_freq})
+                configure_qubit_mux_readout(
+                    qubits=qubits,
+                    lo_freqs_dict={ro_lo: ro_lo_freq},
+                    set_mod_freq=(not isinstance(self, FeedlineSpectroscopy))
+                )
 
             self.update_operation_dict()
 
