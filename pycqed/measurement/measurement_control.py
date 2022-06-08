@@ -1666,7 +1666,7 @@ class MeasurementControl(Instrument):
         Returns:
             dict with the kwargs
         """
-        kwargs = {'dtype': 'float64'}
+        kwargs = {}
         if self.compress_dataset():
             kwargs.update({'compression': "gzip", 'compression_opts': 9})
         return kwargs
@@ -1678,7 +1678,7 @@ class MeasurementControl(Instrument):
                      len(self.detector_function.value_names)),
             maxshape=(None, len(self.sweep_functions) +
                       len(self.detector_function.value_names)),
-            **self._get_create_dataset_kwargs())
+            dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
         # Added to tell analysis how to extract the data
