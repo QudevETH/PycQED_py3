@@ -359,7 +359,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
-        self._awg_program = [None] * self.n_acq_units
+        # Reset _awg_program for generators of acq units to avoid confusing
+        # the soft spectroscopy
+        self._awg_program[:self.n_acq_units] = [None] * self.n_acq_units
 
     def acquisition_progress(self):
         n_acq = {}
@@ -600,3 +602,4 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
         self._check_server(kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+        self._awg_program += [None] * len(self.sgchannels)
