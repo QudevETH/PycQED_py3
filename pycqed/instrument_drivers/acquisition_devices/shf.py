@@ -90,6 +90,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
+        self._awg_source_strings = {}
         self.seqtrigger = None
         self.timer = None
 
@@ -388,10 +389,28 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         """
         qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
+        self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def store_awg_source_string(self, channel, awg_str):
+        """
+        Store AWG source strings to a private property for debugging.
+
+        This function is called automatically when programming a QA
+        channel via set_awg_program and currently still needs to be called
+        manually after programming an SG channel. The source strings get
+        stored in the dict self._awg_source_strings.
+
+        Args:
+             channel: the QA or SG channel object for which the AWG was
+                programmed
+            awg_str: the source string that was programmed to the AWG
+        """
+        key = channel.short_name[:2] + channel.short_name[-1:]
+        self._awg_source_strings[key] = awg_str
 
     def _arm_scope(self):
         self.scopes[0].stop()
