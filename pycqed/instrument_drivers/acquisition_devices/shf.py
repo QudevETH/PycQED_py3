@@ -585,3 +585,4 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+        self._awg_program += [None] * len(self.sgchannels)

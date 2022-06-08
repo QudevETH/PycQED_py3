@@ -132,6 +132,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             if not self.zi_waves_cleared:
                 self._zi_clear_waves()
 
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
             defined_waves = (set(), dict()) if use_placeholder_waves else set()
             codeword_table = {}
@@ -290,9 +291,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings += self._zi_playback_string_loop_end(metadata)
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
-                # FIXME: enable this when overhauling sequencer cache for SG
                 # prevent ZI_base_instrument.start() from starting this sub AWG
-                # self.awg._awg_program[awg_nr] = None
+                self.awg._awg_program[awg_nr + first_sg_awg] = None
                 continue
             # tell ZI_base_instrument that it should not compile a
             # program on this sub AWG (because we already do it here)
@@ -303,8 +303,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # is not None. Since we set _awg_needs_configuration to False,
             # we do not need to put the actual program here, but anything
             # different from None is sufficient.)
-            # FIXME: enable this when overhauling sequencer cache for SG
-            # self.awg._awg_program[awg_nr] = True
+            self.awg._awg_program[awg_nr + first_sg_awg] = True
 
             # Having determined whether the sub AWG should be started or
             # not, we can now skip in case no channels need to be uploaded.
