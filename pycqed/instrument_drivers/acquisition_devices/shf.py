@@ -601,6 +601,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             self._session = ziqcsess.Session(
                 server_host=kwargs.get('host', 'localhost'),
                 connection=daq)
+            return daq
 
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
@@ -617,8 +618,10 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
-    def __init__(self, *args, **kwargs):
-        self._check_server(kwargs)
-        super().__init__(*args, **kwargs)
+    def __init__(self, serial, *args, **kwargs):
+        daq = self._check_server(kwargs)
+        if daq is not None:
+            daq.set_device_type(serial, 'SHFQC')
+        super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)

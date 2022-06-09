@@ -1,5 +1,6 @@
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibase
 import json
+import os
 import time
 import numpy as np
 import re
@@ -41,20 +42,33 @@ class MockDAQServer(zibase.MockDAQServer):
         super().__init__(server, port, apilevel, verbose=verbose)
         self.nodes['/zi/about/dataserver'] = {
             'type': 'String', 'value': self.__class__.__name__}
+        self._device_types = {}
         # create aliases syncSet...
         for k in dir(self):
             if k.startswith('set') and len(k) > 3:
                 setattr(self, f'syncS{k[1:]}', getattr(self, k))
 
+    def set_device_type(self, device, devtype):
+        self._device_types[device] = devtype
+
     def awgModule(self):
         return MockAwgModule(self)
 
     def connectDevice(self, device, interface):
-        if device.lower().startswith('dev12'):
+        if device in self._device_types:
+            self.devtype = self._device_types[device]
+        elif device.lower().startswith('dev12'):
             self.devtype = 'SHFQA4'
-        elif device.lower().startswith('dev14'):
-            self.devtype = 'SHFQC'
+            # FIXME: it could also be 'SHFQC', but not clear how to
+            #  distinguish by serial. A virtual SHFQC currently has to set it
+            #  beforehand using set_device_type.
         super().connectDevice(device, interface)
+        if self.devtype == 'SHFQC':
+            for awg_nr in range(6):
+                for i in range(2048):
+                    self.nodes[f'/{self.device}/sgchannels/{awg_nr}/awg/' \
+                               f'waveform/waves/{i}'] = {
+                        'type': 'ZIVectorData', 'value': np.array([])}
 
     def listNodesJSON(self, path):
         dd = {k: copy.copy(v) for k, v in self.nodes.items()
@@ -89,6 +103,8 @@ class MockDAQServer(zibase.MockDAQServer):
                     time.time() - self.nodes[path].get('timestamp', np.inf) >
                     .1):
                 return 0  # emulate that single run finishes after 0.1s
+        if '/sgchannels/' in path and '/awg/ready' in path:
+            return 1
 
         if 'Options' in self.nodes[path]:
             raw_val = self.nodes[path]['value']
@@ -107,6 +123,17 @@ class MockDAQServer(zibase.MockDAQServer):
             self.nodes[path]['timestamp'] = time.time()
 
     def get(self, path, flat=None, flags=None, **kw):
+        if path not in self.nodes:
+            paths = [p for p in self.nodes if fnmatch.fnmatch(p, path)]
+            if not len(paths):
+                raise zibase.ziRuntimeError(
+                    "Unknown node '" + path +
+                    "' used with mocked server and device!")
+            ret = {}
+            for p in paths:
+                ret.update(self.get(p, flat=flat, flags=flags))
+            return ret
+
         l = None
         if '/qachannels/' in path and '/result/' in path:
             m = re.match(r'/(\w+)/qachannels/(\d+)/readout/result/data/'
@@ -129,7 +156,30 @@ class MockDAQServer(zibase.MockDAQServer):
                 'vector': np.random.rand(l) + 1j * np.random.rand(l),
                 'timestamp': 0,
             }]}
-        return super().get(path, flat, flags)
+        if '/sgchannels/' in path:
+            m = re.match(r'/(\w+)/sgchannels/(\d+)/awg/waveform/descriptors',
+                         path)
+            if m:
+                val = []
+                paths = [p for p in self.nodes if fnmatch.fnmatch(
+                    p, '/' + m.group(1) + '/sgchannels/' + m.group(2) + '/awg'
+                       '/waveform/waves/*')]
+                for p in paths:
+                    val.append({
+                        'name': p.replace('/', '_'),
+                        "filename": "",
+                        "function": "",
+                        "channels": "2",
+                        "marker_bits": "0;0",
+                        "length": "0",
+                        "timestamp": "0",
+                        "play_config": "0"
+                    })
+                return {path: [{'vector': json.dumps(
+                    {'waveforms': val}), 'timestamp': 0}]}
+        ret = super().get(path, flat, flags)
+        ret[path][0]['timestamp'] = 0
+        return ret
 
     def set(self, path, value=None, **kwargs):
         if value is None:
@@ -193,6 +243,8 @@ class MockAwgModule(zibase.MockAwgModule):
     def getInt(self, path):
         if path == 'compiler/status':
             return 0
+        elif path == 'elf/status':
+            return 0
         else:
             return 0
 
@@ -201,3 +253,30 @@ class MockAwgModule(zibase.MockAwgModule):
             return 'File successfully uploaded'
         else:
             return ''
+
+    def getDouble(self, path):
+        if path == '/progress':
+            return 1
+        else:
+            return 0
+
+    def listNodesJSON(self, path):
+        filename = os.path.join(os.path.dirname(os.path.abspath(
+            __file__)), 'zi_parameter_files', 'node_doc_awgModule.json')
+        with open(filename) as fo:
+            f = fo.read()
+        dd = json.loads(f)
+
+        defaults = {
+            'Description': 'Description not available.',
+            'Properties': 'Read, Write, Setting',
+            'Unit': 'None',
+        }
+        for name, node in dd.items():
+            node.pop('value', None)
+            node['Type'] = node.pop('type', node.get('Type', 'String'))
+            node['Node'] = name
+            for k in defaults:
+                if k not in node:
+                    node[k] = defaults[k]
+        return json.dumps(dd)
