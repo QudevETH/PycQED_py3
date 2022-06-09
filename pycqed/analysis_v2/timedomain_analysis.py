@@ -9244,13 +9244,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
 
+            means = [mu for _, mu in
+                                self.proc_data_dict['analysis_params']
+                                    ['means'][qb_name].items()]
+
+            # calculate delta of means and set tol and cov based on this
+            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                    for mu_j in means]).flatten().max()
+
+            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            reg_covar = tol**2
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=tol,
+                    reg_covar=reg_covar,
                     weights_init=weights_init,
-                    means_init=[mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()], **kw)
+                    means_init=means, **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -10678,7 +10689,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
         self.nr_averages = nr_averages
-        n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+        # metadata['detectors'] is a dict for MultiPollDetector and else a list
+        df_names = list(det_metadata['detectors'])
+        # Testing the first detector, since detectors in a MultiPollDetector
+        # should all be the same
+        if 'scope' in df_names[0]:
+            # No scaling needed, since all hsp are contained in one hardware run
+            n_hsp = 1
+        else:
+            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]

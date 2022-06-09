@@ -544,7 +544,7 @@ class Device(Instrument):
         # configure channel delays
         channel_delays = self.get_channel_delays()
         for ch, v in channel_delays.items():
-            awg = pulsar.AWG_obj(channel=ch)
+            awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
 
