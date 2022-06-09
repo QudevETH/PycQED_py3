@@ -2011,6 +2011,41 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
 
+    def _get_artificial_detuning_dict(self, raise_error=True):
+        """
+        Helper method to extract the information about the artificial_detuning
+        and create the artificial_detuning_dict for each qubit.
+        - first checks whether artificial_detuning_dict was passed in
+            options_dict, metadata, or default_options
+        - then tries to create it based on the information in
+            preprocessed_task_list
+        - lastly, it falls back to the legacy version: searching for
+            artificial_detuning in options_dict, metadata, or default_options
+
+        Returns:
+            artificial_detuning_dict: dict with qb names as keys and
+                value for the artificial detuning as values
+        """
+        artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    artificial_detuning_dict = artificial_detuning
+                else:
+                    artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if raise_error and artificial_detuning_dict is None:
+            raise ValueError('"artificial_detuning" not found.')
+        return artificial_detuning_dict
+
     def prepare_plots(self):
         """
         Prepares the plot dicts for the raw data and the projected data.
@@ -6601,25 +6636,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        self.artificial_detuning_dict = self.get_param_value(
-            'artificial_detuning_dict')
-        if self.artificial_detuning_dict is None:
-            artificial_detuning = self.get_param_value('artificial_detuning')
-            if 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                self.artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
-            elif artificial_detuning is not None:
-                # legacy case
-                if isinstance(artificial_detuning, dict):
-                    self.artificial_detuning_dict = artificial_detuning
-                else:
-                    self.artificial_detuning_dict = OrderedDict(
-                        [(qbn, artificial_detuning) for qbn in self.qb_names])
-        if self.artificial_detuning_dict is None:
-            raise ValueError('"artificial_detuning" not found.')
-
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self._get_artificial_detuning_dict()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
@@ -7280,10 +7298,18 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         """
         auto = kwargs.pop('auto', True)
         super().__init__(*args, auto=False, **kwargs)
-        # Check for artificial detuning only in the options dict because the
-        # metadata hasn't been extracted at this point (done in extract_data())
-        if self.options_dict.get('artificial_detuning') is not None or \
-                self.options_dict.get('artificial_detuning_dict') is not None:
+
+        # get experimental metadata from file
+        self.metadata = self.get_data_from_timestamp_list(
+            {'md': 'Experimental Data.Experimental Metadata'})['md']
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self._get_artificial_detuning_dict(
+            raise_error=False)
+        # Decide whether to do a RamseyAnalysis or a T1Analysis
+        self.run_ramsey = self.artificial_detuning_dict is not None and \
+                any(list(self.artificial_detuning_dict.values()))
+        if self.run_ramsey:
+            # artificial detuning was used and it is not 0
             self.echo_analysis = RamseyAnalysis(*args, auto=False, **kwargs)
         else:
             if 'options_dict' in kwargs:
@@ -7363,7 +7389,12 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
                     else ''))
             T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = '$T_2$ echo = {:.2f} $\mu$s'.format(
+            textstr = 'Ramsey Analysis with' if self.run_ramsey \
+                else 'T1 Analysis'
+            if self.run_ramsey:
+                art_det = self.artificial_detuning_dict[qbn]*1e-6
+                textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+            textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo']*1e6) \
                       + ' $\pm$ {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo_stderr']*1e6) \
