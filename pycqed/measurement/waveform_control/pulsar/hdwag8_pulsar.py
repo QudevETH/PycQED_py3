@@ -390,6 +390,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                         ch_has_waveforms[ch1mid] |= wave[1] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
                         ch_has_waveforms[ch2mid] |= wave[3] is not None
+                        wave = tuple(None if w is None or not len(waveforms[w])
+                                     else w for w in wave)
+                        if wave == (None, None, None, None):
+                            continue
                         if not len(channels_to_upload):
                             # _program_awg was called only to decide which
                             # sub-AWGs are active, and the rest of this loop
