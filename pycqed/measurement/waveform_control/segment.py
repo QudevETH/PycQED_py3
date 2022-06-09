@@ -1317,11 +1317,11 @@ class Segment:
                         # normalize the waveforms
                         amp = self.pulsar.get('{}_amp'.format(c))
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
-                            if np.max(wfs[codeword][c]) > amp:
+                            if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
                                     'Clipping waveform {} > {}'.format(
                                         np.max(wfs[codeword][c]), amp))
-                            if np.min(wfs[codeword][c]) < -amp:
+                            if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
                                     'Clipping waveform {} < {}'.format(
                                         np.min(wfs[codeword][c]), -amp))
