@@ -1192,6 +1192,17 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
+    def swf_drive_lo_freq(self):
+        if self.instr_ge_lo() is not None:  # external LO
+            return mc_parameter_wrapper.wrap_par_to_swf(
+                self.instr_ge_lo.get_instr().frequency)
+        else:  # no external LO
+            pulsar = self.instr_pulsar.get_instr()
+            awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+            awg_interface = pulsar.awg_interfaces[awg_name]
+            return awg_interface.get_frequency_sweep_function(
+                self.ge_I_channel())
+
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
 
