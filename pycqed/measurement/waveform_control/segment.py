@@ -111,6 +111,8 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.acquisition_mode = acquisition_mode
+        self.mod_config = kw.pop('mod_config', dict())
+        self.sine_config = kw.pop('sine_config', dict())
         self.timer = Timer(self.name)
         self.pulse_pars = []
         self.is_first_segment = False
