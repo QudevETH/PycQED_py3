@@ -10,6 +10,7 @@ from qcodes.instrument.parameter import ManualParameter
 from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
+from pycqed.measurement import sweep_functions as swf
 import zhinst
 
 try:
@@ -513,6 +514,27 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                           # generator for internal modulation
             osc_index=osc_index,
             sine_generator_index=sine_generator_index)
+
+    def get_frequency_sweep_function(self, ch, mod_freq=0):
+        """
+        Args:
+            ch (str): Name of the SGChannel to configure
+            mod_freq(float): Modulation frequency of the pulse uploaded to the
+                AWG. In case the continous output is used, this should be set
+                to 0. Defaults to 0.
+        """
+        chid = self.pulsar.get(ch + '_id')
+        name = 'Frequency'
+        name_offset = 'Frequency with offset'
+        return swf.Offset_Sweep(
+            swf.MajorMinorSweep(
+                self.awg.synthesizers[int(chid[2]) - 1].centerfreq,
+                swf.Offset_Sweep(
+                    self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq, # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
+                    mod_freq),
+                self.awg.allowed_center_freqs(),
+                name=name_offset, parameter_name=name_offset),
+            -mod_freq, name=name, parameter_name=name)
 
     def start(self):
         for sgchannel in self.awg.sgchannels:
