@@ -506,11 +506,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 dataset.update({(i, 1): [0*power_spectrum]})  # I don't care
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                sign = {'avg': 1, 'scope': -1}[self._acq_mode]
+                sign = {'avg': -1, 'scope': 1}[self._acq_mode]
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
-                    # use sign convention as is used by UHFQA in scope mode
+                    # use sign convention as is used by UHFQA in avg mode
                     # to ensure compatibility with existing analysis classes
                     # use natural sign in averaged mode
                     dataset.update({(i, 1): [sign*np.imag(timetrace)]})
