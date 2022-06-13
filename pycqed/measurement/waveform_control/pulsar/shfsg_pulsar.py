@@ -133,6 +133,63 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             if not self.zi_waves_cleared:
                 self._zi_clear_waves()
 
+        def diff_and_combine_dicts(new, old, excluded_keys=[]):
+            if not (isinstance(new, dict) and isinstance(new, dict)):
+                if new != old:
+                    return False
+                else:
+                    return True
+            for key in new.keys():
+                if key in excluded_keys:
+                    # we do not care if this is the same in all dicts
+                    continue
+                if key in old.keys():
+                    if not diff_and_combine_dicts(new[key], old[key]):
+                        return False
+                else:
+                    old[key] = new[key]
+            return True
+
+        channels = [self.pulsar._id_channel(chid, self.awg.name)
+                    for chid in chids]
+        combined_mod_config = {ch: {} for ch in channels}
+        combined_sine_config = {ch: {} for ch in channels}
+        for element in awg_sequence:
+            awg_sequence_element = awg_sequence[element]
+            if awg_sequence_element is None:
+                continue
+            metadata = awg_sequence_element.get('metadata', {})
+            mod_config = metadata.get('mod_config', {})
+            sine_config = metadata.get('sine_config', {})
+            if not diff_and_combine_dicts(mod_config, combined_mod_config,
+                    excluded_keys=['mod_freq', 'mod_phase']):
+                raise Exception('Modulation config in metadata is incompatible'
+                                'between different elements in same sequence.')
+            if not diff_and_combine_dicts(sine_config, combined_sine_config):
+                raise Exception('Sine config in metadata is incompatible'
+                                'between different elements in same sequence.')
+
+        # Configure internal modulation for each channel. For the SG modules we
+        # take config of the I channel and ignore the Q channel configuration
+        for ch, config in combined_mod_config.items():
+            if ch.endswith('q'):
+                continue
+            self.configure_internal_mod(ch,
+                enable=config.get('internal_mod', False),
+                osc_index=config.get('osc', 0),
+                sine_generator_index=config.get('sine', 0))
+
+        # Configure sine output for each channel. For the SG modules we
+        # take config of the I channel and ignore the Q channel configuration
+        for ch, config in combined_sine_config.items():
+            if ch.endswith('q'):
+                continue
+            self.configure_sine_generation(ch,
+                enable=config.get('continous', False),
+                osc_index=config.get('osc', 0),
+                sine_generator_index=config.get('sine', 0))
+
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
             defined_waves = (set(), dict()) if use_placeholder_waves else set()
             codeword_table = {}
@@ -140,6 +197,16 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             codeword_table_defs = []
             playback_strings = []
             interleaves = []
+            # use the modulation config of the I channel
+            mod_config = combined_mod_config.get(
+                self.pulsar._id_channel(f'sg{awg_nr + 1}i', self.awg.name), {})
+            internal_mod = mod_config.get('intenal_mod', False)
+            if internal_mod:
+                # Reset the starting phase of all oscillators at the beginning
+                # of a sequence using the resetOscPhase instruction. This
+                # ensures that the carrier-envelope offset, and thus the final
+                # output signal, is identical from one repetition to the next.
+                playback_strings.append(f'resetOscPhase();\n')
 
             use_filter = any([e is not None and
                               e.get('metadata', {}).get('allow_filter', False)
@@ -158,16 +225,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             chids = [ch1id, ch2id]
             channels = [self.pulsar._id_channel(chid, self.awg.name)
                         for chid in [ch1id, ch2id]]
-            # if all([self.pulsar.get(f"{chan}_internal_modulation")
-            #         for chan in channels]):
-            #     internal_mod = True
-            # elif not any([self.pulsar.get(f"{chan}_internal_modulation")
-            #               for chan in channels]):
-            #     internal_mod = False
-            # else:
-            #     raise NotImplementedError('Internal modulation can only be'
-            #                               'specified per sub AWG!')
-            internal_mod = False
+
+            if internal_mod:
+                mod_osc_id = str(mod_config.get('osc', '0'))
+                playback_strings.append(f'const MOD_OSC = {mod_osc_id};\n')
 
             counter = 1
             next_wave_idx = 0
@@ -187,6 +248,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+
+                playback_strings += self._zi_playback_string_setModParameters(
+                    metadata)
 
                 # The following line only has an effect if the metadata
                 # specifies that the segment is part of an oscillator sweep.
@@ -384,6 +448,71 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def sigout_on(self, ch, on=True):
         chid = self.pulsar.get(ch + '_id')
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
+
+    def configure_sine_generation(self, ch, enable=True, osc_index=0, freq=None,
+                                  phase=0.0, gains=(0.0, 1.0, 1.0, 0.0),
+                                  sine_generator_index=0):
+        """
+        Args:
+            ch (str): Name of the SGChannel to configure
+            enable (bool, optional): Enable of the sine generator.
+                Defaults to True.
+            osc_index (int, optional): Index of the digital oscillator to be
+                used. Defaults to 0.
+            freq (float, optional): If None the frequency of the oscillator will
+                not be changed. Defaults to None.
+            phase (float, optional): Phase of the sine generator.
+                Defaults to 0.0.
+            gains (tuple, optional): Tuple of floats of length 4. Structure:
+                (sin I, cos I, sin Q, cos Q). Defaults to (0.0, 1.0, 1.0, 0.0).
+            sine_generator_index (int, optional): index of the sine generator to
+                be used. Defaults to 0.
+        """
+        chid = self.pulsar.get(ch + '_id')
+        if freq is None:
+            freq = self.awg.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq()
+        self.awg.sgchannels[int(chid[2]) - 1].configure_sine_generation(
+            enable=enable,
+            osc_index=osc_index,
+            osc_frequency=freq,
+            phase=phase,
+            gains=gains,
+            sine_generator_index=sine_generator_index,
+        )
+
+    def configure_internal_mod(self, ch, enable=True, osc_index=0, phase=0.0,
+                               global_amp=0.5, gains=(1.0, - 1.0, 1.0, 1.0),
+                               sine_generator_index=0):
+        """
+        Args:
+            ch (str): Name of the SGChannel to configure
+            enable (bool, optional): Enable of the digital modulation.
+                Defaults to True.
+            osc_index (int, optional): Index of the digital oscillator to be
+                used. Defaults to 0.
+            phase (float, optional): Phase of the digital modulation.
+                Defaults to 0.0.
+            global_amp (float, optional): Defaults to 0.5.
+            gains (tuple, optional): Tuple of floats of length 4. Structure:
+                (sin I, cos I, sin Q, cos Q). Defaults to (1.0, -1.0, 1.0, 1.0).
+            sine_generator_index (int, optional): index of the sine generator to
+                be used. Defaults to 0.
+        """
+        chid = self.pulsar.get(ch + '_id')
+        self.awg.sgchannels[int(chid[2]) - 1].configure_pulse_modulation(
+            enable=enable,
+            osc_index=osc_index,
+            osc_frequency=self.awg.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq(),
+            phase=phase,
+            global_amp=global_amp,
+            gains=gains,
+            sine_generator_index=sine_generator_index,
+        )
+        self.configure_sine_generation(ch,
+            enable=False, # do not turn on the output of the sine
+                          # generator for internal modulation
+            osc_index=osc_index,
+            sine_generator_index=sine_generator_index)
 
     def start(self):
         for sgchannel in self.awg.sgchannels:
