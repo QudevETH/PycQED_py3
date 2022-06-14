@@ -1224,7 +1224,7 @@ class RabiStep(qbcal.Rabi,Step):
 
             value_params = {'v_low':None,'v_high':None,'pts':None} # could be saved somewhere else
 
-            default = self.get_param_value('default_drive_amp',qubit=qb.name)
+            default = self.get_param_value(f'default_{tr_name}_amp180',qubit=qb.name)
             current = qb.parameters[f'{tr_name}_amp180']()
             max = self.get_param_value('max_drive_amp',qubit=qb.name)
             n = self.get_param_value('n',qubit=qb.name)
@@ -1297,7 +1297,8 @@ class RamseyStep(qbcal.Ramsey,Step):
             sweep_points_v = task_list_fields.get('sweep_points',None)
             if sweep_points_v is not None:
                 sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
-                values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'], value_params['pts_per_period'] * value_params['n_periods']+1)
+                values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'],
+                                     value_params['pts_per_period'] * value_params['n_periods'] + 1)
                 task['sweep_points'] = SweepPoints()
                 task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
 
@@ -1360,7 +1361,6 @@ class RamseyStep(qbcal.Ramsey,Step):
                     sweet_spots=sweet_spots.get(qubit_name),
                     transition=transition,
                 )
-
                 # T2 Star Time for the exponential decay
                 if 'exp_decay' in qubit_results.keys(
                 ) and 'T2_star' in qubit_results['exp_decay'].keys():
@@ -2188,6 +2188,9 @@ class HamiltonianFitting(
         self.other_fluxes_with_guess = list(x - z)
         self.fluxes_without_guess = list(y - x)
 
+        if self.get_param_value("get_parameters_from_qubit_object", False):
+            update_nested_dictionary(self.settings,{self.highest_lookup:{"General":self.parameters_qubit}})
+
         self.final_init(**kw)
 
     @property
@@ -2217,6 +2220,7 @@ class HamiltonianFitting(
             v = self.kw.pop(x, None)
             if v:
                 update_nested_dictionary(self.settings,{self.highest_lookup:{"DetermineModel":{x:v}}})
+
 
         return super().parameters_init
 
@@ -2310,7 +2314,6 @@ class HamiltonianFitting(
                 elif transition == "ef":
                     # Updating ef-frequency at this voltage to guess value
                     step_label = 'update_frequency_' + transition
-                    # Updating ge-frequency at this voltage to guess value
                     settings = {step_label: {
                             "flux": flux,
                             "transition_name": transition,
@@ -2323,12 +2326,15 @@ class HamiltonianFitting(
                         step_settings
                     )
 
+                    find_freq_settings = {
+                        "transition_name": transition,
+                    }
                     # Finding the ef-frequency
                     step_label = "find_frequency_" + transition
                     self.add_step(
                         FindFrequency,
                         step_label,
-                        {},
+                        find_freq_settings,
                         step_tmp_vals=ro_flux_tmp_vals(
                             qubit, v_park=voltage_guess, use_ro_flux=True
                         ),
@@ -2351,9 +2357,9 @@ class HamiltonianFitting(
             )
 
         # Measurements at other flux values (using preliminary or prior model)
-        for i,flux in enumerate(self.fluxes_without_guess):
+        for i,flux in enumerate(self.fluxes_without_guess,len(self.other_fluxes_with_guess)+2):
             # Updating bias voltage using earlier reparking measurements
-            step_label = 'set_bias_voltage'
+            step_label = 'set_bias_voltage_'+str(i)
             self.add_step(self.SetBiasVoltage, step_label, {'settings':{step_label:{"flux": flux}}})
 
             # Looping over all transitions
@@ -2370,7 +2376,7 @@ class HamiltonianFitting(
                 self.add_step(self.UpdateFrequency, step_label, settings)
 
                 # Set temporary values for Find Frequency
-                step_label = 'set_tmp_values_flux_pulse_ro'+transition+'_'+str(i)
+                step_label = 'set_tmp_values_flux_pulse_ro_'+transition+'_'+str(i)
                 settings = {step_label: {
                     "flux_park": flux,
                 }}
@@ -2385,7 +2391,7 @@ class HamiltonianFitting(
                 )
 
                 # Finding frequency
-                step_label = 'find_frequency'
+                step_label = 'find_frequency_'+transition+'_'+str(i)
                 self.add_step(
                     FindFrequency,
                     step_label,
