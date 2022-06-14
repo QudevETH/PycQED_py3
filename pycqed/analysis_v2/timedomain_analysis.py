@@ -7308,27 +7308,31 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         # Decide whether to do a RamseyAnalysis or a T1Analysis
         self.run_ramsey = self.artificial_detuning_dict is not None and \
                 any(list(self.artificial_detuning_dict.values()))
+        # Define options_dict for call to RamseyAnalysis or T1Analysis
+        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
         if self.run_ramsey:
             # artificial detuning was used and it is not 0
-            self.echo_analysis = RamseyAnalysis(*args, auto=False, **kwargs)
+            self.echo_analysis = RamseyAnalysis(*args, auto=False,
+                                                extract_only=True,
+                                                options_dict=options_dict,
+                                                **kwargs)
         else:
-            if 'options_dict' in kwargs:
-                # kwargs.pop('options_dict')
-                kwargs['options_dict'].update({'vary_offset': True})
-            else:
-                kwargs['options_dict'] = {'vary_offset': True}
-            self.echo_analysis = T1Analysis(*args, auto=False, **kwargs)
+            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            self.echo_analysis = T1Analysis(*args, auto=False,
+                                            extract_only=True,
+                                            options_dict=options_dict,
+                                            **kwargs)
 
         if auto:
             try:
-                self.echo_analysis.extract_data()
-                self.qb_names = self.echo_analysis.qb_names
-                self.echo_analysis.process_data()
-                self.echo_analysis.prepare_fitting()
-                self.echo_analysis.run_fitting()
-                self.echo_analysis.save_fit_results()
-                self.analyze_fit_results()
-                self.prepare_plots()
+                # Run analysis of RamseyAnalysis or T1Analysis
+                self.echo_analysis.run_analysis()
+                # Run analysis of this class
+                # This is not ideal: extract data/process data don't need to be
+                # run here. But there is no way to exclude them from the steps
+                # in run_analysis. 
+                super().run_analysis()
             except Exception as e:
                 if self.raise_exceptions:
                     raise e
@@ -7337,7 +7341,6 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     log.error(traceback.format_exc())
 
     def analyze_fit_results(self):
-        self.echo_analysis.analyze_fit_results()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
@@ -7356,8 +7359,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
-        self.echo_analysis.prepare_plots()
         for qbn in self.qb_names:
             # rename base plot
             figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
@@ -7389,11 +7393,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
                     else ''))
             T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = 'Ramsey Analysis with' if self.run_ramsey \
-                else 'T1 Analysis'
-            if self.run_ramsey:
-                art_det = self.artificial_detuning_dict[qbn]*1e-6
-                textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+            textstr = 'Echo Measurement with'
+            art_det = self.artificial_detuning_dict[qbn]*1e-6
+            textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
             textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo']*1e6) \
                       + ' $\pm$ {:.2f} $\mu$s'.format(
@@ -7404,7 +7406,12 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
 
+    def plot(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
+
+    def save_figures(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.save_figures(
             close_figs=self.get_param_value('close_figs', True))
 
