@@ -1052,6 +1052,24 @@ class QuDev_transmon(Qubit):
                 raise ValueError("Invalid drive parameter '{}'".format(drive)
                                  + ". Valid options are None, 'continuous_spec"
                                  + "', 'pulsed_spec' and 'timedomain'.")
+        else:
+            pulsar = self.instr_pulsar.get_instr()
+            awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+            awg_interface = pulsar.awg_interfaces[awg_name]
+            if drive is None:
+                pass
+            elif drive == 'continuous_spec':
+                awg_interface.configure_sine_generation(self.ge_I_channel())
+            elif drive == 'pulsed_spec':
+                awg_interface.configure_sine_generation(self.ge_I_channel(),
+                                                 enable=False)
+                awg_interface.configure_internal_modulation(self.ge_I_channel())
+            elif drive == 'timedomain':
+                pass
+            else:
+                raise ValueError("Invalid drive parameter '{}'".format(drive)
+                                 + ". Valid options are None, 'continuous_spec"
+                                 + "', 'pulsed_spec' and 'timedomain'.")
 
 
         # other preparations
