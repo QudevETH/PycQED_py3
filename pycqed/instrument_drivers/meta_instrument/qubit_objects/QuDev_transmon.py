@@ -1351,7 +1351,7 @@ class QuDev_transmon(Qubit):
                 sq.pulse_list_list_seq([[self.get_ro_pars()]])
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.instr_ge_lo.get_instr().frequency)
+        MC.set_sweep_function(self.swf_drive_lo_freq())
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
