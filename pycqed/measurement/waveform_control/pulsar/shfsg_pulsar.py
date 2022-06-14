@@ -254,19 +254,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     metadata)
 
                 # The following line only has an effect if the metadata
-                # specifies that the segment is part of an oscillator sweep.
-                playback_strings += self._zi_playback_string_osc_sweep_prepare(
-                    metadata)
-
-                # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_start(
                     metadata, [ch1id, ch2id])
-
-                # The following line only has an effect if the metadata
-                # specifies that the segment is part of an oscillator sweep.
-                playback_strings += self._zi_playback_string_osc_sweep_body(
-                    metadata)
 
                 nr_cw = len(set(awg_sequence_element.keys()) - \
                             {'no_codeword'})
