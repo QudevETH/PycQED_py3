@@ -7286,7 +7286,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, extract_only=False, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -7297,48 +7297,51 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, **kwargs)
+        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
 
         # get experimental metadata from file
         self.metadata = self.get_data_from_timestamp_list(
             {'md': 'Experimental Data.Experimental Metadata'})['md']
+
         # get _get_artificial_detuning_dict
         self.artificial_detuning_dict = self._get_artificial_detuning_dict(
             raise_error=False)
+
         # Decide whether to do a RamseyAnalysis or a T1Analysis
         self.run_ramsey = self.artificial_detuning_dict is not None and \
                 any(list(self.artificial_detuning_dict.values()))
+
         # Define options_dict for call to RamseyAnalysis or T1Analysis
         options_dict = deepcopy(kwargs.pop('options_dict', dict()))
         options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
+
         if self.run_ramsey:
             # artificial detuning was used and it is not 0
-            self.echo_analysis = RamseyAnalysis(*args, auto=False,
+            self.echo_analysis = RamseyAnalysis(*args, auto=auto,
                                                 extract_only=True,
                                                 options_dict=options_dict,
                                                 **kwargs)
         else:
             options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
-            self.echo_analysis = T1Analysis(*args, auto=False,
+            self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
                                             options_dict=options_dict,
                                             **kwargs)
 
         if auto:
-            try:
-                # Run analysis of RamseyAnalysis or T1Analysis
-                self.echo_analysis.run_analysis()
-                # Run analysis of this class
-                # This is not ideal: extract data/process data don't need to be
-                # run here. But there is no way to exclude them from the steps
-                # in run_analysis. 
-                super().run_analysis()
-            except Exception as e:
-                if self.raise_exceptions:
-                    raise e
-                else:
-                    log.error("Unhandled error during analysis!")
-                    log.error(traceback.format_exc())
+            self.qb_names = self.echo_analysis.qb_names
+            # Run analysis of this class
+            super().run_analysis()
+
+    def extract_data(self):
+        """Skip for this class. Take raw_data_dict from self.echo_analysis
+        which is needed for a check in the BaseDataAnalsis.save_fit_results."""
+        self.raw_data_dict = self.echo_analysis.raw_data_dict
+
+    def process_data(self):
+        """Skip for this class. All relevant processing is done in
+        self.echo_analysis."""
+        pass
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
