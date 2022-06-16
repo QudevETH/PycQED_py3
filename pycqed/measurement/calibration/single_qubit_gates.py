@@ -2021,14 +2021,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        options_dict = analysis_kwargs.pop('options_dict', {})
-        options_dict.update(dict(
-            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
-            artificial_detuning=kw.pop('artificial_detuning', None)))
         self.analysis = tda.EchoAnalysis if self.echo else tda.RamseyAnalysis
         self.analysis = self.analysis(
             qb_names=self.meas_obj_names, t_start=self.timestamp,
-            options_dict=options_dict, **analysis_kwargs)
+            **analysis_kwargs)
 
     def run_update(self, **kw):
         """
