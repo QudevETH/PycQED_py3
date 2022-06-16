@@ -553,7 +553,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         """
         chid = self.pulsar.get(ch + '_id')
         name = 'Frequency'
-        if self.pulsar.get(f"{name}_use_hardware_sweeper"):
+        if self.pulsar.get(f"{self.awg.name}_use_hardware_sweeper"):
             return SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
