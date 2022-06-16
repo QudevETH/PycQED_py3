@@ -33,26 +33,31 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     IMPLEMENTED_ACCESSORS = ["amp"]
 
     def create_awg_parameters(self, channel_name_map: dict):
-        SHFAcquisitionModulePulsar.create_awg_parameters(self, channel_name_map)
+        super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
         name = self.awg.name
 
+        # Repeat pattern support is not yet implemented for the SHFQA, thus we
+        # remove this parameter added in super().create_awg_parameters()
+        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
+
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_trigger_source",
+                             initial_value="Dig1",
+                             vals=vals.Enum("Dig1",),
+                             parameter_class=ManualParameter,
+                             docstring="Defines for which trigger source the "
+                                       "AWG should wait, before playing the "
+                                       "next waveform. Only allowed value is "
+                                       "'Dig1 for now.")
 
-        # real and imaginary part of the wave form channel groups
-        for ch_nr in range(len(self.awg.sgchannels)):
-            group = []
-            for q in ["i", "q"]:
-                id = f"sg{ch_nr + 1}{q}"
-                ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
-                self.create_channel_parameters(id, ch_name, "analog")
-                self.pulsar.channels.add(ch_name)
-                group.append(ch_name)
-            for ch_name in group:
-                self.pulsar.channel_groups.update({ch_name: group})
+        SHFAcquisitionModulePulsar.create_all_channel_parameters(
+            self, channel_name_map)
+        SHFGeneratorModulePulsar.create_all_channel_parameters(
+            self, channel_name_map)
 
     @classmethod
     def _get_superclass(cls, id):

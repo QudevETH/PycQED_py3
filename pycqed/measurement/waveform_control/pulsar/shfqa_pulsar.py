@@ -43,37 +43,18 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
 
-    def create_awg_parameters(self, channel_name_map: dict):
-        PulsarAWGInterface.create_awg_parameters(self, channel_name_map)
-
-
-        pulsar = self.pulsar
-        name = self.awg.name
-
-        # Repeat pattern support is not yet implemented for the SHFQA, thus we
-        # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
-
-        pulsar.add_parameter(f"{name}_trigger_source",
-                             initial_value="Dig1",
-                             vals=vals.Enum("Dig1",),
-                             parameter_class=ManualParameter,
-                             docstring="Defines for which trigger source the "
-                                       "AWG should wait, before playing the "
-                                       "next waveform. Only allowed value is "
-                                       "'Dig1 for now.")
-
+    def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(len(self.awg.qachannels)):
             group = []
             for q in ["i", "q"]:
                 id = f"qa{ch_nr + 1}{q}"
-                ch_name = channel_name_map.get(id, f"{name}_{id}")
+                ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
-                pulsar.channels.add(ch_name)
+                self.pulsar.channels.add(ch_name)
                 group.append(ch_name)
             for ch_name in group:
-                pulsar.channel_groups.update({ch_name: group})
+                self.pulsar.channel_groups.update({ch_name: group})
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
@@ -353,3 +334,25 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
+
+    def create_awg_parameters(self, channel_name_map: dict):
+        super().create_awg_parameters(channel_name_map)
+
+        pulsar = self.pulsar
+        name = self.awg.name
+
+        # Repeat pattern support is not yet implemented for the SHFQA, thus we
+        # remove this parameter added in super().create_awg_parameters()
+        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
+
+        pulsar.add_parameter(f"{name}_trigger_source",
+                             initial_value="Dig1",
+                             vals=vals.Enum("Dig1",),
+                             parameter_class=ManualParameter,
+                             docstring="Defines for which trigger source the "
+                                       "AWG should wait, before playing the "
+                                       "next waveform. Only allowed value is "
+                                       "'Dig1 for now.")
+
+        self._create_all_channel_parameters(channel_name_map)
+
