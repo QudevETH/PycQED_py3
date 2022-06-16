@@ -42,7 +42,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     CHANNEL_OFFSET_BOUNDS = {
         "analog": (0, 1e-16),
     }
-    IMPLEMENTED_ACCESSORS = ["amp"]
+    CHANNEL_RANGE_BOUNDS = {
+        "analog": (-40, 10),
+    }
+    CHANNEL_CENTERFREQ_BOUNDS = {
+        "analog": (1e9, 8.0e9),
+    }
+    IMPLEMENTED_ACCESSORS = ["amp", "range", "centerfreq"]
 
     _shfsg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -108,6 +114,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if param == "amp":
             self.awg.sgchannels[ch].output.range(20 * (np.log10(value) + 0.5))
+        if param == "range":
+            self.awg.sgchannels[ch].output.range(value)
+        if param == "centerfreq":
+            self.awg.synthesizers[ch + 1].centerfreq(value)
 
     def awg_getter(self, id:str, param:str):
         # Sanity checks
@@ -121,6 +131,18 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             else:
                 dbm = self.awg.sgchannels[ch].output.range()
             return 10 ** (dbm / 20 - 0.5)
+        if param == "range":
+            if self.pulsar.awgs_prequeried:
+                range = self.awg.sgchannels[ch].output.range.get_latest()
+            else:
+                range = self.awg.sgchannels[ch].output.range()
+            return range
+        if param == "centerfreq":
+            if self.pulsar.awgs_prequeried:
+                freq = self.awg.sgchannels[ch].centerfreq.get_latest()
+            else:
+                freq = self.awg.sgchannels[ch].centerfreq.range()
+            return freq
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
