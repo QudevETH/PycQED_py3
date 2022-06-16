@@ -33,6 +33,7 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}' for i in range(6)] + ['qa0'],
                              "range": [f'sg{i}' for i in range(6)],
                              "centerfreq": [f'sg{i}' for i in range(6)]}
+    SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
