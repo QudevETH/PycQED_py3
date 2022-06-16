@@ -440,6 +440,36 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         chid = self.pulsar.get(ch + '_id')
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
+    def get_params_for_spectrum(self, requested_freqs):
+        """Convenience method for retrieving parameters needed to measure a
+        spectrum
+
+        Args:
+            requested_freqs (list of double): frequencies to be measured.
+            Note that the effectively measured frequencies will be a rounded
+            version of these values.
+        """
+        # For rounding reasons, we can't measure exactly on these frequencies.
+        # Here we extract the frequency spacing and the frequency range
+        # (center freq and bandwidth)
+        diff_f = np.diff(requested_freqs)
+        if not all(diff_f-diff_f[0] < 1e-3):
+            # not equally spaced (arbitrary 1 mHz)
+            log.warning(f'Unequal frequency spacing not supported, '
+                        f'the measurement will return equally spaced values.')
+        # Find closest allowed center frequency
+        approx_center_freq = np.mean(requested_freqs)
+        id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+                             approx_center_freq)).argmin()
+        center_freq = self.awg.allowed_lo_freqs()[id_closest]
+        # Compute the actual needed bandwidth
+        min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
+        if min_bandwidth > 1/self.MIN_LENGTH: # FIXME: should be replaced with bounds of dig. osc.
+            raise NotImplementedError('Spectrum wider than the bandwidth of '
+                                      'the SHF is not yet implemented!')
+        mod_freqs = requested_freqs - center_freq
+        return center_freq, mod_freqs
+
     def configure_sine_generation(self, ch, enable=True, osc_index=0, freq=None,
                                   phase=0.0, gains=(0.0, 1.0, 1.0, 0.0),
                                   sine_generator_index=0):
