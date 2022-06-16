@@ -77,6 +77,10 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
         if param == "amp":
             self.awg.qachannels[ch].output.range(20 * (np.log10(value) + 0.5))
+        if param == "range":
+            self.awg.sgchannels[ch].output.range(value)
+        if param == "centerfreq":
+            self.awg.synthesizers[ch].centerfreq(value)
 
     def awg_getter(self, id:str, param:str):
 
@@ -91,6 +95,18 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
             else:
                 dbm = self.awg.qachannels[ch].output.range()
             return 10 ** (dbm / 20 - 0.5)
+        if param == "range":
+            if self.pulsar.awgs_prequeried:
+                range = self.awg.qachannels[ch].output.range.get_latest()
+            else:
+                range = self.awg.qachannels[ch].output.range()
+            return range
+        if param == "centerfreq":
+            if self.pulsar.awgs_prequeried:
+                freq = self.awg.qachannels[ch].centerfreq.get_latest()
+            else:
+                freq = self.awg.qachannels[ch].centerfreq.range()
+            return freq
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
