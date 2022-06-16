@@ -215,7 +215,10 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
         pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
         pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
-        if 'amp' in self.IMPLEMENTED_ACCESSORS:
+        if 'amp' in self.IMPLEMENTED_ACCESSORS and (
+            not isinstance(self.IMPLEMENTED_ACCESSORS, dict)
+            or id in self.IMPLEMENTED_ACCESSORS['amp']
+        ):
             pulsar.add_parameter(f"{ch_name}_amp",
                                  label=f"{ch_name} amplitude", unit='V',
                                  set_cmd=partial(self.awg_setter, id, "amp"),
@@ -291,7 +294,10 @@ class PulsarAWGInterface(ABC):
             value: Value to set the parameter.
         """
 
-        if param not in self.IMPLEMENTED_ACCESSORS:
+        if param not in self.IMPLEMENTED_ACCESSORS or (
+            isinstance(self.IMPLEMENTED_ACCESSORS, dict) and
+            id not in self.IMPLEMENTED_ACCESSORS[param]
+        ):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
