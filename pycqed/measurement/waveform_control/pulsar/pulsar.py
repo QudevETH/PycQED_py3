@@ -72,6 +72,18 @@ class PulsarAWGInterface(ABC):
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
 
+    CHANNEL_RANGE_BOUNDS:Dict[str, Tuple[float, float]] = {}
+    """Dictionary containing the range boudaries for each type of channels.
+
+    Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
+    """
+
+    CHANNEL_CENTERFREQ_BOUNDS:Dict[str, Tuple[float, float]] = {}
+    """Dictionary containing the center freq boudaries for each type of channels.
+
+    Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
+    """
+
     DEFAULT_SEGMENT = _DEFAULT_SEGMENT
     """TODO"""
 
@@ -216,6 +228,20 @@ class PulsarAWGInterface(ABC):
                                  get_cmd=partial(self.awg_getter, id, "offset"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
+        if 'range' in self.IMPLEMENTED_ACCESSORS:
+            pulsar.add_parameter(f"{ch_name}_range",
+                                 label=f"{ch_name} output range", unit='dBm',
+                                 set_cmd=partial(self.awg_setter, id, "range"),
+                                 get_cmd=partial(self.awg_getter, id, "range"),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_RANGE_BOUNDS[ch_type]))
+        if 'centerfreq' in self.IMPLEMENTED_ACCESSORS:
+            pulsar.add_parameter(f"{ch_name}_centerfreq",
+                                 label=f"{ch_name} center frequency", unit='Hz',
+                                 set_cmd=partial(self.awg_setter, id, "centerfreq"),
+                                 get_cmd=partial(self.awg_getter, id, "centerfreq"),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_CENTERFREQ_BOUNDS[ch_type]))
 
         if ch_type == "analog":
             pulsar.add_parameter(f"{ch_name}_distortion",
