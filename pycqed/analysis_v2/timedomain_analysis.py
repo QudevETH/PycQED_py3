@@ -39,6 +39,52 @@ except ImportError as e:
     log.warning('Could not import qutip, tomography code will not work')
 
 
+# Mixin classes
+class ArtificialDetuningMixin():
+    """
+    Extract the information about the artificial_detuning and
+    create the artificial_detuning_dict for each qubit.
+    """
+
+    def get_artificial_detuning_dict(self, raise_error=True):
+        """
+        - first checks whether artificial_detuning_dict was passed in
+            options_dict, metadata, or default_options
+        - then tries to create it based on the information in
+            preprocessed_task_list
+        - lastly, it falls back to the legacy version: searching for
+            artificial_detuning in options_dict, metadata, or default_options
+
+        Args:
+            raise_error (bool; default: True): whether to raise ValueError
+                if no information about artificial detuning is found
+
+        Returns:
+            artificial_detuning_dict: dict with qb names as keys and
+                value for the artificial detuning as values
+        """
+        artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    artificial_detuning_dict = artificial_detuning
+                else:
+                    artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if raise_error and artificial_detuning_dict is None:
+            raise ValueError('"artificial_detuning" not found.')
+        return artificial_detuning_dict
+
+
+# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2010,41 +2056,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.proc_data_dict['meas_results_per_qb'][qbn]):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
-
-    def _get_artificial_detuning_dict(self, raise_error=True):
-        """
-        Helper method to extract the information about the artificial_detuning
-        and create the artificial_detuning_dict for each qubit.
-        - first checks whether artificial_detuning_dict was passed in
-            options_dict, metadata, or default_options
-        - then tries to create it based on the information in
-            preprocessed_task_list
-        - lastly, it falls back to the legacy version: searching for
-            artificial_detuning in options_dict, metadata, or default_options
-
-        Returns:
-            artificial_detuning_dict: dict with qb names as keys and
-                value for the artificial detuning as values
-        """
-        artificial_detuning_dict = self.get_param_value(
-            'artificial_detuning_dict')
-        if artificial_detuning_dict is None:
-            artificial_detuning = self.get_param_value('artificial_detuning')
-            if 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
-            elif artificial_detuning is not None:
-                # legacy case
-                if isinstance(artificial_detuning, dict):
-                    artificial_detuning_dict = artificial_detuning
-                else:
-                    artificial_detuning_dict = OrderedDict(
-                        [(qbn, artificial_detuning) for qbn in self.qb_names])
-        if raise_error and artificial_detuning_dict is None:
-            raise ValueError('"artificial_detuning" not found.')
-        return artificial_detuning_dict
 
     def prepare_plots(self):
         """
@@ -6568,7 +6579,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                     'text_string': textstr}
 
 
-class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     """
     Analysis for a Ramsey measurement.
 
@@ -6637,7 +6648,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def analyze_fit_results(self):
         # get _get_artificial_detuning_dict
-        self.artificial_detuning_dict = self._get_artificial_detuning_dict()
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
@@ -7284,7 +7295,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': 'gray'}
 
 
-class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
+class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def __init__(self, *args, extract_only=False, **kwargs):
         """
@@ -7304,7 +7315,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
             {'md': 'Experimental Data.Experimental Metadata'})['md']
 
         # get _get_artificial_detuning_dict
-        self.artificial_detuning_dict = self._get_artificial_detuning_dict(
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict(
             raise_error=False)
 
         # Decide whether to do a RamseyAnalysis or a T1Analysis
