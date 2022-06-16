@@ -77,6 +77,11 @@ class PulsarAWGInterface(ABC):
 
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
+    CHANNEL_RANGE_DIVISOR:int = 0
+    """Variable Specifying the increments that can be set for the range in dBm.
+
+    If set to 0, continous values are allowed. Defaults to 0.
+    """
 
     CHANNEL_CENTERFREQ_BOUNDS:Dict[str, Tuple[float, float]] = {}
     """Dictionary containing the center freq boudaries for each type of channels.
@@ -234,7 +239,12 @@ class PulsarAWGInterface(ABC):
                                  set_cmd=partial(self.awg_setter, id, "range"),
                                  get_cmd=partial(self.awg_getter, id, "range"),
                                  vals=vals.Numbers(
-                                     *self.CHANNEL_RANGE_BOUNDS[ch_type]))
+                                        *self.CHANNEL_RANGE_BOUNDS[ch_type])
+                                    if self.CHANNEL_RANGE_DIVISOR == 0
+                                    else vals.Multiples(
+                                        divisor=self.CHANNEL_RANGE_DIVISOR,
+                                        min_value=self.CHANNEL_RANGE_BOUNDS[ch_type][0],
+                                        max_value=self.CHANNEL_RANGE_BOUNDS[ch_type][1]))
         if self._check_if_implemented(id, "centerfreq"):
             pulsar.add_parameter(f"{ch_name}_centerfreq",
                                  label=f"{ch_name} center frequency", unit='Hz',

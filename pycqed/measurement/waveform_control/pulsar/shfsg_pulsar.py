@@ -46,6 +46,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     CHANNEL_RANGE_BOUNDS = {
         "analog": (-40, 10),
     }
+    CHANNEL_RANGE_DIVISOR = 5
     CHANNEL_CENTERFREQ_BOUNDS = {
         "analog": (1e9, 8.0e9),
     }

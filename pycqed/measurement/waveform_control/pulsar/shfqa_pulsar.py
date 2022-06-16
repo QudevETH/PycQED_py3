@@ -42,6 +42,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         "analog": (0.001, 1),
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
+    CHANNEL_RANGE_DIVISOR = 5
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
