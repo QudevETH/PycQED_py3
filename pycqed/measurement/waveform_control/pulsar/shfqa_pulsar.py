@@ -41,8 +41,14 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
     }
-    IMPLEMENTED_ACCESSORS = ["amp"]
+    CHANNEL_RANGE_BOUNDS = {
+        "analog": (-30, 10),
+    }
     CHANNEL_RANGE_DIVISOR = 5
+    CHANNEL_CENTERFREQ_BOUNDS = {
+        "analog": (1e9, 8.0e9),
+    }
+    IMPLEMENTED_ACCESSORS = ["amp", "range", "centerfreq"]
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
