@@ -11,6 +11,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement.awg_sweep_functions import SpectroscopyHardSweep
 import zhinst
 
 try:
@@ -81,6 +82,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                                        "AWG should wait, before playing the "
                                        "next waveform. Allowed values are: "
                                        "'Dig1', 'DIO', 'ZSync'.")
+        pulsar.add_parameter(f"{name}_use_hardware_sweeper",
+                             initial_value=False,
+                             parameter_class=ManualParameter,
+                             docstring='Bool indicating whether the hardware '
+                                       'sweeper should be used in spectroscopy '
+                                       'mode',
+                             vals=vals.Bool())
 
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(len(self.awg.sgchannels)):
@@ -567,6 +575,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         """
         chid = self.pulsar.get(ch + '_id')
         name = 'Frequency'
+        if self.pulsar.get(f"{name}_use_hardware_sweeper"):
+            return SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
