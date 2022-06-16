@@ -3,6 +3,7 @@ from copy import deepcopy
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement.awg_sweep_functions import SpectroscopyHardSweep
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
@@ -11,27 +12,6 @@ from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
 log = logging.getLogger(__name__)
-
-
-class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
-    """Defines a hard sweep function specific to the SHF hard spectroscopy.
-
-    The frequency range over which this sweep function should sweep is not
-    set in the sweep function itself, but in the acquisition_mode attribute
-    of the segment used by the sweep function. This gives Pulsar access to the
-    frequency range, allowing Pulsar to program the corresponding frequency
-    parameters in the seqc code.
-    """
-    def __init__(self, acq_dev, acq_unit, parameter_name='None'):
-        super().__init__()
-        self.parameter_name = parameter_name
-        self.unit = 'Hz'
-        self.acq_dev = acq_dev
-        self.acq_unit = acq_unit
-
-    def set_parameter(self, value):
-        pass  # Set in the Segment, see docstring
-
 
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
@@ -521,8 +501,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
-                                              parameter_name=name)
+            return SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(

@@ -478,3 +478,17 @@ class Ramsey_decoupling_swf(swf.Hard_Sweep):
                           cal_points=self.cal_points,
                           nr_echo_pulses=self.nr_echo_pulses,
                           cpmg_scheme=self.cpmg_scheme)
+
+
+class SpectroscopyHardSweep(swf.Hard_Sweep):
+    """Defines a hard sweep function used for hard spectroscopy.
+
+    set_parameter is implemented as a pass method to prevent warning messages.
+    """
+    def __init__(self, parameter_name='None'):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+
+    def set_parameter(self, value):
+        pass  # Set in the Segment, see docstring
