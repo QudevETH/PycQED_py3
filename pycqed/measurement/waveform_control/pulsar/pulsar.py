@@ -215,30 +215,27 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
         pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
         pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
-        if 'amp' in self.IMPLEMENTED_ACCESSORS and (
-            not isinstance(self.IMPLEMENTED_ACCESSORS, dict)
-            or id in self.IMPLEMENTED_ACCESSORS['amp']
-        ):
+        if self._check_if_implemented(id, "amp"):
             pulsar.add_parameter(f"{ch_name}_amp",
                                  label=f"{ch_name} amplitude", unit='V',
                                  set_cmd=partial(self.awg_setter, id, "amp"),
                                  get_cmd=partial(self.awg_getter, id, "amp"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
-        if 'offset' in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, "offset"):
             pulsar.add_parameter(f"{ch_name}_offset", unit='V',
                                  set_cmd=partial(self.awg_setter, id, "offset"),
                                  get_cmd=partial(self.awg_getter, id, "offset"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
-        if 'range' in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, "range"):
             pulsar.add_parameter(f"{ch_name}_range",
                                  label=f"{ch_name} output range", unit='dBm',
                                  set_cmd=partial(self.awg_setter, id, "range"),
                                  get_cmd=partial(self.awg_getter, id, "range"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_RANGE_BOUNDS[ch_type]))
-        if 'centerfreq' in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, "centerfreq"):
             pulsar.add_parameter(f"{ch_name}_centerfreq",
                                  label=f"{ch_name} center frequency", unit='Hz',
                                  set_cmd=partial(self.awg_setter, id, "centerfreq"),
@@ -281,7 +278,7 @@ class PulsarAWGInterface(ABC):
             param: Parameter to get.
         """
 
-        if param not in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -294,10 +291,7 @@ class PulsarAWGInterface(ABC):
             value: Value to set the parameter.
         """
 
-        if param not in self.IMPLEMENTED_ACCESSORS or (
-            isinstance(self.IMPLEMENTED_ACCESSORS, dict) and
-            id not in self.IMPLEMENTED_ACCESSORS[param]
-        ):
+        if self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -452,6 +446,14 @@ class PulsarAWGInterface(ABC):
             for regs in self.get_segment_filter_userregs():
                 self.awg.set(regs[1], self._filter_segment_functions(val[0],
                                                                      val[1]))
+
+    def _check_if_implemented(self, id:str, param:str):
+        if param in self.IMPLEMENTED_ACCESSORS and (
+            not isinstance(self.IMPLEMENTED_ACCESSORS, dict)
+            or id in self.IMPLEMENTED_ACCESSORS[param]
+        ):
+            return True
+        return False
 
 
 class Pulsar(Instrument):
