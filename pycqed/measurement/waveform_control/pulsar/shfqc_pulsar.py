@@ -30,9 +30,10 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     CHANNEL_OFFSET_BOUNDS = {
         "analog": (0, 1e-16),
     }
-    IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}' for i in range(6)] + ['qa0'],
-                             "range": [f'sg{i}' for i in range(6)],
-                             "centerfreq": [f'sg{i}' for i in range(6)]}
+    IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}' for i in range(1, 7)] + ['qa1'],
+                             "range": [f'sg{i}' for i in range(1, 7)] + ['qa1'],
+                             "centerfreq": [f'sg{i}' for i in range(1, 7)]
+                                           + ['qa1']}
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def create_awg_parameters(self, channel_name_map: dict):
