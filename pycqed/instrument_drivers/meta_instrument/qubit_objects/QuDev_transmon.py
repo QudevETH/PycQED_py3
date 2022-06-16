@@ -1338,8 +1338,9 @@ class QuDev_transmon(Qubit):
                     label = 'pulsed_spec' + self.msmt_suffix
             self.prepare(drive='pulsed_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_spec_pars(),
-                                         self.get_ro_pars()]])
+                seq = sq.pulse_list_list_seq([[self.get_spec_pars(),
+                                               self.get_ro_pars()]],
+                                             upload=False)
         else:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1348,7 +1349,28 @@ class QuDev_transmon(Qubit):
                     label = 'continuous_spec' + self.msmt_suffix
             self.prepare(drive='continuous_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_ro_pars()]])
+                # we use the empty pulse to tell pulsar how to configure the osc
+                # sweep and sine output
+                empty_spec_pulse = self.get_spec_pars()
+                empty_spec_pulse["length"] = 0
+                seq = sq.pulse_list_list_seq([[empty_spec_pulse,
+                                               self.get_ro_pars()]],
+                                             upload=False)
+        if upload:
+            for seg in seq.segments.values():
+                pulsar = self.instr_pulsar.get_instr()
+                awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+                awg_interface = pulsar.awg_interfaces[awg_name]
+                awg = awg_interface.awg
+                if hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
+                        pulsar.get(f"{self.awg.name}_use_hardware_sweeper")():
+                    ch = self.ge_I_channel()
+                    center_freq, mod_freqs = awg_interface.get_params_for_spectrum(freqs)
+                    pulsar.get(f'{ch}_centerfreq')(center_freq)
+                    seg.mod_config[ch] = dict(internal_mod=pulsed)
+                    seg.sine_config[ch] = dict(continous=not pulsed)
+                    seg.sweep_params[ch] = mod_freqs
+            self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
         MC.set_sweep_function(self.swf_drive_lo_freq())
