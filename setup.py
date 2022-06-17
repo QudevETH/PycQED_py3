@@ -68,6 +68,10 @@ setup(name='PycQED',
           'tensorflow',
           'func_timeout',
       ],
+      extra_requires={
+          # optional dependency to connect to device database
+          'device_db':['device_db_client'],
+      },
       test_suite='pycqed.tests',
       zip_safe=False)
 
