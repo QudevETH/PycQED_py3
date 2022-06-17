@@ -275,7 +275,7 @@ class PulsarAWGInterface(ABC):
             param: Parameter to get.
         """
 
-        if self._check_if_implemented(id, param):
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -288,7 +288,7 @@ class PulsarAWGInterface(ABC):
             value: Value to set the parameter.
         """
 
-        if self._check_if_implemented(id, param):
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod

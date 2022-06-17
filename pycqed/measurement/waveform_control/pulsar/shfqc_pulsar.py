@@ -30,10 +30,10 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     CHANNEL_OFFSET_BOUNDS = {
         "analog": (0, 1e-16),
     }
-    IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}' for i in range(1, 7)] + ['qa1'],
-                             "range": [f'sg{i}' for i in range(1, 7)] + ['qa1'],
-                             "centerfreq": [f'sg{i}' for i in range(1, 7)]
-                                           + ['qa1']}
+    IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
+                             "range": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
+                             "centerfreq": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']]
+                                           + ['qa1i', 'qa1q']}
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def create_awg_parameters(self, channel_name_map: dict):
@@ -58,9 +58,9 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                        "next waveform. Only allowed value is "
                                        "'Dig1 for now.")
 
-        SHFAcquisitionModulePulsar.create_all_channel_parameters(
+        SHFAcquisitionModulePulsar._create_all_channel_parameters(
             self, channel_name_map)
-        SHFGeneratorModulePulsar.create_all_channel_parameters(
+        SHFGeneratorModulePulsar._create_all_channel_parameters(
             self, channel_name_map)
 
     @classmethod
