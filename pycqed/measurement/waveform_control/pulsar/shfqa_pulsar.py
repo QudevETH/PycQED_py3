@@ -33,7 +33,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = [SHFQA_core]
+    AWG_CLASSES = []
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
@@ -70,7 +70,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         from 1 to 4. This defines the harware port used.
         """
 
-        super().create_channel_parameters(id, ch_name, ch_type)
+        PulsarAWGInterface.create_channel_parameters(self, id, ch_name, ch_type)
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
         self.pulsar[f"{ch_name}_amp"].set(1)
@@ -357,6 +357,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
+    AWG_CLASSES = [SHFQA_core]
 
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)

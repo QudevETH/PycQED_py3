@@ -116,9 +116,6 @@ class PulsarAWGInterface(ABC):
         """
 
         super().__init_subclass__(**kwargs)
-        if not cls.AWG_CLASSES:
-            raise NotImplementedError("Subclasses of PulsarAWGInterface "
-                                      "should override 'AWG_CLASSES'.")
         cls._pulsar_interfaces.append(cls)
 
     @classmethod
@@ -288,7 +285,7 @@ class PulsarAWGInterface(ABC):
             param: Parameter to get.
         """
 
-        if self._check_if_implemented(id, param):
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -301,7 +298,7 @@ class PulsarAWGInterface(ABC):
             value: Value to set the parameter.
         """
 
-        if self._check_if_implemented(id, param):
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
