@@ -107,3 +107,8 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     def stop(self):
         SHFAcquisitionModulePulsar.stop(self)
         SHFGeneratorModulePulsar.stop(self)
+
+    def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
+        id = self.pulsar.get(ch + '_id')
+        return self._get_superclass(id) \
+            .get_params_for_spectrum(self, ch, requested_freqs)

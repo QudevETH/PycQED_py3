@@ -354,6 +354,9 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         chid = self.pulsar.get(ch + '_id')
         self.awg.qachannels[int(chid[2]) - 1].output.on(on)
 
+    def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
+        return self.awg.get_params_for_spectrum(requested_freqs)
+
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""

@@ -462,6 +462,24 @@ class PulsarAWGInterface(ABC):
             return True
         return False
 
+    def get_params_for_spectrum(self, ch:str, requested_freqs:list[float]):
+        """Convenience method for retrieving parameters needed to measure a
+        spectrum
+
+        Subclasses must override this.
+
+        Args:
+            ch (str): Channel name of the output channel whos frequency is swept
+            requested_freqs (list of floats): frequencies to be measured.
+                Note that the effectively measured frequencies will be a
+                rounded version of these values.
+
+        Returns:
+            center_freq, mod_freqs
+        """
+        raise NotImplementedError(f"'get_params_for_spectrum' is not "
+                                  f"implemented by AWG interface "
+                                  f"{self.__class__}.")
 
 class Pulsar(Instrument):
     """A meta-instrument responsible for all communication with the AWGs.
@@ -1189,3 +1207,8 @@ class Pulsar(Instrument):
                     f"repeat pattern."
 
         return repeat_dict_per_awg
+
+    def get_params_for_spectrum(self, ch:str, requested_freqs:list[float]):
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_params_for_spectrum(ch, requested_freqs)

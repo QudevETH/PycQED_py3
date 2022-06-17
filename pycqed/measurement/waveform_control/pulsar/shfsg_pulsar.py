@@ -449,15 +449,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         chid = self.pulsar.get(ch + '_id')
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
-    def get_params_for_spectrum(self, requested_freqs):
-        """Convenience method for retrieving parameters needed to measure a
-        spectrum
-
-        Args:
-            requested_freqs (list of double): frequencies to be measured.
-            Note that the effectively measured frequencies will be a rounded
-            version of these values.
-        """
+    def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
