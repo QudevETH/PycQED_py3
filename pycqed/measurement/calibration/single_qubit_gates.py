@@ -1529,7 +1529,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
             # work with dummy TwoD sweeps
             self.mc_points = [self.mc_points[0], []]
 
-            self.autorun(store_preprocessed_task_list=True, **kw)
+            self.autorun(**kw)
 
         except Exception as x:
             self.exception = x
@@ -1673,6 +1673,13 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         # Base method for running analysis.
         # To be overloaded by children.
         pass
+
+    def run_measurement(self, **kw):
+        if 'store_preprocessed_task_list' not in kw:
+            # parameters in preprocessed_task_list should also be availiable later in analysis
+            kw['store_preprocessed_task_list'] = True
+
+        super().run_measurement(**kw)
 
     @classmethod
     def gui_kwargs(cls, device):
