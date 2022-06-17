@@ -128,7 +128,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             if self.pulsar.awgs_prequeried:
                 freq = self.awg.sgchannels[ch].centerfreq.get_latest()
             else:
-                freq = self.awg.sgchannels[ch].centerfreq.range()
+                freq = self.awg.sgchannels[ch].centerfreq()
             return freq
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
@@ -552,7 +552,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
                 self.awg.synthesizers[
-                    self.SGCHANNEL_TO_SYNTHESIZER(int(chid[2]) - 1)].centerfreq,
+                    self.SGCHANNEL_TO_SYNTHESIZER[int(chid[2]) - 1]].centerfreq,
                 swf.Offset_Sweep(
                     self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq, # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
                     mod_freq),

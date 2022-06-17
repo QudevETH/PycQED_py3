@@ -112,7 +112,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
             if self.pulsar.awgs_prequeried:
                 freq = self.awg.qachannels[ch].centerfreq.get_latest()
             else:
-                freq = self.awg.qachannels[ch].centerfreq.range()
+                freq = self.awg.qachannels[ch].centerfreq()
             return freq
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
