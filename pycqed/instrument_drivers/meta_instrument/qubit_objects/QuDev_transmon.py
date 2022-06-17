@@ -664,6 +664,9 @@ class QuDev_transmon(Qubit):
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
+            # FIXME: 'fr' refers to the bare readout-resonator frequency,
+            #  this is not a very descriptive name. Should it be changed to
+            #  'bare_ro_res_freq'? This is relevant to the device database.
             kw.pop('fr', None)
             freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
