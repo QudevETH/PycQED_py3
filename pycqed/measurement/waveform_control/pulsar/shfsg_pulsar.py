@@ -86,7 +86,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         from 1 to 8. This defines the harware port used.
         """
 
-        super().create_channel_parameters(id, ch_name, ch_type)
+        PulsarAWGInterface.create_channel_parameters(self, id, ch_name, ch_type)
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
         self.pulsar[f"{ch_name}_amp"].set(1)
