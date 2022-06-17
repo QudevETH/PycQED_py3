@@ -62,6 +62,13 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                        "AWG should wait, before playing the "
                                        "next waveform. Only allowed value is "
                                        "'Dig1 for now.")
+        pulsar.add_parameter(f"{name}_use_hardware_sweeper",
+                             initial_value=False,
+                             parameter_class=ManualParameter,
+                             docstring='Bool indicating whether the hardware '
+                                       'sweeper should be used in spectroscopy '
+                                       'mode',
+                             vals=vals.Bool())
 
         SHFAcquisitionModulePulsar._create_all_channel_parameters(
             self, channel_name_map)
