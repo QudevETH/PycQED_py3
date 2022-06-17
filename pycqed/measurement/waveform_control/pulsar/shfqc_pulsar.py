@@ -36,6 +36,11 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                            + ['qa1i', 'qa1q']}
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awg._awg_program = [None] * len(self.awg.qachannels) \
+                                + [None] * len(self.awg.sgchannels)
+
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
 

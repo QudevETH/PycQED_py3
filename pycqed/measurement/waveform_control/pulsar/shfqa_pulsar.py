@@ -352,6 +352,11 @@ class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
     AWG_CLASSES = [SHFQA_core]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awg._awg_program = [None] * len(self.awg.qachannels)
+
+
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
 
