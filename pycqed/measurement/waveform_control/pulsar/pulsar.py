@@ -111,9 +111,6 @@ class PulsarAWGInterface(ABC):
         """
 
         super().__init_subclass__(**kwargs)
-        if not cls.AWG_CLASSES:
-            raise NotImplementedError("Subclasses of PulsarAWGInterface "
-                                      "should override 'AWG_CLASSES'.")
         cls._pulsar_interfaces.append(cls)
 
     @classmethod
