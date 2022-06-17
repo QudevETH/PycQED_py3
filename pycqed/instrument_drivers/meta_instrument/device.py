@@ -70,6 +70,9 @@ class Device(Instrument):
                            initial_value=qb_names,
                            parameter_class=ManualParameter)
 
+        self.MWGs = []
+        self.TWPAs = []
+
         self._operations = {}  # dictionary containing dictionaries of operations with parameters
 
         # Instrument reference parameters
@@ -443,6 +446,38 @@ class Device(Instrument):
                 raise ValueError(f'Parameter {param} for the gate '
                                  f'{gate_name} {qb1_name} {qb2_name} '
                                  f'does not exist!')
+
+    def prepare_mwg(self):
+        for MWG in self.MWGs:
+            MWG.off()
+        for TWPA in self.TWPAs:
+            TWPA.on()
+            pass
+
+    def update_cancellation_params(self):
+        for qbc in self.get_qubits():
+            if qbc.ge_pulse_type() != 'SSB_DRAG_pulse_with_cancellation':
+                continue
+            cpars = qbc.ge_cancellation_params()
+            for qb in self.get_qubits():
+                iq = (qb.ge_I_channel(), qb.ge_Q_channel())
+                if iq not in cpars:
+                    continue
+                cpars[iq]['mod_frequency'] = (qbc.ge_freq() - qb.ge_freq() +
+                                            qb.ge_mod_freq())
+                cpars[iq]['phi_skew'] = qb.ge_phi_skew()
+                cpars[iq]['alpha'] = qb.ge_alpha()
+
+    def set_default_acq_channels(self):
+        qbs = self.get_qubits()
+        feedlines = {(qb.instr_acq(), qb.acq_unit()) for qb in qbs}
+        for fl in feedlines:
+            qb_fl = [qb for qb in qbs
+                    if qb.instr_acq() == fl[0]
+                    and qb.acq_unit() == fl[1]]
+            for i, qb in enumerate(qb_fl):
+                qb.acq_I_channel(2 * i)
+                qb.acq_Q_channel(2 * i + 1)
 
     def check_connection(self, qubit_a, qubit_b, connectivity_graph=None, raise_exception=True):
         """
