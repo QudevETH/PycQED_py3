@@ -2723,7 +2723,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
         :param kw: keyword arguments
         """
         for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']]
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
             qubit.set(f'{task["transition_name_input"]}_amp180',
                       self.analysis.proc_data_dict['analysis_params_dict'][
                           qubit.name]['corrected_amp'])
