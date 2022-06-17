@@ -630,13 +630,15 @@ class QuDev_transmon(Qubit):
             and flux are None and the model is 'transmon' or 'transmon_res',
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
-            stored as ge_freq parameter of the qubit object.
+            stored as {transition}_freq parameter of the qubit object.
         :return: calculated ge transition frequency
         """
 
-        if transition not in ['ge']:
+        if transition not in ['ge', 'ef'] or (transition == 'ef' and
+                                              model not in ['transmon_res']):
             raise NotImplementedError(
-                'Currently, only ge transition is implemented.')
+                f'calculate_frequency: Currently, transition {transition} is '
+                f'not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
@@ -656,27 +658,28 @@ class QuDev_transmon(Qubit):
                 amplitude = self.calculate_voltage_from_flux(flux, model)
 
         if model == 'approx':
-            ge_freq = fit_mods.Qubit_dac_to_freq(
+            freq = fit_mods.Qubit_dac_to_freq(
                 amplitude + (0 if bias is None or np.all(bias == 0) else
                              bias * flux_amplitude_bias_ratio), **vfc)
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
             kw.pop('fr', None)
-            ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+            freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
                 else amplitude / flux_amplitude_bias_ratio), **kw)
         elif model == 'transmon_res':
-            ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
-                0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **vfc)
+            freq = fit_mods.Qubit_dac_to_freq_res(
+                bias + (0 if np.all(amplitude == 0)
+                        else amplitude / flux_amplitude_bias_ratio),
+                return_ef=True, **vfc)[0 if transition == 'ge' else 1]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
                 "'transmon_res' are implemented.")
         if update:
-            self.ge_freq(ge_freq)
-        return ge_freq
+            self.parameters[f'{transition}_freq'](freq)
+        return freq
 
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
