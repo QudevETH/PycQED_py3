@@ -33,7 +33,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = [SHFQA_core]
+    AWG_CLASSES = []
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
@@ -353,3 +353,5 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
+
+    AWG_CLASSES = [SHFQA_core]

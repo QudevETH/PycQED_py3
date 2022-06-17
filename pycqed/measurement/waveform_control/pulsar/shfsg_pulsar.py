@@ -28,7 +28,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     objects with the following values for acquisition_mode: 'default'
     """
 
-    AWG_CLASSES = [SHFSG_core]
+    AWG_CLASSES = []
     GRANULARITY = 16
     ELEMENT_START_GRANULARITY = 16 / 2.0e9  # TODO: unverified!
     MIN_LENGTH = 32 / 2.0e9
@@ -420,3 +420,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
 class SHFSGPulsar(SHFGeneratorModulePulsar):
     """ZI SHFSG specific Pulsar module"""
+
+    AWG_CLASSES = [SHFSG_core]
+
