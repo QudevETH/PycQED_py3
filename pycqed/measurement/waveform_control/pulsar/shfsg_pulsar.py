@@ -559,7 +559,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
-                self.awg.synthesizers[int(chid[2])].centerfreq,
+                self.awg.synthesizers[
+                    self.SGCHANNEL_TO_SYNTHESIZER(int(chid[2]) - 1)].centerfreq,
                 swf.Offset_Sweep(
                     self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq, # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
                     mod_freq),
