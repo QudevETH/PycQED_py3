@@ -36,6 +36,11 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                            + ['qa1i', 'qa1q']}
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awg._awg_program = [None] * len(self.awg.qachannels) \
+                                + [None] * len(self.awg.sgchannels)
+
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
 
@@ -57,6 +62,13 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                        "AWG should wait, before playing the "
                                        "next waveform. Only allowed value is "
                                        "'Dig1 for now.")
+        pulsar.add_parameter(f"{name}_use_hardware_sweeper",
+                             initial_value=False,
+                             parameter_class=ManualParameter,
+                             docstring='Bool indicating whether the hardware '
+                                       'sweeper should be used in spectroscopy '
+                                       'mode',
+                             vals=vals.Bool())
 
         SHFAcquisitionModulePulsar._create_all_channel_parameters(
             self, channel_name_map)
