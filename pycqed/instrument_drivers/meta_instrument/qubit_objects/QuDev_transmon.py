@@ -1349,27 +1349,33 @@ class QuDev_transmon(Qubit):
                     label = 'continuous_spec' + self.msmt_suffix
             self.prepare(drive='continuous_spec')
             if upload:
-                # we use the empty pulse to tell pulsar how to configure the osc
-                # sweep and sine output
-                empty_spec_pulse = self.get_spec_pars()
-                empty_spec_pulse["length"] = 0
-                seq = sq.pulse_list_list_seq([[empty_spec_pulse,
-                                               self.get_ro_pars()]],
-                                             upload=False)
+                pulsar = self.instr_pulsar.get_instr()
+                awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+                if hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
+                        pulsar.get(f"{awg_name}_use_hardware_sweeper"):
+                    # we use the empty pulse to tell pulsar how to configure the osc
+                    # sweep and sine output
+                    spec_pulse = self.get_ge_pars()
+                    spec_pulse["nr_sigma"] = 0
+                    seq = sq.pulse_list_list_seq([[spec_pulse,
+                                                   self.get_ro_pars()]],
+                                                 upload=False)
+                else:
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars()]],
+                                                 upload=False)
         if upload:
             for seg in seq.segments.values():
                 pulsar = self.instr_pulsar.get_instr()
                 awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
-                awg_interface = pulsar.awg_interfaces[awg_name]
-                awg = awg_interface.awg
+                ch = self.ge_I_channel()
+                seg.mod_config[ch] = dict(internal_mod=pulsed)
+                seg.sine_config[ch] = dict(continous=not pulsed)
                 if hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
-                        pulsar.get(f"{self.awg.name}_use_hardware_sweeper")():
-                    ch = self.ge_I_channel()
-                    center_freq, mod_freqs = awg_interface.get_params_for_spectrum(freqs)
-                    pulsar.get(f'{ch}_centerfreq')(center_freq)
-                    seg.mod_config[ch] = dict(internal_mod=pulsed)
-                    seg.sine_config[ch] = dict(continous=not pulsed)
-                    seg.sweep_params[ch] = mod_freqs
+                        pulsar.get(f"{awg_name}_use_hardware_sweeper"):
+                    center_freq, mod_freqs = \
+                        pulsar.get_params_for_spectrum(ch, freqs)
+                    pulsar.set(f'{ch}_centerfreq', center_freq)
+                    seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
@@ -1382,7 +1388,13 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            self.int_avg_det.set_real_imag(False)
+            MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
