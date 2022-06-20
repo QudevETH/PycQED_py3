@@ -463,11 +463,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
                              approx_center_freq)).argmin()
         center_freq = self.awg.allowed_lo_freqs()[id_closest]
-        # Compute the actual needed bandwidth
-        min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
-        if min_bandwidth > 1/self.MIN_LENGTH: # FIXME: should be replaced with bounds of dig. osc.
-            raise NotImplementedError('Spectrum wider than the bandwidth of '
-                                      'the SHF is not yet implemented!')
         mod_freqs = requested_freqs - center_freq
         return center_freq, mod_freqs
 
