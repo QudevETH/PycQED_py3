@@ -17,12 +17,13 @@ except Exception:
     SHFQA_core = type(None)
 
 from .pulsar import PulsarAWGInterface
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class SHFAcquisitionModulePulsar(PulsarAWGInterface):
+class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI SHFQA and SHFQC acquisition module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -287,6 +288,11 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                # The following line only has an effect if the metadata
+                # specifies that the segment should be repeated multiple times.
+                playback_strings += self._zi_playback_string_loop_start(
+                    metadata, [f'qa{acq_unit+1}i', f'qa{acq_unit+1}q'])
+
                 if list(awg_sequence_element.keys()) != ['no_codeword']:
                     raise NotImplementedError('SHFQA sequencer does currently\
                                                        not support codewords!')
@@ -315,6 +321,9 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
                         f'setTrigger(0x0);'
                     ]
+                # The following line only has an effect if the metadata
+                # specifies that the segment should be repeated multiple times.
+                playback_strings += self._zi_playback_string_loop_end(metadata)
                 return playback_strings
 
             qachannel.mode('readout')
