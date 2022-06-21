@@ -11,7 +11,7 @@ from pycqed.measurement.calibration.single_qubit_gates import SingleQubitGateCal
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
-from pycqed.utilities.general import temporary_value,configure_qubit_mux_drive, configure_qubit_mux_readout
+from pycqed.utilities.general import temporary_value, configure_qubit_mux_drive, configure_qubit_mux_readout
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 from pycqed.utilities.reload_settings import reload_settings
 from pycqed.utilities import devicedb
@@ -33,17 +33,29 @@ import re
 
 log = logging.getLogger(__name__)
 
+
 class SettingsDictionary(dict):
 
-
     """
-    This class represents the settings specified in default- setup- and sample folder as a dictionary. Each JSON file within the folders is added as an item. 
+    This class represents the configuration parameters specified in default, setup, and sample folder as a dictionary.
     The hierarchy (in descending significance) is User - Sample - Setup - Default
     """
 
     _USE_DB_STRING = "USE_DB"
 
-    def __init__(self, init_dict={},db_client= None, db_client_config=None,dev_name=None):
+    def __init__(self, init_dict={}, db_client=None, db_client_config=None, dev_name=None):
+        """
+        Initializes the dictionary.
+
+        Args:
+            init_dict (dict): a dictionary to initialize the custom dictionary with
+            db_client (devicedb.Client): a client to connect to the device database
+            db_client_config (devicedb.Config): a configuration object for the device
+                database as an alternative way to initialize the database connection
+            dev_name (str): The name of the device in use. Used to tell the device 
+                database which device it should use.
+        """
+
         # Copies items, no deep copy
         super().__init__(init_dict)
 
@@ -54,55 +66,111 @@ class SettingsDictionary(dict):
             self.db_client = db_client
         elif db_client_config:
             self.enable_use_database(db_client_config)
-    
-    def update_user_settings(self,settings_user,reload_database=True):
-        update_nested_dictionary(self,settings_user)
 
-    def _get_unprocessed_param_value(self,param, lookups, sublookups = None, qubit=None, groups=None, leaf=True,associated_component_type_hint=None):
+    def update_user_settings(self, settings_user):
+        """
+        Updates the current configuration parameter dictionary with the provided
+        user parameters.
+
+        Args:
+            settings_user (dict): a dictionary with the user configuration parameters
+        """
+        update_nested_dictionary(self, settings_user)
+
+    def _get_unprocessed_param_value(self, param, lookups, sublookups=None, qubit=None, groups=None, leaf=True, associated_component_type_hint=None):
+        """
+        A helper function for get_param_value. It does not include the postprocessing
+        of the fetched value by get_param_value.
+
+        Args:
+            param (str): The name of the parameter to look up.
+            lookups (list of str): The scopes in which the parameter should be looked up.
+            sublookups (list of str): The subscopes to be looked up. The parameter is then looked up in self[lookup][sublookup]
+            qubit (str): The name of the qubit, if the parameter is qubit-specific.
+            groups (list of str): The groups the qubit is in, as specified in the dictionary.
+            leaf (boolean): True if the scope to search the parameter for is a leaf node (e.g. a measurement or intermediate step, not a routine)
+            associated_component_type_hint (str): A hint for the device database, if the parameter does not belong to the qubit.
+
+        Returns:
+            A tuple with the raw fetched parameter from the dictionary and a boolean indicating success.
+        """
         for lookup in lookups:
             if lookup is None:
                 continue
             if lookup in self:
                 if sublookups:
-                    val,success = SettingsDictionary.get_param_value(self[lookup],param,sublookups, qubit=qubit, groups=groups, leaf=leaf,associated_component_type_hint=associated_component_type_hint)
+                    val, success = SettingsDictionary.get_param_value(
+                        self[lookup], param, sublookups, qubit=qubit, groups=groups, leaf=leaf, associated_component_type_hint=associated_component_type_hint)
                     if success:
-                        return val,success
+                        return val, success
                 elif not leaf and lookup != 'General':
-                    val,success = SettingsDictionary.get_param_value(self,param,[lookup],['General'], qubit=qubit, groups=groups,associated_component_type_hint=associated_component_type_hint)
+                    val, success = SettingsDictionary.get_param_value(self, param, [lookup], [
+                                                                      'General'], qubit=qubit, groups=groups, associated_component_type_hint=associated_component_type_hint)
                     if success:
-                        return val,success
+                        return val, success
                 else:
-                    if qubit and 'qubits' in self[lookup]: #look if param is defined for a group
-                        for group,v in self[lookup]['qubits'].items():
+                    # look if param is defined for a group
+                    if qubit and 'qubits' in self[lookup]:
+                        for group, v in self[lookup]['qubits'].items():
                             if group == qubit or group in groups:
                                 if param in v:
-                                    return v[param],True
+                                    return v[param], True
                     if param in self[lookup]:
                         return self[lookup][param], True
 
-        
         return None, False
 
-    def get_param_value(self,param, lookups, sublookups = None, qubit=None, groups=None, leaf=True,associated_component_type_hint=None):
-        val,success = SettingsDictionary._get_unprocessed_param_value(self,param, lookups, sublookups, qubit, groups, leaf)
+    def get_param_value(self, param, lookups, sublookups=None, qubit=None, groups=None, leaf=True, associated_component_type_hint=None):
+        """
+        Looks up the requested parameter in the configuration parameters.
+        If the fetched value is a request to query the database, the queried
+        value is returned.
+
+        Args:
+            param (str): The name of the parameter to look up.
+            lookups (list of str): The scopes in which the parameter should be looked up.
+            sublookups (list of str): The subscopes to be looked up. The parameter is then looked up in self[lookup][sublookup]
+            qubit (str): The name of the qubit, if the parameter is qubit-specific.
+            groups (list of str): The groups the qubit is in, as specified in the dictionary.
+            leaf (boolean): True if the scope to search the parameter for is a leaf node (e.g. a measurement or intermediate step, not a routine)
+            associated_component_type_hint (str): A hint for the device database, if the parameter does not belong to the qubit.
+
+        Returns 
+            A tuple with the postprocessed fetched parameter from the
+            dictionary and a boolean indicating success.
+        """
+
+        val, success = SettingsDictionary._get_unprocessed_param_value(
+            self, param, lookups, sublookups, qubit, groups, leaf)
 
         # Use database value
-        if isinstance(val,list) and len(val) and val[0] == SettingsDictionary._USE_DB_STRING:
-                if qubit is None:
-                    raise ValueError("When using the database, only parameters associated with a qubit are allowed. Provide qubit as a keyword.")
-                db_value = self.db_client.get_property_value_from_param_args(qubit.name,param,associated_component_type_hint)
-                success = db_value is not None
-                if success:
-                    return db_value.value, success
-                elif  len(val) > 1:
-                    return val[1], True
-                else:
-                    return None, False
-        
+        if isinstance(val, list) and len(val) and val[0] == SettingsDictionary._USE_DB_STRING:
+            if qubit is None:
+                raise ValueError(
+                    "When using the database, only parameters associated with a qubit are allowed. Provide qubit as a keyword.")
+            db_value = self.db_client.get_property_value_from_param_args(
+                qubit.name, param, associated_component_type_hint)
+            success = db_value is not None
+            if success:
+                return db_value.value, success
+            elif len(val) > 1:
+                return val[1], True
+            else:
+                return None, False
+
         return val, success
 
+    def get_qubit_groups(self, qubit, lookups):
+        """
+        Gets the groups the specified qubit belongs to out of the configuration parameter dictionary.
 
-    def get_qubit_groups(self,qubit, lookups):
+        Args:
+            qubit (str): The name of the qubit.
+            lookups (list of str): The scopes in which to search for the qubits group definitions. Default is ['Groups']
+
+        Returns:
+            A set of strings with the group names the qubit is part of.
+        """
         groups = set()
         for lookup in lookups:
             if lookup in self:
@@ -111,60 +179,106 @@ class SettingsDictionary(dict):
                         groups.add(group_name)
         return groups
 
-    def load_settings_from_file(self,settings_default_folder = None, settings_setup_folder=None, settings_sample_folder=None, settings_user=None):
+    def load_settings_from_file(self, settings_default_folder=None, settings_setup_folder=None, settings_sample_folder=None, settings_user=None):
         """
-        Loads the device settings from a settings folder and puts it into self
-             as a nested dictionary containing all device settings
+        Loads the device settings from the folders storing Default, Setup and Sample parameters
+        and puts it into the configuration parameter dictionary as a nested dictionary.
+        The folders should contain JSON files.
+        Order in the hierarchy: Sample overwrites Setup overwrites Default values.
+        Additonaly, when settings_sample_folder is specified, it overwrites the dictionary loaded
+        from the files.
+
+        Since JSON only supports strings as keys, postprocessing is applied. Therefore, it is also
+        possible to use a string with a tuple inside as a key, which is converted to a tuple in the
+        dictionary, e.g. "('SFHQA', 1)" is converted to ('SFHQA', 1).
 
         Args:
             settings_default_folder (string): full path to the folder for default settings
+            settings_setup_folder (string): full path to the folder for setup settings
+            settings_sample_folder (string): full path to the folder for sample settings
+            settings_default_folder (string): user settings as a dictionary
         """
         if settings_setup_folder is None:
             log.warning("No settings_setup_folder specified.")
         if settings_sample_folder is None:
             log.warning("No settings_sample_folder specified.")
-        
-        for settings_folder in [settings_default_folder,settings_setup_folder,settings_sample_folder]:
+
+        for settings_folder in [settings_default_folder, settings_setup_folder, settings_sample_folder]:
             if settings_folder is not None:
                 settings_files = os.listdir(settings_folder)
                 for file in settings_files:
                     with open(os.path.join(settings_folder, file)) as f:
-                        update_nested_dictionary(self,{os.path.splitext(file)[0]:json.load(f)})
-
+                        update_nested_dictionary(
+                            self, {os.path.splitext(file)[0]: json.load(f)})
 
         if settings_user is not None:
-            self.update_user_settings(settings_user,reload_database=False)
-        
+            self.update_user_settings(settings_user, reload_database=False)
+
         self._postprocess_settings_from_file()
 
     def _postprocess_settings_from_file(self):
+        """"
+        Since JSON only supports strings as keys, postprocessing is applied. Therefore, it is also
+        possible to use a string with a tuple inside as a key, which is converted to a tuple in the
+        dictionary, e.g. "('SFHQA', 1)" is converted to ('SFHQA', 1).
+
+        Args:
+            settings_default_folder (string): full path to the folder for default settings
+            settings_setup_folder (string): full path to the folder for setup settings
+            settings_sample_folder (string): full path to the folder for sample settings
+            settings_default_folder (string): user settings as a dictionary
+        """
         for k in list(self.keys()):
             if isinstance(self[k], collections.abc.Mapping):
-                SettingsDictionary._postprocess_settings_from_file(self[k])            
-            if re.search('^\(.*\)$', k): # represents a tuple
+                SettingsDictionary._postprocess_settings_from_file(self[k])
+            if re.search('^\(.*\)$', k):  # represents a tuple
                 self[eval(k)] = self.pop(k)
 
-        
-    def enable_use_database(self,db_client_config):
+    def enable_use_database(self, db_client_config):
+        """"
+        Can be called to enable querying the database with configuration parameters.
+        Either this function is called or the database client is already specified in
+        the init of the dictionary.
+
+        Args:
+             db_client_config (devicedb.Config): a configuration object for the device
+        """
         if self.dev_name is not None:
             db_client_config.device_name = self.dev_name
         self.db_client = devicedb.Client(
             db_client_config
         )
 
-    def copy(self,overwrite_dict=None):
+    def copy(self, overwrite_dict=None):
+        """"
+        Creates a deepcopy of the current dictionary.
+        Returns the deepcopied dictionary.
+
+        Args:
+             overwrite_dict (dict): When this is ntt None, the content of the dictionary
+             is cleared and replaced with the dict specified in overwrite_dict. Other 
+             arguments of the dictionary like the device database client stay the same.
+        """
         if overwrite_dict is None:
             overwrite_dict = self
-        settings_copy = SettingsDictionary(copy.deepcopy(overwrite_dict),db_client=self.db_client,dev_name=self.dev_name)
+        settings_copy = SettingsDictionary(copy.deepcopy(
+            overwrite_dict), db_client=self.db_client, dev_name=self.dev_name)
 
         return settings_copy
 
-    def __deepcopy__(self,memo):
+    def __deepcopy__(self, memo):
+        """"
+        Overloads the standard deepcopying function to enable
+        deepcopying the dictionary by disabling deepcopying of certain argument
+        objects.
+
+        """
         return self.__class__(
             {k: copy.deepcopy(v, memo) for k, v in self.items()},
-            db_client = self.db_client,
-            dev_name = self.dev_name
+            db_client=self.db_client,
+            dev_name=self.dev_name
         )
+
 
 class RoutineTemplate(list):
     """
@@ -360,10 +474,11 @@ class RoutineTemplate(list):
             step_tmp_vals = []
 
         if index is None:
-            super().append([step_class, step_label, step_settings, step_tmp_vals])
+            super().append([step_class, step_label,
+                            step_settings, step_tmp_vals])
         else:
-            super().insert(index, [step_class, step_label, step_settings, step_tmp_vals])
-
+            super().insert(
+                index, [step_class, step_label, step_settings, step_tmp_vals])
 
     @staticmethod
     def check_step(step):
@@ -396,46 +511,107 @@ class RoutineTemplate(list):
             new_data.global_settings = copy.copy(self.global_settings)
         return new_data
 
+
 class Step:
-    def __init__(self, qubits, routine=None, **kw):
-        self.qubits = qubits
-        # TODO this is there to make the current one-qubit-only implementation of HamiltionianFitting work easily
+    """"
+    A class to collect functionality used for each step in a routine.
+    A step can be an AutomaticCalibrationRoutine, an IntermediateStep
+    or a measurements. Measurements are wrapped with a wrapper class
+    which inherits from this class to give access to its functions.
+
+    """
+
+    def __init__(self, dev, routine=None, **kw):
+        """
+        Initializes the Step class.
+
+        Arguments:
+            dev (Device obj): The device which is currently measured.
+            routine (Step obj): The parent of the step. If this step is the root routine,
+                this should be None.
+
+        Keywords:
+            step_label (str): A unique label for this step to be used in the configuration
+                parameters files.
+            settings (SettingsDictionary obj): The configuration parameters passed down
+                form its parent. if None, the dictionary is taken from the Device object.
+            qubits (list): A list with the Qubit objects which should be part of the step.
+            settings_user (dict): A dictionary from the user to update the configuration
+                parameters with.
+
+        """
+        self.routine = routine
+        self.step_label = self.kw.pop('step_label', None)
+        self.dev = dev
+        # Copy default settings from autocalib if this is the root routine, else create an empty SettingsDictionary
+        default_settings = self.dev.autocalib_settings.copy(
+        ) if self.routine is None else self.routine.settings.copy({})
+        self.settings = self.kw.pop("settings", default_settings)
+        self.qubits = self.kw.pop("qubits", self.dev.get_qubits())
+
+        # FIXME this is there to make the current one-qubit-only implementation of HamiltionianFitting work easily
+        # remove dependency on self.qubit
         self.qubit = self.qubits[0]
 
-        self.routine = routine
-        self.step_label = self.kw.pop('step_label',None)
-        self.dev = self.kw.pop("dev")
-        # Copy default settings from autocalib if this is the root routine, else create an empty SettingsDictionary
-        default_settings = self.dev.autocalib_settings.copy() if self.routine is None else self.routine.settings.copy({})
-        self.settings = self.kw.pop("settings",default_settings) 
-        settings_user = self.kw.pop('settings_user',None)
+        settings_user = self.kw.pop('settings_user', None)
         if settings_user:
             self.settings.update_user_settings(settings_user)
-        self.parameter_lookups = [self.step_label, self.get_lookup_class().__name__, 'General']
+        self.parameter_lookups = [self.step_label,
+                                  self.get_lookup_class().__name__, 'General']
         self.parameter_sublookups = None
         self.leaf = True
 
-    def get_param_value(self,param, qubit=None, sublookups = None, default = None, leaf=None,associated_component_type_hint=None):
+    def get_param_value(self, param, qubit=None, sublookups=None, default=None, leaf=None, associated_component_type_hint=None):
+        """
+        Looks up the requested parameter in the own configuration parameter dictionary.
+        If no value was found, the parent's function is called recursively up to the
+        root routine.
+
+        Args:
+            param (str): The name of the parameter to look up.
+                sublookups (list of str): Optional subscopes to be looked up.
+            default: The default value the parameters falls back to if no value was 
+                found for the parameter in the whole dictionary.
+            leaf (boolean): True if the scope to search the parameter for is a leaf node (e.g. a measurement or intermediate step, not a routine)
+            associated_component_type_hint (str): A hint for the device database, if the parameter does not belong to the qubit.
+
+        Returns:
+            The value found in the dictionary. If no value was found, either the
+            default value is returned if specified or otherwhise None.
+        """
         groups = None
         if qubit is not None:
             groups = self.get_qubit_groups(qubit)
 
         lookups = self.parameter_lookups
         if leaf is None:
-            leaf=self.leaf
-        val,success = self.settings.get_param_value(param, lookups , sublookups, qubit, groups,leaf=leaf,associated_component_type_hint=associated_component_type_hint)
+            leaf = self.leaf
+        val, success = self.settings.get_param_value(
+            param, lookups, sublookups, qubit, groups, leaf=leaf, associated_component_type_hint=associated_component_type_hint)
 
         if not success:
             if self.routine is not None:
                 sublookups = sublookups if sublookups else lookups
-                val = self.routine.get_param_value(param, qubit, sublookups=sublookups,leaf=leaf,associated_component_type_hint=associated_component_type_hint)
+                val = self.routine.get_param_value(
+                    param, qubit, sublookups=sublookups, leaf=leaf, associated_component_type_hint=associated_component_type_hint)
                 success = True
             elif sublookups:
-                val,success = self.settings.get_param_value(param, sublookups, None, qubit, groups, leaf=leaf,associated_component_type_hint=associated_component_type_hint)
-                
+                val, success = self.settings.get_param_value(
+                    param, sublookups, None, qubit, groups, leaf=leaf, associated_component_type_hint=associated_component_type_hint)
+
         return val if success else default
 
     def get_qubit_groups(self, qubit):
+        """
+        Gets the groups the specified qubit belongs to out of the configuration parameter dictionary.
+
+        Args:
+            qubit (str): The name of the qubit.
+
+        Returns:
+            A set of strings with the group names the qubit is part of.
+        """
+
         # Possible problem: when a qubit is removed from a group with the same name in higher hierarchy, it will still remain
         lookups = ['Groups']
         groups = self.settings.get_qubit_groups(qubit, lookups)
@@ -513,23 +689,44 @@ class Step:
         }
 
     def get_requested_settings(self):
+        """
+        Gets a set of keyword arguments which are needed for the initialization of the current step
+        This is important for experiments, as they have to be initialized with these keywords and
+        cannot use the get_param_value function.
+
+        Returns:
+            A dictionary containing names and default values of keyword arguments which are needed
+            for the current step.
+        """
         gui_kwargs = self.__class__.gui_kwargs(self.dev)
         # remove second layer of dict
-        requested_kwargs = {k:{ky:vy for kx,vx in v.items() for ky,vy in vx.items()} for k,v in gui_kwargs.items()}
-        requested_kwargs['kwargs'].pop('sweep_points',None) # pop kw that is not needed
-        requested_kwargs['kwargs'].pop('cal_states',None)
-        requested_kwargs['kwargs'].pop('n_cal_points_per_state',None)
-        requested_kwargs['kwargs'].pop('cz_pulse_name',None)
-        requested_kwargs['kwargs'].pop('compression_seg_lim',None)
+        requested_kwargs = {k: {ky: vy for kx, vx in v.items(
+        ) for ky, vy in vx.items()} for k, v in gui_kwargs.items()}
+        requested_kwargs['kwargs'].pop(
+            'sweep_points', None)  # pop kw that is not needed
+        requested_kwargs['kwargs'].pop('cal_states', None)
+        requested_kwargs['kwargs'].pop('n_cal_points_per_state', None)
+        requested_kwargs['kwargs'].pop('cz_pulse_name', None)
+        requested_kwargs['kwargs'].pop('compression_seg_lim', None)
         return requested_kwargs
 
     def parse_settings(self, requested_kwargs):
+        """
+        Resolves the keyword arguments from get_requested_settings to calls within the parameter dictionary.
+
+        Arguments:
+            requested_kwargs (dict): A dictionary containing the names and default values
+            of the keyword arguments for an experiment.
+        Returns:
+            The exact keyword arguments to pass to the experiment class.
+        """
         kwargs = {}
-        for k,v in requested_kwargs['kwargs'].items():
-            kwargs[k] = self.get_param_value(k, default = v[1])  # Default value in kwargs, should the default value always be found in settings?
-        kwargs.pop('ro_qubits',None)
-        #kwargs.pop('compression_seg_lim',None)
-        #kwargs.pop('cz_pulse_name',None)
+        for k, v in requested_kwargs['kwargs'].items():
+            # Default value in kwargs, should the default value always be found in settings?
+            kwargs[k] = self.get_param_value(k, default=v[1])
+        kwargs.pop('ro_qubits', None)
+        # kwargs.pop('compression_seg_lim',None)
+        # kwargs.pop('cz_pulse_name',None)
         kwargs['measure'] = False
         kwargs['analyze'] = False
         kwargs['qubits'] = self.qubits
@@ -537,18 +734,32 @@ class Step:
 
     @property
     def highest_lookup(self):
+        """
+        Returns the highest scope for this step which is not None
+        in the order step_label, class name, General
+
+        Returns:
+            A string with the highest lookup of this step which is not None.
+        """
         return self._get_first_not_none(self.parameter_lookups)
-    
+
     @property
     def highest_sublookup(self):
+        """
+        Returns the highest subscope for this step which is not None.
+
+        Returns:
+            A string with the highest sublookup of this step which is not None.
+            If the step is a leaf, this is None, otherwhise it is "General".
+        """
         return None if self.parameter_sublookups is None else self._get_first_not_none(self.parameter_sublookups)
 
-    def _get_first_not_none(self,lookup_list):
-        return next((item for item in lookup_list if item is not None), None) 
+    def _get_first_not_none(self, lookup_list):
+        return next((item for item in lookup_list if item is not None), None)
 
     @classmethod
     def get_lookup_class(cls):
-        if issubclass(cls,SingleQubitGateCalibExperiment):
+        if issubclass(cls, SingleQubitGateCalibExperiment):
             return cls.__bases__[0]
         return cls
 
@@ -559,9 +770,9 @@ class IntermediateStep(Step):
     steps.
     """
 
-    def __init__(self, qubits, **kw):
+    def __init__(self, **kw):
         self.kw = kw
-        super().__init__(qubits=qubits, **kw)
+        super().__init__(**kw)
 
     def run(self):
         """
@@ -578,7 +789,7 @@ class AutomaticCalibrationRoutine(Step):
 
     def __init__(
         self,
-        qubits,
+        dev,
         routine=None,
         autorun=True,
         **kw,
@@ -590,39 +801,34 @@ class AutomaticCalibrationRoutine(Step):
             qubits is passed, only the first qubit is used.
 
         Args:
-            qubits (list): list of qubits to be used in the routine
+            dev: device to be used for the routine
             autorun (bool): if True, the routine will be run immediately after
                 initialization.
+            routine (Step obj): The parent routine of the routine.
+
+        Keywords:
+            qubits (list): list of qubits to be used in the routine
+
+        Configuration parameters (coming from the configuration parameter dictionary):
             update (bool): if True, the routine will overwrite qubit attributes
                 with the values found in the routine. Note that if the routine
                 is used as subroutine, this should be set to True.
             save_instrument_settings (bool): if True, the routine will save the
                 instrument settings before and after the routine.
-
-        kw (passed to the routine template):
-            dev: device to be used for the routine
-            parameters_device: device parameters. See _DEFAULT_PARAMETERS
-                attribute of the routine of interest for the desired structure.
-            parameters_user: user parameters. See _DEFAULT_PARAMETERS
-                attribute of the routine of interest for the desired structure.
-            get_parameters_from_qubit_object: if True, the routine will try to
-                get the parameters from the qubit object. Default is False.
             verbose: if True, the routine will print out the progress of the
                 routine. Default is True.
 
-        FIXME add support for loading the device settings directly from a file.
         """
 
         self.kw = kw
         self.autorun = autorun
         # call step constructor
-        super().__init__(qubits, routine, **kw)
+        super().__init__(dev, routine, **kw)
 
         self.parameter_sublookups = ['General']
         self.leaf = False
 
         self.DCSources = self.kw.pop("DCSources", None)
-
 
         # MC - trying to get it from either the device or the qubits
         for source in [self.dev] + self.qubits:
@@ -634,16 +840,25 @@ class AutomaticCalibrationRoutine(Step):
 
         self.create_initial_parameters()
 
-    def merge_settings(self,lookups,sublookups=None):
+    def merge_settings(self, lookups, sublookups=None):
+        """
+        Merges all subscopes relevant for a particular child step.
+
+        Arguements:
+            lookups (list): A list of all subscopes of the routine relevant for the child step.
+            sublookups (list): A list of subscopes of the lookups (relevant if the child step is a routine)
+
+        """
         settings = {}
         for lookup in reversed(lookups):
             if lookup in self.settings:
                 if sublookups is not None:
                     for sublookup in reversed(sublookups):
                         if sublookup in self.settings[lookup]:
-                            update_nested_dictionary(settings,self.settings[lookup][sublookup])
+                            update_nested_dictionary(
+                                settings, self.settings[lookup][sublookup])
                 else:
-                    update_nested_dictionary(settings,self.settings[lookup])
+                    update_nested_dictionary(settings, self.settings[lookup])
 
         return settings
 
@@ -659,19 +874,23 @@ class AutomaticCalibrationRoutine(Step):
 
         for step in self.routine_template:
             # Convert basic experiments into Autoroutine Steps
-            if not issubclass(step[0],Step):
-                raise NotImplementedError("Steps have to inherit from class Step.")
-                #class TmpStep(Step, step[0]):
+            if not issubclass(step[0], Step):
+                raise NotImplementedError(
+                    "Steps have to inherit from class Step.")
+                # class TmpStep(Step, step[0]):
                 #    pass
                 #step[0] = TmpStep
 
-            lookups = [self.step_label,self.get_lookup_class().__name__] # no 'General' lookup since in 'General' should only be raw parameters and no step descriptions for children
-            sublookups = [step[1],step[0].get_lookup_class().__name__] # no 'General' lookup
+            # no 'General' lookup since in 'General' should only be raw parameters and no step descriptions for children
+            lookups = [self.step_label, self.get_lookup_class().__name__]
+            # no 'General' lookup
+            sublookups = [step[1], step[0].get_lookup_class().__name__]
 
-            autocalib_settings = self.settings.copy({step[0].get_lookup_class().__name__: self.merge_settings(lookups,sublookups)})
-            update_nested_dictionary(autocalib_settings,step[2].get('settings',{}))
+            autocalib_settings = self.settings.copy(
+                {step[0].get_lookup_class().__name__: self.merge_settings(lookups, sublookups)})
+            update_nested_dictionary(
+                autocalib_settings, step[2].get('settings', {}))
             step[2]['settings'] = autocalib_settings
-
 
         # standard global settings
         delegate_plotting = self.get_param_value('delegate_plotting')
@@ -679,7 +898,7 @@ class AutomaticCalibrationRoutine(Step):
         self.routine_template.global_settings.update(
             {
                 "dev": self.dev,
-                #"qubits": self.qubits,
+                # "qubits": self.qubits,
                 "update": True,  # all subroutines should update relevant params
                 "delegate_plotting": delegate_plotting,
             }
@@ -719,16 +938,20 @@ class AutomaticCalibrationRoutine(Step):
                 f"{self.name}, step {i} "
                 f"({self.routine_template.step_name(index=i)}), preparing..."
             )
-        qubits = step_settings.pop('qubits',self.qubits)
-        dev = step_settings.pop('dev',self.dev)
-        autocalib_settings = self.settings.copy(step_settings.pop('settings',{}))
+        qubits = step_settings.pop('qubits', self.qubits)
+        dev = step_settings.pop('dev', self.dev)
+        autocalib_settings = self.settings.copy(
+            step_settings.pop('settings', {}))
         # Executing the step with corresponding settings
         if issubclass(step_class, qbcal.SingleQubitGateCalibExperiment):
-            step = step_class(qubits=qubits,routine=self, dev=dev, step_label=step_label, settings=autocalib_settings, **step_settings)
+            step = step_class(qubits=qubits, routine=self, dev=dev,
+                              step_label=step_label, settings=autocalib_settings, **step_settings)
         elif issubclass(step_class, IntermediateStep):
-            step = step_class(routine=self, dev=dev,step_label = step_label, qubits=qubits, autorun=False, settings=autocalib_settings, **step_settings)
+            step = step_class(routine=self, dev=dev, step_label=step_label, qubits=qubits,
+                              autorun=False, settings=autocalib_settings, **step_settings)
         elif issubclass(step_class, AutomaticCalibrationRoutine):
-            step = step_class(routine = self, dev=dev, step_label = step_label, qubits=qubits, autorun=False, settings=autocalib_settings, **step_settings)
+            step = step_class(routine=self, dev=dev, step_label=step_label, qubits=qubits,
+                              autorun=False, settings=autocalib_settings, **step_settings)
         else:
             log.error(
                 f"automatic subroutine is not compatible (yet) with the "
@@ -751,9 +974,7 @@ class AutomaticCalibrationRoutine(Step):
 
         settings = self.current_step_settings
 
-
         self.current_step.run()
-
 
         self.routine_steps.append(self.current_step)
         self.current_step_index += 1
@@ -888,46 +1109,7 @@ class AutomaticCalibrationRoutine(Step):
         implementing plausibility checks and falling back to the config file if
         there is no reasonable value set in the qubit object.
         """
-
-        # Adjusting settings with hierarchy
-        # user input > set-up specific settings > default settings
-        #self.settings = {}
-
-        # layer 1: bare default settings (device independent)
-        #self.settings = copy.deepcopy(self._DEFAULT_PARAMETERS)
-
-        # layer 2.1: device specific settings (from qubit object)
-        # SD I put this out of order for the time
-        # if self.kw.get("get_parameters_from_qubit_object", False):
-        #     update_nested_dictionary(
-        #         self.settings, {"Transmon": self.settings_qubit}
-        #     )
-
-        # layer 2.2: device specific settings (from configuration file)
-        #if "parameters_device" in self.kw:
-        # parameters_device = self.kw.pop("parameters_device", {})
-        #else:parameters_init
-        # parameters_device = self.load_parameters_device(self.dev.device_settings_path)
-
-        #update_nested_dictionary(self.settings, parameters_device)
-
-        # layer 3.1: user settings
-        #parameters_user = self.kw.pop("parameters_user", {})
-        #update_nested_dictionary(self.settings, parameters_user)
-
-        #update_nested_dictionary(
-        #    self.settings,
-        #    {
-        #        "General": {"update": self.kw["update"]},
-        #    },
-        #)
-
-
-
-        #layer 3.2: user settings from init
         self.process_kw()
-
-
 
     def create_initial_routine(self, load_parameters=True):
         """
@@ -952,10 +1134,15 @@ class AutomaticCalibrationRoutine(Step):
         # making sure all subroutines update relevant parameters
         self.routine_template.update_all_step_settings({"update": True})
 
-    def final_init(self,**kwargs):
-        
+    def final_init(self, **kwargs):
+        """
+        A function to be called after initialization of all base classes,
+        since some functionality in the init of a routine needs the base
+        classes already initialized.
+
+        """
         # loading hierarchical settings and creating initial routine
-        #if not isinstance(self,AutomaticCalibrationRoutine)
+        # if not isinstance(self,AutomaticCalibrationRoutine)
         self.create_initial_routine(load_parameters=False)
         if self.autorun:
             # FIXME: if the init does not finish the object does not exist and
@@ -1010,8 +1197,9 @@ class AutomaticCalibrationRoutine(Step):
         return settings
 
     def process_kw(self):
-            update_nested_dictionary(
-            self.settings, {self.highest_lookup:{self.highest_sublookup:self.parameters_init}}
+        update_nested_dictionary(
+            self.settings, {self.highest_lookup: {
+                self.highest_sublookup: self.parameters_init}}
         )
 
     def view(self, **kw):
@@ -1076,6 +1264,7 @@ class AutomaticCalibrationRoutine(Step):
         self.routine_template.extend_step_tmp_vals_at_index(
             tmp_vals=tmp_vals, index=index
         )
+
     def add_step(
         self, step_class, step_label, step_settings, step_tmp_vals=None, index=None
     ):
@@ -1180,7 +1369,6 @@ class AutomaticCalibrationRoutine(Step):
             })
         return results
 
-
     @property
     def global_settings(self):
         return self.routine_template.global_settings
@@ -1199,55 +1387,116 @@ class AutomaticCalibrationRoutine(Step):
             except:
                 return "AutomaticCalibration"
 
-
     # initializing necessary attributes, should/can be overridden by children
     _DEFAULT_PARAMETERS = {}
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([])
 
-class RabiStep(qbcal.Rabi,Step):
-    def __init__(self,qubits, routine, **kwargs):
+
+# FIXME these wrappers can probably be collected with an ExperimentStep class to avoid repetition
+class RabiStep(qbcal.Rabi, Step):
+    """
+    A wrapper class for the Rabi experiment.
+    """
+
+    def __init__(self, routine, **kwargs):
+        """
+            Initializes the RabiStep class, which also includes initialization of the 
+            Rabi experiment.
+
+        Arguments:
+            routine (Step obj): The parent routine
+
+        Keywords:
+            qubits (list): list of qubits to be used in the routine
+
+        Configuration parameters (coming from the configuration parameter dictionary):
+            transition_name (str): The transition of the experiment
+            parallel_groups (list): a list of all groups of qubits on which the Rabi measurement
+                can be conducted in parallel
+            v_low: minimum voltage sweep range for the Rabi experiment. Can either be a float or
+                an expression to be evaluated. The expression can contain the following
+                values:
+                    current - the current π pulse amplitude of the qubit
+                    default - the default π pulse amplitude specified in the configuration parameters,
+                        e.g. default ge amp180 for the |g⟩ ↔ |e⟩ transition
+                    max - the maximum drive amplitude specified in the configuration parameters as
+                        max drive amp
+                    n - the keyword for the number of π pulses applied during the Rabi experiment,
+                        specified in the configuration parameters
+                Example:
+                    "v_high": "min(({n} + 0.45) * {current} / {n}, {max})"
+            v_high: maximum voltage sweep range for the Rabi experiment. Can either be a float or
+                an expression to be evaluated. See above.
+            pts: Number of points for the sweep voltage. Can either be a float or
+                an expression to be evaluated. See above.
+            max_drive_amp (float): The maximum drive amplitude.
+            default_<transition>_amp180: A default value for the pi pulse to be set back to.
+            clip_drive_amp (bool): If True, and the determined pi pulse amp is higher than max_drive_amp,
+                it is reset to default_<transition>_amp180
+        """
         self.kw = kwargs
-        Step.__init__(self,qubits = qubits,routine=routine,**kwargs)
+        Step.__init__(self, routine=routine, **kwargs)
         rabi_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.Rabi.__init__(self,dev=self.dev, **rabi_settings)
+        qbcal.Rabi.__init__(self, dev=self.dev, **rabi_settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the Rabi experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the Rabi class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the Rabi class
+        """
         kwargs = {}
         task_list = []
         for qb in self.qubits:
             task = {}
-            task_list_fields= requested_kwargs['task_list_fields']
+            task_list_fields = requested_kwargs['task_list_fields']
 
             transition_name_v = task_list_fields.get('transition_name')
-            tr_name = self.get_param_value('transition_name',qubit=qb.name,default = transition_name_v[1])
+            tr_name = self.get_param_value(
+                'transition_name', qubit=qb.name, default=transition_name_v[1])
             task['transition_name'] = tr_name
 
-            value_params = {'v_low':None,'v_high':None,'pts':None} # could be saved somewhere else
+            value_params = {'v_low': None, 'v_high': None,
+                            'pts': None}  # the information about these custom parametes could be
+            # saved somewhere else to generalize all wrappers
 
-            default = self.get_param_value(f'default_{tr_name}_amp180',qubit=qb.name)
+            default = self.get_param_value(
+                f'default_{tr_name}_amp180', qubit=qb.name)
             current = qb.parameters[f'{tr_name}_amp180']()
-            max = self.get_param_value('max_drive_amp',qubit=qb.name)
-            n = self.get_param_value('n',qubit=qb.name)
+            max = self.get_param_value('max_drive_amp', qubit=qb.name)
+            n = self.get_param_value('n', qubit=qb.name)
 
-            for name,value in value_params.items():
-                value = self.get_param_value(name,qubit=qb.name)
-                if isinstance(value,str):
-                    value = eval(value.format(current=current, max=max, default=default,n=n))
+            for name, value in value_params.items():
+                value = self.get_param_value(name, qubit=qb.name)
+                if isinstance(value, str):
+                    value = eval(value.format(current=current,
+                                 max=max, default=default, n=n))
                 value_params[name] = value
 
-            sweep_points_v = task_list_fields.get('sweep_points',None)
+            sweep_points_v = task_list_fields.get('sweep_points', None)
             if sweep_points_v is not None:
-                sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
-                values = np.linspace(value_params['v_low'],value_params['v_high'],value_params['pts'])
+                # get first dimension (there is only one) TODO: support for more dimensions?
+                sweep_points_kws = next(
+                    iter(self.kw_for_sweep_points.items()))[1]
+                values = np.linspace(
+                    value_params['v_low'], value_params['v_high'], value_params['pts'])
                 task['sweep_points'] = SweepPoints()
-                task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
-            qb_v = task_list_fields.get('qb',None)
+                task['sweep_points'].add_sweep_parameter(
+                    values=values, **sweep_points_kws)
+            qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
 
-            for k,v in task_list_fields.items():
+            for k, v in task_list_fields.items():
                 if k not in task:
-                    task[k] = self.get_param_value(k,qubit=qb.name,default = v[1])
+                    task[k] = self.get_param_value(
+                        k, qubit=qb.name, default=v[1])
 
             task_list.append(task)
 
@@ -1258,8 +1507,9 @@ class RabiStep(qbcal.Rabi,Step):
 
         return kwargs_super
 
-
     def run(self):
+        """Runs the Rabi experiment, the analysis for it and additional postprocessing.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -1267,51 +1517,95 @@ class RabiStep(qbcal.Rabi,Step):
 
         if self.get_param_value('clip_drive_amp'):
             for qb in self.qubits:
-                tr_name = self.get_param_value('transition_name',qubit=qb.name)
-                max_drive_amp = self.get_param_value('max_drive_amp',qubit=qb.name)
+                tr_name = self.get_param_value(
+                    'transition_name', qubit=qb.name)
+                max_drive_amp = self.get_param_value(
+                    'max_drive_amp', qubit=qb.name)
                 if tr_name == 'ge' and qb.ge_amp180() > max_drive_amp:
-                    qb.ge_amp180(self.get_param_value('default_ge_amp180',qubit=qb.name))
+                    qb.ge_amp180(self.get_param_value(
+                        'default_ge_amp180', qubit=qb.name))
                 elif tr_name == 'ef' and qb.ef_amp180() > max_drive_amp:
-                    qb.ef_amp180(self.get_param_value('default_ef_amp180',qubit=qb.name))
+                    qb.ef_amp180(self.get_param_value(
+                        'default_ef_amp180', qubit=qb.name))
 
 
-class RamseyStep(qbcal.Ramsey,Step):
-    def __init__(self,qubits,routine, *args, **kwargs):
+class RamseyStep(qbcal.Ramsey, Step):
+
+    def __init__(self, routine, *args, **kwargs):
+        """
+                Initializes the RamseyStep class, which also includes initialization of the
+                Ramsey experiment.
+
+            Arguments:
+                routine (Step obj): The parent routine
+
+            Keywords:
+                qubits (list): list of qubits to be used in the routine
+
+            Configuration parameters (coming from the configuration parameter dictionary):
+                transition_name (str): The transition of the experiment
+                parallel_groups (list): a list of all groups of qubits on which the Ramsey measurement
+                    can be conducted in parallel
+                t0: Minimum delay time for the Ramsey experiment.
+                delta_t: Duration of the delay time for the Ramsey experiment.
+                n_periods (int): Number of expected oscillation periods in the delay time given with t0 and delta_t.
+                pts_per_period (int): Number of points per period of oscillation. The total points for the sweep
+                    range are n_periods*pts_per_period+1, the artificial detuning is n_periods/delta_t.
+                configure_mux_drive (bool): If the LO frequencies and IFs should of the qubits measured
+                    in this step should be updated afterwards.
+        """
         self.kw = kwargs
-        Step.__init__(self,qubits = qubits,routine=routine, *args, **kwargs)
+        Step.__init__(self, routine=routine, *args, **kwargs)
         ramsey_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.Ramsey.__init__(self,dev=self.dev,**ramsey_settings)
+        qbcal.Ramsey.__init__(self, dev=self.dev, **ramsey_settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the Ramsey experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the Ramsey class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the Ramsey class
+        """
         kwargs = {}
         task_list = []
         for qb in self.qubits:
             task = {}
-            task_list_fields= requested_kwargs['task_list_fields']
+            task_list_fields = requested_kwargs['task_list_fields']
 
-            value_params = {'delta_t': None,'t0': None, 'n_periods': None, 'pts_per_period': None}
-            for name,value in value_params.items():
-                value = self.get_param_value(name,qubit=qb.name)
+            value_params = {'delta_t': None, 't0': None,
+                            'n_periods': None, 'pts_per_period': None}
+            for name, value in value_params.items():
+                value = self.get_param_value(name, qubit=qb.name)
                 value_params[name] = value
 
-            sweep_points_v = task_list_fields.get('sweep_points',None)
+            sweep_points_v = task_list_fields.get('sweep_points', None)
             if sweep_points_v is not None:
-                sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
+                # get first dimension (there is only one) TODO: support for more dimensions?
+                sweep_points_kws = next(
+                    iter(self.kw_for_sweep_points.items()))[1]
                 values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'],
                                      value_params['pts_per_period'] * value_params['n_periods'] + 1)
                 task['sweep_points'] = SweepPoints()
-                task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
+                task['sweep_points'].add_sweep_parameter(
+                    values=values, **sweep_points_kws)
 
-            ad_v = task_list_fields.get('artificial_detuning',None)
+            ad_v = task_list_fields.get('artificial_detuning', None)
             if ad_v is not None:
-                task['artificial_detuning'] = value_params['n_periods'] / value_params['delta_t']
-            qb_v = task_list_fields.get('qb',None)
+                task['artificial_detuning'] = value_params['n_periods'] / \
+                    value_params['delta_t']
+            qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
 
-            for k,v in task_list_fields.items():
+            for k, v in task_list_fields.items():
                 if k not in task:
-                    task[k] = self.get_param_value(k,qubit=qb.name,default = v[1])
+                    task[k] = self.get_param_value(
+                        k, qubit=qb.name, default=v[1])
 
             task_list.append(task)
 
@@ -1323,6 +1617,8 @@ class RamseyStep(qbcal.Ramsey,Step):
         return kwargs_super
 
     def run(self):
+        """Runs the Ramsey experiment, the analysis for it and additional postprocessing.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -1386,14 +1682,47 @@ class RamseyStep(qbcal.Ramsey,Step):
                             value=qubit_results['T2_echo']))
         return results
 
-class ReparkingRamseyStep(qbcal.ReparkingRamsey,Step):
-    def __init__(self, qubits, routine, *args, **kwargs):
+
+class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
+
+    def __init__(self, routine, *args, **kwargs):
+        """
+            Initializes the ReparkingRamseyStep class, which also includes initialization of the
+            ReparkingRamsey experiment.
+
+        Arguments:
+            routine (Step obj): The parent routine
+
+        Keywords:
+            qubits (list): list of qubits to be used in the routine
+
+        Configuration parameters (coming from the configuration parameter dictionary):
+            transition_name (str): The transition of the experiment
+            parallel_groups (list): a list of all groups of qubits on which the ReparkingRamsey experiment
+                can be conducted in parallel
+            t0: Minimum delay time for the ReparkingRamsey experiment.
+            delta_t: Duration of the delay time for the ReparkingRamsey experiment.
+            n_periods (int): Number of expected oscillation periods in the delay time given with t0 and delta_t.
+            pts_per_period (int): Number of points per period of oscillation. The total points for the sweep
+                range are n_periods*pts_per_period+1, the artificial detuning is n_periods/delta_t.
+    """
         self.kw = kwargs
-        Step.__init__(self, qubits=qubits, routine=routine, *args, **kwargs)
+        Step.__init__(self, routine=routine, *args, **kwargs)
         settings = self.parse_settings(self.get_requested_settings())
         qbcal.ReparkingRamsey.__init__(self, dev=self.dev, **settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the ReparkingRamsey experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the ReparkingRamsey class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the ReparkingRamsey class
+        """
         kwargs = {}
         task_list = []
         for qb in self.qubits:
@@ -1404,31 +1733,39 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey,Step):
             value_params = {'delta_t': None, 't0': None, 'n_periods': None, 'pts_per_period': None,
                             'dc_voltage_offsets': []}
             for name, value in value_params.items():
-                value = self.get_param_value(name,qubit=qb.name)
+                value = self.get_param_value(name, qubit=qb.name)
                 value_params[name] = value
             dc_voltage_offsets = value_params['dc_voltage_offsets']
             if isinstance(dc_voltage_offsets, dict):
-                dc_voltage_offsets = np.linspace(dc_voltage_offsets['low'], dc_voltage_offsets['high'], dc_voltage_offsets['pts'])
+                dc_voltage_offsets = np.linspace(
+                    dc_voltage_offsets['low'], dc_voltage_offsets['high'], dc_voltage_offsets['pts'])
             task['dc_voltage_offsets'] = dc_voltage_offsets
 
-            sweep_points_v = task_list_fields.get('sweep_points',None)
+            sweep_points_v = task_list_fields.get('sweep_points', None)
             if sweep_points_v is not None:
-                sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
-                values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'], value_params['pts_per_period'] * value_params['n_periods']+1)
+                # get first dimension (there is only one) TODO: support for more dimensions?
+                sweep_points_kws = next(
+                    iter(self.kw_for_sweep_points.items()))[1]
+                values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'],
+                                     value_params['pts_per_period'] * value_params['n_periods']+1)
                 task['sweep_points'] = SweepPoints()
-                task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
+                task['sweep_points'].add_sweep_parameter(
+                    values=values, **sweep_points_kws)
 
-            ad_v = task_list_fields.get('artificial_detuning',None)
+            ad_v = task_list_fields.get('artificial_detuning', None)
             if ad_v is not None:
-                task['artificial_detuning'] = value_params['n_periods'] / value_params['delta_t']
-            qb_v = task_list_fields.get('qb',None)
+                task['artificial_detuning'] = value_params['n_periods'] / \
+                    value_params['delta_t']
+            qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
-                task['fluxline'] = self.get_param_value('fluxlines_dict')[qb.name]
+                task['fluxline'] = self.get_param_value(
+                    'fluxlines_dict')[qb.name]
 
-            for k,v in task_list_fields.items():
+            for k, v in task_list_fields.items():
                 if k not in task:
-                    task[k] = self.get_param_value(k,qubit=qb.name,default = v[1])
+                    task[k] = self.get_param_value(
+                        k, qubit=qb.name, default=v[1])
 
             task_list.append(task)
 
@@ -1440,47 +1777,83 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey,Step):
         return kwargs_super
 
     def run(self):
+        """Runs the Ramsey experiment and the analysis for it.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
             self.run_update()
 
 
-class T1Step(qbcal.T1,Step):
+class T1Step(qbcal.T1, Step):
 
-    def __init__(self,qubits, routine, *args, **kwargs):
+    def __init__(self, routine, *args, **kwargs):
+        """
+                Initializes the T1Step class, which also includes initialization of the
+                T1 experiment.
+
+            Arguments:
+                routine (Step obj): The parent routine
+
+            Keywords:
+                qubits (list): list of qubits to be used in the routine
+
+            Configuration parameters (coming from the configuration parameter dictionary):
+                transition_name (str): The transition of the experiment
+                parallel_groups (list): a list of all groups of qubits on which the T1 experiment
+                    can be conducted in parallel
+                t0: Minimum delay time for the T1 experiment.
+                delta_t: Duration of the delay time for the T1 experiment.
+                pts (int): Number of points for the sweep range of the delay time.
+        """
         self.kw = kwargs
-        Step.__init__(self,qubits = qubits,routine=routine, *args, **kwargs)
+        Step.__init__(self, routine=routine, *args, **kwargs)
         t1_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.T1.__init__(self,dev=self.dev,**t1_settings)
+        qbcal.T1.__init__(self, dev=self.dev, **t1_settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the T1 experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the T1 class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the T1 class
+        """
         kwargs = {}
         task_list = []
         for qb in self.qubits:
             task = {}
-            task_list_fields= requested_kwargs['task_list_fields']
+            task_list_fields = requested_kwargs['task_list_fields']
 
             value_params = {'t0': None, 'delta_t': None, 'pts': None}
 
-            for name,value in value_params.items():
-                value = self.get_param_value(name,qubit=qb.name)
+            for name, value in value_params.items():
+                value = self.get_param_value(name, qubit=qb.name)
                 value_params[name] = value
 
-            sweep_points_v = task_list_fields.get('sweep_points',None)
+            sweep_points_v = task_list_fields.get('sweep_points', None)
             if sweep_points_v is not None:
-                sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
-                values = np.linspace(value_params['t0'], value_params['t0'] + value_params['delta_t'], value_params['pts'])
+                # get first dimension (there is only one) TODO: support for more dimensions?
+                sweep_points_kws = next(
+                    iter(self.kw_for_sweep_points.items()))[1]
+                values = np.linspace(
+                    value_params['t0'], value_params['t0'] + value_params['delta_t'], value_params['pts'])
                 task['sweep_points'] = SweepPoints()
-                task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
+                task['sweep_points'].add_sweep_parameter(
+                    values=values, **sweep_points_kws)
 
-            qb_v = task_list_fields.get('qb',None)
+            qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
 
-            for k,v in task_list_fields.items():
+            for k, v in task_list_fields.items():
                 if k not in task:
-                    task[k] = self.get_param_value(k,qubit=qb.name,default = v[1])
+                    task[k] = self.get_param_value(
+                        k, qubit=qb.name, default=v[1])
 
             task_list.append(task)
 
@@ -1491,9 +1864,9 @@ class T1Step(qbcal.T1,Step):
 
         return kwargs_super
 
-
-
     def run(self):
+        """Runs the T1 experiment and the analysis for it.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -1531,42 +1904,78 @@ class T1Step(qbcal.T1,Step):
         return results
 
 
-class QScaleStep(qbcal.QScale,Step):
-    def __init__(self,qubits,routine, *args, **kwargs):
+class QScaleStep(qbcal.QScale, Step):
+    """
+    A wrapper class for the QScale experiment.
+
+            Arguments:
+                routine (Step obj): The parent routine
+
+            Keywords:
+                qubits (list): list of qubits to be used in the routine
+
+            Configuration parameters (coming from the configuration parameter dictionary):
+                transition_name (str): The transition of the experiment
+                parallel_groups (list): a list of all groups of qubits on which the T1 experiment
+                    can be conducted in parallel
+                v_low: Minimum of the sweep range for the qscale parameter. 
+                v_high:  Maximum of the sweep range for the qscale parameter. 
+                pts (int): Number of points for the sweep range.
+                configure_mux_drive (bool): If the LO frequencies and IFs should of the qubits measured
+                    in this step should be updated afterwards.
+        """
+
+    def __init__(self, routine, *args, **kwargs):
         self.kw = kwargs
-        Step.__init__(self,qubits = qubits,routine=routine, *args, **kwargs)
+        Step.__init__(self, routine=routine, *args, **kwargs)
         qscale_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.QScale.__init__(self,dev=self.dev,**qscale_settings)
+        qbcal.QScale.__init__(self, dev=self.dev, **qscale_settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the QScale experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the QScale class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the QScale class
+        """
         kwargs = {}
         task_list = []
         for qb in self.qubits:
             task = {}
-            task_list_fields= requested_kwargs['task_list_fields']
+            task_list_fields = requested_kwargs['task_list_fields']
 
             value_params = {'v_low': None, 'v_high': None, 'pts': None}
 
-            for name,value in value_params.items():
-                value = self.get_param_value(name,qubit=qb.name)
+            for name, value in value_params.items():
+                value = self.get_param_value(name, qubit=qb.name)
                 value_params[name] = value
 
-            sweep_points_v = task_list_fields.get('sweep_points',None)
+            sweep_points_v = task_list_fields.get('sweep_points', None)
             if sweep_points_v is not None:
-                sweep_points_kws = next(iter(self.kw_for_sweep_points.items()))[1] # get first dimension (there is only one) TODO: support for more dimensions?
-                values = np.linspace(value_params['v_low'], value_params['v_high'], value_params['pts'])
+                # get first dimension (there is only one) TODO: support for more dimensions?
+                sweep_points_kws = next(
+                    iter(self.kw_for_sweep_points.items()))[1]
+                values = np.linspace(
+                    value_params['v_low'], value_params['v_high'], value_params['pts'])
                 task['sweep_points'] = SweepPoints()
                 # FIXME:why is values_func an invalid paramteter, if it is in kw_for_sweep_points?
-                sweep_points_kws.pop('values_func',None)
-                task['sweep_points'].add_sweep_parameter(values=values,**sweep_points_kws)
+                sweep_points_kws.pop('values_func', None)
+                task['sweep_points'].add_sweep_parameter(
+                    values=values, **sweep_points_kws)
 
-            qb_v = task_list_fields.get('qb',None)
+            qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
 
-            for k,v in task_list_fields.items():
+            for k, v in task_list_fields.items():
                 if k not in task:
-                    task[k] = self.get_param_value(k,qubit=qb.name,default = v[1])
+                    task[k] = self.get_param_value(
+                        k, qubit=qb.name, default=v[1])
 
             task_list.append(task)
 
@@ -1578,6 +1987,8 @@ class QScaleStep(qbcal.QScale,Step):
         return kwargs_super
 
     def run(self):
+        """Runs the QScale experiment, the analysis for it and some postprocessing.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -1589,14 +2000,25 @@ class QScaleStep(qbcal.QScale,Step):
             configure_qubit_mux_drive(self.qubits, drive_lo_freqs)
 
 
-class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib,Step):
-    def __init__(self,qubits,routine, *args, **kwargs):
+class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
+    def __init__(self, routine, *args, **kwargs):
         self.kw = kwargs
-        Step.__init__(self,qubits = qubits,routine=routine, *args, **kwargs)
+        Step.__init__(self, routine=routine, *args, **kwargs)
         ip_calib_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.InPhaseAmpCalib.__init__(self,dev=self.dev,**ip_calib_settings)
+        qbcal.InPhaseAmpCalib.__init__(self, dev=self.dev, **ip_calib_settings)
 
     def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the InPhaseAmpCalib experiment given in requested_kwargs
+        in the configuration parameter dictionary.
+
+        Args:
+            requested_kwargs (dict): Dictionary containing the names of the keywords
+            needed for the InPhaseAmpCalib class.
+
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed to the InPhaseAmpCalib class
+        """
         kwargs = {}
 
         kwargs_super = super().parse_settings(requested_kwargs)
@@ -1605,11 +2027,19 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib,Step):
         return kwargs_super
 
     def get_requested_settings(self):
+        """Add additional keywords to be passed to the InPhaseAmpCalib class.
+
+        Returns:
+            dict: Dictionary containing names  and default values 
+                of the keyword arguments to be passed to the InPhaseAmpCalib class.
+        """
         settings = super().get_requested_settings()
-        settings['kwargs']['n_pulses'] = (int,100)
+        settings['kwargs']['n_pulses'] = (int, 100)
         return settings
 
     def run(self):
+        """Runs the InPhaseAmpCalib experiment and the analysis for it.
+        """
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -1626,36 +2056,24 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
 
     def __init__(
         self,
-        qubits,
+        dev,
         **kw,
     ):
         """
         Pipulse calibration routine consisting of one Rabi and one Ramsey
 
         Args:
-            qubits: qubits on which to perform the measurement
-            rabi_amps: list of amplitudes for the Rabi experiment
-            ramsey_delays: list of delays for the Ramsey experiment
-            artificial_detuning: artificial detuning for the Ramsey
-            transition: transition used for the Pi-pulse calibration experiment
-            autorun: whether to automatically run the routine
+            dev (Device obj): the device which is currently measured
 
         Keyword Arguments:
-            pts: number of points to use for the Rabi experiment
-            v_high: high voltage for the Rabi experiment
-            v_low: low voltage for the Rabi experiment
-            delta_t: difference between final and initial time in Ramsey
-                measurement
-            t0: initial time in Ramsey measurement
-            n_periods: number of periods
-            pts_per_period: number of points per period
-        """
+            qubits: qubits on which to perform the measurement
 
+        """
 
         # arguments that are not arguments of the super init will be considered
         # as key words for the super init.
         super().__init__(
-            qubits=qubits,
+            dev=dev,
             **kw,
         )
         self.final_init(**kw)
@@ -1669,15 +2087,16 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         detailed_routine_template = copy.copy(self.routine_template)
         detailed_routine_template.clear()
 
-
         for step in self.routine_template:
             step_class = step[0]
             settings = copy.deepcopy(step[2])
             label = step[1]
 
-            lookups = [label, step_class.get_lookup_class().__name__, 'General']
-            for parallel_group in self.get_param_value('parallel_groups',sublookups=lookups,leaf=True):
-                qubits_filtered = [qb for qb in self.qubits if qb.name is parallel_group or parallel_group in self.get_qubit_groups(qb.name)]
+            lookups = [label, step_class.get_lookup_class().__name__,
+                       'General']
+            for parallel_group in self.get_param_value('parallel_groups', sublookups=lookups, leaf=True):
+                qubits_filtered = [
+                    qb for qb in self.qubits if qb.name is parallel_group or parallel_group in self.get_qubit_groups(qb.name)]
                 if len(qubits_filtered) != 0:
                     temp_settings = copy.deepcopy(settings)
                     temp_settings['qubits'] = qubits_filtered
@@ -1685,18 +2104,16 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
                     for qb in qubits_filtered:
                         qubit_label += qb.name
 
-                    detailed_routine_template.add_step(step_class, qubit_label,temp_settings)
+                    detailed_routine_template.add_step(
+                        step_class, qubit_label, temp_settings)
 
         self.routine_template = detailed_routine_template
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [RabiStep, 'rabi', {}],
         [RamseyStep, 'ramsey', {}],
-        
+
     ])
-
-
-
 
 
 class FindFrequency(AutomaticCalibrationRoutine):
@@ -1706,6 +2123,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
     def __init__(
         self,
+        dev,
         qubits,
         **kw,
     ):
@@ -1713,12 +2131,8 @@ class FindFrequency(AutomaticCalibrationRoutine):
         Routine to find frequency of a given transmon transition.
 
         Args:
+            dev (Device obj): the device which is currently measured
             qubits: list of qubits to be calibrated
-            transition: transition to be calibrated
-            adaptive: whether to use adaptive rabi and ramsey settings
-            allowed_difference: allowed frequency difference in Hz between
-                old and new frequency (convergence criterion)
-            max_iterations: maximum number of iterations
 
         Keyword Arguments:
             autorun: whether to run the routine automatically
@@ -1731,6 +2145,15 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 Ramsey
             artificial_detuning: artificial detuning for the initial Ramsey
                 experiment
+
+
+        Configuration parameters (coming from the configuration parameter dictionary):
+            transition_name: transition to be calibrated
+            adaptive: whether to use adaptive rabi and ramsey settings
+            allowed_difference: allowed frequency difference in Hz between
+                old and new frequency (convergence criterion)
+            max_iterations: maximum number of iterations
+            autorun: whether to run the routine automatically
             f_factor: factor to multiply the frequency by (only relevant
                 for displaying results)
             f_unit: unit of the frequency (only relevant for displaying
@@ -1744,10 +2167,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
          more details.
         """
         super().__init__(
+            dev=dev,
             qubits=qubits,
             **kw,
         )
-        if len(qubits)>1:
+        if len(qubits) > 1:
             raise ValueError("Currently only one qubit is allowed.")
 
         # defining initial and allowed frequency difference
@@ -1761,7 +2185,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         # FIXME the current implementation uses different parameters
 
         # writing keyword arguments into correct categroty of parameters dict
-        #for x in ["rabi_amps", "ramsey_delays", "artificial_detuning"]:
+        # for x in ["rabi_amps", "ramsey_delays", "artificial_detuning"]:
         #    self.settings["PiPulseCalibration"][x] = self.kw.pop(
         #        x, self.settings["PiPulseCalibration"][x]
         #    )
@@ -1769,7 +2193,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         return parameters
 
     class Decision(IntermediateStep):
-        def __init__(self, qubits, routine,index, **kw):
+        def __init__(self, routine, index, **kw):
             """
             Decision step that decides to add another round of Rabi-Ramsey to
             the FindFrequency routine based on the difference between the
@@ -1782,11 +2206,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 index: index of the decision step (necessary to find the
                     position of the Ramsey measurement in the routine)
 
-            Keyword Arguments:
+           Configuration parameters (coming from the configuration parameter dictionary):
                 max_waiting_seconds: maximum number of seconds to wait for the
                     results of the previous Ramsey experiment to arrive.
             """
-            super().__init__(qubits, routine=routine, index=index, **kw)
+            super().__init__(routine=routine, index=index, **kw)
             # FIXME use general parameters from FindFrequency for now
             self.parameter_lookups = self.routine.parameter_lookups
             self.parameter_sublookups = self.routine.parameter_sublookups
@@ -1876,7 +2300,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
                 routine.add_next_pipulse_step(index=index + 1)
 
-                step_settings = {'index': index+2,'qubits': self.qubits }
+                step_settings = {'index': index+2, 'qubits': self.qubits}
                 routine.add_step(
                     FindFrequency.Decision,
                     'decision',
@@ -1914,11 +2338,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
         super().create_routine_template()
 
         pipulse_settings = {'qubits': self.qubits}
-        self.add_step(PiPulseCalibration, 'pi_pulse_calibration',pipulse_settings)
+        self.add_step(PiPulseCalibration,
+                      'pi_pulse_calibration', pipulse_settings)
 
         # Decision step
         decision_settings = {"index": 1}
-        self.add_step(self.Decision,'decision', decision_settings)
+        self.add_step(self.Decision, 'decision', decision_settings)
 
     def add_next_pipulse_step(self, index):
         """
@@ -1931,14 +2356,14 @@ class FindFrequency(AutomaticCalibrationRoutine):
         transition = self.get_param_value('transition_name')
 
         #rabi_amps = self.settings["PiPulseCalibration"].get("rabi_amps", None)
-        #ramsey_delays = self.settings["PiPulseCalibration"].get(
+        # ramsey_delays = self.settings["PiPulseCalibration"].get(
         #    "ramsey_delays", None
-        #)
-        #artificial_detuning = self.settings["PiPulseCalibration"].get(
+        # )
+        # artificial_detuning = self.settings["PiPulseCalibration"].get(
         #    "artificial_detuning", None
-        #)
+        # )
 
-        #if not adaptive:
+        # if not adaptive:
         #    if ramsey_delays is None or artificial_detuning is None:
         #        raise ValueError(
         #            "If adaptive is False, rabi_amps, ramsey_delays"
@@ -1959,18 +2384,17 @@ class FindFrequency(AutomaticCalibrationRoutine):
             else:
                 raise ValueError('transition must either be "ge" or "ef"')
 
-            #This has to be solved differently now
+            # This has to be solved differently now
             # Amplitudes for Rabi
             # 1) if passed in init
             # 2) v_high based on current pi-pulse amplitude
             # 3) v_high based on default value
-            #if rabi_amps is None:
+            # if rabi_amps is None:
             if amp180:
                 settings['Rabi']['v_max'] = amp180
 
-
             # Delays and artificial detuning for Ramsey
-            #if ramsey_delays is None or artificial_detuning is None:
+            # if ramsey_delays is None or artificial_detuning is None:
             # defining delta_t for Ramsey
             # 1) if passed in init
             # 2) based on T2_star
@@ -1978,25 +2402,10 @@ class FindFrequency(AutomaticCalibrationRoutine):
             if self.get_param_value("use_T2_star"):
                 settings['Ramsey']['delta_t'] = T2_star
 
-
-            # (
-            #     ramsey_delays,
-            #     artificial_detuning,
-            # ) = PiPulseCalibration.ramseyParameters(
-            #     delta_t=delta_t,
-            #     t0=self.settings["PiPulseCalibration"]["t0"],
-            #     n_periods=self.settings["PiPulseCalibration"][
-            #         "n_periods"
-            #     ],
-            #     pts_per_period=self.settings["PiPulseCalibration"][
-            #         "pts_per_period"
-            #     ],
-            # )
-
         self.add_step(
             *[
                 PiPulseCalibration,
-                'pi_pulse_calibration_'+ str(index),
+                'pi_pulse_calibration_' + str(index),
                 {
                     'settings': settings
                 },
@@ -2011,6 +2420,7 @@ class HamiltonianFitting(
 
     def __init__(
         self,
+        dev,
         qubit,
         fluxlines_dict,
         **kw,
@@ -2020,15 +2430,10 @@ class HamiltonianFitting(
         model for a transmon qubit.
 
         Args:
-            qubits: qubits to perform the calibration on. Note! Only supports
+            qubit: qubit to perform the calibration on. Note! Only supports
                 one qubit input.
             fluxlines_dict: fluxlines_dict object for accessing and changing
                 the dac voltages (needed in reparking ramsey)
-            use_prior_model: whether to use the prior model (stored in qubit
-                object) to determine the guess frequencies and voltages for the
-                flux values of the measurement. If True,
-                flux_to_voltage_and_freq_guess will automatically be generated
-                using this model (and can be left None).
             measurements: dictionary containing the fluxes and transitions to
                 measure for determining the Hamiltonian model. See default
                 below on how to input the dictionary. The measurements must
@@ -2069,7 +2474,12 @@ class HamiltonianFitting(
             save_instrument_settings: boolean to designate if instrument
                 settings should be saved before and after this (sub)routine
 
-        Keyword Arguments:
+        Configuration parameters (coming from the configuration parameter dictionary):
+            use_prior_model: whether to use the prior model (stored in qubit
+                object) to determine the guess frequencies and voltages for the
+                flux values of the measurement. If True,
+                flux_to_voltage_and_freq_guess will automatically be generated
+                using this model (and can be left None).
             delegate_plotting: whether to delegate plotting to the
                 `plotting` module. The variable is stored in the global settings
                 and the default value is False.
@@ -2086,6 +2496,9 @@ class HamiltonianFitting(
                 for the skewness.
             mixer_calib_skewness_settings: Settings for the mixer calibration
                 for the skewness.
+
+            get_parameters_from_qubit_object: if True, the routine will try to
+                get the parameters from the qubit object. Default is False.
 
         FIXME If the guess is very rough, it might be good to have an option to
         run a qubit spectroscopy before. This could be included in the future
@@ -2105,14 +2518,16 @@ class HamiltonianFitting(
         """
 
         super().__init__(
+            dev=dev,
             qubits=[qubit],
-            fluxlines_dict = fluxlines_dict,
+            fluxlines_dict=fluxlines_dict,
             **kw,
         )
 
-        use_prior_model=self.get_param_value('use_prior_model')
-        measurements=self.get_param_value('measurements')
-        flux_to_voltage_and_freq_guess=self.get_param_value('flux_to_voltage_and_freq_guess')
+        use_prior_model = self.get_param_value('use_prior_model')
+        measurements = self.get_param_value('measurements')
+        flux_to_voltage_and_freq_guess = self.get_param_value(
+            'flux_to_voltage_and_freq_guess')
 
         if not use_prior_model:
             assert (
@@ -2129,7 +2544,6 @@ class HamiltonianFitting(
 
         # routine attributes
         self.fluxlines_dict = fluxlines_dict
-        
 
         self.measurements = {
             float(k): tuple(transition_to_str(t) for t in v)
@@ -2148,7 +2562,6 @@ class HamiltonianFitting(
 
         # Guesses for voltage and frequency
         # determine sweet spot fluxes
-        
 
         self.ss1_flux, self.ss2_flux, *rest = self.measurements.keys()
         assert self.ss1_flux % 0.5 == 0 and self.ss2_flux % 0.5 == 0, (
@@ -2189,7 +2602,8 @@ class HamiltonianFitting(
         self.fluxes_without_guess = list(y - x)
 
         if self.get_param_value("get_parameters_from_qubit_object", False):
-            update_nested_dictionary(self.settings,{self.highest_lookup:{"General":self.parameters_qubit}})
+            update_nested_dictionary(self.settings, {self.highest_lookup: {
+                                     "General": self.parameters_qubit}})
 
         self.final_init(**kw)
 
@@ -2219,8 +2633,8 @@ class HamiltonianFitting(
         for x in ["method"]:
             v = self.kw.pop(x, None)
             if v:
-                update_nested_dictionary(self.settings,{self.highest_lookup:{"DetermineModel":{x:v}}})
-
+                update_nested_dictionary(
+                    self.settings, {self.highest_lookup: {"DetermineModel": {x: v}}})
 
         return super().parameters_init
 
@@ -2233,11 +2647,11 @@ class HamiltonianFitting(
         qubit = self.qubit
 
         # Measurements at fluxes with provided guess voltage/freq
-        for i,flux in enumerate([
+        for i, flux in enumerate([
             self.ss1_flux,
             self.ss2_flux,
             *self.other_fluxes_with_guess,
-        ],1):
+        ], 1):
             # Getting the guess voltage and frequency
             voltage_guess, ge_freq_guess = self.flux_to_voltage_and_freq_guess[
                 flux
@@ -2246,36 +2660,36 @@ class HamiltonianFitting(
             # Setting bias voltage to the guess voltage
             step_label = 'set_bias_voltage_' + str(i)
             settings = {step_label: {"voltage": voltage_guess}}
-            step_settings = {'settings':settings}
+            step_settings = {'settings': settings}
             self.add_step(self.SetBiasVoltage, step_label, step_settings)
 
             for transition in self.measurements[flux]:
                 # ge-transitions
                 if transition == "ge":
 
-                    step_label = 'update_frequency_' + transition + '_' + str(i)
+                    step_label = 'update_frequency_' + \
+                        transition + '_' + str(i)
                     # Updating ge-frequency at this voltage to guess value
                     settings = {step_label: {
-                            "frequency": ge_freq_guess,
-                            "transition_name": transition,
-                            #"use_prior_model": self.get_param_value('use_prior_model')
-                        }}
-                    step_settings = {'settings':settings}
+                        "frequency": ge_freq_guess,
+                        "transition_name": transition,
+                        # "use_prior_model": self.get_param_value('use_prior_model')
+                    }}
+                    step_settings = {'settings': settings}
                     self.add_step(
                         self.UpdateFrequency,
                         step_label,
                         step_settings
                     )
 
-                    
                     # Finding the ge-transition frequency at this voltage
                     find_freq_settings = {
                         "transition_name": transition,
                     }
-                    # Commented this block out as it should work without this 
-                    #find_freq_settings.update(
+                    # Commented this block out as it should work without this
+                    # find_freq_settings.update(
                     #    self.settings["FindFrequency"][transition]
-                    #)
+                    # )
                     step_label = 'find_frequency_' + transition + '_' + str(i)
                     self.add_step(
                         FindFrequency,
@@ -2293,7 +2707,8 @@ class HamiltonianFitting(
 
                         self.add_step(
                             ReparkingRamseyStep,
-                            'reparking_ramsey_' + ('1' if flux == self.ss1_flux else '2'),
+                            'reparking_ramsey_' +
+                            ('1' if flux == self.ss1_flux else '2'),
                             {},
                             step_tmp_vals=ro_flux_tmp_vals(
                                 qubit, v_park=voltage_guess, use_ro_flux=True
@@ -2307,7 +2722,7 @@ class HamiltonianFitting(
                             step_label,
                             {
                                 "index_reparking": len(self.routine_template) - 1,
-                                "settings":{step_label:{"flux": flux}},
+                                "settings": {step_label: {"flux": flux}},
                             },
                         )
 
@@ -2315,11 +2730,11 @@ class HamiltonianFitting(
                     # Updating ef-frequency at this voltage to guess value
                     step_label = 'update_frequency_' + transition
                     settings = {step_label: {
-                            "flux": flux,
-                            "transition_name": transition,
-                            #"use_prior_model": self.get_param_value('use_prior_model')
-                        }}
-                    step_settings = {'settings':settings}
+                        "flux": flux,
+                        "transition_name": transition,
+                        # "use_prior_model": self.get_param_value('use_prior_model')
+                    }}
+                    step_settings = {'settings': settings}
                     self.add_step(
                         self.UpdateFrequency,
                         step_label,
@@ -2340,16 +2755,15 @@ class HamiltonianFitting(
                         ),
                     )
 
-                    
-
         if not self.get_param_value("use_prior_model"):
             # Determining preliminary model - based on partial data and routine
             # parameters (e.g. fabrication parameters or user input)
             step_label = 'determine_model_preliminary'
             settings = {step_label: {
-                    "include_resonator": self.get_param_value('use_prior_model') #should never be True
-                }}
-            step_settings = {'settings':settings}
+                # should never be True
+                "include_resonator": self.get_param_value('use_prior_model')
+            }}
+            step_settings = {'settings': settings}
             self.add_step(
                 self.DetermineModel,
                 step_label,
@@ -2357,10 +2771,11 @@ class HamiltonianFitting(
             )
 
         # Measurements at other flux values (using preliminary or prior model)
-        for i,flux in enumerate(self.fluxes_without_guess,len(self.other_fluxes_with_guess)+2):
+        for i, flux in enumerate(self.fluxes_without_guess, len(self.other_fluxes_with_guess)+2):
             # Updating bias voltage using earlier reparking measurements
             step_label = 'set_bias_voltage_'+str(i)
-            self.add_step(self.SetBiasVoltage, step_label, {'settings':{step_label:{"flux": flux}}})
+            self.add_step(self.SetBiasVoltage, step_label, {
+                          'settings': {step_label: {"flux": flux}}})
 
             # Looping over all transitions
             for transition in self.measurements[flux]:
@@ -2368,15 +2783,16 @@ class HamiltonianFitting(
                 # Updating transition frequency of the qubit object to the value
                 # calculated by prior or preliminary model
                 step_label = 'update_frequency_'+transition+'_'+str(i)
-                settings = {'settings':{step_label: {
+                settings = {'settings': {step_label: {
                     "flux": flux,
                     "transition": transition,
-                    "use_prior_model":True
+                    "use_prior_model": True
                 }}}
                 self.add_step(self.UpdateFrequency, step_label, settings)
 
                 # Set temporary values for Find Frequency
-                step_label = 'set_tmp_values_flux_pulse_ro_'+transition+'_'+str(i)
+                step_label = 'set_tmp_values_flux_pulse_ro_' + \
+                    transition+'_'+str(i)
                 settings = {step_label: {
                     "flux_park": flux,
                 }}
@@ -2395,7 +2811,7 @@ class HamiltonianFitting(
                 self.add_step(
                     FindFrequency,
                     step_label,
-                    {"settings":{step_label:{'transition_name':transition}}},
+                    {"settings": {step_label: {'transition_name': transition}}},
                     step_tmp_vals=ro_flux_tmp_vals(
                         qubit, v_park=voltage_guess, use_ro_flux=True
                     ),
@@ -2410,14 +2826,14 @@ class HamiltonianFitting(
 
         # Interweave routine if the user wants to include mixer calibration
         # FIXME taken out right now
-        #self.add_mixer_calib_steps(**self.kw)
+        # self.add_mixer_calib_steps(**self.kw)
 
     def add_mixer_calib_steps(self, **kw):
         """
         Add steps to calibrate the mixer after the rest of the routine is
         defined. Mixer calibrations are put after every UpdateFrequency step.
 
-        Keyword arguments:
+        Configuration parameters (coming from the configuration parameter dictionary):
             include_mixer_calib_carrier: If True, include mixer calibration
                 for the carrier.
             mixer_calib_carrier_settings: Settings for the mixer calibration
@@ -2482,13 +2898,15 @@ class HamiltonianFitting(
                 i += 1
 
     class UpdateFluxToVoltage(IntermediateStep):
-        def __init__(self, qubits, index_reparking, **kw):
+        def __init__(self, index_reparking, **kw):
             """
             Intermediate step that updates the flux_to_voltage_and_freq
             dictionary using prior ReparkingRamsey measurements.
 
             Arguments:
-                routine: the routine to which this step belongs
+                index_reparking: The index of the ReparkingRamsey step before
+
+            Configuration parameters (coming from the configuration parameter dictionary):
                 flux: the flux to update the voltage and frequency for using the
                     ReparkingRamsey results
 
@@ -2499,7 +2917,7 @@ class HamiltonianFitting(
             # arguments that are not arguments of the super init will be considered
             # as key words for the super init.
             super().__init__(
-                qubits,  index_reparking=index_reparking, **kw
+                index_reparking=index_reparking, **kw
             )
 
         def run(self):
@@ -2540,16 +2958,18 @@ class HamiltonianFitting(
             )
 
     class UpdateFrequency(IntermediateStep):
-        def __init__(self, qubits, **kw):
+        def __init__(self, **kw):
             """
             Updates the frequency of the specified transition.
 
-            Args:
+            Keywords:
                 routine (Routine): the routine to which this step belongs
-                frequency (float): frequency to which the qubit should be set
-                transition (str): transition to be updated
 
-            key word arguments:
+
+            Configuration parameters (coming from the configuration parameter dictionary):
+
+                frequency (float): frequency to which the qubit should be set
+                transition_name (str): transition to be updated
                 use_prior_model: if True, the frequency is updated using the
                     Hamiltonian model. If False, the frequency is updated using
                     the specified frequency.
@@ -2566,16 +2986,17 @@ class HamiltonianFitting(
             flux_to_voltage_and_freq should/could be used here.
             """
 
-            super().__init__(
-                qubits,
-                **kw,
-            )
             # arguments that are not arguments of the super init will be
             # considered as key words for the super init.
+            super().__init__(
+                **kw,
+            )
 
             # transition and frequency
-            self.transition = self.get_param_value('transition_name')  # default is "ge"
-            self.frequency = self.get_param_value('frequency')  # default is None
+            self.transition = self.get_param_value(
+                'transition_name')  # default is "ge"
+            self.frequency = self.get_param_value(
+                'frequency')  # default is None
             self.flux = self.get_param_value('flux')
             self.voltage = self.get_param_value('voltage')
 
@@ -2585,8 +3006,6 @@ class HamiltonianFitting(
                 and self.voltage is None
             ), "No transition, frequency or voltage specified. At least one of "
             "these should be specified."
-
-
 
         def run(self):
             """
@@ -2643,7 +3062,7 @@ class HamiltonianFitting(
             qb[f"{self.transition}_freq"](frequency)
 
     class SetBiasVoltage(IntermediateStep):
-        def __init__(self, qubits, **kw):
+        def __init__(self, **kw):
             """
             Intermediate step that updates the bias voltage of the qubit. This
             can be done by simply specifying the voltage, or by specifying the
@@ -2652,24 +3071,22 @@ class HamiltonianFitting(
             """
             # arguments that are not arguments of the super init will be
             # considered as key words for the super init.
-            super().__init__(qubits=qubits,**kw)
+            super().__init__(**kw)
 
         def run(self):
             for qb in self.qubits:
-                flux = self.get_param_value("flux",qubit=qb.name)
+                flux = self.get_param_value("flux", qubit=qb.name)
                 if flux is not None:
                     voltage = qb.calculate_voltage_from_flux(flux)
                 else:
-                    voltage = self.get_param_value("voltage",qubit=qb.name)
+                    voltage = self.get_param_value("voltage", qubit=qb.name)
                 if voltage is None:
                     raise ValueError("No voltage or flux specified")
                 self.routine.fluxlines_dict[qb.name](voltage)
 
-
     class DetermineModel(IntermediateStep):
         def __init__(
             self,
-            qubits,
             **kw,
         ):
             """
@@ -2677,7 +3094,10 @@ class HamiltonianFitting(
             the measured data. Can be used for both estimating the model and
             determining the final model.
 
-            Args:
+            Configuration parameters (coming from the configuration parameter dictionary):
+                include_reparkings (bool): if True, the data from the
+                    ReparkingRamsey measurements are used to help determine a
+                    Hamiltonian model.
                 include_resonator (bool): if True, the model includes the effect
                     of the resonator. If False, the coupling is set to zero and
                     essentially only the transmon parameters are optimized (the
@@ -2686,17 +3106,11 @@ class HamiltonianFitting(
                     determine the model, if False, the measured data is used.
                 method (str): the optimization method to be used
                     when determining the model. Default is Nelder-Mead.
-
-            Keyword Arguments:
-                include_reparkings (bool): if True, the data from the
-                    ReparkingRamsey measurements are used to help determine a
-                    Hamiltonian model.
             """
 
             # arguments that are not arguments of the super init will be
             # considered as key words for the super init.
             super().__init__(
-                qubits=qubits,
                 **kw,
             )
 
@@ -2709,7 +3123,8 @@ class HamiltonianFitting(
                     qubit=self.routine.qubit,
                     fluxlines_dict=self.routine.fluxlines_dict,
                     timestamp_start=self.routine.preroutine_timestamp,
-                    include_reparkings=self.get_param_value("include_reparkings"),
+                    include_reparkings=self.get_param_value(
+                        "include_reparkings"),
                 )
             )
 
@@ -2746,8 +3161,6 @@ class HamiltonianFitting(
             # Save timestamp from previous run, to use for get_device_property_values
             self.__end_of_run_timestamp = a_tools.get_last_n_timestamps(1)[0]
 
-
-
         def get_device_property_values(self, **kwargs):
             """Returns a dictionary of high-level device property values from running this DetermineModel step
 
@@ -2764,8 +3177,10 @@ class HamiltonianFitting(
                 # For DetermineModel, the results are in self.__result_dict from self.run()
                 # The timestamp is the end of run timestamp or the one immediately after. If we set `save_instrument_settings=True`, we will have a timestamp after __end_of_run_timestamp.
                 if self.get_param_value('save_instrument_settings') or not self.get_param_value("update"):
-                    timestamps = a_tools.get_timestamps_in_range(self.__end_of_run_timestamp)
-                    timestamp = timestamps[1] # one after __end_of_run_timestamp
+                    timestamps = a_tools.get_timestamps_in_range(
+                        self.__end_of_run_timestamp)
+                    # one after __end_of_run_timestamp
+                    timestamp = timestamps[1]
                 else:
                     timestamp = self.__end_of_run_timestamp
                 node_creator = db_utils.ValueNodeCreator(
@@ -2810,7 +3225,7 @@ class HamiltonianFitting(
                     results['property_values'].append(
                         node_creator.create_node(
                             property_type='fr',
-                            component_type='ro_res', # Not a qubit property
+                            component_type='ro_res',  # Not a qubit property
                             value=self.__result_dict['fr'],
                         ), )
 
@@ -2822,6 +3237,7 @@ class HamiltonianFitting(
                             value=self.__result_dict['anharmonicity'],
                         ), )
             return results
+
         def make_model_guess(
             self, use_prior_model=True, include_resonator=True
         ):
@@ -2853,7 +3269,7 @@ class HamiltonianFitting(
                     "E_c": self.get_param_value("E_c"),
                     "asymmetry": self.get_param_value("asymmetry"),
                     "coupling": self.get_param_value("coupling") * include_resonator,
-                    "fr": self.get_param_value("fr",associated_component_type_hint="ro_res"),
+                    "fr": self.get_param_value("fr", associated_component_type_hint="ro_res"),
                 }
 
             # using sweet spot measurements determined by the reparking routine
@@ -2995,7 +3411,7 @@ class HamiltonianFitting(
             )
 
         return experimental_values
-    
+
     def get_device_property_values(self, **kwargs):
         """Returns a property values dictionary of the fitted hamiltonian parameters
 
@@ -3005,7 +3421,8 @@ class HamiltonianFitting(
         results = self.get_empty_device_properties_dict()
         # Only return property values from DetermineModel steps
         for _, step in enumerate(self.routine_steps):
-            if type(step).__name__ == 'DetermineModel': # FIXME: for some reason isinstance doesn't work here.
+            # FIXME: for some reason isinstance doesn't work here.
+            if type(step).__name__ == 'DetermineModel':
                 step_i_results = step.get_device_property_values(**kwargs)
                 results['property_values'].append({
                     "step_type":
@@ -3016,48 +3433,6 @@ class HamiltonianFitting(
                     step_i_results['property_values'],
                 })
         return results
-
-    _DEFAULT_PARAMETERS = {
-        "Routine": {
-            "delegate_plotting": False,
-        },
-        "Transmon": {
-            "anharmonicity": -175e6,
-            "Ej_max": 20e9,
-            "E_c": 175e6,
-            "asymmetry": 0.5,
-            "coupling": 250e6,
-            "fr": 7e9,
-        },
-        "ReparkingRamsey": {
-            "delays": np.linspace(100e-9, 250e-9, 21),
-            "dc_voltage_offsets": np.linspace(-0.03, 0.03, 5),
-            "artificial_detuning": 40e6,
-        },
-        "FindFrequency": {
-            "ge": {
-                "allowed_delta_f": 0.05e6,
-                "max_iterations": 2,
-            },
-            "ef": {
-                "allowed_delta_f": 0.05e6,
-                "max_iterations": 2,
-            },
-        },
-        "DetermineModel": {
-            "method": "Nelder-Mead",
-            "preliminary": {
-                "include_reparkings": True,
-                "include_resonator": False,
-                "use_prior_model": False,
-            },
-            "final": {
-                "include_reparkings": False,
-                "include_resonator": True,
-                "use_prior_model": True,
-            },
-        },
-    }
 
 
 class MixerCalibrationSkewness(IntermediateStep):
@@ -3125,7 +3500,6 @@ class MixerCalibrationCarrier(IntermediateStep):
 class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
     def __init__(
         self,
-        qubits,
         index,
         **kw,
     ):
@@ -3137,11 +3511,13 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
             routine: Routine object
             index: index of the step in the routine that requires temporary
                 values for flux-pulse assisted read-out
-            v_park: value of the ro-temporary value to set
+
+        Configuration parameters (coming from the configuration parameter dictionary):
+            flux_park:  flux to calculate the the ro-temporary value to set
+            voltage_park: value of the ro-temporary value to set
 
         """
         super().__init__(
-            qubits=qubits,
             index=index,
             **kw,
         )
@@ -3151,10 +3527,9 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
         qb = self.qubit
         index = self.kw["index"]
 
-        
-        if  flux := self.get_param_value("flux_park") is not None:
+        if flux := self.get_param_value("flux_park") is not None:
             v_park = qb.calculate_voltage_from_flux(flux)
-        elif  v_park_tmp := self.get_param_value("voltage_park") is not None:
+        elif v_park_tmp := self.get_param_value("voltage_park") is not None:
             v_park = v_park_tmp
         else:
             raise ValueError("No voltage or flux specified")
@@ -3167,53 +3542,71 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
             tmp_vals=ro_tmp_vals, index=index
         )
 
+
 class SingleQubitCalib(AutomaticCalibrationRoutine):
     """
-    Single Qubit Calibration consisting of several steps which can be individually enabled
-        -Rabi (rabi_before_ramsey)
-        -Ramsey (ramsey)
-        -Rabi (rabi_after_ramsey)
-        -T1 (t1)
-        -Ramsey (echo)
+    Single qubit calibration brings the setup into a default state and calibrates
+    the specified qubits. It consists of several steps:
+        <Class name> (<step_label>)
+
+        SQCPreparation (sqc_preparation)
+        RabiStep (rabi)
+        RamseyStep (ramsey_large_AD)
+        RamseyStep (ramsey_small_AD)
+        RabiStep (rabi_after_ramsey)
+        QScaleStep (qscale)
+        RabiStep (rabi_after_qscale)
+        T1Step (t1)
+        RamseyStep (echo_large_AD)
+        RamseyStep (echo_small_AD)
+        InPhaseAmpCalibStep (in_phase_calib)
 
     Args:
-        qubits: qubits on which to perform the measurement
+        dev: device to be used for the routine
 
-    Keyword Arguments:
+    Keyword args:
+        qubits: The qubits which should be calibrated. By default,
+            all qubits of the device are selected.
+
+    Configuration parameters (coming from the configuration parameter dictionary):
+        autorun (bool): If True, the routine runs automatically. Otherwise, run() has to called.
+        transition_names (list): List of transitions for which the steps in the routine
+            should be conducted. Example:
+                "transition_names": ["ge"]
+        rabi (bool): Enables the respective step. Enabled by default.
+        ramsey_large_AD (bool): Enables the respective step.
+        ramsey_small_AD (bool): Enables the respective step. Enabled by default.
+        rabi_after_ramsey (bool): Enables the respective step.
+        qscale (bool): Enables the respective step. Enabled by default.
+        rabi_after_qscale (bool): Enables the respective step.
+        t1 (bool): Enables the respective step.
+        echo_large_AD (bool): Enables the respective step.
+        echo_small_AD (bool): Enables the respective step.
+        in_phase_calib (bool): Enables the respective step.
+
+        nr_rabis (dict): nested dictionary containing the transitions and a respective
+            list containing numbers of Rabi pulses. For each entry in the list,
+            the Rabi experiment is repeated with the respective number of pulses.
+            Example: 
+                "nr_rabis": {
+                    "ge": [1,3],
+                    "ef": [1]
+                },
     """
 
     def __init__(
         self,
-        qubits=None,
-        # nr_rabis=(1,), # nr_rabis seems to specify nr of pi-pulses before each rabi experiment, tuple for transition
+        dev,
         **kw
     ):
 
         AutomaticCalibrationRoutine.__init__(
             self,
-            qubits=qubits,
+            dev=dev,
             **kw,
         )
-        # there exists a function "transition_to_string" in "state_and_transition_translation.py", but it follows a different convention
-        # (includes resonator excitation), which is newer and which should be supported? Should levels be supported at all anymore?
-        #if transition_names is None:
-        #    if levels is not None:
-        #        # for backwards-compatibility
-        #        transition_names = ['ge' if l == 0 else 'ef' for l in levels]
-        #    else:
-        #        transition_names = ['ge']
-
-        if qubits is None:
-            raise ValueError("A valid list of Qubit objects is expected.")
-
-        #if not hasattr(nr_rabis[0], '__iter__'):
-        #    self.nr_rabis = [nr_rabis, (1,)]
-
-        # arguments that are not arguments of the super init will be considered
-        # as key words for the super init.
 
         self.final_init(**kw)
-
 
     def create_routine_template(self):
         """
@@ -3229,19 +3622,22 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                 step_class = step[0]
                 settings = copy.deepcopy(step[2])
                 label = step[1]
-                if issubclass(step_class,SingleQubitGateCalibExperiment):
+                if issubclass(step_class, SingleQubitGateCalibExperiment):
 
-                    if 'qscale' in label or  'echo' in label:
+                    if 'qscale' in label or 'echo' in label:
                         if transition_name != 'ge':
                             continue
                     if not self.get_param_value(label):
                         continue
-                    new_label = label +"_" + transition_name
-                    update_nested_dictionary(settings['settings'],{step_class.get_lookup_class().__name__: {'transition_name':transition_name}})
+                    new_label = label + "_" + transition_name
+                    update_nested_dictionary(settings['settings'], {
+                                             step_class.get_lookup_class().__name__: {'transition_name': transition_name}})
                     # FIXME search for parallel groups in settings
-                    lookups = [label, step_class.get_lookup_class().__name__, 'General']
-                    for parallel_group in self.get_param_value('parallel_groups',sublookups=lookups,leaf=True):
-                        qubits_filtered = [qb for qb in self.qubits if qb.name is parallel_group or parallel_group in self.get_qubit_groups(qb.name)]
+                    lookups = [
+                        label, step_class.get_lookup_class().__name__, 'General']
+                    for parallel_group in self.get_param_value('parallel_groups', sublookups=lookups, leaf=True):
+                        qubits_filtered = [
+                            qb for qb in self.qubits if qb.name is parallel_group or parallel_group in self.get_qubit_groups(qb.name)]
                         if len(qubits_filtered) != 0:
                             temp_settings = copy.deepcopy(settings)
                             temp_settings['qubits'] = qubits_filtered
@@ -3249,24 +3645,28 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                             for qb in qubits_filtered:
                                 qubit_label += qb.name
 
-                            if issubclass(step_class,qbcal.Rabi):
+                            if issubclass(step_class, qbcal.Rabi):
                                 for n in self.get_param_value('nr_rabis')[transition_name]:
                                     qubits = temp_settings.pop('qubits')
-                                    temp_settings['settings'] = copy.deepcopy(temp_settings['settings'])
+                                    temp_settings['settings'] = copy.deepcopy(
+                                        temp_settings['settings'])
                                     temp_settings['qubits'] = qubits
-                                    update_nested_dictionary(temp_settings['settings'],{step_class.get_lookup_class().__name__: {'n':n}})
-                                    detailed_routine_template.add_step(step_class, qubit_label,temp_settings)
+                                    update_nested_dictionary(temp_settings['settings'], {
+                                                             step_class.get_lookup_class().__name__: {'n': n}})
+                                    detailed_routine_template.add_step(
+                                        step_class, qubit_label, temp_settings)
 
                             else:
-                                detailed_routine_template.add_step(step_class, qubit_label,temp_settings)
+                                detailed_routine_template.add_step(
+                                    step_class, qubit_label, temp_settings)
                 else:
-                    detailed_routine_template.add_step(step_class, label,settings)
+                    detailed_routine_template.add_step(
+                        step_class, label, settings)
         self.routine_template = detailed_routine_template
 
     class SQCPreparation(IntermediateStep):
         def __init__(
             self,
-            qubits,
             routine,
             **kw,
         ):
@@ -3274,17 +3674,30 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
             Intermediate step that configures qubits for Mux drive and readout.
 
             Args:
-                routine: Routine object
+                routine: the parent routine
+
+            Configuration parameters (coming from the configuration parameter dictionary):
+                configure_mux_readout (bool): Whether to configure the qubits for multiplexed readout or not.
+                configure_mux_drive (bool): Specifies if the LO frequencies and IFs should of the qubits measured
+                    in this step should be update.
+                reset_to_defaults (bool): Whether to reset the sigma values to the default or not.
+                default_<transition>_sigma (float): The default with of the pulse
+                    in units of the sigma of the pulse.
+                ro_lo_freqs (dict): Dictionary containing MWG names and readout local oscillator frequencies.
+                drive_lo_freqs (dict):  Dictionary containing MWG names and drive locas oscillator frequencies
+                acq_averages (int): The number of averages for each measurement for each qubit.
+                acq_weights_type (str): The weight type for the readout for each qubit.
+                preparation_type (str): The preparation type of the qubit.
+                trigger_pulse_period (float): The delay between individual measurements,
             """
             super().__init__(
-                qubits = qubits,
                 routine=routine,
                 **kw,
             )
 
         def run(self):
-            kw = self.kw
 
+            kw = self.kw
 
             if self.get_param_value('configure_mux_readout'):
                 ro_lo_freqs = self.get_param_value('ro_lo_freqs')
@@ -3300,20 +3713,21 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
 
             self.dev.set_default_acq_channels()
 
-            self.dev.preparation_params().update({'preparation_type': self.get_param_value('preparation_type')})
+            self.dev.preparation_params().update(
+                {'preparation_type': self.get_param_value('preparation_type')})
             for qb in self.qubits:
-                qb.preparation_params()['preparation_type'] = self.get_param_value('preparation_type')
-                qb.acq_averages(kw.get('acq_averages', self.get_param_value('acq_averages')))
+                qb.preparation_params()['preparation_type'] = self.get_param_value(
+                    'preparation_type')
+                qb.acq_averages(
+                    kw.get('acq_averages', self.get_param_value('acq_averages')))
                 qb.acq_weights_type(self.get_param_value('acq_weights_type'))
 
-
             trigger_device = self.qubits[0].instr_trigger.get_instr()
-            trigger_device.pulse_period(self.get_param_value('trigger_pulse_period'))
-
-
+            trigger_device.pulse_period(
+                self.get_param_value('trigger_pulse_period'))
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
-        [SQCPreparation, 'sqc_preparation',{}],
+        [SQCPreparation, 'sqc_preparation', {}],
         [RabiStep, 'rabi', {}],
         [RamseyStep, 'ramsey_large_AD', {}],
         [RamseyStep, 'ramsey_small_AD', {}],
@@ -3352,6 +3766,11 @@ def keyword_subset_for_function(keyword_arguments, function):
 
 
 def update_nested_dictionary(d, u):
+    """
+    Returns a dictionary with only the keywords that are used by the
+    function.
+
+    """
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
             d[k] = update_nested_dictionary(d.get(k, {}), v)
