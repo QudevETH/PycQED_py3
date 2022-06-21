@@ -3,7 +3,6 @@ from copy import deepcopy
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.awg_sweep_functions import SpectroscopyHardSweep
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
@@ -12,6 +11,19 @@ from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
 log = logging.getLogger(__name__)
+
+class SpectroscopyHardSweep(swf.Hard_Sweep):
+    """Defines a hard sweep function used for hard spectroscopy.
+
+    set_parameter is implemented as a pass method to prevent warning messages.
+    """
+    def __init__(self, parameter_name='None'):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+
+    def set_parameter(self, value):
+        pass  # Set in the Segment, see docstring
 
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHF instrument series

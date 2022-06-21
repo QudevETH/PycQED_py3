@@ -11,7 +11,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.awg_sweep_functions import SpectroscopyHardSweep
+from pycqed.instrument_drivers.acquisition_devices.shf import SpectroscopyHardSweep
 import zhinst
 
 try:
