@@ -511,8 +511,45 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                          drive=drive,
                          allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
+                         segment_kwargs={'mod_config':{},
+                                         'sine_config':{},
+                                         'sweep_params':{},},
                          **kw)
         self.autorun(**kw)  # run measurement & analysis if requested in kw
+
+    def preprocess_task(self, task, global_sweep_points,
+                        sweep_points=None, **kw):
+        preprocessed_task = super().preprocess_task(task, global_sweep_points,
+                                                    sweep_points, **kw)
+        qb = self.get_qubit(preprocessed_task)
+        pulsar = qb.instr_pulsar.get_instr()
+        awg_name = pulsar.get(f'{qb.ge_I_channel()}_awg')
+        self.segment_kwargs['mod_config'] = (
+            hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
+            pulsar.get(f'{awg_name}_use_hardware_sweeper'))
+        return preprocessed_task
+
+    def resolve_freq_sweep_points(self, **kw):
+        """Configures potential hard_sweeps and afterwards calls super method
+        """
+        for task in self.preprocessed_task_list:
+            if task['hard_sweep']:
+                qb = self.get_qubit(task)
+                pulsar = qb.instr_pulsar.get_instr()
+                freqs = task['freqs']
+                ch = qb.ge_I_channel()
+                center_freq, mod_freqs = pulsar.get_params_for_spectrum(
+                    qb.ge_I_channel(), freqs)
+                self.segment_kwargs['mod_config'][ch] = \
+                    dict(internal_mod=self.pulsed)
+                self.segment_kwargs['sine_config'][ch] = \
+                    dict(continous=not self.pulsed)
+                self.segment_kwargs['sweep_params'][f'{ch}_osc_sweep'] = \
+                    mod_freqs
+                pulsar.set(f'{ch}_centerfreq', center_freq)
+                # adopt df kwargs to hard sweep
+                self.df_kwargs['single_int_avg'] = False
+        return super().resolve_freq_sweep_points(**kw)
 
     def sweep_block(self, sweep_points, qb, **kw):
         """This function creates the blocks for a single transmission
