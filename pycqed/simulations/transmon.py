@@ -201,6 +201,26 @@ def charge_dispersion_ge_ef(fge: Optional[float] = None,
     dfreqs -= transmon_levels(ec, ej, ng + 0.5, dim_charge)
     return dfreqs[0], dfreqs[0] - dfreqs[1]
 
+def transmon_resonator_gqr(ec: float, ej: float, gb: float, i0: int = 0,
+                           i1: int = 1, ng: float = 0., dim_charge: int = 31):
+    """Calculate the general Jaynes-Cummings Hamiltonian coupling rate.
+
+    Args:
+        ec: Charging energy of the Hamiltonian.
+        ej: Josephson energy of the Hamiltonian.
+        gb: Bare transmon-resonator coupling strength.
+        i0, i1: Transmon levels coupled by the returned rate.
+        ng: Charge offset of the Hamiltonian.
+        dim_charge: Number of charge states to use in calculations.
+
+    Returns:
+        Jaynes-Cummings transmon-resonator coupling rate g_{i0,i1} according
+        to Eq. (3.3) in Koch2007.
+    """
+    ham = transmon_hamiltonian(ec, ej, ng, dim_charge)
+    v, w = np.linalg.eigh(ham)
+    w = w.T[np.argsort(v)]
+    return np.abs(gb * (w[i0] @ transmon_charge(ng, dim_charge) @ w[i1]))
 
 def resonator_destroy(dim_resonator: int = 10):
     return np.diag(np.sqrt(np.arange(1, dim_resonator)), 1)
