@@ -415,7 +415,8 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
 def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
                                       gb: float, ng: float = 0.,
                                       dim_charge: int = 31,
-                                      dim_resonator: int = 10):
+                                      dim_resonator: int = 10,
+                                      frmean: bool = False):
     """Calculate Josephson energy, resonator bare frequency and observable
     frequencies of a coupled transmon-resonator system from the qubit transition
     frequency, coupled resonator frequency and Hamiltonian parameters.
@@ -432,7 +433,7 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
         ng: Charge offset of the Hamiltonian.
         dim_charge: Number of charge states to use in calculations.
         dim_resonator: Number of photon number states to use in calculations.
-
+        frmean: Passed frg is the mean of fr(g) and fr(e) instead of fr(g).
     Returns:
         A tuple of 1) transmon Josephson energy, 2) qubit anharmonicity,
         3) bare resonator frequency, and 4) the dispersive shift.
@@ -441,6 +442,8 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
     def func(ej_anh_frb_chi_, fge_ec_frg_gb, ng_, dim_charge_, dim_resonator_):
         fge_, ec_, frg_, gb_ = fge_ec_frg_gb
         ej, anh, frb, chi = ej_anh_frb_chi_
+        if frmean:
+            frg_ -= chi
         calc_fge_anh_frg_chi = transmon_resonator_fge_anh_frg_chi(
             ec_, ej, frb, gb_, ng_, dim_charge_, dim_resonator_)
         return calc_fge_anh_frg_chi - np.array([fge_, anh, frg_, chi])
