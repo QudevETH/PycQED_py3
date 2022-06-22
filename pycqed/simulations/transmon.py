@@ -22,13 +22,11 @@ presence of phase and swap errors, decomposed as a Fourier sum.
 import numpy as np
 import scipy as sp
 import scipy.optimize
-import functools
 from typing import Optional, List, Tuple
 import logging
 log = logging.getLogger(__name__)
 
 
-@functools.lru_cache()
 def transmon_charge(ng: float = 0., dim_charge: int = 31):
     """Calculate the transmon charge operator.
 
@@ -43,7 +41,6 @@ def transmon_charge(ng: float = 0., dim_charge: int = 31):
     return np.diag(np.arange(dim_charge) - np.floor(dim_charge / 2) + ng)
 
 
-@functools.lru_cache()
 def transmon_hamiltonian(ec: float, ej: float, ng: float = 0.,
                          dim_charge: int = 31):
     """Calculate the transmon Hamiltonian.
@@ -205,12 +202,10 @@ def charge_dispersion_ge_ef(fge: Optional[float] = None,
     return dfreqs[0], dfreqs[0] - dfreqs[1]
 
 
-@functools.lru_cache()
 def resonator_destroy(dim_resonator: int = 10):
     return np.diag(np.sqrt(np.arange(1, dim_resonator)), 1)
 
 
-@functools.lru_cache()
 def resonator_hamiltonian(frb: float, dim_resonator: int = 10):
     """Calculate the resonator Hamiltonian.
 
