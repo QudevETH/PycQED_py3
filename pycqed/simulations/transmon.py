@@ -405,7 +405,7 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frg0 = frb
-    chi0 = -gb**2 * (fge - ec) / (fge - frb) / (fge - frb - ec) / 16
+    chi0 = -gb**2 * (fge + ec) / (fge - frb) / (fge - frb - ec) / 16
     ej_anh_frg_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frg0, chi0]),
                                         args=(np.array([fge, ec, frb, gb]),
                                               ng, dim_charge, dim_resonator))
@@ -448,7 +448,7 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frb0 = frg
-    chi0 = -gb**2 * (fge - ec) / (fge - frg) / (fge - frg - ec) / 16
+    chi0 = -gb**2 * (fge + ec) / (fge - frg) / (fge - frg - ec) / 16
     ej_anh_frb_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frb0, chi0]),
                                         args=(np.array([fge, ec, frg, gb]),
                                               ng, dim_charge, dim_resonator))
