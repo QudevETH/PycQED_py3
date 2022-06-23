@@ -11293,3 +11293,269 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                             f'@ $\\alpha$ ={alpha_min:.2f}',
                 'do_legend': True,
             }
+
+
+
+class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """ Class for automated chevron analysis
+
+    Saves the fit parameters and the optimal CZ time in self.proc_data_dict['analysis_params_dict']:
+        J: qubit coupling
+        offset_freq: frequency by which the two energy levels were off from the calculation
+    Options_dict options:
+        'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
+    """
+    def extract_data(self):
+        super().extract_data()
+        self.task_list = self.get_param_value('task_list')
+        qubits = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'flux_amplitude_bias_ratio',
+                  'flux_parking', 'anharmonicity']
+        # self.params_dict = OrderedDict() # not used I think
+        for qbn in qubits:
+            self.raw_data_dict.update({f"{p}_{qbn}":
+                                           self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
+                                       for p in params})
+
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+        self.proc_data_dict['Delta'] = OrderedDict()
+
+        def pe_function(t, Delta, J=2 * np.pi * 10e-3, offset_freq=0):
+            # From Nathan's master's thesis- fitting function
+            Delta_off = 2 * np.pi * (
+                    Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
+                    4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
+
+        def J_fft(t, Delta, data):
+            # Fourier transform for all Delta. Smallest period corresponds to J (assuming (actual) Delta=0 in that case)
+            # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
+            J_min = None
+            for Delta_index in range(len(Delta)):
+                S = sp.fft.fft(data[Delta_index])
+                S[0] = 0 # Ignore DC component
+                xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
+                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]*np.pi # 2J = 2pi/T (see thesis)
+                if J_min == None or J_min > J_fft:
+                    J_min = J_fft
+            return J_min
+
+        def calculate_voltage_from_flux_edited(fit_ge_freq_from_dc_offset, flux, model='transmon_res'):
+            # Copied from "QuDev_transmon"
+            if model in ['transmon', 'transmon_res']:
+                vfc = fit_ge_freq_from_dc_offset # Pro
+            else:
+                raise ValueError('Only transmon_res and transmon are implemented at the moment')
+                #vfc = fit_ge_freq_from_flux_pulse_amp
+            return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, fit_ge_freq_from_dc_offset, flux_parking, model='transmon_res', bias = None, flux=None): # Potentially one could adopt to also include other models
+            # The following is basically just copied form 'calculate_frequency'
+            if flux_amplitude_bias_ratio is None:
+                if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                        (model == ['approx'] and bias is not None and bias != 0)):
+                    raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                     'required for this calculation.')
+
+            if model in ['transmon', 'transmon_res']: # True
+                vfc = fit_ge_freq_from_dc_offset
+                if bias is None and flux is None: # True
+                    flux = flux_parking
+                if flux is not None: # True
+                    bias = calculate_voltage_from_flux_edited(vfc, flux)
+            else: # False
+                vfc = self.fit_ge_freq_from_flux_pulse_amp
+                if flux is not None:
+                    amplitude = calculate_voltage_from_flux_edited(vfc, flux)
+
+            if model == 'approx': # False
+                ge_freq = fit_mods.Qubit_dac_to_freq(
+                    amplitude + (0 if bias is None or np.all(bias == 0) else
+                                 bias * flux_amplitude_bias_ratio), **vfc)
+            elif model == 'transmon': # False
+                kw = deepcopy(vfc)
+                kw.pop('coupling', None)
+                kw.pop('fr', None)
+                ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **kw)
+            elif model == 'transmon_res': # True
+                ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **vfc)
+            else:
+                raise NotImplementedError(
+                    "Currently, only the models 'approx', 'transmon', and"
+                    "'transmon_res' are implemented.")
+            return ge_freq
+
+        def add_fit_dict(qbH_name, qbL_name, data, key, scalex=1):
+            qbH_ge_freq = self.raw_data_dict[f'ge_freq_{qbH_name}']/1e9
+            qbL_ge_freq = self.raw_data_dict[f'ge_freq_{qbL_name}']/1e9
+            qbH_fit_ge_freq_from_dc_offset = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
+            qbL_fit_ge_freq_from_dc_offset = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
+            qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
+            qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
+            qbH_flux_parking = self.raw_data_dict[f'flux_parking_{qbH_name}']
+            qbL_flux_parking = self.raw_data_dict[f'flux_parking_{qbL_name}']
+
+            if self.num_cal_points != 0:
+                data = np.array([element[:-self.num_cal_points] for element in data])
+
+            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points'] * scalex * 1e9 # Normalize to ns for fitting
+
+            sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
+            amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+
+            cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
+            amp = self.get_hdf_param_value("Instrument settings/ATC75_M136_S17HW02",
+                                           f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
+
+            # Does that work, or do I need to sweep over the amp2 array? Should work
+            qbL_tuned_freq_arr = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
+                fit_ge_freq_from_dc_offset=qbL_fit_ge_freq_from_dc_offset,
+                flux_parking=qbL_flux_parking) / 1e9 # Normalize to GHz
+            qbH_tuned_ef_freq = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
+                fit_ge_freq_from_dc_offset=qbH_fit_ge_freq_from_dc_offset,
+                flux_parking=qbH_flux_parking)/ 1e9 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
+
+            Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
+
+            reduction_arr = np.invert(np.isnan(data))
+            indices = np.where(reduction_arr == False)
+            reduction_arr[indices[0]] = False # All columns with the faulty fields get set false
+            for element in reduction_arr:
+                element[indices[1]] = False # All rows with the faulty fields get set false
+
+            # Remove faulty fields
+            t_mod = np.delete(t, indices[1])
+            Delta_mod = np.delete(Delta, indices[0])
+            pe = data[reduction_arr].reshape(len(Delta_mod), len(t_mod))
+
+            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
+
+            J_guess = J_fft(t_mod, Delta_mod, pe)
+            pe_model.set_param_hint('J', value=J_guess, min=0.5*J_guess, max=2*J_guess) # add factor as function argument instead
+            pe_model.set_param_hint('offset_freq', value=0, min=-0.5, max=0.5) # here as well
+            guess_pars = pe_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            # Data needs to be flat for fitting
+            t_mod_flat = np.tile(t_mod, len(Delta_mod))
+            Delta_mod_flat = np.repeat(Delta_mod, len(t_mod))
+            pe_flat = pe.flatten()
+
+            self.proc_data_dict['Delta'][qbH_name] = Delta
+
+
+            self.fit_dicts[key] = {
+                'model' : pe_model, # if this is missing, Model is None and Delta is assigned as parameter..
+                'fit_fn': pe_model.func,
+                'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
+                'fit_yvals': {'data': pe_flat},
+                'method': {'method': 'dual_annealing'},
+                'guess_pars': guess_pars}
+
+        qb_names_copy = self.qb_names.copy()
+        for qbn in qb_names_copy: # go over all qubits specified by the user for analysis
+            for task in self.get_param_value('task_list'): # look at all tasks and check whether the specified qubit is in them
+                if qbn in task['prefix']:
+                    qbH_name = task['qbc']
+                    qbL_name = task['qbt']
+
+                # Remove both qubits from the qubit_list s.t. they are not analyzed twice
+                qb_names_copy.remove(qbH_name)
+                qb_names_copy.remove(qbL_name)
+
+                # safety check on whether the above qbH/L assignment is correct
+                if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[f'ge_freq_{qbL_name}']:
+                    qb_temp_name = qbH_name
+                    qbH_name = qbL_name
+                    qbL_name = qb_temp_name
+
+                data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
+
+                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data, key= f'chevron_fit_{qbH_name}_{qbL_name}')
+
+
+    def analyze_fit_results(self):
+        def t_CARB(J, Delta, n):
+            return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form chevron_fit_qbH_qbL
+            # replace k with qbH_qbL
+            k = k.replace('chevron_fit_', '')
+            qbH = k.split('_')[0]
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][k] = \
+                fit_res.best_values
+            self.proc_data_dict['analysis_params_dict'][k]['t_CZ_'+self.measurement_strings[qbH].partition('_')[0]] = \
+                t_CARB(fit_res.best_values['J'], 0, 1) # could e.g. be changed to t_CZ_up with if statements
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        def t_CARB(J, Delta, n):
+            return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+        num_curves = self.options_dict.get('num_curves', 5)
+        steps = 500 # how many plotting points you want for the fit
+        qb_names_copy = self.qb_names.copy()
+
+        if self.do_fitting:
+            for qbn in qb_names_copy:
+                for task in self.get_param_value(
+                        'task_list'):  # look at all tasks and check whether the specified qubit is in them
+                    if qbn in task['prefix']:
+                        qbH = task['qbc']
+                        qbL = task['qbt']
+                    base_plot_name = f'Chevron_{qbH}_{qbL}_pe'
+                    xlabel, xunit = self.get_xaxis_label_unit(qbH)
+                    # find name of 1st sweep point in sweep dimension 1
+                    param_name = [p for p in self.mospm[qbH]
+                                  if self.sp.find_parameter(p)][0]
+                    ylabel = r'Detuning $\Delta$' # for now only hardcoded
+                    yunit = 'GHz' # for now only hardcoded
+                    xvals = self.proc_data_dict['sweep_points_dict'][qbH][
+                        'msmt_sweep_points']
+                    Delta = self.proc_data_dict['Delta'][qbH]
+                    offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
+                    Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
+                    Delta_fine_corrected = Delta_fine + offset_freq
+                    self.plot_dicts[f'{base_plot_name}_main'] = {
+                        'plotfn': self.plot_colorxy,
+                        'fig_id': base_plot_name,
+                        'xvals': xvals,
+                        'yvals': Delta,
+                        'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                  self.measurement_strings[qbH]),
+                        'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e')}
+                    for n in range(num_curves+1):
+                        fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}' #hardcoded
+                        J = self.fit_dicts['chevron_fit_qb10_qb9']['fit_res'].best_values['J']
+                        xvals_fit = t_CARB(J, Delta_fine_corrected, n) * 1e-9
+                        self.plot_dicts[f'{fit_plot_name}_main'] = {
+                            'plotfn': self.plot_line,
+                            'fig_id': base_plot_name,
+                            'xvals': xvals_fit,
+                            'yvals': Delta_fine,
+                            'color': 'red',
+                            'marker': 'None',
+                                     }
+
+                # Remove both qubits from the qubit_list s.t. they are not analyzed twice
+                qb_names_copy.remove(qbH)
+                qb_names_copy.remove(qbL)
+
+
