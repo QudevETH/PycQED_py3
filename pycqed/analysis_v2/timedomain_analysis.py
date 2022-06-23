@@ -11463,7 +11463,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_fn': pe_model.func,
                 'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
                 'fit_yvals': {'data': pe_flat},
-                'method': {'method': 'dual_annealing'},
+                'method': 'dual_annealing',
                 'guess_pars': guess_pars}
 
         qb_names_copy = self.qb_names.copy()
