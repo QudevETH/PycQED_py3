@@ -71,7 +71,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         with temporary_value(*self.temporary_values):
             # configure RO LOs for potential multiplexed RO
             # This is especially necessary for qubit spectroscopies as they do
-            # not take care of the RO LO and mode freqs.
+            # not take care of the RO LO and mod freqs.
             ro_lo_qubits_dict = {}
             for task in self.preprocessed_task_list:
                 qb = self.get_qubit(task)
@@ -425,11 +425,11 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     self.grouped_tasks[qb_ro_mwg] += [task]
             else:
                 # no external LO, use acq device instead
-                qb_ro_mwg = (qb.instr_acq(), qb.acq_unit())
-                if qb_ro_mwg not in self.grouped_tasks:
-                    self.grouped_tasks[qb_ro_mwg] = [task]
+                qb_acq_dev_unit = (qb.instr_acq(), qb.acq_unit())
+                if qb_acq_dev_unit not in self.grouped_tasks:
+                    self.grouped_tasks[qb_acq_dev_unit] = [task]
                 else:
-                    self.grouped_tasks[qb_ro_mwg] += [task]
+                    self.grouped_tasks[qb_acq_dev_unit] += [task]
 
     def resolve_freq_sweep_points(self, **kw):
         """Configures potential hard_sweeps and afterwards calls super method
@@ -560,7 +560,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         qb = self.get_qubit(preprocessed_task)
         pulsar = qb.instr_pulsar.get_instr()
         awg_name = pulsar.get(f'{qb.ge_I_channel()}_awg')
-        self.segment_kwargs['mod_config'] = (
+        preprocessed_task['hard_sweep'] = (
             hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
             pulsar.get(f'{awg_name}_use_hardware_sweeper'))
         return preprocessed_task
@@ -642,14 +642,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 name='Drive frequency',
                 parameter_name='Drive frequency')
         else:
-            return self.get_lo_from_qb(qb).get_instr().frequency
+            return qb.swf_drive_lo_freq()
 
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
         if self.modulated:
             for task in self.preprocessed_task_list:
                 if task.get('mod_freq', False):
-                    # FIXME: HDAWG specific code
+                    # FIXME: HDAWG specific code, should be moved to pulsar
                     qb = self.get_qubit(task)
                     mod_freq = qb.instr_pulsar.get_instr().parameters[
                         f'{qb.ge_I_channel()}_direct_mod_freq'
