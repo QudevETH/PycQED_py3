@@ -2415,6 +2415,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             'values', dimension=dimension, param_names=param_name)
         return label, unit, vals
 
+    @staticmethod
+    def get_qbs_from_task_list(task_list):
+        all_qubits = set()
+        for task in task_list:
+            all_qubits.update([v for k,v in task.items() if 'qb' in k])
+        return list(all_qubits)
 
 class Idling_Error_Rate_Analyisis(ba.BaseDataAnalysis):
 
