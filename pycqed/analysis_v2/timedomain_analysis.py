@@ -11310,12 +11310,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         offset_freq: frequency by which the two energy levels were off from the calculation
     Options_dict options:
         'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
+        'model': model used to calculate voltage to qubit frequency
     """
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
         qubits = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
-        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'flux_amplitude_bias_ratio',
+        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp', 'flux_amplitude_bias_ratio',
                   'flux_parking', 'anharmonicity']
         # self.params_dict = OrderedDict() # not used I think
         for qbn in qubits:
@@ -11348,46 +11349,28 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     J_min = J_fft
             return J_min
 
-        def calculate_voltage_from_flux_edited(fit_ge_freq_from_dc_offset, flux, model='transmon_res'):
-            # Copied from "QuDev_transmon"
-            if model in ['transmon', 'transmon_res']:
-                vfc = fit_ge_freq_from_dc_offset # Pro
-            else:
-                raise ValueError('Only transmon_res and transmon are implemented at the moment')
-                #vfc = fit_ge_freq_from_flux_pulse_amp
+        def calculate_voltage_from_flux_edited(vfc, flux):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
-        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, fit_ge_freq_from_dc_offset, flux_parking, model='transmon_res', bias = None, flux=None): # Potentially one could adopt to also include other models
-            # The following is basically just copied form 'calculate_frequency'
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, model='transmon_res', bias = None, flux=None): # Potentially one could adopt to also include other models
             if flux_amplitude_bias_ratio is None:
                 if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
                         (model == ['approx'] and bias is not None and bias != 0)):
                     raise ValueError('flux_amplitude_bias_ratio is None, but is '
                                      'required for this calculation.')
 
-            if model in ['transmon', 'transmon_res']: # True
-                vfc = fit_ge_freq_from_dc_offset
-                if bias is None and flux is None: # True
-                    flux = flux_parking
-                if flux is not None: # True
-                    bias = calculate_voltage_from_flux_edited(vfc, flux)
-            else: # False
-                vfc = self.fit_ge_freq_from_flux_pulse_amp
-                if flux is not None:
-                    amplitude = calculate_voltage_from_flux_edited(vfc, flux)
-
-            if model == 'approx': # False
+            if model == 'approx':
                 ge_freq = fit_mods.Qubit_dac_to_freq(
                     amplitude + (0 if bias is None or np.all(bias == 0) else
                                  bias * flux_amplitude_bias_ratio), **vfc)
-            elif model == 'transmon': # False
+            elif model == 'transmon':
                 kw = deepcopy(vfc)
                 kw.pop('coupling', None)
                 kw.pop('fr', None)
                 ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
                     0 if np.all(amplitude == 0)
                     else amplitude / flux_amplitude_bias_ratio), **kw)
-            elif model == 'transmon_res': # True
+            elif model == 'transmon_res':
                 ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
                     0 if np.all(amplitude == 0)
                     else amplitude / flux_amplitude_bias_ratio), **vfc)
@@ -11398,14 +11381,23 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             return ge_freq
 
         def add_fit_dict(qbH_name, qbL_name, data, key, scalex=1):
-            qbH_ge_freq = self.raw_data_dict[f'ge_freq_{qbH_name}']/1e9
-            qbL_ge_freq = self.raw_data_dict[f'ge_freq_{qbL_name}']/1e9
-            qbH_fit_ge_freq_from_dc_offset = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
-            qbL_fit_ge_freq_from_dc_offset = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
+            model = self.options_dict.get('model', 'transmon_res')
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
             qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
-            qbH_flux_parking = self.raw_data_dict[f'flux_parking_{qbH_name}']
-            qbL_flux_parking = self.raw_data_dict[f'flux_parking_{qbL_name}']
+            qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
+            qbL_flux = self.raw_data_dict[f'flux_parking_{qbL_name}']
+
+            if model in ['transmon', 'transmon_res']:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
+                qbH_bias = calculate_voltage_from_flux_edited(qbH_vfc, qbH_flux)
+                qbL_bias = calculate_voltage_from_flux_edited(qbL_vfc, qbL_flux)
+            else:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
+                qbH_bias = None
+                qbL_bias = None
+
 
             if self.num_cal_points != 0:
                 data = np.array([element[:-self.num_cal_points] for element in data])
@@ -11422,12 +11414,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             # Does that work, or do I need to sweep over the amp2 array? Should work
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
-                fit_ge_freq_from_dc_offset=qbL_fit_ge_freq_from_dc_offset,
-                flux_parking=qbL_flux_parking) / 1e9 # Normalize to GHz
+                vfc=qbL_vfc, model= model, bias=qbL_bias, flux=qbL_flux) / 1e9 # Normalize to GHz
             qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
-                fit_ge_freq_from_dc_offset=qbH_fit_ge_freq_from_dc_offset,
-                flux_parking=qbH_flux_parking)/ 1e9 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
+                vfc=qbH_vfc, model= model, bias=qbH_bias, flux=qbH_flux)/ 1e9 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
 
             Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
 
@@ -11549,7 +11539,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e')}
                     for n in range(num_curves+1):
                         fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}' #hardcoded
-                        J = self.fit_dicts['chevron_fit_qb10_qb9']['fit_res'].best_values['J']
+                        J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
                         xvals_fit = t_CARB(J, Delta_fine_corrected, n) * 1e-9
                         self.plot_dicts[f'{fit_plot_name}_main'] = {
                             'plotfn': self.plot_line,
