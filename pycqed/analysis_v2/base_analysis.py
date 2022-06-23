@@ -950,6 +950,7 @@ class BaseDataAnalysis(object):
             guessfn_pars = fit_dict.get('guessfn_pars', {})
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
+            method = fit_dict.get('method', 'leastsq')
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -981,7 +982,7 @@ class BaseDataAnalysis(object):
                     for key, val in list(guess_dict.items()):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
-            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
+            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
                                             params=guess_pars)
 
             self.fit_res[key] = fit_dict['fit_res']
