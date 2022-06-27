@@ -39,6 +39,52 @@ except ImportError as e:
     log.warning('Could not import qutip, tomography code will not work')
 
 
+# Mixin classes
+class ArtificialDetuningMixin():
+    """
+    Extract the information about the artificial_detuning and
+    create the artificial_detuning_dict for each qubit.
+    """
+
+    def get_artificial_detuning_dict(self, raise_error=True):
+        """
+        - first checks whether artificial_detuning_dict was passed in
+            options_dict, metadata, or default_options
+        - then tries to create it based on the information in
+            preprocessed_task_list
+        - lastly, it falls back to the legacy version: searching for
+            artificial_detuning in options_dict, metadata, or default_options
+
+        Args:
+            raise_error (bool; default: True): whether to raise ValueError
+                if no information about artificial detuning is found
+
+        Returns:
+            artificial_detuning_dict: dict with qb names as keys and
+                value for the artificial detuning as values
+        """
+        artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    artificial_detuning_dict = artificial_detuning
+                else:
+                    artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if raise_error and artificial_detuning_dict is None:
+            raise ValueError('"artificial_detuning" not found.')
+        return artificial_detuning_dict
+
+
+# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -6533,7 +6579,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                     'text_string': textstr}
 
 
-class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     """
     Analysis for a Ramsey measurement.
 
@@ -6601,25 +6647,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        self.artificial_detuning_dict = self.get_param_value(
-            'artificial_detuning_dict')
-        if self.artificial_detuning_dict is None:
-            artificial_detuning = self.get_param_value('artificial_detuning')
-            if 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                self.artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
-            elif artificial_detuning is not None:
-                # legacy case
-                if isinstance(artificial_detuning, dict):
-                    self.artificial_detuning_dict = artificial_detuning
-                else:
-                    self.artificial_detuning_dict = OrderedDict(
-                        [(qbn, artificial_detuning) for qbn in self.qb_names])
-        if self.artificial_detuning_dict is None:
-            raise ValueError('"artificial_detuning" not found.')
-
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
@@ -7266,9 +7295,9 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': 'gray'}
 
 
-class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
+class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, extract_only=False, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -7279,39 +7308,53 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, **kwargs)
-        # Check for artificial detuning only in the options dict because the
-        # metadata hasn't been extracted at this point (done in extract_data())
-        if self.options_dict.get('artificial_detuning') is not None or \
-                self.options_dict.get('artificial_detuning_dict') is not None:
-            self.echo_analysis = RamseyAnalysis(*args, auto=False, **kwargs)
+        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
+
+        # get experimental metadata from file
+        self.metadata = self.get_data_from_timestamp_list(
+            {'md': 'Experimental Data.Experimental Metadata'})['md']
+
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict(
+            raise_error=False)
+
+        # Decide whether to do a RamseyAnalysis or a T1Analysis
+        self.run_ramsey = self.artificial_detuning_dict is not None and \
+                any(list(self.artificial_detuning_dict.values()))
+
+        # Define options_dict for call to RamseyAnalysis or T1Analysis
+        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
+
+        if self.run_ramsey:
+            # artificial detuning was used and it is not 0
+            self.echo_analysis = RamseyAnalysis(*args, auto=auto,
+                                                extract_only=True,
+                                                options_dict=options_dict,
+                                                **kwargs)
         else:
-            if 'options_dict' in kwargs:
-                # kwargs.pop('options_dict')
-                kwargs['options_dict'].update({'vary_offset': True})
-            else:
-                kwargs['options_dict'] = {'vary_offset': True}
-            self.echo_analysis = T1Analysis(*args, auto=False, **kwargs)
+            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            self.echo_analysis = T1Analysis(*args, auto=auto,
+                                            extract_only=True,
+                                            options_dict=options_dict,
+                                            **kwargs)
 
         if auto:
-            try:
-                self.echo_analysis.extract_data()
-                self.qb_names = self.echo_analysis.qb_names
-                self.echo_analysis.process_data()
-                self.echo_analysis.prepare_fitting()
-                self.echo_analysis.run_fitting()
-                self.echo_analysis.save_fit_results()
-                self.analyze_fit_results()
-                self.prepare_plots()
-            except Exception as e:
-                if self.raise_exceptions:
-                    raise e
-                else:
-                    log.error("Unhandled error during analysis!")
-                    log.error(traceback.format_exc())
+            self.qb_names = self.echo_analysis.qb_names
+            # Run analysis of this class
+            super().run_analysis()
+
+    def extract_data(self):
+        """Skip for this class. Take raw_data_dict from self.echo_analysis
+        which is needed for a check in the BaseDataAnalsis.save_fit_results."""
+        self.raw_data_dict = self.echo_analysis.raw_data_dict
+
+    def process_data(self):
+        """Skip for this class. All relevant processing is done in
+        self.echo_analysis."""
+        pass
 
     def analyze_fit_results(self):
-        self.echo_analysis.analyze_fit_results()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
@@ -7330,8 +7373,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
-        self.echo_analysis.prepare_plots()
         for qbn in self.qb_names:
             # rename base plot
             figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
@@ -7363,7 +7407,10 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
                     else ''))
             T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = '$T_2$ echo = {:.2f} $\mu$s'.format(
+            textstr = 'Echo Measurement with'
+            art_det = self.artificial_detuning_dict[qbn]*1e-6
+            textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+            textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo']*1e6) \
                       + ' $\pm$ {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo_stderr']*1e6) \
@@ -7373,7 +7420,12 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
 
+    def plot(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
+
+    def save_figures(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.save_figures(
             close_figs=self.get_param_value('close_figs', True))
 
