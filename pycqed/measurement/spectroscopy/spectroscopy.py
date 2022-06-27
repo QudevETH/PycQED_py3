@@ -50,6 +50,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
+        self.check_freqs_length()
         self.group_tasks()
         self.check_all_freqs_per_lo()
         self.resolve_freq_sweep_points(**kw)
@@ -260,6 +261,23 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                     self.grouped_tasks[lo_name] = [task]
                 else:
                     self.grouped_tasks[lo_name] += [task]
+
+    def check_freqs_length(self):
+        """Check that all freq arrays in self.preprocessed_task_list have the
+        same length.
+
+        Raises:
+            ValueError: In case the check is failed.
+        """
+        if not self.preprocessed_task_list:
+            # task_list is empty
+            return
+        lengths = np.array([len(task['freqs']) for task
+                                               in self.preprocessed_task_list])
+        diffs = lengths - lengths[0]
+        if not all([d == 0 for d in diffs]):
+            raise ValueError("All tasks need to have the same number of "
+                             "frequency points.")
 
     def check_all_freqs_per_lo(self, **kw):
         """Checks if all frequency sweeps assigned to one LO have the same
