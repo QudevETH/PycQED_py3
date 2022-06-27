@@ -349,6 +349,24 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     def get_qubit(self, task):
         return self.get_qubits(task['qb'])[0][0]
 
+    def get_task(self, qb):
+        """Find the task that is acting on qb.
+
+        Args:
+            qb (str or QuDev_Transmon): Qubit for which the we want to get the
+                task that is acting on that qubit.
+
+        Returns:
+            dict: first task that is found in `self.preprocessed_task_list` that
+                contains qb in task[name]. If no task is found None will be
+                returned.
+        """
+        for task in self.preprocessed_task_list:
+            if qb == task['qb'] or \
+                    (isinstance(qb, QuDev_transmon) and qb.name == task['qb']):
+                return task
+        return None
+
 
 class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """
@@ -581,19 +599,33 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             list of :class:`~pycqed.measurement.waveform_control.block.Block`s:
                 List of blocks for the operation.
         """
-        # add marker pulse in case we perform pulsed spectroscopy
-        if self.pulsed:
-            pulse_modifs = {'all': {'element_name': 'spec_el'}}
-            spec = self.block_from_ops('spec', [f"Spec {qb}"],
-                                       pulse_modifs=pulse_modifs)
-
         pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
-        # return all generated blocks (parallel_sweep will arrange them)
+        # add marker pulse in case we perform pulsed spectroscopy
         if self.pulsed:
+            pulse_modifs = {'all': {'element_name': 'spec_el',
+                                    'channel': qb.ge_I_channel()}}
+            spec = self.block_from_ops('spec', [f"Spec {qb}"],
+                                       pulse_modifs=pulse_modifs)
+            # create ParametricValues from param_name in sweep_points
+            for sweep_dict in sweep_points:
+                for param_name in sweep_dict:
+                    for pulse_dict in spec.pulses:
+                        if param_name in pulse_dict:
+                            pulse_dict[param_name] = ParametricValue(param_name)
             return [spec, ro]
+        else:
+            task = self.get_task(qb)
+            if task is not None and task['hard_sweep']:
+                # We need to add a pulse of length 0 to make sure the AWG channel is
+                # programmed by pulsar and pulsar gets the hard sweep information
+                pulse_modifs = {'all': {'element_name': 'spec_el',
+                                        'nr_sigma': 0}}
+                empty = self.block_from_ops('spec', [f"X180 {qb}"],
+                                        pulse_modifs=pulse_modifs)
+                return [empty, ro]
         return [ro]
 
     def get_lo_from_qb(self, qb, **kw):
