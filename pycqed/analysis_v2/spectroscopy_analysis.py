@@ -1684,10 +1684,10 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
 
         mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
         self.proc_data_dict['projected_data_dict'] = {
-            qb: self._transform(raw_data, False) for qb, raw_data in mdata_per_qb.items()
+            qb: self._transform(raw_data, True) for qb, raw_data in mdata_per_qb.items()
         }
 
-    def _transform(self, data, transpose=False):
+    def _transform(self, data, transpose=True):
         polar_data = dict()
         values = list(data.values())
         S21 = values[0] + 1j * values[1] # vector in complex plane
