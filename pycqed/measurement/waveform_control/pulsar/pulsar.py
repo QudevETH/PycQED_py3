@@ -481,6 +481,23 @@ class PulsarAWGInterface(ABC):
                                   f"implemented by AWG interface "
                                   f"{self.__class__}.")
 
+    def get_frequency_sweep_function(self, ch:str):
+        """Convenience method for retrieving SWF for sweeping a channels freq.
+
+        Subclasses must override this. Subclasses should raise an error when a
+        swf is requested for a channel that does not support a frequency sweep.
+
+        Args:
+            ch (str): Channel name of the output channel whos frequency is swept
+
+        Returns:
+            Sweep_Function
+        """
+        raise NotImplementedError(f"Either 'get_frequency_sweep_function' is "
+                                  f"not implemented by AWG interface "
+                                  f"{self.__class__} or it is not supported "
+                                  f"for channel {ch}.")
+
 class Pulsar(Instrument):
     """A meta-instrument responsible for all communication with the AWGs.
 
@@ -1212,3 +1229,8 @@ class Pulsar(Instrument):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
             .get_params_for_spectrum(ch, requested_freqs)
+
+    def get_frequency_sweep_function(self, ch:str):
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_frequency_sweep_function(ch)

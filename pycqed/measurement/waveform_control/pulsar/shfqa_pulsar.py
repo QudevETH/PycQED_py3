@@ -366,6 +366,9 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         return self.awg.get_params_for_spectrum(requested_freqs)
 
+    def get_frequency_sweep_function(self, ch: str):
+        return self.awg.get_lo_sweep_function()
+
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
