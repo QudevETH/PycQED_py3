@@ -523,9 +523,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'volts': dict(param_name='volt', unit='V',
                       label=r'fluxline voltage',
                       dimension=1),
-        'spec_power':  dict(param_name='spec_power', unit='',
+        'spec_power':  dict(param_name='spec_power', unit='dBm',
                       label=r'Power of spec. MWG',
-                      sweep_function_2D='spec_power',
                       dimension=1),
     }
     default_experiment_name = 'QubitSpectroscopy'
@@ -660,7 +659,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         f'{qb.ge_I_channel()}_direct_IQ_output_amp'
                     ]
                     self.temporary_values.append((amp,
-                                                  qb.spec_mod_amp()))
+                                                  0.2)) # FIXME: hard-coded
                 else:
                     log.error('Task for modulated spectroscopy does not contain'
                               'mod_freq.')
