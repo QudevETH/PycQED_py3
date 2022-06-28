@@ -291,7 +291,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings += self._zi_playback_string_loop_end(metadata)
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
-                # prevent ZI_base_instrument.start() from starting this sub AWG
+                # prevent self.start() from starting this sub AWG
                 self.awg._awg_program[awg_nr + first_sg_awg] = None
                 continue
             # tell ZI_base_instrument that it should not compile a
@@ -374,8 +374,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
     def start(self):
-        for sgchannel in self.awg.sgchannels:
-            sgchannel.awg.enable(1)
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
+        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
+            if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
+                sgchannel.awg.enable(1)
 
     def stop(self):
         for sgchannel in self.awg.sgchannels:
