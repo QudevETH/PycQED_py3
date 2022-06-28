@@ -294,15 +294,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # prevent self.start() from starting this sub AWG
                 self.awg._awg_program[awg_nr + first_sg_awg] = None
                 continue
-            # tell ZI_base_instrument that it should not compile a
-            # program on this sub AWG (because we already do it here)
-            # FIXME: delete this when overhauling sequencer cache for SG
-            # self.awg._awg_needs_configuration[awg_nr] = False
-            # tell ZI_base_instrument.start() to start this sub AWG
-            # (The base class will start sub AWGs for which _awg_program
-            # is not None. Since we set _awg_needs_configuration to False,
-            # we do not need to put the actual program here, but anything
-            # different from None is sufficient.)
+            # tell self.start() to start this sub AWG
+            # (self.start will start sub AWGs for which _awg_program
+            # is not None. We do not need to put the actual program here,
+            # but anything different from None is sufficient.)
             self.awg._awg_program[awg_nr + first_sg_awg] = True
 
             # Having determined whether the sub AWG should be started or
