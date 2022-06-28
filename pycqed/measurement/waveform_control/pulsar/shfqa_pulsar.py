@@ -6,6 +6,8 @@ from copy import deepcopy
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
+
 try:
     from pycqed.instrument_drivers.acquisition_devices.shf \
         import SHF_AcquisitionDevice
@@ -33,18 +35,13 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         :class:`pycqed.measurement.waveform_control.segment.Segment`.
     """
 
-    AWG_CLASSES = [SHFQA_core]
+    AWG_CLASSES = []
     GRANULARITY = 4
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
     INTER_ELEMENT_DEADTIME = 0 # TODO: unverified!
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
-    }
-    # TODO: SHFQA had no parameter for offset, should we delete it for this
-    # subclass, or just force it to 0 ?
-    CHANNEL_OFFSET_BOUNDS = {
-        "analog": (0, 1e-16),
     }
     IMPLEMENTED_ACCESSORS = ["amp"]
 
@@ -100,7 +97,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.qachannels[ch].output.range(20 * (np.log10(value) + 0.5))
+            self.awg.qachannels[ch].output.range(vp_to_dbm(value))
 
     def awg_getter(self, id:str, param:str):
 
@@ -114,7 +111,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                 dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
                 dbm = self.awg.qachannels[ch].output.range()
-            return 10 ** (dbm / 20 - 0.5)
+            return dbm_to_vp(dbm)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
@@ -358,3 +355,5 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
     """ZI SHFQA specific Pulsar module"""
+
+    AWG_CLASSES = [SHFQA_core]
