@@ -25,11 +25,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
     }
-    # TODO: SHFQC has no parameter for offset, should we delete it for this
-    # subclass, or just force it to 0 ?
-    CHANNEL_OFFSET_BOUNDS = {
-        "analog": (0, 1e-16),
-    }
     IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
                              "range": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
                              "centerfreq": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']]

@@ -42,7 +42,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """
     acq_length_granularity = 16
 
-    # FIXME is this still valid for the SHFSG?
     # acq_sampling_rate is the effective sampling rate provided by the SHFQA,
     # even though internally it has an ADC running at 4e9 Sa/s.
     # More details on the chain of downconversions on the SHFQA input:
@@ -58,7 +57,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized'], #FIXME data types unused
+                     'int_avg': ['raw', 'digitized'],  # FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
                      # compatibility, we allow this mode here.
                      'scope': ['timedomain', 'fft_power', ],

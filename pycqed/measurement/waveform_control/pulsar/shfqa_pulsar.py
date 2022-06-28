@@ -6,6 +6,8 @@ from copy import deepcopy
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
+
 try:
     from pycqed.instrument_drivers.acquisition_devices.shf \
         import SHF_AcquisitionDevice
@@ -84,7 +86,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.qachannels[ch].output.range(20 * (np.log10(value) + 0.5))
+            self.awg.qachannels[ch].output.range(vp_to_dbm(value))
         if param == "range":
             self.awg.sgchannels[ch].output.range(value)
         if param == "centerfreq":
@@ -102,7 +104,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
                 dbm = self.awg.qachannels[ch].output.range()
-            return 10 ** (dbm / 20 - 0.5)
+            return dbm_to_vp(dbm)
         if param == "range":
             if self.pulsar.awgs_prequeried:
                 range = self.awg.qachannels[ch].output.range.get_latest()

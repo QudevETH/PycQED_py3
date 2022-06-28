@@ -7,6 +7,7 @@ from copy import deepcopy
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
@@ -37,11 +38,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     INTER_ELEMENT_DEADTIME = 0  # TODO: unverified!
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
-    }
-    # TODO: SHFQA had no parameter for offset, should we delete it for this
-    # subclass, or just force it to 0 ?
-    CHANNEL_OFFSET_BOUNDS = {
-        "analog": (0, 1e-16),
     }
     CHANNEL_RANGE_BOUNDS = {
         "analog": (-40, 10),
@@ -79,6 +75,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 group.append(ch_name)
             for ch_name in group:
                 self.pulsar.channel_groups.update({ch_name: group})
+        # FIXME: add support for marker channels
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
@@ -99,7 +96,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.sgchannels[ch].output.range(20 * (np.log10(value) + 0.5))
+            self.awg.sgchannels[ch].output.range(vp_to_dbm(value))
         if param == "range":
             self.awg.sgchannels[ch].output.range(value)
         if param == "centerfreq":
@@ -117,7 +114,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 dbm = self.awg.sgchannels[ch].output.range.get_latest()
             else:
                 dbm = self.awg.sgchannels[ch].output.range()
-            return 10 ** (dbm / 20 - 0.5)
+            return dbm_to_vp(dbm)
         if param == "range":
             if self.pulsar.awgs_prequeried:
                 range = self.awg.sgchannels[ch].output.range.get_latest()
@@ -131,6 +128,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 freq = self.awg.sgchannels[ch].centerfreq()
             return freq
 
+    # FIXME: clean up and move func. common with HDAWG to zi_pulsar_mixin module
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
         chids = [f'sg{i + 1}{iq}' for i in range(len(self.awg.sgchannels))
@@ -282,7 +280,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 continue
                         chid_to_hash = awg_sequence_element[cw]
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
-                        # include marker chans that are currently not supported
+                        # include marker chans in the tuple that are currently
+                        # not supported
                         wave = (wave[0], None, wave[1], None)
                         if wave == (None, None, None, None):
                             continue
@@ -370,17 +369,20 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings += self._zi_playback_string_loop_end(metadata)
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
+                # FIXME: enable this when overhauling sequencer cache for SG
                 # prevent ZI_base_instrument.start() from starting this sub AWG
                 # self.awg._awg_program[awg_nr] = None
                 continue
             # tell ZI_base_instrument that it should not compile a
             # program on this sub AWG (because we already do it here)
+            # FIXME: delete this when overhauling sequencer cache for SG
             # self.awg._awg_needs_configuration[awg_nr] = False
             # tell ZI_base_instrument.start() to start this sub AWG
             # (The base class will start sub AWGs for which _awg_program
             # is not None. Since we set _awg_needs_configuration to False,
             # we do not need to put the actual program here, but anything
             # different from None is sufficient.)
+            # FIXME: enable this when overhauling sequencer cache for SG
             # self.awg._awg_program[awg_nr] = True
 
             # Having determined whether the sub AWG should be started or
@@ -581,6 +583,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         if m1 is not None and a1 is None:
             a1 = np.zeros(n)
         if m1 is None and a1 is None and (m2 is not None or a2 is not None):
+            # FIXME: test if this hack is needed one marker support is added
             # Hack needed to work around an HDAWG bug where programming only
             # m2 channel does not work. Remove once bug is fixed.
             a1 = np.zeros(n)
