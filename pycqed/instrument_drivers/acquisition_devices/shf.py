@@ -6,14 +6,15 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
+from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
 log = logging.getLogger(__name__)
 
 
-class SHFQASpectroscopyHardSweep(swf.Hard_Sweep):
-    """Defines a hard sweep function specific to the SHFQA hard spectroscopy.
+class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
+    """Defines a hard sweep function specific to the SHF hard spectroscopy.
 
     The frequency range over which this sweep function should sweep is not
     set in the sweep function itself, but in the acquisition_mode attribute
@@ -32,11 +33,11 @@ class SHFQASpectroscopyHardSweep(swf.Hard_Sweep):
         pass  # Set in the Segment, see docstring
 
 
-class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
-    """QuDev-specific PycQED driver for the ZI SHFQA
+class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHF instrument series
 
-    This is the QuDev-specific PycQED driver for the 2 GSa/s SHFQA instrument
-    from Zurich Instruments AG.
+    This is not meant to be instantiated directly, but should be inherited
+    from by the actual instrument classes
 
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
@@ -64,13 +65,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized'], #FIXME data types unused
+                     'int_avg': ['raw', 'digitized'],  # FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
                      # compatibility, we allow this mode here.
                      'scope': ['timedomain', 'fft_power', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
-    # the SHFQA
+    # the SHF
     res_logging_indices = {'raw': 1,  # raw integrated+averaged results
                            'digitized': 3,  # thresholded results (0 or 1)
                            }
@@ -216,7 +217,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
         if min_bandwidth > self.acq_sampling_rate:
             raise NotImplementedError('Spectrum wider than the bandwidth of '
-                                      'the SHFQA is not yet implemented!')
+                                      'the SHF is not yet implemented!')
         # Compute needed acq length
         delta_f = np.mean(diff_f)
         # Note that this might underestimate the necessary acq_length to get
@@ -306,7 +307,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 )
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
-                # Fit as many traces as possible in a single SHFQA call
+                # Fit as many traces as possible in a single SHF call
                 # FIXME this should be disabled when measuring a synchronous
                 #  signal instead of noise
                 num_points_per_trace = self.convert_time_to_n_samples(
@@ -399,7 +400,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # at each run, and then returns only the newer data to match the
         # normal behaviour of poll. One could implement an actual poll after
         # ZI has improved the drivers, if that turns out to be a bottleneck.
-        # sqrt(2) are because the SHFQA seems to return integrated RMS voltages.
+        # sqrt(2) are because the SHF seems to return integrated RMS voltages.
 
         # TODO (from ZI) poll is availabe on the new zhinst-qcodes driver,
         # might be worthwhile considering since it is much faster.
@@ -439,7 +440,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     res.append(self.qachannels[i].readout.result.data[
                                    channel].wave())
 
-                # In readout mode the data isn't rescaled yet in the SHFQA
+                # In readout mode the data isn't rescaled yet in the SHF
                 # by the number of points
                 scaling_factor = np.sqrt(2) \
                                  / (self.acq_sampling_rate * self._acq_length)
@@ -466,7 +467,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         "Currently the scope only works with two data "
                         "channels. This will be cleaned up after integrating "
                         "measurements on TWPA objects.")
-                # The SHFQA acquires at full memory, then we get as many traces
+                # The SHF acquires at full memory, then we get as many traces
                 # as possible from that (this could be avoided e.g. if a few
                 # points only are needed, in case this slows down measuring)
                 num_points_per_trace = self.convert_time_to_n_samples(
@@ -519,7 +520,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFQASpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
+            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
                                               parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
@@ -566,3 +567,21 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             data_type=data_type, acquisition_length=acquisition_length)
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
+
+
+class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQA
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+
+
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQC
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
