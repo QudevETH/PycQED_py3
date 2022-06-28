@@ -562,6 +562,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         preprocessed_task['hard_sweep'] = (
             hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
             pulsar.get(f'{awg_name}_use_hardware_sweeper'))
+
+        # Convenience feature to automatically use the LO power parameter to
+        # sweep the spec_power in a soft_sweep spectroscopy
+        prefix = preprocessed_task['prefix']
+        if 'spec_power' in preprocessed_task \
+           and not preprocessed_task['hard_sweep'] \
+           and prefix + 'spec_power' not in self.sweep_functions_dict.keys():
+            self.sweep_functions_dict[prefix + 'spec_power'] = \
+                qb.instr_lo.get_instr().power()
         return preprocessed_task
 
     def resolve_freq_sweep_points(self, **kw):
