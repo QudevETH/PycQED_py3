@@ -24,8 +24,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     """
     task_mobj_keys = ['qb']
     @assert_not_none('task_list')
-    def __init__(self, task_list, allowed_lo_freqs=None,
-                 trigger_separation=10e-6, **kw):
+    def __init__(self, task_list, trigger_separation=10e-6, **kw):
         # Passing keyword arguments to the super class (even if they are not
         # needed there) makes sure that they are stored in the metadata.
         df_name = kw.pop('df_name', 'int_avg_det_spec')
@@ -42,7 +41,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         # segments. This reduced set is introduce to prevent that a segment
         # is generated for every frequency sweep point.
         self.sweep_points_pulses = SweepPoints(min_length=2, )
-        self.allowed_lo_freqs = allowed_lo_freqs
         self.analysis = {}
 
         self.trigger_separation = trigger_separation
@@ -389,11 +387,9 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     default_experiment_name = 'FeedlineSpectroscopy'
 
     def __init__(self, task_list,
-                 allowed_lo_freqs=None,
                  trigger_separation=10e-6,
                  **kw):
         super().__init__(task_list,
-                         allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
                          segment_kwargs={'acquisition_mode': \
                                         dict(sweeper='software')},
@@ -537,7 +533,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def __init__(self, task_list,
                  pulsed=False,
-                 allowed_lo_freqs=None,
                  trigger_separation=10e-6,
                  modulated=False,
                  **kw):
@@ -550,7 +545,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                                   else '_continuous'
         super().__init__(task_list,
                          drive=drive,
-                         allowed_lo_freqs=allowed_lo_freqs,
                          trigger_separation=trigger_separation,
                          segment_kwargs={'mod_config':{},
                                          'sine_config':{},
@@ -684,13 +678,12 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 class ReadoutCalibration(FeedlineSpectroscopy):
     default_experiment_name = 'ReadoutCalibration'
 
-    def __init__(self, task_list, allowed_lo_freqs=None,
-                 trigger_separation=10e-6, **kw):
+    def __init__(self, task_list, trigger_separation=10e-6, **kw):
         self.kw_for_sweep_points['states'] = dict(param_name='initialize',
                                                   unit='',
                                                   label=r'qubit state',
                                                   dimension=1)
-        super().__init__(task_list, allowed_lo_freqs, trigger_separation, **kw)
+        super().__init__(task_list, trigger_separation, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
         if self.sweep_points_pulses.find_parameter('initialize') is None:
