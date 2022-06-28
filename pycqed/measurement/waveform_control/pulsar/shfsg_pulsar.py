@@ -210,7 +210,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # use the modulation config of the I channel
             mod_config = combined_mod_config.get(
                 self.pulsar._id_channel(f'sg{awg_nr + 1}i', self.awg.name), {})
-            internal_mod = mod_config.get('intenal_mod', False)
+            internal_mod = mod_config.get('internal_mod', False)
             if internal_mod:
                 # Reset the starting phase of all oscillators at the beginning
                 # of a sequence using the resetOscPhase instruction. This
