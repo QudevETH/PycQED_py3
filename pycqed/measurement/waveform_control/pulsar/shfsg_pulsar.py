@@ -340,7 +340,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if not internal_mod:
                         prepend_zeros = False
                         playback_strings += self._zi_playback_string(
-                            name=self.awg.name, device='hdawg', wave=wave,
+                            name=self.awg.name, device='shfsg', wave=wave,
                             codeword=(nr_cw != 0),
                             prepend_zeros=prepend_zeros,
                             placeholder_wave=use_placeholder_waves,
@@ -350,7 +350,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     elif not use_placeholder_waves:
                         pb_string, interleave_string = \
                             self._zi_interleaved_playback_string(
-                                name=self.awg.name, device='hdawg',
+                                name=self.awg.name, device='shfsg',
                                 counter=counter, wave=wave,
                                 codeword=(nr_cw != 0)
                             )

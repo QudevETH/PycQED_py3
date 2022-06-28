@@ -249,10 +249,14 @@ class ZIPulsarMixin:
                 # This hack is needed due to a bug on the HDAWG.
                 # Remove this if case once the bug is fixed.
                 playback_string.append(f"playWave({w2}_but_zero, {w2});")
-            elif w1 is not None and w2 is None and use_hack and not placeholder_wave:
-                # This hack is needed due to a bug on the HDAWG.
-                # Remove this if case once the bug is fixed.
-                playback_string.append(f"playWave({w1}, marker(1,0)*0*{w1});")
+            elif w1 is not None and w2 is None and not placeholder_wave:
+                if device == 'shfsg':
+                    # Generate real valued output on SG channel
+                    playback_string.append(f"playWave(1, 2, {w1});")
+                elif use_hack:
+                    # This hack is needed due to a bug on the HDAWG.
+                    # Remove this if case once the bug is fixed.
+                    playback_string.append(f"playWave({w1}, marker(1,0)*0*{w1});")
             elif w1 is not None or w2 is not None:
                 playback_string.append("playWave({});".format(
                     self._zi_wavename_pair_to_argument(w1, w2)))
