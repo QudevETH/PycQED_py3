@@ -187,7 +187,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             self.configure_internal_mod(ch,
                 enable=config.get('internal_mod', False),
                 osc_index=config.get('osc', 0),
-                sine_generator_index=config.get('sine', 0))
+                sine_generator_index=config.get('sine', 0),
+                gains=config.get('gains', (1.0, - 1.0, 1.0, 1.0)))
 
         # Configure sine output for each channel. For the SG modules we
         # take config of the I channel and ignore the Q channel configuration
@@ -197,7 +198,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             self.configure_sine_generation(ch,
                 enable=config.get('continous', False),
                 osc_index=config.get('osc', 0),
-                sine_generator_index=config.get('sine', 0))
+                sine_generator_index=config.get('sine', 0),
+                gains=config.get('gains', (0.0, 1.0, 1.0, 0.0)))
 
         first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
