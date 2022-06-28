@@ -158,19 +158,16 @@ class Detector_Function(object):
         """Transform data for the liveplot
 
         Args:
-            data (_type_): array of shape (i, ) or (n, i) with i being the
+            data: array of shape (i, ) or (n, i) with i being the
                 number of data points per sweep point and n being an arbitrary
                 integer.
-        Returns:
-            _type_: _description_
         """
-        original_shape = data.shape
-        data = np.atleast_2d(data)
         if self.live_plot_transform_type == 'mag_phase':
-            v = data[:, 0::2] + 1j * data[:, 1::2] # vector in complex plane
-            magn = np.abs(v)
-            phase  = np.angle(v)
-            return np.reshape(np.array([magn, phase]).T, original_shape)
+            x = np.atleast_2d(data.T).T
+            y = np.zeros_like(x)
+            x = x[:, ::2] + 1j * x[:, 1::2]
+            y[:, ::2], y[:, 1::2] = np.abs(x), np.angle(x)
+            return y.reshape(data.shape)
         else:
             return data
 
