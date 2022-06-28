@@ -236,14 +236,7 @@ class ZIPulsarMixin:
         if w2 is not None and negate_q:
             w2 = f"(-({w2}))"
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
-        if trig_source == "Dig1":
-            playback_string.append(
-                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
-        elif trig_source == "Dig2":
-            playback_string.append("waitDigTrigger(2,1);")
-        else:
-            playback_string.append(f"wait{trig_source}Trigger();")
+        playback_string += self._zi_wait_trigger(name, device)
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
@@ -285,14 +278,7 @@ class ZIPulsarMixin:
             if not acq:
                 playback_string.append(f"prefetch({wname},{wname});")
 
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
-        if trig_source == "Dig1":
-            playback_string.append(
-                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
-        elif trig_source == "Dig2":
-            playback_string.append("waitDigTrigger(2,1);")
-        else:
-            playback_string.append(f"wait{trig_source}Trigger();")
+        playback_string += self._zi_wait_trigger(name, device)
 
         if codeword:
             # playback_string.append("playWaveDIO();")
@@ -304,3 +290,15 @@ class ZIPulsarMixin:
             playback_string.append("setTrigger(RO_TRIG);")
             playback_string.append("setTrigger(WINT_EN);")
         return playback_string, interleaves
+
+    def _zi_wait_trigger(self, name, device):
+        playback_string = []
+        trig_source = self.pulsar.get("{}_trigger_source".format(name))
+        if trig_source == "Dig1":
+            playback_string.append(
+                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
+        elif trig_source == "Dig2":
+            playback_string.append("waitDigTrigger(2,1);")
+        else:
+            playback_string.append(f"wait{trig_source}Trigger();")
+        return playback_string
