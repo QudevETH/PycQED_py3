@@ -12,6 +12,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
 import zhinst
+import zhinst.toolkit
 
 try:
     from zhinst.qcodes import SHFSG as SHFSG_core
@@ -417,8 +418,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         assert mc is None # marker not yet supported on SG
 
         sgchannel = self.awg.sgchannels[awg_nr]
-        waveforms = sgchannel.awg.read_from_waveform_memory()
-        waveforms[wave_idx] = (a1, a2)
+        waveforms = zhinst.toolkit.waveform.Waveforms()
+        # FIXME: Test whether the sign of the second channel needs to be flipped
+        waveforms.assign_waveform(wave_idx, a1, a2)
         sgchannel.awg.write_to_waveform_memory(waveforms)
 
 
