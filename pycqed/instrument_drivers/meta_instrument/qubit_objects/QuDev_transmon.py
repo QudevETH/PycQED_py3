@@ -1063,7 +1063,7 @@ class QuDev_transmon(Qubit):
             elif drive == 'pulsed_spec':
                 awg_interface.configure_sine_generation(self.ge_I_channel(),
                                                  enable=False)
-                awg_interface.configure_internal_modulation(self.ge_I_channel())
+                awg_interface.configure_internal_mod(self.ge_I_channel())
             elif drive == 'timedomain':
                 pass
             else:
