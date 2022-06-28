@@ -6,6 +6,8 @@ from copy import deepcopy
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
+
 try:
     from pycqed.instrument_drivers.acquisition_devices.shf \
         import SHF_AcquisitionDevice
@@ -95,7 +97,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.qachannels[ch].output.range(20 * (np.log10(value) + 0.5))
+            self.awg.qachannels[ch].output.range(vp_to_dbm(value))
 
     def awg_getter(self, id:str, param:str):
 
@@ -109,7 +111,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                 dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
                 dbm = self.awg.qachannels[ch].output.range()
-            return 10 ** (dbm / 20 - 0.5)
+            return dbm_to_vp(dbm)
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
