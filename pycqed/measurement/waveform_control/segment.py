@@ -97,7 +97,7 @@ class Segment:
         # sweep values given in this property.
         # FIXME: This is an experimental feature and needs to be further
         #  cleaned up and documented in the future.
-        self.sweep_params = {}
+        self.sweep_params = kw.pop('sweep_params', dict())
         # allow_filter specifies whether the segment can be filtered out in
         # a FilteredSweep
         self.allow_filter = False
