@@ -620,13 +620,13 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         task = self.get_task(qb)
         if self.pulsed:
             qubit = self.get_qubit(task)
-            ch = qubit.ge_I_channel()
-            amplitude = 10 ** (qubit.spec_power() / 20 - 0.5)
             pulse_modifs = {'all': {'element_name': 'spec_el',
-                                    'channel': ch,
                                     'length': self.trigger_separation - 100e-9
-                                              - qubit.acq_length(),
-                                    'amplitude': amplitude}}
+                                              - qubit.acq_length()}}
+            if task['hard_sweep']:
+                pulse_modifs['all']['channel'] = qubit.ge_I_channel()
+                pulse_modifs['all']['amplitude'] = \
+                    10 ** (qubit.spec_power() / 20 - 0.5)
             spec = self.block_from_ops('spec', [f"Spec {qb}"],
                                        pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
