@@ -526,6 +526,12 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'spec_power':  dict(param_name='spec_power', unit='dBm',
                       label=r'Power of spec. MWG',
                       dimension=1),
+        'spec_pulse_amplitude':  dict(param_name='amplitude', unit='',
+                      label=r'Amplitude of spec. pulse',
+                      dimension=1),
+        'spec_pulse_length':  dict(param_name='length', unit='s',
+                      label=r'Length of spec. pulse',
+                      dimension=1),
     }
     default_experiment_name = 'QubitSpectroscopy'
 
@@ -568,21 +574,26 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         """Configures potential hard_sweeps and afterwards calls super method
         """
         for task in self.preprocessed_task_list:
+            qb = self.get_qubit(task)
+            pulsar = qb.instr_pulsar.get_instr()
+            freqs = task['freqs']
+            ch = qb.ge_I_channel()
+            amp_range = pulsar.get(f'{ch}_amp')
+            amp = 10 ** (qb.spec_power() / 20 - 0.5)
+            gain = amp / amp_range
+            self.segment_kwargs['mod_config'][ch] = \
+                dict(internal_mod=self.pulsed)
+            self.segment_kwargs['sine_config'][ch] = \
+                dict(continous=not self.pulsed,
+                     gains=tuple(gain * x for x in (0.0, 1.0, 1.0, 0.0)))
             if task['hard_sweep']:
-                qb = self.get_qubit(task)
-                pulsar = qb.instr_pulsar.get_instr()
-                freqs = task['freqs']
-                ch = qb.ge_I_channel()
                 center_freq, mod_freqs = pulsar.get_params_for_spectrum(
                     qb.ge_I_channel(), freqs)
-                self.segment_kwargs['mod_config'][ch] = \
-                    dict(internal_mod=self.pulsed)
-                self.segment_kwargs['sine_config'][ch] = \
-                    dict(continous=not self.pulsed)
                 self.segment_kwargs['sweep_params'][f'{ch}_osc_sweep'] = \
                     mod_freqs
                 pulsar.set(f'{ch}_centerfreq', center_freq)
                 # adopt df kwargs to hard sweep
+                self.df_name = 'int_avg_det'
                 self.df_kwargs['single_int_avg'] = False
         return super().resolve_freq_sweep_points(**kw)
 
@@ -603,9 +614,16 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
         # add marker pulse in case we perform pulsed spectroscopy
+        task = self.get_task(qb)
         if self.pulsed:
+            qubit = self.get_qubit(task)
+            ch = qubit.ge_I_channel()
+            amplitude = 10 ** (qubit.spec_power() / 20 - 0.5)
             pulse_modifs = {'all': {'element_name': 'spec_el',
-                                    'channel': qb.ge_I_channel()}}
+                                    'channel': ch,
+                                    'length': self.trigger_separation - 100e-9
+                                              - qubit.acq_length(),
+                                    'amplitude': amplitude}}
             spec = self.block_from_ops('spec', [f"Spec {qb}"],
                                        pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
@@ -616,7 +634,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                             pulse_dict[param_name] = ParametricValue(param_name)
             return [spec, ro]
         else:
-            task = self.get_task(qb)
             if task is not None and task['hard_sweep']:
                 # We need to add a pulse of length 0 to make sure the AWG channel is
                 # programmed by pulsar and pulsar gets the hard sweep information
