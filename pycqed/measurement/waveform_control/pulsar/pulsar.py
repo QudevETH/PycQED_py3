@@ -73,14 +73,14 @@ class PulsarAWGInterface(ABC):
     """
 
     CHANNEL_RANGE_BOUNDS:Dict[str, Tuple[float, float]] = {}
-    """Dictionary containing the range boudaries for each type of channels.
+    """Dictionary containing the range boundaries for each type of channels.
 
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
     CHANNEL_RANGE_DIVISOR:int = 0
     """Variable Specifying the increments that can be set for the range in dBm.
 
-    If set to 0, continous values are allowed. Defaults to 0.
+    If set to 0, continuous values are allowed. Defaults to 0.
     """
 
     CHANNEL_CENTERFREQ_BOUNDS:Dict[str, Tuple[float, float]] = {}
@@ -92,9 +92,15 @@ class PulsarAWGInterface(ABC):
     DEFAULT_SEGMENT = _DEFAULT_SEGMENT
     """TODO"""
 
-    IMPLEMENTED_ACCESSORS:List[str] = ["offset", "amp"]
-    """List of parameters that can be set or retrieved by :meth:`awg_setter`
+    IMPLEMENTED_ACCESSORS = ["offset", "amp"]
+    """Parameters that can be set or retrieved by :meth:`awg_setter`
     and :meth:`awg_getter`.
+
+    If `IMPLEMENTED_ACCESSORS` is a list of strings it is assumed that the
+    accessor is implemented for all channels. Alternatively one can specify a
+    dictionary with the accessor names being the keys and the values being lists
+    of channel names that implement this accessor.
+    For example: `IMPLEMENTED_ACCESSORS = {'amp': ['sg1i', 'sg2i']}`
     """
 
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
@@ -466,7 +472,7 @@ class PulsarAWGInterface(ABC):
         """Convenience method for retrieving parameters needed to measure a
         spectrum
 
-        Subclasses must override this.
+        Subclasses for which this feature is used have to overwrite this method.
 
         Args:
             ch (str): Channel name of the output channel whos frequency is swept

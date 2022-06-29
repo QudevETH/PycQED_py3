@@ -413,3 +413,23 @@ class FilteredSweep(multi_sweep_function):
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
                                range(a)]
+
+
+class SpectroscopyHardSweep(Hard_Sweep):
+    """Defines a hard sweep function used for hard spectroscopy.
+
+    The frequency range over which this sweep function should sweep is not
+    set in the sweep function itself, but either in the metadata of the elements
+    in the used segment. This gives Pulsar access to the frequency range,
+    allowing Pulsar to program the corresponding frequency parameters in the
+    seqc code.
+
+    set_parameter is implemented as a pass method to prevent warning messages.
+    """
+    def __init__(self, parameter_name='None'):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+
+    def set_parameter(self, value):
+        pass  # Set in the Segment, see docstring

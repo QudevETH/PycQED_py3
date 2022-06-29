@@ -112,7 +112,7 @@ class ZIPulsarMixin:
             metadata (dict): Dictionary containing the information if a loop
                 should be started and which variables to sweep inside the loop.
                 Relevant keys are:
-                    loop (int): Length of the loop. If not specified no loop
+                    loop (int): Length of the loop. If not specified, no loop
                         will be started and the returned playback_string will be
                         an empty list.
                     sweep_params (dict): Dictionary of sweeps. Depending on the
@@ -138,9 +138,8 @@ class ZIPulsarMixin:
             for ch in channels:
                 if not k.startswith(f"{ch}_"):
                     continue
-                if 'osc_sweep' in k:
+                if k == f"{ch}_osc_sweep":
                     playback_string.append('//set up frequency sweep')
-                    playback_string.append(f'const SWEEP_OSC = 0;\n')
                     start_freq = v[0]
                     freq_inc = v[1] - v[0]
                     playback_string.append(
@@ -154,16 +153,10 @@ class ZIPulsarMixin:
             for ch in channels:
                 if not k.startswith(f"{ch}_"):
                     continue
-                if 'osc_sweep' in k:
+                if k == f"{ch}_osc_sweep":
                     playback_string.append('  waitWave();\n')
                     playback_string.append('  setSweepStep(SWEEP_OSC,'
                                            ' i_sweep);\n')
-                    # if v.get('reset', True):
-                    #     reset_mask = "0b{:08b}".format(
-                    #             1 << int(v.get('osc', 0))
-                    #         )
-                    #     playback_string.append(f'  resetOscPhase('
-                    #                            f'{reset_mask});\n')
                 else:
                     node = k[len(f"{ch}_"):].replace("_", "/")
                     playback_string.append(

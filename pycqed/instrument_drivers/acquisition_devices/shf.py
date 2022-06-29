@@ -12,18 +12,6 @@ from pycqed.utilities.timer import Timer
 import logging
 log = logging.getLogger(__name__)
 
-class SpectroscopyHardSweep(swf.Hard_Sweep):
-    """Defines a hard sweep function used for hard spectroscopy.
-
-    set_parameter is implemented as a pass method to prevent warning messages.
-    """
-    def __init__(self, parameter_name='None'):
-        super().__init__()
-        self.parameter_name = parameter_name
-        self.unit = 'Hz'
-
-    def set_parameter(self, value):
-        pass  # Set in the Segment, see docstring
 
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
@@ -512,7 +500,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SpectroscopyHardSweep(parameter_name=name)
+            return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -576,13 +564,3 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
-        self.add_parameter(
-            'allowed_center_freqs',
-            initial_value=np.arange(1e9, 8.1e9, 100e6),
-            parameter_class=ManualParameter,
-            docstring='List of values that the center frequency is '
-                      'allowed to take. As of now this is limited to steps '
-                      'of 100 MHz.',
-            set_parser=lambda x: list(np.atleast_1d(x).flatten()),
-            vals=validators.MultiType(validators.Lists(), validators.Arrays(),
-                                      validators.Numbers()))

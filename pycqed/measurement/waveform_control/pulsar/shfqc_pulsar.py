@@ -25,16 +25,16 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.001, 1),
     }
-    IMPLEMENTED_ACCESSORS = {"amp": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
-                             "range": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']] + ['qa1i', 'qa1q'],
-                             "centerfreq": [f'sg{i}{iq}' for i in range(1, 7) for iq in ['i', 'q']]
-                                           + ['qa1i', 'qa1q']}
+    # Lower bound is the one of the SG channels and is lower than the one of
+    # the QA channels (-30 dBm).
+    CHANNEL_RANGE_BOUNDS = {
+        "analog": (-40, 10),
+    }
+    IMPLEMENTED_ACCESSORS = ["amp", "range", "centerfreq"]
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.awg._awg_program = [None] * len(self.awg.qachannels) \
-                                + [None] * len(self.awg.sgchannels)
 
     def create_awg_parameters(self, channel_name_map: dict):
         super().create_awg_parameters(channel_name_map)
@@ -42,7 +42,7 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # Repeat pattern support is not yet implemented for the SHFQA, thus we
+        # Repeat pattern support is not yet implemented for the SHFQC, thus we
         # remove this parameter added in super().create_awg_parameters()
         del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
 
@@ -61,8 +61,8 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                              initial_value=False,
                              parameter_class=ManualParameter,
                              docstring='Bool indicating whether the hardware '
-                                       'sweeper should be used in spectroscopy '
-                                       'mode',
+                                       'sweeper should be used in for '
+                                       'spectroscopies on the SG channels ',
                              vals=vals.Bool())
 
         SHFAcquisitionModulePulsar._create_all_channel_parameters(
