@@ -145,10 +145,10 @@ class arbitrary_variable_swf(swf.Hard_Sweep):
           pass
 
 
-class SegmentHardSweep(swf.UploadingSweepFunctionMixin, swf.Hard_Sweep):
+class SegmentHardSweep(swf.UploadingSweepFunction, swf.Hard_Sweep):
 
     def __init__(self, sequence, upload=True, parameter_name='None', unit='',
-                 start_pulsar=True, start_exclude_awgs=(), **kw):
+                 start_pulsar=False, start_exclude_awgs=(), **kw):
         """A hardware sweep over segments in a sequence.
 
         Args:
@@ -182,7 +182,7 @@ class SegmentHardSweep(swf.UploadingSweepFunctionMixin, swf.Hard_Sweep):
         pass
 
 
-class SegmentSoftSweep(swf.UploadingSweepFunctionMixin, swf.Soft_Sweep):
+class SegmentSoftSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
     # The following allows adding the class as placeholder in a
     # multi_sweep_function
     unit = ''

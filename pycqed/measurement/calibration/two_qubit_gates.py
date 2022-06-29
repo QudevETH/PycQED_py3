@@ -437,6 +437,13 @@ class MultiTaskingExperiment(QuantumExperiment):
                                 cal_points=self.cal_points, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
+        """Return the sweep_points list that is passed to sweep_n_dim.
+
+        This method can be implemented by child classes to modify which sweep
+        points are used to generate segments and sequences, e.g. only one RO
+        segment is needed in a feedline spectroscopy and not one per fequency
+        sweep point.
+        """
         return self.sweep_points
 
     @staticmethod

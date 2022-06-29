@@ -1709,6 +1709,30 @@ def mixer_lo_leakage_guess(model, **kwargs):
     return model.make_params(**kwargs)
 
 
+def resonator_purcell_s21(omega, J, omega_r, omega_p, kappa_r, kappa_p,
+                          gamma_r, gamma_p, Z0, C_in):
+    Gamma = 1/(1 + 2j * omega * Z0 * C_in)
+    kappa_p_tilde = kappa_p * (1 + np.real(Gamma))/2
+    omega_p_tilde = omega_p + kappa_p * np.imag(Gamma)/4
+    delta_r = omega_r - omega
+    delta_p_tilde = omega_p_tilde - omega
+    term = (gamma_r + 2j * delta_r + kappa_r)
+    S21 = (1 - Gamma) * (1 - (1 + Gamma)/(1 + np.real(Gamma) \
+        * (kappa_p_tilde * term) / (
+            4 * J**2
+            + (gamma_p + 2j * delta_p_tilde + kappa_p_tilde) * term
+            )
+        ))
+    return S21
+
+def resonator_purcell_s21_Hz(f, J, f_r, f_p, kappa_r, kappa_p,
+                          gamma_r, gamma_p, Z0, C_in):
+    omega, omega_r, omega_p = 2 * np.pi * [f, f_r, f_p]
+    return resonator_purcell_s21(omega, J, omega_r, omega_p, kappa_r, kappa_p,
+                          gamma_r, gamma_p, Z0, C_in)
+
+
+
 #################################
 #     User defined Models       #
 #################################

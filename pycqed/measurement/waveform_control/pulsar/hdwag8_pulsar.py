@@ -127,7 +127,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                  parameter_class=ManualParameter)
 
             awg_nr = (int(id[2:]) - 1) // 2
-            output_nr = int(id[2:]) - 2 * awg_nr - 1
+            output_nr = (int(id[2:]) - 1) % 2
             pulsar.add_parameter(
                 '{}_modulation_mode'.format(ch_name),
                 vals=vals.Enum('Modulation Off', 'Sine 1', 'Sine 2', 'FG 1' ,
@@ -163,7 +163,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     unit='Hz',
                     initial_value=None,
                     set_cmd=self._hdawg_mod_freq_setter(awg_nr, direct=True),
-                    get_cmd=self._hdawg_mod_freq_getter(awg_nr),
+                    get_cmd=self._hdawg_mod_freq_getter(awg_nr, direct=True),
                     docstring=f"Directly output I and Q signals for the "
                             f"channel pair starting with {ch_name}. The output is "
                             f"not modulated according to the uploaded waveform. "
@@ -176,13 +176,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # switched off in the init.
                 pulsar.set(param_name, None)
 
-                param_name = '{}_direct_IQ_output_amp'.format(ch_name)
+                param_name = '{}_direct_output_amp'.format(ch_name)
                 pulsar.add_parameter(
                     param_name,
                     unit='V',
                     initial_value=0,
-                    set_cmd=self._hdawg_direct_IQ_output_amp_setter(awg_nr),
-                    get_cmd=self._hdawg_direct_IQ_output_amp_getter(awg_nr),
+                    set_cmd=self._hdawg_direct_output_amp_setter(awg_nr),
+                    get_cmd=self._hdawg_direct_output_amp_getter(awg_nr),
                     docstring=f"Amplitude of the sine generator output used in "
                             f"direct output mode."
                 )
@@ -245,13 +245,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             output = (int(id[2:]) - 1) - 2 * awg
             return self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
 
-    def _hdawg_direct_IQ_output_amp_setter(self, awg_nr):
+    def _hdawg_direct_output_amp_setter(self, awg_nr):
         def s(val):
             self.awg.set(f'sines_{awg_nr * 2}_amplitudes_0', val)
             self.awg.set(f'sines_{awg_nr * 2 + 1}_amplitudes_1', val)
         return s
 
-    def _hdawg_direct_IQ_output_amp_getter(self, awg_nr):
+    def _hdawg_direct_output_amp_getter(self, awg_nr):
         def g():
             amp0 = self.awg.get(f'sines_{awg_nr * 2}_amplitudes_0')
             amp1 = self.awg.get(f'sines_{awg_nr * 2 + 1}_amplitudes_1')
@@ -301,15 +301,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 self.awg.set(f'sines_{awg_nr * 2}_phaseshift', 0)
                 # positive (negative) phase shift is needed for upper (
                 # lower) sideband
-                self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)# see pycqed\instrument_drivers\physical_instruments\
+                self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', sideband * 90)
+                # see pycqed\instrument_drivers\physical_instruments\
                 #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
                 # for description of the nodes used below.
                 # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
                 # etc. Mode 1 (2) means that the AWG Output is multiplied with
                 # Sine Generator signal 0 (1) of this sub-awg
                 if direct:
-                    self.awg.set(f'sines_{awg_nr * 2}_amplitudes_0', amp)
-                    self.awg.set(f'sines_{awg_nr * 2 + 1}_amplitudes_1', amp)
                     self.awg.set(f'sines_{awg_nr * 2}_enables_0', 1)
                     self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
                     self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
@@ -325,18 +324,28 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     self.awg.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 2)
         return s
 
-    def _hdawg_mod_freq_getter(self, awg_nr):
+    def _hdawg_mod_freq_getter(self, awg_nr, direct=False):
         def g():
-            m0 = self.awg.get(f'awgs_{awg_nr}_outputs_0_modulation_mode')
-            m1 = self.awg.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
-            if m0 == 0 and m1 == 0:
+            modes = [
+                self.awg.get(f'awgs_{awg_nr}_outputs_0_modulation_mode'),
+                self.awg.get(f'awgs_{awg_nr}_outputs_1_modulation_mode')
+            ]
+            if direct:
+                enables = [
+                    self.awg.get(f'sines_{awg_nr * 2}_enables_0'),
+                    self.awg.get(f'sines_{awg_nr * 2}_enables_1'),
+                    self.awg.get(f'sines_{awg_nr * 2 + 1}_enables_0'),
+                    self.awg.get(f'sines_{awg_nr * 2 + 1}_enables_1')
+                ]
+            if modes == [0, 0] and (not direct or enables != [1, 0, 0, 1]):
                 # If modulation mode is 0 for both outputs, internal
                 # modulation is switched off (indicated by a modulation
                 # frequency set to None).
                 return None
-            elif m0 == 1 and m1 == 2:
+            elif (modes == [1, 2] and not direct) or \
+                    (modes == [0, 0] and enables == [1, 0, 0, 1]):
                 # these calcuations invert the calculations in
-                # _hdawg_mod_setter, see therein for explaining comments
+                # _hdawg_mod_freq_setter, see therein for explaining comments
                 osc0 = self.awg.get(f'sines_{awg_nr * 2}_oscselect')
                 osc1 = self.awg.get(f'sines_{awg_nr * 2 + 1}_oscselect')
                 if osc0 == osc1:
@@ -345,7 +354,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     return sideband * self.awg.get(f'oscs_{osc0}_freq')
             # If we have not returned a result at this point, the current
             # AWG settings do not correspond to a configuration made by
-            # _hdawg_mod_setter.
+            # _hdawg_mod_freq_setter.
             log.warning('The current modulation configuration is not '
                         'supported by pulsar. Cannot retrieve modulation '
                         'frequency.')

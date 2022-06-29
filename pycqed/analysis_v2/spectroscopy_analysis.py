@@ -1674,11 +1674,6 @@ class QubitTrackerSpectroscopy(Spectroscopy):
 
 
 class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
-    """Analysis for the :py:meth:~'QuDev_transmon.calibrate_drive_mixer_carrier_model' measurement.
-
-    The class extracts the DC biases on the I and Q channel inputs of the
-    measured IQ mixer that minimize the LO leakage.
-    """
     def process_data(self):
         super().process_data()
 
@@ -1699,6 +1694,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         if data_key is None:
             return 'Measured Data (arb.)'
         return data_key
+
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
     def process_data(self):

@@ -62,10 +62,10 @@ class Sweep_function(object):
         return False
 
 
-class UploadingSweepFunctionMixin:
+class UploadingSweepFunction(Sweep_function):
     def __init__(self, sequence=None, upload=True, upload_first=True,
                  start_pulsar=False, start_exclude_awgs=tuple(), **kw):
-        """A mixin to extend any sweep function to be able to upload sequences.
+        """Extends any sweep function to be able to upload sequences.
 
         Args:
             sequence (:class:`~pycqed.measurement.waveform_control.sequence.Sequence`):
@@ -116,10 +116,10 @@ class UploadingSweepFunctionMixin:
                 Defaults to False.
 
         Raises:
-            ValueError: Raised sequence is None.
+            ValueError: Raised if sequence is None.
         """
         if self.sequence is None:
-            raise ValueError('Cannot start pulsar with sequence being None')
+            raise ValueError('Cannot upload with sequence being None')
         if self.upload or force_upload:
             self.sequence.upload()
 
@@ -135,7 +135,7 @@ class UploadingSweepFunctionMixin:
             start_pulsar (bool, optional): Defaults to True.
 
         Returns:
-            bool: True, because UploadingSweepFunctionMixin can upload sequences.
+            bool: True, because UploadingSweepFunction can upload sequences.
         """
         self.upload = upload
         self.upload_first = upload_first

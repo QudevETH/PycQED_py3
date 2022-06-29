@@ -13,7 +13,6 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
-from pycqed.measurement.waveform_control import pulsar as ps
 from copy import deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
@@ -567,8 +566,7 @@ class QuantumExperiment(CircuitBuilder):
             sweep_func_1st_dim = self.sweep_functions[0](
                 sequence=self.sequences[0], upload=self.upload,
                 parameter_name=sweep_param_name, unit=unit)
-        elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunctionMixin):
-            print('Writting sequence to SHFQA swf')
+        elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunction):
             sweep_func_1st_dim = self.sweep_functions[0]
             sweep_func_1st_dim.sequence = self.sequences[0]
         else:
@@ -667,9 +665,11 @@ class QuantumExperiment(CircuitBuilder):
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
 
-        if sweep_func_1st_dim.configure_upload(start_pulsar=False): pass
+        if sweep_func_1st_dim.configure_upload(start_pulsar=False):
+            pass
         elif len(self.mc_points[1]) > 0 \
-            and sweep_func_2nd_dim.configure_upload(start_pulsar=False): pass
+                and sweep_func_2nd_dim.configure_upload(start_pulsar=False):
+            pass
         else:
             self._upload_first_sequence()
             # separate method so that children can override
@@ -765,7 +765,7 @@ class QuantumExperiment(CircuitBuilder):
     def _upload_first_sequence(self):
         if self.upload:
             if hasattr(self, 'sequences') and self.sequences is not None \
-                and len(self.sequences) > 0:
+                    and len(self.sequences) > 0:
                 self.sequences[0].upload()
             else:
                 raise ValueError(f'QuantumExperiment needs to have attribute '

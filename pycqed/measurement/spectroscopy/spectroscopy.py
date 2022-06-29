@@ -296,10 +296,41 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         raise NotImplementedError('Child class has to implement sweep_block.')
 
     def get_lo_from_qb(self, qb, **kw):
+        """Get the InstrumentRefParameter of the qubits LO that is corresponding
+        to the frequency that is swept in the first dimension, e.g. drive LO in
+        qb spec and RO LO in feedline spec.
+
+        Child classes have to implement this method and should not call this
+        super method.
+
+        Args:
+            qb (QuDev_transmon): Qubit of which the LO InstrumentRefParameter is
+                returned.
+
+        Returns:
+            InstrumentRefParameter: The LO of the qubit.
+
+        Raises:
+            NotImplementedError: In case the child class did not implement the
+                method.
+        """
         raise NotImplementedError('Child class has to implement'
                                   ' get_lo_from_qb.')
 
     def get_mod_from_qb(self, qb, **kw):
+        """Returns the QCodes parameter for the modulation frequency of the
+        first dimension frequency sweep.
+
+        Child classes have to implement this method and should not call this
+        super method.
+
+        Args:
+            qb (QuDev_transmon): Qubit of which the mod parameter is returned.
+
+        Raises:
+            NotImplementedError: In case the child class did not implement the
+                method.
+        """
         raise NotImplementedError('Child class has to implement'
                                   ' get_mod_from_qb.')
 
@@ -345,6 +376,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         return self.analysis
 
     def get_qubit(self, task):
+        """Shortcut to extract the qubit object from a task.
+        """
         return self.get_qubits(task['qb'])[0][0]
 
     def get_task(self, qb):
@@ -507,6 +540,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 np.argmin(pdd['projected_data_dict'][qb.name]['Magnitude'])
             ]
             qb.set(f'ro_freq', ro_freq)
+
 
 class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """
@@ -676,10 +710,10 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     self.temporary_values.append((mod_freq,
                                                   task['mod_freq']))
                     amp = qb.instr_pulsar.get_instr().parameters[
-                        f'{qb.ge_I_channel()}_direct_IQ_output_amp'
+                        f'{qb.ge_I_channel()}_direct_output_amp'
                     ]
                     self.temporary_values.append((amp,
-                                                  0.2)) # FIXME: hard-coded
+                                                  qb.spec_mod_amp()))
                 else:
                     log.error('Task for modulated spectroscopy does not contain'
                               'mod_freq.')

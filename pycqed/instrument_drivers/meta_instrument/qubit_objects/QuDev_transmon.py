@@ -398,7 +398,10 @@ class QuDev_transmon(Qubit):
                            label='Qubit spectroscopy power')
         self.add_parameter('spec_mod_amp', unit='V', initial_value=0.1,
                            parameter_class=ManualParameter,
-                           label='Modulated qubit spectroscopy amplitude of IF')
+                           label='IF amplitude in qb spec',
+                           docstring='This configures the amplitude of the IF '
+                            'tone when doing a modulated qb spectroscopy (not '
+                            'bypassing the mixer, used for multi qb spec).')
         self.add_operation('Spec')
         self.add_pulse_parameter('Spec', 'spec_pulse_type', 'pulse_type',
                                  initial_value='SquarePulse',
@@ -457,9 +460,6 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter(op_name, ps_name + '_gaussian_filter_sigma',
                                  'gaussian_filter_sigma', initial_value=2e-9,
                                  vals=vals.Numbers(0))
-        self.add_pulse_parameter(op_name, ps_name + '_square_wave',
-                                 'square_wave', initial_value=False,
-                                 vals=vals.Bool())
         self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
                                  '_trans_amplitude', initial_value=0,
                                  vals=vals.Numbers(),

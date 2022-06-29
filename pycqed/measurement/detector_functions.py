@@ -175,7 +175,7 @@ class Detector_Function(object):
     def live_plot_labels(self):
         if self.live_plot_transform_type == 'mag_phase':
             return [f'{x}_{l}'
-                    for x in self.value_names[::2] for l in ['mag', '_phase']]
+                    for x in self.value_names[::2] for l in ['mag', 'phase']]
         else:
             return self.value_names
 
@@ -865,6 +865,7 @@ class MultiPollDetector(PollDetector):
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
+        self.detector_values_length = []
 
         if AWG is not None:  # treat as master AWG
             self.AWG = self.MultiAWGWrapper(AWG,
@@ -872,12 +873,18 @@ class MultiPollDetector(PollDetector):
         else:
             self.AWG = None
         for d in self.detectors:
+            # The following if statement makes sure that pulsar is prepared and
+            # finished if one of the detectors was delegated to take care of
+            # that. At the same time we ensure that this only happens once by
+            # setting the prepare_and_finish_pulsar parameter to False for all
+            # 'child' detectors.
             if d.prepare_and_finish_pulsar:
                 self.prepare_and_finish_pulsar = True
                 d.prepare_and_finish_pulsar = False
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
+            self.detector_values_length.append([len(d.value_names)])
             self.live_plot_allowed += [d.live_plot_allowed]
             if d.AWG is not None\
                     and not isinstance(self.AWG, self.MultiAWGWrapper):
@@ -917,9 +924,6 @@ class MultiPollDetector(PollDetector):
         if self.correlated:
             self.value_names += ['correlation']
             self.value_units += ['']
-
-        self.live_plot_transform_type = self.detectors[
-            0].live_plot_transform_type
 
     @Timer()
     def prepare(self, sweep_points=None):
@@ -1069,6 +1073,16 @@ class MultiPollDetector(PollDetector):
             self.AWG.stop()
         for d in self.detectors:
             d.finish()
+
+    def live_plot_transform(self, data):
+        original_shape = data.shape
+        data = np.atleast_2d(data)
+        ind = 0
+        for i, d in enumerate(self.detectors):
+            data[:, ind:ind + self.detector_values_length[i]] \
+                = d.live_plot_transform(data[:, ind:ind + self.detector_values_length[i]])
+            ind += self.detector_values_length[i]
+        return data.reshape(original_shape)
 
 
 class AveragingPollDetector(PollDetector):
@@ -1471,7 +1485,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     """
 
     def __init__(self, acq_dev, AWG=None, integration_length=1e-6,
-                 nr_averages=1024,  polar=True,
+                 nr_averages=1024,  polar=False,
                  channels: list = ((0, 0), (0, 1)),
                  correlations: list = (((0, 0), (0, 1))),
                  data_type: str = 'raw_corr',
@@ -1766,7 +1780,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         Returns:
              processed data array of the same shape as data_raw
         """
-        data_processed = super().process_data(data_raw, polar=True,
+        data_processed = super().process_data(data_raw, polar=False,
                                               reshape_data=False).T
         nr_states = len(self.state_labels)
         thresholded = self.get_values_function_kwargs.get('thresholded', True)
