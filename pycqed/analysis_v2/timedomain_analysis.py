@@ -11444,7 +11444,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
-            device_name = self.get_instruments_by_class('Device', hdf_file_index)
+            device_name = self.get_instruments_by_class('pycqed.instrument_drivers.meta_instrument.device.Device',
+                                                        hdf_file_index)
             amp = self.get_hdf_param_value("Instrument settings/" + device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
 
