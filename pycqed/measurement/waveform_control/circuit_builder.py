@@ -962,6 +962,8 @@ class CircuitBuilder:
             see method initialize().
         :param final_kwargs: Keyword arguments (dict) for the finalization,
             see method finalize().
+        :param segment_kwargs: Keyword arguments (dict) passed to segment.
+            (default: None)
         :param kw: additional keyword arguments
             body_block_func_kw (dict, default: {}): keyword arguments for the
                 body_block_func

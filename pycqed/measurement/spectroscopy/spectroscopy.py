@@ -20,7 +20,28 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     mod. freq. or both are swept. Compatible with hard sweeps.
 
     Child classes implement the spectroscopy experiment and need to implement
-    sweep_block.
+    sweep_block to add the right pulses depending on the configuration and
+    purpose of the spectroscopy.
+
+    Keyword Arguments:
+        task_list (list[dict[str, object]]): List of tasks that will be
+            performed in parallel. Each task correspond to one spectroscopy
+            carried out on one qubit (FIXME: should be meas_obj in the future)
+        trigger_separation (float, optional): Separation between single
+            acquisitions. Defaults to 10e-6 s.
+        sweep_functions_dict (dict, optional): Dictionary of sweep functions
+            with the key of a value being the name of the sweep parameter for
+            which the sweep function will be used. Defaults to `dict()`.
+        df_name (str, optional): Specify a specific detector function to be
+            used. See :meth:`mqm.get_multiplexed_readout_detector_functions`
+            for available options.
+        df_kwargs (dict, optional): Kwargs of detector function.
+            Defaults to `{"live_plot_transform_type":'mag_phase'}`
+        cal_states (list, optional): List of calibration states. Should be left
+            empty except for special use cases. Spectroscopies dont need
+            calibration points.
+        segment_kwargs (dict, optional): Defaults to `dict()`. Passed to
+            `sweep_n_dim`.
     """
     task_mobj_keys = ['qb']
     @assert_not_none('task_list')
@@ -28,7 +49,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         # Passing keyword arguments to the super class (even if they are not
         # needed there) makes sure that they are stored in the metadata.
         df_name = kw.pop('df_name', 'int_avg_det_spec')
-        self.df_kwargs = kw.pop('df_kwargs', dict())
+        self.df_kwargs = kw.pop('df_kwargs',
+            {"live_plot_transform_type":'mag_phase'})
         cal_states = kw.pop('cal_states', [])
         # Used to set the acquisition mode in the segment, e.g. for fast
         # SHFQA spectroscopy. Default is 'software' sweeper.
@@ -400,8 +422,44 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
 
 class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
-    """
+    """Base class to be able to perform 1d and 2d feedline spectroscopies on one
+    or multiple qubits and feedlines.
 
+    For now the feedline for which the spectroscopy is performed is specified by
+    passing a qubit on this feedline. FIXME: Part of refactoring to make
+    compatible with more generic meas_objs (here: feedline might be a meas_obj)
+
+    Based on the hardware available and the configuration of the hardware the
+    class decides to either...
+        - ...use a soft sweep to sweep the RO LO MWG frequency. Here, if the
+          qubits of several tasks share a feedline, a multiplexed RO pulse is
+          applied to parallelize the spectroscopies.
+        - ...to use the internal frequency (oscillator) sweep of the acq. AWG
+          (e.g. SHFQA) to perform a hard sweep. Here we currently do not support
+          parallelization within one feedline (TODO).
+
+    Compatible task dict keys:
+        qb: QuDev_transmon which provides references to the relevant instruments
+            FIXME: should be refactored in future to be meas_obj
+        freqs: List or np.array containing the drive frequencies of the
+            spectroscopy measurement. (1. dim. sweep points)
+        volts: List or np.array of fluxline voltages to perform a 2D qubit
+            spectroscopy. This requires to also provide the proper qcodes
+            parameter to set the fluxline voltage as item `'sweep_functions'` in
+            the task, e.g.:
+            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            FIXME: as soon as the fluxline voltage is accesible through the
+            qubit, a convenience wrapper should be implemented.
+            (2. dim. sweep points)
+        ro_amplitude: List or np.array of amplitudes of the RO pulse.
+            (2. dim. sweep points)
+        ro_length: List or np.array of pulse lengths of the RO pulse.
+            (2. dim. sweep points)
+
+    Important: The number of frequency sweep points in the first dimension needs
+        to be the same among all tasks. The same holds for the second sweep
+        dimension. The step size in the frequency sweep points needs to be the
+        same among tasks with qubits that share an RO LO MWG (if applicable).
     """
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
@@ -412,6 +470,9 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                       dimension=1),
         'ro_amp':  dict(param_name='amplitude', unit='V',
                       label=r'RO pulse amplitude',
+                      dimension=1),
+        'ro_length':  dict(param_name='length', unit='s',
+                      label=r'RO pulse length',
                       dimension=1),
         'sweep_points_2D': dict(param_name='sweep_points_2D', unit='',
                       label=r'sweep_points_2D',
@@ -543,8 +604,45 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
 
 class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
-    """
+    """Base class to be able to perform 1d and 2d qubit spectroscopies on one
+    or multiple qubits.
 
+    Based on the hardware available and the configuration of the hardware the
+    class decides to either...
+        - ...route the LO MWG past the IQ mixer and sweep the MWG frequency
+          in a soft sweep, realizing pulsed spectroscopy by gating the MWG, or
+        - ...to apply a constant drive tone of constant frequency on the IF of
+          the IQ mixer upconversion while still using a soft sweep to sweep the
+          MWG frequency and a gate pulse on the MWG for pulsed spectroscopies.
+        - ...to use the internal frequency (oscillator) sweep of the drive AWG
+          (e.g. SHFSG/QC) to perform a hard sweep. Here the pulsed spectroscopy
+          is realized by programming a GaussianFilteredIQSquare pulse to the
+          drive AWG.
+
+    Compatible task dict keys:
+        qb: QuDev_transmon which provides references to the relevant instruments
+            FIXME: should be refactored in future to be meas_obj
+        freqs: List or np.array containing the drive frequencies of the
+            spectroscopy measurement. (1. dim. sweep points)
+        volts: List or np.array of fluxline voltages to perform a 2D qubit
+            spectroscopy. This requires to also provide the proper qcodes
+            parameter to set the fluxline voltage as item `'sweep_functions'` in
+            the task, e.g.:
+            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            FIXME: as soon as the fluxline voltage is accesible through the
+            qubit, a convenience wrapper should be implemented.
+            (2. dim. sweep points)
+        spec_power: List or np.array of different LO powers that should be used.
+            (2. dim. sweep points)
+        spec_pulse_amplitude: List or np.array of amplitudes of the drive pulse
+            used in pulsed spectroscopy. (2. dim. sweep points)
+        spec_pulse_length: List or np.array of pulse lengths of the drive pulse
+            used in pulsed spectroscopy. (2. dim. sweep points)
+
+    Important: The number of frequency sweep points in the first dimension needs
+        to be the same among all tasks. The same holds for the second sweep
+        dimension. The step size in the frequency sweep points needs to be the
+        same among tasks with qubits that share a drive LO MWG (if applicable).
     """
     kw_for_sweep_points = {
         'freqs': dict(param_name='freq', unit='Hz',
@@ -718,21 +816,39 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     log.error('Task for modulated spectroscopy does not contain'
                               'mod_freq.')
 
+
 class ReadoutCalibration(FeedlineSpectroscopy):
+    """Perform feedline spectroscopies for several initial states to determine
+    the RO frequency with the highest contrast.
+
+    While the experiment support parallelization, it only allows to have the
+    same initial states for all qubits.
+
+    Arguments:
+        states (list[str], optional): List of strings specifying the initial
+            states to be measured. Defaults to `["g", "e"]`.
+
+    Compatible task dict keys:
+        freqs: See :class:`FeedlineSpectroscopy' for details.
+
+    Updates:
+        qb.ro_freq: To the value maximizing the distance in the IQ plane between
+            the first two states in task["states"]. If you want to make your RO
+            more dicriminating between e & f you should pass states
+            ["e", "f", ...] instead of e.g. ["g", "e", "f"].
+    """
     default_experiment_name = 'ReadoutCalibration'
 
-    def __init__(self, task_list, trigger_separation=10e-6, **kw):
-        self.kw_for_sweep_points['states'] = dict(param_name='initialize',
-                                                  unit='',
-                                                  label=r'qubit state',
-                                                  dimension=1)
+    def __init__(self, task_list, trigger_separation=10e-6,
+                 states=["g", "e"], **kw):
+        self.states = states
         super().__init__(task_list, trigger_separation, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
         if self.sweep_points_pulses.find_parameter('initialize') is None:
             self.sweep_points_pulses.add_sweep_parameter(
                 param_name='initialize',
-                values=['g', 'e'], unit='',
+                values=self.states, unit='',
                 label=r'qubit init state',
                 dimension=1
             )
@@ -759,6 +875,8 @@ class ReadoutCalibration(FeedlineSpectroscopy):
             qb = self.get_qubit(task)
             pdd = self.analysis.proc_data_dict
             ro_freq = pdd['sweep_points_dict'][qb.name]['sweep_points'][
-                pdd['projected_data_dict'][qb.name]['distance']['g-e'][1]
+                pdd['projected_data_dict'][qb.name]['distance'][
+                    f'{self.states[0]}-{self.states[1]}'
+                ][1] # (distances, argmax) -> index 1
             ]
             qb.set(f'ro_freq', ro_freq)

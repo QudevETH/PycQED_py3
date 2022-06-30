@@ -1674,6 +1674,11 @@ class QubitTrackerSpectroscopy(Spectroscopy):
 
 
 class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
+    """Base class for the analysis of `MultiTaskingSpectroscopyExperiment`.
+
+    Transforms the IQ data provided by the detector function into magnitude and
+    phase and overwrites specific methods of tda.MultiQubit_TimeDomain_Analysis.
+    """
     def process_data(self):
         super().process_data()
 
@@ -1697,6 +1702,10 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
+    """Analysis to find the RO frequency that maximizes distance in IQ plane.
+
+    Compatible with `MultiTaskingSpectroscopyExperiment`.
+    """
     def process_data(self):
         super().process_data()
 
