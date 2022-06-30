@@ -84,6 +84,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
+        # FIXME: This parameter should be removed and existing code should be
+        #  refactored to use the parameter "{awg_name}_use_hardware_sweeper" in
+        #  pulsar.
         self.add_parameter(
             'use_hardware_sweeper',
             initial_value=False,
@@ -183,15 +186,23 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
-        diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0] < 1e-3):
-            # not equally spaced (arbitrary 1 mHz)
-            log.warning(f'Unequal frequency spacing not supported, '
-                        f'the measurement will return equally spaced values.')
-        # Find closest allowed center frequency
-        approx_center_freq = np.mean(requested_freqs)
-        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
-                             approx_center_freq)).argmin()
+        if len(requested_freqs) == 1:
+            id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+                                requested_freqs[0])).argmin()
+            if self.awg.allowed_lo_freqs()[id_closest] - requested_freqs[0] < 10e6:
+                # resulting mod_freq would be smaller than 10 MHz
+                # TODO: arbitrarily chosen limit of 10 MHz
+                id_closest = id_closest + (-1 if id_closest != 0 else +1)
+        else:
+            diff_f = np.diff(requested_freqs)
+            if not all(diff_f-diff_f[0] < 1e-3):
+                # not equally spaced (arbitrary 1 mHz)
+                log.warning(f'Unequal frequency spacing not supported, '
+                            f'the measurement will return equally spaced values.')
+            # Find closest allowed center frequency
+            approx_center_freq = np.mean(requested_freqs)
+            id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+                                approx_center_freq)).argmin()
         center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
