@@ -490,7 +490,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                         cw, wave, use_placeholder_waves)
                                 codeword_table[cw] = (w1, w2)
                             elif codeword_table[cw] != (w1, w2) \
-                                    and self.reuse_waveforms():
+                                    and self.pulsar.reuse_waveforms():
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
