@@ -2417,6 +2417,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def get_qbs_from_task_list(task_list):
+    # TODO: there is a more elaborate method find_qubits_in_tasks in MultiTaskingExperiment.
+    #  We could consider moving it to a place where it can be used from both measurement and analysis classes and
+    #  then remove this function here
         all_qubits = set()
         for task in task_list:
             all_qubits.update([v for k,v in task.items() if 'qb' in k])
@@ -11357,6 +11360,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
         def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, model='transmon_res', bias = None):
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
             if flux_amplitude_bias_ratio is None:
                 if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
                         (model == ['approx'] and bias is not None and bias != 0)):
@@ -11440,7 +11445,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
             device_name = self.get_instruments_by_class('Device', hdf_file_index)
-            amp = self.get_hdf_param_value("Instrument settings/"+device_name,
+            amp = self.get_hdf_param_value("Instrument settings/" + device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
 
             qbL_tuned_freq_arr = calculate_qubit_frequency(
