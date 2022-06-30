@@ -2219,8 +2219,9 @@ class BaseDataAnalysis(object):
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
 
-    @staticmethod
-    def get_hdf_attr_names(self, path='Instrument settings', hdf_file_index=0):
+    #@staticmethod
+    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+        # TODO: add option that if timestamp is None, last timestamp will be taken
         h5mode = 'r'
         folder = a_tools.get_folder(self.timestamps[hdf_file_index])
         h5filepath = a_tools.measurement_filename(folder)
@@ -2234,13 +2235,14 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    @staticmethod
+    #@staticmethod
     def get_instruments_by_class(self, instr_class, hdf_file_index=0):
-        instruments = self.get_hdf_attr_names(hdf_file_index)
+        # TODO: add option that if timestamp is None, last timestamp will be taken
+        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
         dev_names = []
         for instrument in instruments:
-            instrument_class = self.get_hdf_param_value(path='Instrument settings/'+instrument,
-                                                        instr_class='class', hdf_file_index=hdf_file_index)
+            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
+                                                        attribute='class', hdf_file_index=hdf_file_index)
             if  instrument_class == instr_class:
                 dev_names.append(instrument)
         return dev_names
