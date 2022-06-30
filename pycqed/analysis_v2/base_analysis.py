@@ -2240,7 +2240,7 @@ class BaseDataAnalysis(object):
         dev_names = []
         for instrument in instruments:
             instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
-                                                        attribute='class', hdf_file_index=hdf_file_index)
+                                                        attribute='__class__', hdf_file_index=hdf_file_index)
             if  instrument_class == instr_class:
                 dev_names.append(instrument)
         return dev_names
