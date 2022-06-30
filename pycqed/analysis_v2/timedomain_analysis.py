@@ -11305,21 +11305,25 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     """ Class for automated chevron analysis
 
+    For this function a model for the Hamiltonian of the qubits is required. The function will use the fit_ge_from_...
+    parameters to calculate the frequencies for the given amplitudes.
     Saves the fit parameters and the optimal CZ time in self.proc_data_dict['analysis_params_dict']:
         J: qubit coupling
         offset_freq: frequency by which the two energy levels were off from the calculation
     Options_dict options:
         'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
         'model': model used to calculate voltage to qubit frequency
+        'J_guess_boundary_scale': the limits for the fit of J are: (default: 2)
+            [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by a FFT (see below)
+        'offset_guess_boundary': boundaries for the offset_freq fit in GHz (default: 0.5)
     """
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
-        qubits = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
-        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp', 'flux_amplitude_bias_ratio',
-                  'flux_parking', 'anharmonicity']
-        # self.params_dict = OrderedDict() # not used I think
-        for qbn in qubits:
+        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
+                  'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
+        for qbn in self.qb_names:
             self.raw_data_dict.update({f"{p}_{qbn}":
                                            self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
                                        for p in params})
@@ -11337,7 +11341,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
 
         def J_fft(t, Delta, data):
-            # Fourier transform for all Delta. Smallest period corresponds to J (assuming (actual) Delta=0 in that case)
+            # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
             # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
             J_min = None
             for Delta_index in range(len(Delta)):
@@ -11349,10 +11353,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     J_min = J_fft
             return J_min
 
-        def calculate_voltage_from_flux_edited(vfc, flux):
+        def calculate_voltage_from_flux(vfc, flux):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
-        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, model='transmon_res', bias = None, flux=None): # Potentially one could adopt to also include other models
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, model='transmon_res', bias = None):
             if flux_amplitude_bias_ratio is None:
                 if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
                         (model == ['approx'] and bias is not None and bias != 0)):
@@ -11380,8 +11384,34 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     "'transmon_res' are implemented.")
             return ge_freq
 
-        def add_fit_dict(qbH_name, qbL_name, data, key, scalex=1):
+        def add_fit_dict(qbH_name, qbL_name, data, key):
+            """ Creates the dictionary used for fitting
+
+             The dictionary includes the fitting-model, the function be fitted to, the x and y data, the method used for
+             fitting and the guess parameters. First extracts the relevant data from the raw_data_dict.
+             Converts the amplitude to frequencies and the swept frequency (amplitude) to a detuning (Delta) of the
+             qubits. Additionally removes all data points with NaN excited state population. The fit parameters are
+             the coupling of the qubits J and the frequency offset of the actual detuning compared to what was
+             calculated. J is obtained from doing a FFT on all measured detunings and taking the minimum of it, which
+             corresponds to the smallest detuning (ideally 0). Finally flattens the data for the fit.
+
+
+            Parameters
+            ----------
+            qbH_name: Higher-frequency qubit
+            qbL_name: Lower-frequency qubit
+            data: excited state population
+            key: key for the dictionary
+
+            Returns
+            -------
+            A fit-dictionary
+            """
             model = self.options_dict.get('model', 'transmon_res')
+            J_guess_boundary_scale = self.options_dict.get('guess_paramater_scale', 2)
+            offset_guess_boundary = self.options_dict.get('offset_guess_boundary', 0.5) # in GHz
+            hdf_file_index = self.options_dict.get('hdf_file_index', 0)
+
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
             qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
             qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
@@ -11390,8 +11420,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             if model in ['transmon', 'transmon_res']:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
-                qbH_bias = calculate_voltage_from_flux_edited(qbH_vfc, qbH_flux)
-                qbL_bias = calculate_voltage_from_flux_edited(qbL_vfc, qbL_flux)
+                qbH_bias = calculate_voltage_from_flux(qbH_vfc, qbH_flux)
+                qbL_bias = calculate_voltage_from_flux(qbL_vfc, qbL_flux)
             else:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
@@ -11402,22 +11432,24 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             if self.num_cal_points != 0:
                 data = np.array([element[:-self.num_cal_points] for element in data])
 
-            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points'] * scalex * 1e9 # Normalize to ns for fitting
+            # Normalize the time to ns for fitting
+            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points'] * 1e9
 
             sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
             amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
-            amp = self.get_hdf_param_value("Instrument settings/ATC75_M136_S17HW02",
+            device_name = self.get_instruments_by_class('Device', hdf_file_index)
+            amp = self.get_hdf_param_value("Instrument settings/"+device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
 
-            # Does that work, or do I need to sweep over the amp2 array? Should work
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
                 vfc=qbL_vfc, model= model, bias=qbL_bias, flux=qbL_flux) / 1e9 # Normalize to GHz
             qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
-                vfc=qbH_vfc, model= model, bias=qbH_bias, flux=qbH_flux)/ 1e9 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
+                vfc=qbH_vfc, model= model, bias=qbH_bias, flux=qbH_flux)/ 1e9 \
+                                + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
 
             Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
 
@@ -11435,8 +11467,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
 
             J_guess = J_fft(t_mod, Delta_mod, pe)
-            pe_model.set_param_hint('J', value=J_guess, min=0.5*J_guess, max=2*J_guess) # add factor as function argument instead
-            pe_model.set_param_hint('offset_freq', value=0, min=-0.5, max=0.5) # here as well
+            pe_model.set_param_hint('J', value=J_guess, min=J_guess/J_guess_boundary_scale,
+                                    max=J_guess_boundary_scale*J_guess)
+            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary, max=offset_guess_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -11456,18 +11489,12 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'method': 'dual_annealing',
                 'guess_pars': guess_pars}
 
-        qb_names_copy = self.qb_names.copy()
-        for qbn in qb_names_copy: # go over all qubits specified by the user for analysis
-            for task in self.get_param_value('task_list'): # look at all tasks and check whether the specified qubit is in them
-                if qbn in task['prefix']:
-                    qbH_name = task['qbc']
-                    qbL_name = task['qbt']
+        for task in self.get_param_value('task_list'):
+            qbH = task['qbc']
+            qbL = task['qbt']
+            if qbH in self.qb_names or qbL in self.qb_names:
 
-                # Remove both qubits from the qubit_list s.t. they are not analyzed twice
-                qb_names_copy.remove(qbH_name)
-                qb_names_copy.remove(qbL_name)
-
-                # safety check on whether the above qbH/L assignment is correct
+                # Safety check on whether the above qbH/L assignment is correct
                 if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[f'ge_freq_{qbL_name}']:
                     qb_temp_name = qbH_name
                     qbH_name = qbL_name
@@ -11479,12 +11506,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
     def analyze_fit_results(self):
-        def t_CARB(J, Delta, n):
-            return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form chevron_fit_qbH_qbL
-            # replace k with qbH_qbL
+            # Replace k with qbH_qbL
             k = k.replace('chevron_fit_', '')
             qbH = k.split('_')[0]
             fit_res = fit_dict['fit_res']
@@ -11497,27 +11522,21 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_plots(self):
         super().prepare_plots()
 
-        def t_CARB(J, Delta, n):
-            return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
-
         num_curves = self.options_dict.get('num_curves', 5)
-        steps = 500 # how many plotting points you want for the fit
-        qb_names_copy = self.qb_names.copy()
+        steps = 500 # How many plotting points you want for the fit
 
         if self.do_fitting:
-            for qbn in qb_names_copy:
-                for task in self.get_param_value(
-                        'task_list'):  # look at all tasks and check whether the specified qubit is in them
-                    if qbn in task['prefix']:
-                        qbH = task['qbc']
-                        qbL = task['qbt']
+            for task in self.get_param_value('task_list'):
+                qbH = task['qbc']
+                qbL = task['qbt']
+                if qbH in self.qb_names or qbL in self.qb_names:
                     base_plot_name = f'Chevron_{qbH}_{qbL}_pe'
                     xlabel, xunit = self.get_xaxis_label_unit(qbH)
-                    # find name of 1st sweep point in sweep dimension 1
+                    # Find name of 1st sweep point in sweep dimension 1
                     param_name = [p for p in self.mospm[qbH]
                                   if self.sp.find_parameter(p)][0]
-                    ylabel = r'Detuning $\Delta$' # for now only hardcoded
-                    yunit = 'GHz' # for now only hardcoded
+                    ylabel = r'Detuning $\Delta$'
+                    yunit = 'GHz'
                     xvals = self.proc_data_dict['sweep_points_dict'][qbH][
                         'msmt_sweep_points']
                     Delta = self.proc_data_dict['Delta'][qbH]
@@ -11550,8 +11569,21 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             'marker': 'None',
                                      }
 
-                # Remove both qubits from the qubit_list s.t. they are not analyzed twice
-                qb_names_copy.remove(qbH)
-                qb_names_copy.remove(qbL)
+    @staticmethod
+    def t_CARB(J, Delta, n):
+        """
+        Function to calculate the time needed for an arbitrary C-Phase gate.
 
+        The mathemtical description of this function can be found in Nathan's master thesis for example.
+        Parameters
+        ----------
+        J: coupling of the qubits
+        Delta: Detuning of the qubits during the interaction
+        n: Number of oscillation for which the interaction time should be calculated (usually you want the shortest
+        (n=1)). This is mainly used to allow to plot the different traces in Delta-t-plane
 
+        Returns
+        -------
+        The interaction time required for an arbitrary C-Phase gate for a given detunin and qubit coupling.
+        """
+        return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
