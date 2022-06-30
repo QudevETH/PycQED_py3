@@ -11490,9 +11490,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'guess_pars': guess_pars}
 
         for task in self.get_param_value('task_list'):
-            qbH = task['qbc']
-            qbL = task['qbt']
-            if qbH in self.qb_names or qbL in self.qb_names:
+            qbH_name = task['qbc']
+            qbL_name = task['qbt']
+            if qbH_name in self.qb_names or qbL_name in self.qb_names:
 
                 # Safety check on whether the above qbH/L assignment is correct
                 if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[f'ge_freq_{qbL_name}']:
