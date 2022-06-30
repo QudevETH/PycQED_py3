@@ -1947,6 +1947,7 @@ class MeasurementControl(Instrument):
                     log.warning(f'Could not run parameter check for '
                                 f'{inst_name}.{p_name}: the parameter was not '
                                 f'found in the snapshot.')
+        entry_point.attrs["__class__"] = inst_snapshot['__class__']
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
