@@ -2239,7 +2239,8 @@ class BaseDataAnalysis(object):
         instruments = self.get_hdf_attr_names(hdf_file_index)
         dev_names = []
         for instrument in instruments:
-            instrument_class = self.get_hdf_param_value(path='Instrument settings/'+instrument, 'class', hdf_file_index)
+            instrument_class = self.get_hdf_param_value(path='Instrument settings/'+instrument,
+                                                        instr_class='class', hdf_file_index=hdf_file_index)
             if  instrument_class == instr_class:
                 dev_names.append(instrument)
         return dev_names
