@@ -22,15 +22,12 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
     ELEMENT_START_GRANULARITY = 16 / 2.0e9  # TODO: unverified!
     MIN_LENGTH = 32 / 2.0e9  # maximum of QA and SG min. lengths
     INTER_ELEMENT_DEADTIME = 0  # TODO: unverified!
-    CHANNEL_AMPLITUDE_BOUNDS = {
-        "analog": (0.001, 1),
-    }
     # Lower bound is the one of the SG channels and is lower than the one of
-    # the QA channels (-30 dBm).
-    CHANNEL_RANGE_BOUNDS = {
-        "analog": (-40, 10),
+    # the QA channels (-30 dBm ~= 0.01 Vp vs -40 dBm ~= 0.0031 Vp).
+    CHANNEL_AMPLITUDE_BOUNDS = {
+        "analog": (0.0031, 1),
     }
-    IMPLEMENTED_ACCESSORS = ["amp", "range", "centerfreq"]
+    IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
     SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def __init__(self, *args, **kwargs):

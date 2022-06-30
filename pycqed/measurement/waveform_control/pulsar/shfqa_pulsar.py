@@ -41,17 +41,15 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     ELEMENT_START_GRANULARITY = 4 / 2.0e9 # TODO: unverified!
     MIN_LENGTH = 4 / 2.0e9
     INTER_ELEMENT_DEADTIME = 0 # TODO: unverified!
+    # QA channels (-30 dBm ~= 0.01 Vp).
     CHANNEL_AMPLITUDE_BOUNDS = {
-        "analog": (0.001, 1),
-    }
-    CHANNEL_RANGE_BOUNDS = {
-        "analog": (-30, 10),
+        "analog": (0.01, 1),
     }
     CHANNEL_RANGE_DIVISOR = 5
     CHANNEL_CENTERFREQ_BOUNDS = {
         "analog": (1e9, 8.0e9),
     }
-    IMPLEMENTED_ACCESSORS = ["amp", "range", "centerfreq"]
+    IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
@@ -87,8 +85,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if param == "amp":
             self.awg.qachannels[ch].output.range(vp_to_dbm(value))
-        if param == "range":
-            self.awg.sgchannels[ch].output.range(value)
         if param == "centerfreq":
             self.awg.synthesizers[ch].centerfreq(value)
 
@@ -105,12 +101,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             else:
                 dbm = self.awg.qachannels[ch].output.range()
             return dbm_to_vp(dbm)
-        if param == "range":
-            if self.pulsar.awgs_prequeried:
-                range = self.awg.qachannels[ch].output.range.get_latest()
-            else:
-                range = self.awg.qachannels[ch].output.range()
-            return range
         if param == "centerfreq":
             if self.pulsar.awgs_prequeried:
                 freq = self.awg.qachannels[ch].centerfreq.get_latest()
