@@ -11359,11 +11359,12 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         def calculate_voltage_from_flux(vfc, flux):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
-        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, model='transmon_res', bias = None):
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, freq_ss,
+                                      model='transmon_res', bias = None):
             # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
             #  can be called both from the measurement and analysis side, to avoid code dupplication
             if flux_amplitude_bias_ratio is None:
-                if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
                         (model == ['approx'] and bias is not None and bias != 0)):
                     raise ValueError('flux_amplitude_bias_ratio is None, but is '
                                      'required for this calculation.')
@@ -11371,7 +11372,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             if model == 'approx':
                 ge_freq = fit_mods.Qubit_dac_to_freq(
                     amplitude + (0 if bias is None or np.all(bias == 0) else
-                                 bias * flux_amplitude_bias_ratio), **vfc)
+                                 bias * flux_amplitude_bias_ratio), f_max=freq_ss, **vfc)
             elif model == 'transmon':
                 kw = deepcopy(vfc)
                 kw.pop('coupling', None)
@@ -11412,15 +11413,17 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             -------
             A fit-dictionary
             """
-            model = self.options_dict.get('model', 'transmon_res')
-            J_guess_boundary_scale = self.options_dict.get('guess_paramater_scale', 2)
-            offset_guess_boundary = self.options_dict.get('offset_guess_boundary', 0.5) # in GHz
-            hdf_file_index = self.options_dict.get('hdf_file_index', 0)
+            model = self.get_param_value('model', 'transmon_res')
+            J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
+            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 0.5) # in GHz
+            hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
             qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
             qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
             qbL_flux = self.raw_data_dict[f'flux_parking_{qbL_name}']
+            qbH_ss_freq = self.raw_data_dict[f'ge_freq_{qbH_name}']
+            qbL_ss_freq = self.raw_data_dict[f'ge_freq_{qbL_name}']
 
             if model in ['transmon', 'transmon_res']:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
@@ -11440,21 +11443,27 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             # Normalize the time to ns for fitting
             t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points'] * 1e9
 
+            # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
             sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
-            amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            if sweep_point_name in self.proc_data_dict['sweep_points_2D_dict'][qbL_name]:
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            else:
+                sweep_point_name = qbL_name + '_' + qbH_name + '_amplitude2'
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
             device_name = self.get_instruments_by_class('pycqed.instrument_drivers.meta_instrument.device.Device',
-                                                        hdf_file_index)
+                                                                    hdf_file_index)[0]
+
             amp = self.get_hdf_param_value("Instrument settings/" + device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
 
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
-                vfc=qbL_vfc, model= model, bias=qbL_bias, flux=qbL_flux) / 1e9 # Normalize to GHz
+                vfc=qbL_vfc, model= model, bias=qbL_bias, freq_ss=qbL_ss_freq) / 1e9 # Normalize to GHz
             qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
-                vfc=qbH_vfc, model= model, bias=qbH_bias, flux=qbH_flux)/ 1e9 \
+                vfc=qbH_vfc, model= model, bias=qbH_bias, freq_ss=qbH_ss_freq)/ 1e9 \
                                 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
 
             Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
@@ -11522,7 +11531,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][k] = \
                 fit_res.best_values
             self.proc_data_dict['analysis_params_dict'][k]['t_CZ_'+self.measurement_strings[qbH].partition('_')[0]] = \
-                t_CARB(fit_res.best_values['J'], 0, 1) # could e.g. be changed to t_CZ_up with if statements
+                self.t_CARB(fit_res.best_values['J'], 0, 1) # could e.g. be changed to t_CZ_up with if statements
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
@@ -11565,7 +11574,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     for n in range(num_curves+1):
                         fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}' #hardcoded
                         J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
-                        xvals_fit = t_CARB(J, Delta_fine_corrected, n) * 1e-9
+                        xvals_fit = self.t_CARB(J, Delta_fine_corrected, n) * 1e-9
                         self.plot_dicts[f'{fit_plot_name}_main'] = {
                             'plotfn': self.plot_line,
                             'fig_id': base_plot_name,
