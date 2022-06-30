@@ -135,6 +135,9 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
             ClassifyingPollDetector).
+        enforce_pulsar_restart (bool): Whether or not to pass pulsar as AWG to
+            the detector and thereby enforce restarting the pulsar, e.g. after
+            a poll. Defaults to `False`.
 
     Keyword args: passed to the instantiation call of the detector classes that
         are used to instantiate the MultiPollDetector's

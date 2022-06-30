@@ -38,7 +38,7 @@ class Sweep_function(object):
 
     def configure_upload(self, upload=True, upload_first=True,
                          start_pulsar=True):
-        """Try to configure the sequence upload. Returns True if successful.
+        """Try to configure the sequence upload.
 
         This method on the highest level of dependencies allows for recursive
         search. Child classes that require special handling of this task need
@@ -46,19 +46,17 @@ class Sweep_function(object):
 
         Args:
             upload (bool, optional): Determines whether the sweep function will
-                upload in general. Defaults to True.
+                upload in general. Defaults to `True`.
             upload_first (bool, optional): Determines if method prepare should
                 upload the first sequence. Is governed by upload parameter.
-                Defaults to True.
+                Defaults to `True`.
             start_pulsar (bool, optional): Whether to start pulsar in prepare.
-                Defaults to True.
+                Defaults to `True`.
 
         Returns:
-            bool: Whether the configuration was successful or not.
+            bool: Returns `True` if a sweep function was found that is able to
+                upload and was configured successfully.
         """
-        if hasattr(self, 'sweep_function'):
-            return self.sweep_function.configure_upload(upload, upload_first,
-                                                        start_pulsar)
         return False
 
 
@@ -454,6 +452,13 @@ class Transformed_Sweep(Soft_Sweep):
     def set_parameter(self, val):
         self.sweep_function.set_parameter(self.transformation(val))
 
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        if self.sweep_function is not None:
+            return self.sweep_function.configure_upload(upload, upload_first,
+                                                        start_pulsar)
+        return False
+
 
 class Offset_Sweep(Transformed_Sweep):
     """
@@ -553,6 +558,14 @@ class MajorMinorSweep(Soft_Sweep):
         # use the minor_sweep_function to bridge the difference to the
         # target value
         self.minor_sweep_function.set_parameter(val - mval)
+
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        if not self.major_sweep_function.configure_upload(upload,
+                upload_first, start_pulsar):
+            return self.minor_sweep_function.configure_upload(upload,
+                upload_first, start_pulsar)
+        return True
 
 
 class FilteredSweep(multi_sweep_function):
