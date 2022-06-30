@@ -2219,6 +2219,31 @@ class BaseDataAnalysis(object):
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
 
+    @staticmethod
+    def get_hdf_attr_names(self, path='Instrument settings', hdf_file_index=0):
+        h5mode = 'r'
+        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
+        h5filepath = a_tools.measurement_filename(folder)
+        data_file = h5py.File(h5filepath, h5mode)
+
+        try:
+            attr_names = list(data_file[path]) + list(data_file[path].attrs)
+            data_file.close()
+            return attr_names
+        except Exception as e:
+            data_file.close()
+            raise e
+
+    @staticmethod
+    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+        instruments = self.get_hdf_attr_names(hdf_file_index)
+        dev_names = []
+        for instrument in instruments:
+            instrument_class = self.get_hdf_param_value(path='Instrument settings/'+instrument, 'class', hdf_file_index)
+            if  instrument_class == instr_class:
+                dev_names.append(instrument)
+        return dev_names
+
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):
     pdict = pdict or {}
