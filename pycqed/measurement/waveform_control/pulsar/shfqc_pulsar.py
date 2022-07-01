@@ -28,7 +28,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         "analog": (0.0031, 1),
     }
     IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
-    SGCHANNEL_TO_SYNTHESIZER = [1, 1, 2, 2, 3, 3]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

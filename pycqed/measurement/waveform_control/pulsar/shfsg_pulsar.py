@@ -130,10 +130,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         if param == "amp":
             self.awg.sgchannels[ch].output.range(vp_to_dbm(value))
         if param == "centerfreq":
-            self.awg.synthesizers[self.SGCHANNEL_TO_SYNTHESIZER[ch]] \
+            self.awg.synthesizers[self.awg.sgchannels[ch].synthesizer()] \
                 .centerfreq(value)
             new_center_freq = self.awg.synthesizers[
-                self.SGCHANNEL_TO_SYNTHESIZER[ch]].centerfreq()
+                self.awg.sgchannels[ch].synthesizer()].centerfreq()
             if np.abs(new_center_freq - value) > 1:
                 log.warning(f'{self.name}: center frequency {value/1e6:.6f} '
                             f'MHz not supported. Setting center frequency to '
@@ -153,13 +153,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 dbm = self.awg.sgchannels[ch].output.range()
             return dbm_to_vp(dbm)
         if param == "centerfreq":
-            if self.pulsar.awgs_prequeried:
-                freq = self.awg.synthesizers[
-                    self.SGCHANNEL_TO_SYNTHESIZER[ch]].centerfreq.get_latest()
-            else:
-                freq = self.awg.synthesizers[
-                    self.SGCHANNEL_TO_SYNTHESIZER[ch]].centerfreq()
-            return freq
+            return self.awg.synthesizers[
+                self.awg.sgchannels[ch].synthesizer()].centerfreq()
 
     # FIXME: clean up and move func. common with HDAWG to zi_pulsar_mixin module
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
@@ -628,7 +623,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
                 self.awg.synthesizers[
-                    self.SGCHANNEL_TO_SYNTHESIZER[int(chid[2]) - 1]].centerfreq,
+                    self.awg.sgchannels[int(chid[2]) - 1].synthesizer()].centerfreq,
                 swf.Offset_Sweep(
                     self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq,
                     # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
@@ -740,7 +735,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 class SHFSGPulsar(SHFGeneratorModulePulsar):
     """ZI SHFSG specific Pulsar module"""
     AWG_CLASSES = [SHFSG_core]
-    SGCHANNEL_TO_SYNTHESIZER = [0, 0, 1, 1, 2, 2, 3, 3]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
