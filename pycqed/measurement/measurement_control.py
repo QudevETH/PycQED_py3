@@ -340,7 +340,7 @@ class MeasurementControl(Instrument):
                 # metadata, the exception will be either logged (if an
                 # automatic retry is triggered) or raised.
                 exception = e
-                formatted_exc = traceback.format_exc()
+                log.error(traceback.format_exc())
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -362,7 +362,6 @@ class MeasurementControl(Instrument):
                           f'). Retrying.'
                     self.log_to_slack(msg)
                     log.error(msg)
-                    log.error(formatted_exc)
                     # Call the retry_cleanup_functions if there are any (see
                     # docstring of parameter max_attempts).
                     [fnc() for fnc in getattr(
