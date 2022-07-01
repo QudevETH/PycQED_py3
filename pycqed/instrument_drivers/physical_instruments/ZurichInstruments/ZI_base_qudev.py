@@ -40,6 +40,7 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
 class MockDAQServer(zibase.MockDAQServer):
     def __init__(self, server, port, apilevel, verbose=False):
         super().__init__(server, port, apilevel, verbose=verbose)
+        self.devices = set()  # devices on the same server
         self.nodes['/zi/about/dataserver'] = {
             'type': 'String', 'value': self.__class__.__name__}
         self._device_types = {}
@@ -65,6 +66,12 @@ class MockDAQServer(zibase.MockDAQServer):
             # FIXME: it could also be 'SHFQC', but not clear how to
             #  distinguish by serial. A virtual SHFQC currently has to set it
             #  beforehand using set_device_type.
+
+        # The line below is a hack to trick this class to allow multiple
+        # devices. We set self.device to None here because it will be
+        # overwritten in the super call for the current device. Then we add
+        # the self.device to self.devices.
+        self.device = None
         super().connectDevice(device, interface)
         if self.devtype == 'SHFQC':
             for awg_nr in range(6):
@@ -72,6 +79,10 @@ class MockDAQServer(zibase.MockDAQServer):
                     self.nodes[f'/{self.device}/sgchannels/{awg_nr}/awg/' \
                                f'waveform/waves/{i}'] = {
                         'type': 'ZIVectorData', 'value': np.array([])}
+        # The 3 lines below are a hack to allow multiple devices.
+        self.devices.add(self.device)
+        self._device_types[device] = self.devtype
+        self.nodes['/zi/devices/connected']['value'] = ','.join(self.devices)
 
     def listNodesJSON(self, path):
         dd = {k: copy.copy(v) for k, v in self.nodes.items()
