@@ -306,3 +306,6 @@ class MockAwgModule(zibase.MockAwgModule):
                 if k not in node:
                     node[k] = defaults[k]
         return json.dumps(dd)
+
+    def finish(self):
+        pass
