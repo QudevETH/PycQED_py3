@@ -62,6 +62,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().__init__(*args, **kwargs)
         self._shfsg_waveform_cache = dict()
         self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
+        """Determines the sgchannels for which the sine generator is turned on
+        (off) in :meth:`start` (:meth:`stop`).
+        """
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
@@ -94,6 +97,22 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 initial_value=None,
                 set_cmd=self._direct_mod_setter(ch_name),
                 get_cmd=self._direct_mod_getter(ch_name),
+                docstring="Configure and turn on direct output of a sine tone "
+                          "of the specified frequency. If set to None the sine "
+                          "generators will be turned off."
+            )
+            # qcodes will not set the initial value if it is None, so we set
+            # it manually here to ensure that internal modulation gets
+            # switched off in the init.
+            self.pulsar.set(param_name, None)
+
+            param_name = f"{ch_name}_direct_output_amp"
+            self.pulsar.add_parameter(
+                param_name,
+                unit='V',
+                initial_value=1,
+                set_cmd=self._direct_mod_amplitude_setter(ch_name),
+                get_cmd=self._direct_mod_amplitude_getter(ch_name),
                 docstring="Configure and turn on direct output of a sine tone "
                           "of the specified frequency. If set to None the sine "
                           "generators will be turned off."
@@ -245,15 +264,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # use the modulation config of the I channel
             mod_config = combined_mod_config.get(
                 self.pulsar._id_channel(f'sg{awg_nr + 1}i', self.awg.name), {})
-            internal_mod = mod_config.get('internal_mod', False)
-            if internal_mod:
-                # Reset the starting phase of all oscillators at the beginning
-                # of a sequence using the resetOscPhase instruction. This
-                # ensures that the carrier-envelope offset, and thus the final
-                # output signal, is identical from one repetition to the next.
-                playback_strings.append(f'const SWEEP_OSC = '
-                                        f'{mod_config.get("osc", 0)};\n')
-                playback_strings.append(f'resetOscPhase();\n')
+            sine_config = combined_sine_config.get(
+                self.pulsar._id_channel(f'sg{awg_nr + 1}i', self.awg.name), {})
+
+            internal_mod = False
 
             use_filter = any([e is not None and
                               e.get('metadata', {}).get('allow_filter', False)
@@ -273,9 +287,19 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             channels = [self.pulsar._id_channel(chid, self.awg.name)
                         for chid in [ch1id, ch2id]]
 
-            if internal_mod:
-                mod_osc_id = str(mod_config.get('osc', '0'))
-                playback_strings.append(f'const MOD_OSC = {mod_osc_id};\n')
+            
+
+            if mod_config.get('internal_mod', False) \
+                    or sine_config.get('continuous', False):
+                # Reset the starting phase of all oscillators at the beginning
+                # of a sequence using the resetOscPhase instruction. This
+                # ensures that the carrier-envelope offset, and thus the final
+                # output signal, is identical from one repetition to the next.
+                playback_strings.append(f'resetOscPhase();\n')
+                osc_id = str(mod_config.get('osc', '0')) \
+                    if mod_config.get('internal_mod', False) \
+                    else str(sine_config.get('osc', '0'))
+                playback_strings.append(f'const SWEEP_OSC = {osc_id};\n')
 
             counter = 1
             next_wave_idx = 0
@@ -295,9 +319,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
-
-                playback_strings += self._zi_playback_string_setModParameters(
-                    metadata)
 
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
@@ -322,8 +343,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = (wave[0], None, wave[1], None)
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
-                        wave = tuple(None if not len(waveforms[w])
-                                     else w for w in wave)
                         if wave == (None, None, None, None):
                             continue
                         if nr_cw != 0:
@@ -338,6 +357,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
+                        wave = tuple(None if w is None or not len(waveforms[w])
+                                     else w for w in wave)
+                        if wave == (None, None, None, None):
+                            continue
                         if not len(channels_to_upload):
                             # _program_awg was called only to decide which
                             # sub-AWGs are active, and the rest of this loop
@@ -607,7 +630,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 self.awg.synthesizers[
                     self.SGCHANNEL_TO_SYNTHESIZER[int(chid[2]) - 1]].centerfreq,
                 swf.Offset_Sweep(
-                    self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq, # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
+                    self.awg.sgchannels[int(chid[2]) - 1].oscs[0].freq,
+                    # FIXME: osc_id (0) should depend on element metadata['sine_config']['ch']['osc']
                     mod_freq),
                 self.awg.allowed_lo_freqs(),
                 name=name_offset, parameter_name=name_offset),
@@ -621,10 +645,11 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 sgchannel.sines[0].q.enable(1)
 
     def stop(self):
-        for sgchannel in self.awg.sgchannels:
+        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
             sgchannel.awg.enable(0)
-            sgchannel.sines[0].i.enable(0)
-            sgchannel.sines[0].q.enable(0)
+            if self._sgchannel_sine_enable[awg_nr]:
+                sgchannel.sines[0].i.enable(0)
+                sgchannel.sines[0].q.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.pulsar.use_sequence_cache():
@@ -684,6 +709,31 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 return sgchannel.sines[0].freq()
             else:
                 return None
+        return g
+
+    def _direct_mod_amplitude_setter(self, ch):
+        def s(val):
+            chid = self.pulsar.get(ch + '_id')
+            sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
+            sgchannel.sines[0].i.sin.amplitude(0)
+            sgchannel.sines[0].i.cos.amplitude(val)
+            sgchannel.sines[0].q.sin.amplitude(val)
+            sgchannel.sines[0].q.cos.amplitude(0)
+        return s
+
+    def _direct_mod_amplitude_getter(self, ch):
+        def g():
+            chid = self.pulsar.get(ch + '_id')
+            sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
+            gains = [sgchannel.sines[0].i.sin.amplitude(),
+                     sgchannel.sines[0].i.cos.amplitude(),
+                     sgchannel.sines[0].q.sin.amplitude(),
+                     sgchannel.sines[0].q.cos.amplitude()]
+            val = gains[1]
+            if gains == [0, val, val, 0]:
+                return val
+            log.warning('The current sine gain configuration is not '
+                        'supported by pulsar. Cannot retrieve amplitude.')
         return g
 
 

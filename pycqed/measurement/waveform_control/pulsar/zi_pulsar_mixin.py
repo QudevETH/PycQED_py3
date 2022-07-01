@@ -164,18 +164,6 @@ class ZIPulsarMixin:
         return playback_string
 
     @staticmethod
-    def _zi_playback_string_setModParameters(metadata):
-        mod_config = metadata.get("mod_config", {})
-        mod_freq = mod_config.get("mod_freq", False)
-        mod_phase = mod_config.get("mod_phase", False)
-        playback_string = []
-        if mod_freq:
-            playback_string.append(f'setOscFreq(MOD_OSC, {mod_freq});\n')
-        if mod_phase:
-            playback_string.append(f'setSinePhase({mod_phase});\n')
-        return playback_string
-
-    @staticmethod
     def _zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
