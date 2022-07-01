@@ -2467,9 +2467,11 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
         # it is a parameter
         return _get_instrument_name_for_parameter_checks(object.instrument)
     elif getattr(object, 'parent', None) is not None:
-        if object.short_name in object.parent.submodules:
+        if object in object.parent.submodules.values():
             # it is a submodule, and will appear in the snapshot with
-            # its short_name
+            # the key used in submodules
+            key = [k for k in object.parent.submodules
+                   if object.parent.submodules[k] == object][0]
             return _get_instrument_name_for_parameter_checks(
                 object.parent) + '.' + get_short_name()
         # It might be a channel in a channel list that references the
