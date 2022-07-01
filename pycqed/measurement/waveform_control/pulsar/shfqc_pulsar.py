@@ -9,7 +9,7 @@ from .shfsg_pulsar import SHFGeneratorModulePulsar
 try:
     from zhinst.qcodes import SHFQC as SHFQC_core
 except Exception:
-    SHF_AcquisitionDevice = type(None)
+    SHFQC_core = type(None)
 
 log = logging.getLogger(__name__)
 

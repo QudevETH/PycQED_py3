@@ -13,9 +13,9 @@ from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
 import zhinst
-import zhinst.toolkit
 
 try:
+    import zhinst.toolkit
     from zhinst.qcodes import SHFSG as SHFSG_core
 except Exception:
     SHFSG_core = type(None)
