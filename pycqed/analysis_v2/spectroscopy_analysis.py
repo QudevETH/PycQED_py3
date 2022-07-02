@@ -1698,6 +1698,10 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
     def get_yaxis_label(self, qb_name, data_key=None):
         if data_key is None:
             return 'Measured Data (arb.)'
+        if data_key is 'Phase':
+            return 'Phase (rad)'
+        if data_key is 'Magnitude':
+            return 'Magnitude (Vpeak)'
         return data_key
 
 
@@ -1759,13 +1763,15 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                             'xunit': 'Hz',
                             'yvals': yvals,
                             'ylabel': key,
-                            'yunit': '',
+                            'yunit': 'rad' if key == 'Phase' else 'Vpeak',
                             'line_kws': {'color': self.get_state_color(state)},
                             'numplotsx': 1,
                             'numplotsy': 2,
                             'plotsize': (plotsize[0],
                                         plotsize[1]*2),
-                            'title': fig_title if not ax_id else None
+                            'title': fig_title if not ax_id else None,
+                            'setlabel': f'|{state}>',
+                            'do_legend': True,
                     }
             fig_title = f'S21 distance {qb_name}'
             plot_name = f's21_distance_{qb_name}'
@@ -1779,6 +1785,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'xunit': 'Hz',
                         'yvals': distance,
                         'ylabel': 'S21 distance',
+                        'yunit': 'Vpeak',
                         'label': dkey,
                         'title': fig_title,
                         'setlabel': f'S21 distance {dkey}',
