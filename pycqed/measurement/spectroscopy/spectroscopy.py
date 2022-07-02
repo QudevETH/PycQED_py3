@@ -33,8 +33,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         df_name (str, optional): Specify a specific detector function to be
             used. See :meth:`mqm.get_multiplexed_readout_detector_functions`
             for available options.
-        df_kwargs (dict, optional): Kwargs of detector function.
-            Defaults to `{"live_plot_transform_type":'mag_phase'}`
+        df_kwargs (dict, optional): Kwargs of the detector function. The entry
+            `{"live_plot_transform_type":'mag_phase'}` will be added by default
+            if the key "live_plot_transform_type" does not already exist.
         cal_states (list, optional): List of calibration states. Should be left
             empty except for special use cases. Spectroscopies dont need
             calibration points.
@@ -42,25 +43,27 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             `sweep_n_dim`.
     """
     task_mobj_keys = ['qb']
+
     @assert_not_none('task_list')
     def __init__(self, task_list, trigger_separation=10e-6, **kw):
-        # Passing keyword arguments to the super class (even if they are not
-        # needed there) makes sure that they are stored in the metadata.
         df_name = kw.pop('df_name', 'int_avg_det_spec')
-        self.df_kwargs = kw.pop('df_kwargs',
-            {"live_plot_transform_type":'mag_phase'})
+        self.df_kwargs = kw.pop('df_kwargs', {})
+        self.df_kwargs['live_plot_transform_type'] = \
+            self.df_kwargs.get("live_plot_transform_type", 'mag_phase')
         cal_states = kw.pop('cal_states', [])
-        # Used to set the acquisition mode in the segment, e.g. for fast
-        # SHFQA spectroscopy. Default is 'software' sweeper.
         self.segment_kwargs = kw.pop('segment_kwargs', dict())
+        """Used to set the acquisition mode in the segment, e.g. for fast
+        SHFQA spectroscopy. Default is 'software' sweeper.
+        """
         super().__init__(task_list, df_name=df_name, cal_states=cal_states,
                          **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
-        # sweep points that are passed to sweep_n_dim and used to generate
-        # segments. This reduced set is introduce to prevent that a segment
-        # is generated for every frequency sweep point.
         self.sweep_points_pulses = SweepPoints(min_length=2, )
+        """sweep points that are passed to sweep_n_dim and used to generate
+        segments. This reduced set is introduce to prevent that a segment
+        is generated for every frequency sweep point.
+        """
         self.analysis = {}
 
         self.trigger_separation = trigger_separation
@@ -210,13 +213,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         the object, which are then used in run_measurement. Aspects to be
         resolved include (if applicable):
         - (shared) LO freqs and (fixed or swept) IFs
-
-        :param kw:
-            optimize_mod_freqs: (bool, default: True) If False, the
-                mod_freq setting of the first qb on an LO (according to
-                the ordering of the task list) determines the LO frequency
-                for all qubits on that LO. If True, the mod_freq settings
-                will be optimized for the following situations:
         """
         for lo, tasks in self.grouped_tasks.items():
             if np.any([task.get('hard_sweep', False) for task in tasks]) or \
@@ -231,7 +227,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 continue
 
             # We resolve the LO frequency.
-            # For LOs supplying several qubits the LO is set to the value
+            # For LOs supplying several qubits, the LO is set to the value
             # minimizing the maximum absolut modulation frequency.
             freqs_all = np.array([task['freqs'] for task in tasks])
             # optimize the mod freq to lie in the middle of the overall
@@ -367,16 +363,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         raise NotImplementedError('Child class has to implement'
                                   ' get_mod_from_qb.')
 
-    def guess_label(self, **kw):
-        """
-        Default label with multi-qubit information
-        :param kw: keyword arguments
-        """
-        if self.label is None:
-            self.label = self.experiment_name
-            for t in self.task_list:
-                self.label += f"_{t['qb']}"
-
     def _fill_temporary_values(self):
         """adds additionally required qcodes parameter to the
         self.temporary_values list
@@ -403,9 +389,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
             analysis_kwargs['options_dict']['TwoD'] = True
-        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(
-            qb_names=self.qb_names, **analysis_kwargs
-        )
+        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(**analysis_kwargs)
         return self.analysis
 
     def get_qubit(self, task):
@@ -485,14 +469,11 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'ro_length':  dict(param_name='length', unit='s',
                       label=r'RO pulse length',
                       dimension=1),
-        'sweep_points_2D': dict(param_name='sweep_points_2D', unit='',
-                      label=r'sweep_points_2D',
-                      dimension=1),
     }
     default_experiment_name = 'FeedlineSpectroscopy'
 
     def __init__(self, task_list,
-                 trigger_separation=10e-6,
+                 trigger_separation=5e-6,
                  **kw):
         super().__init__(task_list,
                          trigger_separation=trigger_separation,
@@ -547,7 +528,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         """
         for task in self.preprocessed_task_list:
             if task['hard_sweep']:
-                qb = self.get_qubits(task['qb'])[0][0]
+                qb = self.get_qubit(task)
                 acq_instr = qb.instr_acq.get_instr()
                 freqs = task['freqs']
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
@@ -564,7 +545,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         n_step=len(freqs),
                         seqtrigger=True,
                     )
-                # adopt df kwargs to hard sweep
+                # adapt df kwargs to hard sweep
                 self.df_kwargs['single_int_avg'] = False
         return super().resolve_freq_sweep_points(**kw)
 
@@ -590,7 +571,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
         # create ParametricValues from param_name in sweep_points
-        # (e.g. "ro_amp", "ro_length", etc.)
+        # (e.g. "amplitude", "length", etc.)
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
                 for pulse_dict in ro.pulses:
@@ -686,9 +667,10 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def __init__(self, task_list,
                  pulsed=False,
-                 trigger_separation=10e-6,
+                 trigger_separation=50e-6,
                  modulated=False,
                  **kw):
+        # FIXME: Automatically detect modulated spectroscopy.
         self.modulated = modulated
         self.pulsed = pulsed
         drive = 'pulsed' if self.pulsed else 'continuous'
@@ -713,7 +695,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         pulsar = qb.instr_pulsar.get_instr()
         awg_name = pulsar.get(f'{qb.ge_I_channel()}_awg')
         preprocessed_task['hard_sweep'] = (
-            hasattr(pulsar, f'{awg_name}_use_hardware_sweeper') and \
+            f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
             pulsar.get(f'{awg_name}_use_hardware_sweeper'))
 
         # Convenience feature to automatically use the LO power parameter to
@@ -786,9 +768,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 self.segment_kwargs['sweep_params'][f'{ch}_osc_sweep'] = \
                     mod_freqs
                 pulsar.set(f'{ch}_centerfreq', center_freq)
-                # adopt df kwargs to hard sweep
+                # adapt df kwargs to hard sweep
                 self.df_name = 'int_avg_det'
-                self.df_kwargs['single_int_avg'] = False
         return super().resolve_freq_sweep_points(**kw)
 
     def sweep_block(self, sweep_points, qb, **kw):
@@ -829,8 +810,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             return [spec, ro]
         else:
             if task is not None and task['hard_sweep']:
-                # We need to add a pulse of length 0 to make sure the AWG channel is
-                # programmed by pulsar and pulsar gets the hard sweep information
+                # We need to add a pulse of length 0 to make sure the AWG
+                # channel is programmed by pulsar and pulsar gets the hard sweep
+                # information and also to make sure that the AWG gets triggered.
                 pulse_modifs = {'all': {'element_name': 'spec_el',
                                         'nr_sigma': 0}}
                 empty = self.block_from_ops('spec', [f"X180 {qb}"],
@@ -898,7 +880,7 @@ class ReadoutCalibration(FeedlineSpectroscopy):
     """
     default_experiment_name = 'ReadoutCalibration'
 
-    def __init__(self, task_list, trigger_separation=10e-6,
+    def __init__(self, task_list, trigger_separation=150e-6,
                  states=["g", "e"], **kw):
         self.states = states
         super().__init__(task_list, trigger_separation, **kw)
@@ -918,10 +900,7 @@ class ReadoutCalibration(FeedlineSpectroscopy):
             analysis_kwargs = {}
         if 'options_dict' not in analysis_kwargs:
             analysis_kwargs['options_dict'] = {}
-        self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(
-            qb_names=self.qb_names,
-            **analysis_kwargs
-        )
+        self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(**analysis_kwargs)
         return self.analysis
 
     def run_update(self, **kw):
