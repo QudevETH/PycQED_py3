@@ -787,7 +787,7 @@ def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='multie
             B = [fit_res.values.get(f'B{i}') for i in range(N)]
             tau = np.array(
                 [fit_res.values.get(f'tau{i}') for i in range(N)]) * t_factor
-        if method in ['integral']:
+        if method in ['integral', 'multiexp']:
             if return_expmod:
                 hlp_mod.add_param(ko, [A, B, tau], data_dict, **params)
             else:
