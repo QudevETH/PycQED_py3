@@ -972,7 +972,7 @@ class QuDev_transmon(Qubit):
             channels=self.get_acq_int_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            data_type='raw', polar=False, single_int_avg=True)
+            data_type='raw', polar=True, single_int_avg=True)
 
         if 'UHF' in self.instr_acq.get_instr().__class__.__name__ and hasattr(
                 self.instr_acq.get_instr().daq, 'scopeModule'):
