@@ -2454,14 +2454,6 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
         it from the object (used in recursive calls of this function)
     :return: (str)
     """
-    def get_short_name():
-        if short_name is not None:
-            return short_name
-        elif hasattr(object, 'short_name'):
-            return object.short_name
-        else:
-            raise AttributeError(
-                f'Could not determine the name of {object}.')
 
     if hasattr(object, 'instrument'):
         # it is a parameter
@@ -2473,7 +2465,7 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
             key = [k for k in object.parent.submodules
                    if object.parent.submodules[k] == object][0]
             return _get_instrument_name_for_parameter_checks(
-                object.parent) + '.' + get_short_name()
+                object.parent) + '.' + key
         # It might be a channel in a channel list that references the
         # instrument as parent, but not the channel list.
         l = [(s, k) for k, s in object.parent.submodules.items()
@@ -2488,8 +2480,10 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
             object[0], 'parent', None) is not None:
         # If it is a list and we find the parent via the first element.
         # A channel list is a submodule and thus appears in the snapshot with
-        # its short_name.
+        # the key used in submodules.
+        key = [k for k in object[0].parent.submodules
+               if object[0].parent.submodules[k] == object][0]
         return _get_instrument_name_for_parameter_checks(
-            object[0].parent) + '.' + get_short_name()
+            object[0].parent) + '.' + key
     else:  # it is an instrument
         return object.name
