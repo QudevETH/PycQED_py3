@@ -111,7 +111,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 configure_qubit_mux_readout(
                     qubits=qubits,
                     lo_freqs_dict={ro_lo: ro_lo_freq},
-                    set_mod_freq=(not isinstance(self, FeedlineSpectroscopy))
+                    set_mod_freq=(not isinstance(self, ResonatorSpectroscopy))
                 )
 
             self.update_operation_dict()
@@ -416,7 +416,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         return None
 
 
-class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
+class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d feedline spectroscopies on one
     or multiple qubits and feedlines.
 
@@ -470,7 +470,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                       label=r'RO pulse length',
                       dimension=1),
     }
-    default_experiment_name = 'FeedlineSpectroscopy'
+    default_experiment_name = 'ResonatorSpectroscopy'
 
     def __init__(self, task_list,
                  trigger_separation=5e-6,
@@ -858,7 +858,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                               'mod_freq.')
 
 
-class ReadoutCalibration(FeedlineSpectroscopy):
+class ReadoutCalibration(ResonatorSpectroscopy):
     """Perform feedline spectroscopies for several initial states to determine
     the RO frequency with the highest contrast.
 
@@ -870,7 +870,7 @@ class ReadoutCalibration(FeedlineSpectroscopy):
             states to be measured. Defaults to `["g", "e"]`.
 
     Compatible task dict keys:
-        freqs: See :class:`FeedlineSpectroscopy' for details.
+        freqs: See :class:`ResonatorSpectroscopy' for details.
 
     Updates:
         qb.ro_freq: To the value maximizing the distance in the IQ plane between
