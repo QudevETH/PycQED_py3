@@ -73,6 +73,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.check_freqs_length()
         self.group_tasks()
         self.check_all_freqs_per_lo()
+        self.check_hard_sweep_compatibility()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
         if len(self.sweep_points_pulses[0]) == 0:
@@ -314,6 +315,18 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 "The steps between frequency sweep points " \
                 "must be the same for all qubits using the same LO."
 
+    def check_hard_sweep_compatibility(self, **kw):
+        """Checks that either all tasks are hard sweeps or none. Child classes
+        can extend functionality e.g. to only allow one hard sweep per feedline.
+        """
+        is_hard_sweep = [task['hard_sweep'] for task
+                                            in self.preprocessed_task_list]
+        if all(is_hard_sweep):
+            pass
+        elif any(is_hard_sweep):
+            raise ValueError("Either all tasks need to be hard sweeps or "
+                             "none of them.")
+
     def sweep_block(self, **kw):
         raise NotImplementedError('Child class has to implement sweep_block.')
 
@@ -521,6 +534,16 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 else:
                     self.grouped_tasks[qb_acq_dev_unit] += [task]
 
+    def check_hard_sweep_compatibility(self, **kw):
+        super().check_hard_sweep_compatibility()
+        for acq_unit, tasks in self.grouped_tasks.values():
+            if not any([task['hard_sweep'] for task in tasks]):
+                continue
+            if len(tasks) > 1:
+                raise ValueError(f"Only one task per feedline for hard sweeps."
+                                 f" Qubits {[task['qb'] for task in tasks]} share"
+                                 f" acquisition channels {acq_unit}.")
+
     def resolve_freq_sweep_points(self, **kw):
         """Configures potential hard_sweeps and afterwards calls super method
         """
@@ -704,6 +727,44 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             self.sweep_functions_dict[prefix + 'spec_power'] = \
                 qb.instr_lo.get_instr().power()
         return preprocessed_task
+
+    def group_tasks(self, **kw):
+        """Fills the grouped_tasks dict with a list of tasks from
+        preprocessed_task_list per LO found in the preprocessed_task_list.
+        """
+        for task in self.preprocessed_task_list:
+            qb = self.get_qubit(task)
+            lo_instr = self.get_lo_from_qb(qb)
+            if lo_instr is not None:
+                lo_name = lo_instr()
+                if lo_name not in self.grouped_tasks:
+                    self.grouped_tasks[lo_name] = [task]
+                else:
+                    self.grouped_tasks[lo_name] += [task]
+            else:
+                # no external LO, use synthesizer
+                # FIXME: SHFSG(QC) specifc
+                pulsar = qb.instr_pulsar.get_instr()
+                id = pulsar.get(f"{qb.ge_I_channel()}_id")
+                awg = pulsar.get(f"{qb.ge_I_channel()}_awg")
+                sg_channel = pulsar.awg_intefaces[awg].awg.sgchannels[int(id[2]) - 1]
+                qb_awg_synth = f"{awg}_synth{sg_channel.synthesizer()}"
+                if qb_awg_synth not in self.grouped_tasks:
+                    self.grouped_tasks[qb_awg_synth] = [task]
+                else:
+                    self.grouped_tasks[qb_awg_synth] += [task]
+
+    def check_hard_sweep_compatibility(self, **kw):
+        super().check_hard_sweep_compatibility()
+        for awg_synth, tasks in self.grouped_tasks.values():
+            if not any([task['hard_sweep'] for task in tasks]):
+                continue
+            elif len(tasks) > 1:
+                # FIXME: SHFSG(QC) specific
+                raise ValueError(f"Currently only one task per synthesizer is "
+                                 f"supported for hard sweeps. Qubits "
+                                 f"{[task['qb'] for task in tasks]} share "
+                                 f"synthesizer {awg_synth}.")
 
     def resolve_freq_sweep_points(self, **kw):
         """Configures potential hard_sweeps and afterwards calls super method
