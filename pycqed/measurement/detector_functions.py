@@ -1283,6 +1283,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             self.value_names[0] = 'Magn'
             self.value_names[1] = 'Phase'
             self.value_units[1] = 'deg'
+        # FIXME: reset to previous names in case `set_polar(False)` is called
 
     def process_data(self, data_raw, polar=None, reshape_data=True):
         """
