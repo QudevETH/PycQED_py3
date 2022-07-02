@@ -8,8 +8,6 @@ import pycqed.measurement.sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.spectroscopy_analysis as spa
 from pycqed.utilities.general import temporary_value
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
-    import QuDev_transmon
 import logging
 log = logging.getLogger(__name__)
 
@@ -429,7 +427,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         """
         for task in self.preprocessed_task_list:
             if qb == task['qb'] or \
-                    (isinstance(qb, QuDev_transmon) and qb.name == task['qb']):
+                    (not isinstance(qb, str) and qb.name == task['qb']):
                 return task
         return None
 
@@ -608,7 +606,7 @@ class FeedlineSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_mod_from_qb(self, qb, **kw):
         return qb.ro_mod_freq
 
-    def get_swf_from_qb(self, qb: QuDev_transmon):
+    def get_swf_from_qb(self, qb):
         return qb.swf_ro_freq_lo()
 
     def run_update(self, **kw):
@@ -846,7 +844,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_mod_from_qb(self, qb, **kw):
         return qb.ge_mod_freq
 
-    def get_swf_from_qb(self, qb: QuDev_transmon):
+    def get_swf_from_qb(self, qb):
         if getattr(self, 'modulated', True):
             return swf.Offset_Sweep(
                 sweep_function=self.get_lo_from_qb(qb).get_instr().frequency,
