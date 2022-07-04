@@ -1,4 +1,5 @@
 import numpy as np
+import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
@@ -475,12 +476,16 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def __init__(self, task_list,
                  trigger_separation=5e-6,
                  **kw):
-        super().__init__(task_list,
-                         trigger_separation=trigger_separation,
-                         segment_kwargs={'acquisition_mode': \
-                                        dict(sweeper='software')},
-                         **kw)
-        self.autorun(**kw)
+        try:
+            super().__init__(task_list,
+                            trigger_separation=trigger_separation,
+                            segment_kwargs={'acquisition_mode': \
+                                            dict(sweeper='software')},
+                            **kw)
+            self.autorun(**kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
 
     def preprocess_task(self, task, global_sweep_points,
                         sweep_points=None, **kw):
@@ -670,22 +675,26 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                  trigger_separation=50e-6,
                  modulated=False,
                  **kw):
-        # FIXME: Automatically detect modulated spectroscopy.
-        self.modulated = modulated
-        self.pulsed = pulsed
-        drive = 'pulsed' if self.pulsed else 'continuous'
-        drive += '_spec'
-        drive += '_modulated' if self.modulated else ''
-        self.default_experiment_name += '_pulsed' if self.pulsed \
-                                                  else '_continuous'
-        super().__init__(task_list,
-                         drive=drive,
-                         trigger_separation=trigger_separation,
-                         segment_kwargs={'mod_config':{},
-                                         'sine_config':{},
-                                         'sweep_params':{},},
-                         **kw)
-        self.autorun(**kw)  # run measurement & analysis if requested in kw
+        try:
+            # FIXME: Automatically detect modulated spectroscopy.
+            self.modulated = modulated
+            self.pulsed = pulsed
+            drive = 'pulsed' if self.pulsed else 'continuous'
+            drive += '_spec'
+            drive += '_modulated' if self.modulated else ''
+            self.default_experiment_name += '_pulsed' if self.pulsed \
+                                                    else '_continuous'
+            super().__init__(task_list,
+                            drive=drive,
+                            trigger_separation=trigger_separation,
+                            segment_kwargs={'mod_config':{},
+                                            'sine_config':{},
+                                            'sweep_params':{},},
+                            **kw)
+            self.autorun(**kw)  # run measurement & analysis if requested in kw
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
 
     def preprocess_task(self, task, global_sweep_points,
                         sweep_points=None, **kw):
