@@ -376,7 +376,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
-        return np.mean(n_acq.values())
+        return np.mean(list(n_acq.values()))
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
