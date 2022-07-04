@@ -48,16 +48,16 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     @assert_not_none('task_list')
     def __init__(self, task_list, trigger_separation=10e-6, **kw):
         df_name = kw.pop('df_name', 'int_avg_det_spec')
-        self.df_kwargs = kw.pop('df_kwargs', {})
-        self.df_kwargs['live_plot_transform_type'] = \
-            self.df_kwargs.get("live_plot_transform_type", 'mag_phase')
+        df_kwargs = kw.pop('df_kwargs', {})
+        df_kwargs['live_plot_transform_type'] = \
+            df_kwargs.get("live_plot_transform_type", 'mag_phase')
         cal_states = kw.pop('cal_states', [])
         self.segment_kwargs = kw.pop('segment_kwargs', dict())
         """Used to set the acquisition mode in the segment, e.g. for fast
         SHFQA spectroscopy. Default is 'software' sweeper.
         """
         super().__init__(task_list, df_name=df_name, cal_states=cal_states,
-                         **kw)
+                         df_kwargs=df_kwargs, **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
         self.sweep_points_pulses = SweepPoints(min_length=2, )
