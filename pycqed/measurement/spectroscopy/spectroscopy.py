@@ -53,8 +53,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             df_kwargs.get("live_plot_transform_type", 'mag_phase')
         cal_states = kw.pop('cal_states', [])
         self.segment_kwargs = kw.pop('segment_kwargs', dict())
-        """Used to set the acquisition mode in the segment, e.g. for fast
-        SHFQA spectroscopy. Default is 'software' sweeper.
+        """Used to set the acquisition mode, the sine config and modulation
+        config.
+
+        These configurations are forwarded to the elements and used by pulsar
+        respectively the acq. device to configure the hardware. This is used
+        e.g. for hard sweeps on SHF hardware.
         """
         super().__init__(task_list, df_name=df_name, cal_states=cal_states,
                          df_kwargs=df_kwargs, **kw)
@@ -219,6 +223,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         the object, which are then used in run_measurement. Aspects to be
         resolved include (if applicable):
         - (shared) LO freqs and (fixed or swept) IFs
+
+        FIXME: add feature to support only a specific range of LO frequencies,
+        e.g for SHF center frequencies.
         """
         for lo, tasks in self.grouped_tasks.items():
             if np.any([task.get('hard_sweep', False) for task in tasks]) or \
@@ -896,6 +903,10 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
 
     def __init__(self, task_list, trigger_separation=150e-6,
                  states=["g", "e"], **kw):
+        # FIXME: consider not using a temporary trigger separation for this
+        # measurement (and just use the one that is currently configured in the
+        # TriggerDevice, like for other measurements that include qb drive
+        # pulses)
         self.states = states
         super().__init__(task_list, trigger_separation, **kw)
 
