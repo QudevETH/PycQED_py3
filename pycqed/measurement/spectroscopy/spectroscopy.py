@@ -923,8 +923,6 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        if 'options_dict' not in analysis_kwargs:
-            analysis_kwargs['options_dict'] = {}
         self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(**analysis_kwargs)
         return self.analysis
 
