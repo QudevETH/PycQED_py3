@@ -207,7 +207,7 @@ class Multi_Detector(Detector_Function):
                 if det_idx_suffix:
                     detector_value_name += '_det{}'.format(i)
                 self.value_names.append(detector_value_name)
-            self.detector_values_length.append([len(detector.value_names)])
+            self.detector_values_length.append(len(detector.value_names))
             for detector_value_unit in detector.value_units:
                 self.value_units.append(detector_value_unit)
 
@@ -884,7 +884,7 @@ class MultiPollDetector(PollDetector):
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
-            self.detector_values_length.append([len(d.value_names)])
+            self.detector_values_length.append(len(d.value_names))
             self.live_plot_allowed += [d.live_plot_allowed]
             if d.AWG is not None\
                     and not isinstance(self.AWG, self.MultiAWGWrapper):
