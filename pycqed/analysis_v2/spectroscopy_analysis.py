@@ -1698,9 +1698,13 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
     def get_yaxis_label(self, qb_name, data_key=None):
         if data_key is None:
             return 'Measured Data (arb.)'
-        if data_key is 'Phase':
+        if data_key == 'Phase':
+            # FIXME a cleaner version would be to implemented this via yunit
+            #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
             return 'Phase (rad)'
-        if data_key is 'Magnitude':
+        if data_key == 'Magnitude':
+            # FIXME a cleaner version would be to implemented this via yunit
+            #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
             return 'Magnitude (Vpeak)'
         return data_key
 
