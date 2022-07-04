@@ -276,8 +276,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
             lo_instr = self.get_lo_from_qb(qb)
-            if lo_instr is not None:
-                lo_name = lo_instr()
+            lo_name = lo_instr()
+            if lo_name is not None:
                 if lo_name not in self.grouped_tasks:
                     self.grouped_tasks[lo_name] = [task]
                 else:
@@ -508,9 +508,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         """
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            lo_instr = qb.instr_ro_lo
-            if lo_instr is not None:
-                qb_ro_mwg = lo_instr()
+            lo_instr = self.get_lo_from_qb(qb)
+            qb_ro_mwg = lo_instr()
+            if qb_ro_mwg is not None:
                 if qb_ro_mwg not in self.grouped_tasks:
                     self.grouped_tasks[qb_ro_mwg] = [task]
                 else:
@@ -729,8 +729,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
             lo_instr = self.get_lo_from_qb(qb)
-            if lo_instr is not None:
-                lo_name = lo_instr()
+            lo_name = lo_instr()
+            if lo_name is not None:
                 if lo_name not in self.grouped_tasks:
                     self.grouped_tasks[lo_name] = [task]
                 else:
