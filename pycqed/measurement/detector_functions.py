@@ -160,13 +160,25 @@ class Detector_Function(object):
         Args:
             data: array of shape (i, ) or (n, i) with i being the
                 number of data points per sweep point and n being an arbitrary
-                integer.
+                integer. Further information for specific transformation types:
+                 'mag_phase':
+                    (i, ):
+                        Input: inphase: data[0::2]; quadrature: data[1::2]
+                        Output: magnitudes: data[0::2]; phases: data[1::2]
+                    (n, i):
+                        Input: inphase: data[:, 0::2]; quadrature: data[:, 1::2]
+                        Output: magnitudes: data[:, 0::2]; phases: data[:, 1::2]
+
         """
         if self.live_plot_transform_type == 'mag_phase':
-            x = np.atleast_2d(data.T).T
+            # transform shape (i, ) into (1, i) and leave (n, i) as is:
+            x = np.atleast_2d(data)
             y = np.zeros_like(x)
+            # convert real valued representation into complex representation
             x = x[:, ::2] + 1j * x[:, 1::2]
+            # compute magnitude and phase of the complex values
             y[:, ::2], y[:, 1::2] = np.abs(x), np.angle(x)
+            # make sure return value has same shape as input
             return y.reshape(data.shape)
         else:
             return data
