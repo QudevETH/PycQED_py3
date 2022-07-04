@@ -993,6 +993,8 @@ class CircuitBuilder:
             init_kwargs = {}
         if final_kwargs is None:
             final_kwargs = {}
+        if segment_kwargs is None:
+            segment_kwargs = {}
 
         nr_sp_list = sweep_points.length()
         if sweep_dims == 1:
