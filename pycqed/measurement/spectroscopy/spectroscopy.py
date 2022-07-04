@@ -532,7 +532,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
-        for acq_unit, tasks in self.grouped_tasks.values():
+        for acq_unit, tasks in self.grouped_tasks.items():
             if not any([task['hard_sweep'] for task in tasks]):
                 continue
             if len(tasks) > 1:
@@ -757,7 +757,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
-        for awg_synth, tasks in self.grouped_tasks.values():
+        for awg_synth, tasks in self.grouped_tasks.items():
             if not any([task['hard_sweep'] for task in tasks]):
                 continue
             elif len(tasks) > 1:
