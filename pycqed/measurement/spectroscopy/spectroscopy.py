@@ -858,7 +858,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                               'mod_freq.')
 
 
-class ReadoutCalibration(ResonatorSpectroscopy):
+class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     """Perform feedline spectroscopies for several initial states to determine
     the RO frequency with the highest contrast.
 
@@ -878,7 +878,7 @@ class ReadoutCalibration(ResonatorSpectroscopy):
             more dicriminating between e & f you should pass states
             ["e", "f", ...] instead of e.g. ["g", "e", "f"].
     """
-    default_experiment_name = 'ReadoutCalibration'
+    default_experiment_name = 'MultiStateResonatorSpectroscopy'
 
     def __init__(self, task_list, trigger_separation=150e-6,
                  states=["g", "e"], **kw):
