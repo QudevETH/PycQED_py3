@@ -747,7 +747,24 @@ class QuDev_transmon(Qubit):
                     'required for this calculation.')
 
         if branch is None:
-            branch = bias if bias is not None else 'negative'
+            if bias is None and flux is None:
+                branch = 'negative'
+            else:
+                # select well-defined branch close to requested flux
+                if flux is None:
+                    flux = (bias - vfc['dac_sweet_spot']) / vfc['V_per_phi0']
+                if flux % 0.5:
+                    pass  # do not shift (well-defined branch)
+                elif flux != self.flux_parking():
+                    # shift slightly in the direction of flux parking
+                    flux += np.sign(self.flux_parking()-flux) * 0.25
+                elif flux != 0:
+                    # shift slightly in the direction of 0
+                    flux += -np.sign(flux) * 0.25
+                else:
+                    # shift slightly to the left to use rising branch as default
+                    flux = -0.25
+                branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
 
         if model == 'approx':
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
