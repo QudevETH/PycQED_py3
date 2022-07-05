@@ -58,7 +58,8 @@ class Sequence:
     @Timer()
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
-                                     resolve_segments=None):
+                                     resolve_segments=None,
+                                     trigger_groups=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -84,6 +85,8 @@ class Sequence:
             channel name as highest-level key:
             sequences[awg][elname][cw][chid] == channel_hashes[ch][elname][cw]
         """
+        # TODO change awg to group everywhere and in get_element_codewords and in get_element_channels and in waveforms
+        # TODO keep sequences organized via awgs
         waveforms = {}
         sequences = {}
         channel_hashes = {}
@@ -93,22 +96,31 @@ class Sequence:
                 seg.resolve_segment()
                 seg.gen_elements_on_awg()
 
+        if trigger_groups is None:
+            trigger_groups = set()
+            for seg in self.segments.values():
+                trigger_groups |= set(seg.elements_on_awg)
+
         if awgs is None:
             awgs = set()
-            for seg in self.segments.values():
-                awgs |= set(seg.elements_on_awg)
+            for group in trigger_groups:
+                awgs.add(self.pulsar.get_awg_from_trigger_group(group))
 
-        for awg in awgs:
-            sequences[awg] = odict()
+        for group in trigger_groups:
+            awg = self.pulsar.get_awg_from_trigger_group(group)
+            if awg not in awgs:
+                continue
+            if awg not in sequences:
+                sequences[awg] = odict()
             for segname, seg in self.segments.items():
                 # Store the name of the segment
-                sequences[awg][segname] = None
-                elnames = seg.elements_on_awg.get(awg, [])
+                sequences[awg].setdefault(segname)
+                elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
-                    sequences[awg][elname] = {'metadata': {}}
-                    for cw in seg.get_element_codewords(elname, awg=awg):
-                        sequences[awg][elname][cw] = {}
-                        for ch in seg.get_element_channels(elname, awg=awg):
+                    sequences[awg].setdefault(elname, {'metadata': {}})
+                    for cw in seg.get_element_codewords(elname, group=group):
+                        sequences[awg][elname].setdefault(cw, {})
+                        for ch in seg.get_element_channels(elname, group=group):
                             h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
                             sequences[awg][elname][cw][chid] = h
@@ -160,6 +172,7 @@ class Sequence:
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
         """
+        # TODO refactor awg to group and check whether everything makes sense
         seq_awgs = [awgs] * len(sequences)
         # collect element lengths
         lengths = odict()
@@ -195,6 +208,8 @@ class Sequence:
                 seg._test_overlap()
             # mark sequence as resolved
             seq.is_resolved = True
+
+# TODO search for element/awg to check whether the rest is really all OK
 
     def n_acq_elements(self, per_segment=False):
         """

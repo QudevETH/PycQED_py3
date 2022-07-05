@@ -170,7 +170,8 @@ class PulsarAWGInterface(ABC):
                              label=f"{name} precompile segments",
                              parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_delay",
-                             initial_value=0, unit="s",
+                             initial_value=0,
+                             unit="s",
                              parameter_class=ManualParameter,
                              docstring="Global delay applied to this channel. "
                                        "Positive values move pulses on this "
@@ -181,6 +182,20 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{name}_compensation_pulse_min_length",
                              initial_value=0, unit='s',
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_trigger_groups",
+                             initial_value={},
+                             parameter_class=ManualParameter,
+                             docstring="Dictionary of group names as keys "
+                                       "and a list of channels within each "
+                                       "group as keys. This allows "
+                                       "the user to specify triggered "
+                                       "sub groups of an AWG.",
+                             vals=vals.Dict())
+
+    def create_trigger_group(self):
+        """
+        Create
+        """
 
     @abstractmethod
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
@@ -524,6 +539,7 @@ class Pulsar(Instrument):
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
         self.awgs:Set[str] = set() # AWG names
+        # self.trigger_groups: Set[str] = set()  # AWG trigger group names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
@@ -645,6 +661,103 @@ class Pulsar(Instrument):
         """
 
         return Instrument.find_instrument(self.get(f"{channel}_awg"))
+
+    def get_trigger_group(self, channel:str) -> str:
+        """Return the corresponding trigger group
+        name a channel is in.
+
+        Args:
+            channel: Name of the channel.
+        """
+
+        # currently we assume a trigger group to only
+        # span over a single AWG
+        awg_name = self.get_channel_awg(channel)
+        trigger_groups = self.get(f"{awg_name}_trigger_groups")
+
+        found_group = f"{awg_name}_default_trigger_group"
+
+        for group, channels in trigger_groups.items():
+            if channel in channels:
+                found_group = group
+
+        return found_group
+
+    def get_awg_from_trigger_group(self, group:str) -> str:
+        """Given a trigger group, returns the AWG which the
+        trigger group is on.
+
+        Args:
+            group: Name of the trigger group.
+        """
+
+        if group not in self.trigger_groups:
+            raise ValueError(f"Provided group {group} not in "
+                             f"list of defined trigger groups.")
+
+        for awg in self.awgs:
+            if group in self.get(f"{awg.name}_trigger_group"):
+                return awg.name
+
+    def get_trigger_group_channels(self, group:str)->List[str]:
+        """
+        Return all channels of the trigger group. If default return all
+        for which no trigger group was defined.
+
+        Args:
+            group: Name of group.
+        """
+
+        awg_name = self.get_awg_from_trigger_group(group)
+        trigger_groups = self.get(f"{awg_name}_trigger_groups")
+
+        return trigger_groups[group]
+
+    def get_trigger_delay(self, group:str) -> float:
+        """
+        Returns the delay of the global channel delay of
+        the specified group.
+
+        Args:
+            group: Name of the group.
+        """
+
+
+        awg = self.get_awg_from_trigger_group(group)
+        delay = self.get(f"{awg}_delay")
+
+        if isinstance(delay, float):
+            return delay
+        else:
+            return delay[group]
+
+    def get_trigger_channels(self, group:str) -> List[str]:
+        """
+        Returns list of triggering channels for a given group.
+
+        Args:
+            group: Name of the group.
+
+        """
+
+        awg = self.get_awg_from_trigger_group(group)
+        trigger_channels = self.get(f"{awg}_trigger_channels")
+
+        if isinstance(trigger_channels, list):
+            return trigger_channels
+        else:
+            return trigger_channels[group]
+
+    def get_enforce_single_element(self, ch:str) -> bool:
+        awg = self.get_channel_awg(ch)
+        group = self.get_trigger_group(ch)
+
+        enforce_single_element = self.get(f"{awg}_enforce_single_element")
+
+        if isinstance(enforce_single_element, bool):
+            return enforce_single_element
+        else:
+            return enforce_single_element[group]
 
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
