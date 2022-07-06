@@ -1,3 +1,5 @@
+from pycqed.measurement.waveform_control.pulsar.zi_multi_core_compiler.\
+    multi_core_compiler import MultiCoreCompiler
 import ctypes
 import logging
 import os
@@ -247,3 +249,58 @@ class ZIPulsarMixin:
             playback_string.append("setTrigger(RO_TRIG);")
             playback_string.append("setTrigger(WINT_EN);")
         return playback_string, interleaves
+
+
+class MultiCoreCompilerQudevZI(MultiCoreCompiler):
+    """
+    A child of MultiCoreCompiler, which compiles and uploads sequences using
+    multiple threads.
+    This class enables compilation on a subset of the added awgs, referred to
+    as "active awgs" and stored in self._awgs.
+
+    Args:
+        awgs (AWG): A list of the AWG Nodes that are target for parallel
+            compilation
+        use_tempdir (bool, optional): Use a temporary directory to store the
+            generated sequences
+    """
+    def __init__(self, *awgs, **kwargs):
+        super().__init__(*awgs, **kwargs)
+        self._awgs_all = {}
+        self._awgs_all.update(self._awgs)
+        self.reset_active_awgs()
+
+    def add_awg(self, awg):
+        """
+        Add a AWG core to self._awgs_all and reset self._awgs.
+
+        Args:
+            awg (AWG): The AWG Nodes that is target for parallel compilation
+        """
+        super().add_awg(awg)
+        self._awgs_all[awg] = self._awgs[awg]
+        self.reset_active_awgs()
+
+    def add_active_awg(self, awg):
+        """
+        Add a AWG core to the active awgs (self._awgs), which are the ones
+        that will be programmed.
+
+        Args:
+            awg (AWG): The AWG Nodes that is target for parallel compilation
+        """
+        self._awgs[awg] = self._awgs_all[awg]
+
+    def reset_active_awgs(self):
+        """
+        Reset the active awgs (self._awgs)
+        """
+        self._awgs = {}
+
+
+class ZIMultiCoreCompilerMixin:
+    """
+    Mixin for creating an instance of MultiCoreCompilerQudevZI for parallel
+    compilation and upload of SeqC strings.
+    """
+    multi_core_compiler = MultiCoreCompilerQudevZI()

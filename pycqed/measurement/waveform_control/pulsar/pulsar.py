@@ -16,8 +16,6 @@ import pycqed.utilities.general as gen
 from pycqed.utilities.timer import WatchdogTimer, WatchdogException
 
 from .zi_pulsar_mixin import ZIPulsarMixin
-from .multi_core_compiler import MultiCoreCompiler
-
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +81,9 @@ class PulsarAWGInterface(ABC):
 
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
+
+    multi_core_compiler = None
+    """For parallel compilation and upload."""
 
     def __init__(self, pulsar:'Pulsar', awg:Instrument):
         super().__init__()
@@ -530,7 +531,6 @@ class Pulsar(Instrument):
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names
-        self.awgs_mcc = dict()  # AWG cores
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
@@ -542,9 +542,6 @@ class Pulsar(Instrument):
 
         self._hash_to_wavename_table = {}
         self._filter_segments = None
-        # Create MultiCoreCompiler instance for parallel compilation and
-        # upload of SecQ strings.
-        self.mcc = MultiCoreCompiler(use_tempdir=True)
 
         Pulsar._instance = self
 
@@ -634,17 +631,8 @@ class Pulsar(Instrument):
              if self.get('{}_awg'.format(k)) == awg.name]))
 
         self.awgs.add(awg.name)
-        if hasattr(awg_interface, '_awg_mcc') and \
-                awg_interface._awg_mcc is not None:
-            self.awgs_mcc[awg.name] = awg_interface.awgs_mcc
         # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
-
-    def reset_mcc(self):
-        """
-        Resets the mcc awgs set by the previous experiment.
-        """
-        self.mcc._awgs = {}
 
     def find_awg_channels(self, awg:str) -> List[str]:
         """Return a list of channels associated to an AWG."""
@@ -784,6 +772,23 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
+    @staticmethod
+    def get_unique_mccs():
+        """
+        Returns list of unique multi_core_compiler instances from
+        PulsarAWGInterface._pulsar_interfaces.
+        """
+        return [ps_int.multi_core_compiler for ps_int in
+                set(PulsarAWGInterface._pulsar_interfaces)
+                if ps_int.multi_core_compiler is not None]
+
+    def reset_active_awgs_mcc(self):
+        """
+        Resets the active awgs on the unique multi_core_compilers.
+        """
+        for mcc in self.get_unique_mccs():
+            mcc.reset_active_awgs()
+
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
 
@@ -794,7 +799,7 @@ class Pulsar(Instrument):
         """
 
         try:
-            self.reset_mcc()
+            self.reset_active_awgs_mcc()
             self._program_awgs(sequence, awgs)
         except Exception as e:
             if not self.use_sequence_cache():
@@ -802,7 +807,7 @@ class Pulsar(Instrument):
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
             self.reset_sequence_cache()
-            self.reset_mcc()
+            self.reset_active_awgs_mcc()
             self._program_awgs(sequence, awgs)
 
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
@@ -1013,26 +1018,34 @@ class Pulsar(Instrument):
 
             log.info(f'Finished programming {awg} in {time.time() - t0}')
 
-        if self.use_mcc() and len(self.mcc._awgs) > 0:
-            # Use parallel compilation and upload of SeqC strings if the
-            # _awgs_with_waveforms support it. _awgs_with_waveforms have been
-            # added to self.mcc in HDAWG8Pulsar
-            self.mcc.wait_compile()
-            self.mcc.upload()
+        if self.use_mcc():
+            # Use parallel compilation and upload if the _awgs_with_waveforms
+            # support it.
 
-            # Upload the waveforms to the _awgs_with_waveforms and save hashes
-            for awg in self._awgs_with_waveforms:
-                awg_interface = self.awg_interfaces[awg]
-                if hasattr(awg_interface, 'wfms_to_upload'):
-                    for k, v in awg_interface.wfms_to_upload.items():
-                        awg_nr, wave_idx = k
-                        waveforms, wave_hashes = v
-                        awg_interface.awg.setv(
-                            f'awgs/{awg_nr}/waveform/waves/{wave_idx}',
-                            waveforms)
-                        # Save hashes in the cache memory after a successful
-                        # waveform upload.
-                        awg_interface.save_hashes(awg_nr, wave_idx, wave_hashes)
+            # Use a flag to determine if parallel compilation was done. It can be
+            # that none of the active awgs support parallel compilation.
+            parallel_comp_used = False
+            for mcc in self.get_unique_mccs():
+                if mcc is not None and len(mcc._awgs) > 0:
+                    mcc.wait_compile()
+                    mcc.upload()
+                    parallel_comp_used = True
+
+            if parallel_comp_used:
+                # Upload the waveforms to the _awgs_with_waveforms that have the
+                # attribute wfms_to_upload.
+                # ZI devices currently only support parallel compilation + upload
+                # of SeqC strings, so we must upload waveforms separately here
+                # after parallel upload is finished.
+                for awg in self._awgs_with_waveforms:
+                    awg_interface = self.awg_interfaces[awg]
+                    if hasattr(awg_interface, 'wfms_to_upload'):
+                        for k, v in awg_interface.wfms_to_upload.items():
+                            awg_nr, wave_idx = k
+                            waveforms, wave_hashes = v
+                            # awg_interface must have the method _upload_waveforms
+                            awg_interface._upload_waveforms(awg_nr, wave_idx,
+                                                            waveforms, wave_hashes)
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

@@ -1,3 +1,4 @@
+import time
 import logging
 import numpy as np
 from copy import deepcopy
@@ -17,13 +18,12 @@ except Exception:
     pass
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin
+from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 
 
 log = logging.getLogger(__name__)
 
-
-class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
+class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [ZI_HDAWG_core]
@@ -53,17 +53,21 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     )
 
     def __init__(self, pulsar, awg):
-        if pulsar.use_mcc():
-            try:
-                from pycqed.instrument_drivers.physical_instruments. \
-                    ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
-                self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
-                                       interface=awg.daq.interface,
-                                       host=awg.daq.server,
-                                       server=awg.daq.server)
-            except ImportError:
-                self._awg_mcc = None
         super().__init__(pulsar, awg)
+        try:
+            from pycqed.instrument_drivers.physical_instruments. \
+                ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
+            self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
+                                   host='localhost')
+        except ImportError as e:
+            log.warning(f'Parallel elf compilation not supported for '
+                        f'{awg.name} ({awg.devname}):\n{e}')
+            self._awg_mcc = None
+        # add awgs to multi_core_compiler class variable
+        for awg in self.awgs_mcc:
+            self.multi_core_compiler.add_awg(awg)
+
+        # dict for storing previously-uploaded waveforms
         self._hdawg_waveform_cache = dict()
 
     @property
@@ -544,8 +548,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
                 if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
                     # Parallel seqc string compilation and upload
-                    self.pulsar.mcc.add_awg(self.awgs_mcc[awg_nr])
-                    self.pulsar.mcc.load_sequencer_program(
+                    self.multi_core_compiler.add_active_awg(self.awgs_mcc[awg_nr])
+                    self.multi_core_compiler.load_sequencer_program(
                         self.awgs_mcc[awg_nr], awg_str)
                 else:
                     # Sequential seqc string upload
@@ -594,7 +598,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        self._upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
+        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
+            # Parallel seqc compilation is used, which must take place before
+            # waveform upload. Waveforms are added to self.wfms_to_upload and
+            # will be uploaded to device in pulsar._program_awgs.
+            self.wfms_to_upload[(awg_nr, wave_idx)] = \
+                (wf_raw_combined, wave_hashes)
+        else:
+            self._upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
 
     def _upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
         """
@@ -606,18 +617,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             waveforms (array): waveforms to upload
             wave_hashes: waveforms hashes
         """
-        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (waveforms, wave_hashes)
-        else:
-            # Upload waveforms to awg
-            self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}',
-                          waveforms)
-            # Save hashes only after the waveform upload was successful.
-            self.save_hashes(awg_nr, wave_idx, wave_hashes)
+        # Upload waveforms to awg
+        self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', waveforms)
+        # Save hashes in the cache memory after a successful waveform upload.
+        self.save_hashes(awg_nr, wave_idx, wave_hashes)
 
     def save_hashes(self, awg_nr, wave_idx, wave_hashes):
         """
