@@ -5,7 +5,7 @@ This file contains the Spectroscopy class that forms the basis analysis of all
 the spectroscopy measurement analyses.
 """
 
-from copy import copy
+from copy import copy,deepcopy
 import logging
 import re
 import numpy as np
@@ -20,6 +20,9 @@ import matplotlib.pyplot as plt
 import pycqed.analysis.fit_toolbox.geometry as geo
 from collections import OrderedDict
 from scipy import integrate
+from scipy import interpolate
+from scipy.signal import find_peaks
+from scipy.signal import savgol_filter
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                             'freq': 'sweep_points',
                             'amp': 'amp',
                             'phase': 'phase'}
-        
+
         self.options_dict.get('xwidth', None)
         # {'xlabel': 'sweep_name',
         # 'xunit': 'sweep_unit',
@@ -299,7 +302,7 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                 self.kappa = self.sim_fit[0].params['kappa_pf'].value
                 self.J_ = self.sim_fit[0].params['J'].value
 
-               
+
             else:
                 fit_fn = fit_mods.hanger_with_pf
                 fit_temp = fit_mods.fit_hanger_with_pf(
@@ -351,7 +354,7 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                 fmin = f0 - df
                 fmax = f0 + df
                 indices = np.logical_or(x < fmin * 1e9, x > fmax * 1e9)
-                
+
                 x_filtered.append(x[indices])
                 y_filtered.append(y[indices])
             self.background = pd.concat([pd.Series(y_filtered[tt], index=x_filtered[tt])
@@ -1276,7 +1279,7 @@ class ResonatorSpectroscopy_v2(SpectroscopyOld):
                                                   f_max_area * 1e-9))
 
         return fig
-            # ax.set_ylim([0.9, 1])
+        # ax.set_ylim([0.9, 1])
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None, no_label=False):
         super(ResonatorSpectroscopy_v2, self).plot(key_list=key_list,
@@ -1707,6 +1710,380 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
             return 'Magnitude (Vpeak)'
         return data_key
+
+
+class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
+    """
+    Find the dips of a 2D resonator spectroscopy and extracts the USS and LSS
+    TODO: More detailed description and/or constructor details and/or example
+    """
+
+    def process_data(self):
+        super().process_data()
+
+        # Collect all the relevants data of a measurement in this dict. Each
+        # entry of the dictionary corresponds to a measurement on a qubit
+        # and it contains the sweep points for the frequency, the sweep points
+        # for the voltage bias, and the projected data for the magnitude
+
+        # {
+        #  'qb1': {'freqs': [...],
+        #           'volts': [...],
+        #           'magnitude': [[...], ...]
+        #         },
+        #  'qb2': {'freqs': ...
+        #         ...
+        #         }
+        # }
+
+        self.analysis_data = OrderedDict()
+        for qb_name in self.qb_names:
+            self.analysis_data[qb_name] = OrderedDict({
+                'freqs':
+                    self.sp[0][f"{qb_name}_freq"][0],
+                'volts':
+                    self.sp[1][f"{qb_name}_volt"][0],
+                'magnitude':
+                    self.proc_data_dict['projected_data_dict'][qb_name]
+                    ['Magnitude']
+            })
+
+    def prepare_fitting(self):
+        """
+        Prepares the dictionaries where the analysis results are going to be
+        stored
+        """
+        self.fit_res = OrderedDict()
+        for qb_name in self.qb_names:
+            self.fit_res[qb_name] = {}
+
+    def run_fitting(self):
+        """Finds the dips the 2D resonator spectroscopy and extracts the LSS and
+        the USS.
+        """
+
+        # Find the dips in frequency
+        for qb_name in self.qb_names:
+            # Find the indices of the dips at each voltage bias
+            left_dips_indices, right_dips_indices = self.find_dips(
+                self.analysis_data[qb_name]['magnitude'])
+            # Find the frequency corresponding to these indices and store it
+            # in the analysis_data dict
+            self.analysis_data[qb_name][
+                'left_dips_frequency'] = self.analysis_data[qb_name]['freqs'][
+                    left_dips_indices]
+            self.analysis_data[qb_name][
+                'right_dips_frequency'] = self.analysis_data[qb_name]['freqs'][
+                    right_dips_indices]
+
+        # Extracts the LSS and USS from the dips previously found
+        for qb_name in self.qb_names:
+            # LSS and USS for the dips on the left
+            left_lss, left_uss = self.find_lss_uss(
+                self.analysis_data[qb_name]['left_dips_frequency'],
+                self.analysis_data[qb_name]['volts'])
+            # LSS and USS for the dips on the right
+            right_lss, right_uss = self.find_lss_uss(
+                self.analysis_data[qb_name]['left_dips_frequency'],
+                self.analysis_data[qb_name]['volts'])
+            # Average the two dips
+            avg_lss = (left_lss + right_lss) / 2
+            avg_uss = (left_uss + right_uss) / 2
+            # Store data in the fit_res dict (which is then saved to the hdf
+            # file)
+            self.fit_res[qb_name]['left_lss'] = left_lss
+            self.fit_res[qb_name]['left_uss'] = left_uss
+            self.fit_res[qb_name]['right_lss'] = right_lss
+            self.fit_res[qb_name]['right_uss'] = right_uss
+            self.fit_res[qb_name]['avg_lss'] = avg_lss
+            self.fit_res[qb_name]['avg_uss'] = avg_uss
+
+    def find_dips(self,
+                  magnitude_data: np.ndarray,
+                  prominence_factor: float = 0.1,
+                  max_iterations: int = 15,
+                  iteration_prominence_factor: float = 0.9,
+                  **kw: dict) -> tuple[list[int], list[int]]:
+        """
+        Finds the dips in a 2D resonator spectroscopy. The algorithm tries to 
+        find two dips iteratively.
+        If more or less than two dips are found, the dip-finding parameters are 
+        adjusted accordingly and dips are searched again. The algorithm stops 
+        when only two dips are found or when the maximum number of iterations is
+        reached. If more than two peaks are found after the maximum number of
+        iterations is reached, the two most prominent dips are selected.
+        
+        Args:
+            magnitude_data (np.ndarray, 2D): projection of the raw data. 
+                Frequency on the x-axis and voltage of the fluxline on the 
+                y-axis. Defaults to 0.1.
+            prominence_factor (float, optional): required prominence for the 
+                dips used in the dip-finding algorithm, as a fraction of the 
+                average of the data.
+            max_iterations (int, optional): maximum number of iterations before 
+                stopping the algorithm. Defaults to 15.
+            iteration_prominence_factor (float, optional): factor that 
+                multiplies or divides the previous required prominence after 
+                each iteration, in case two dips are not found at the first 
+                iteration. Should be less than 1 for the expected behavior, i.e. 
+                increasing required prominence if more than two dips are found 
+                and decreasing required prominence if less than two dips are 
+                found. Defaults to 0.9.
+            kw: additional parametrs for the dip-finding algorithm. See SciPy 
+                documentation of find_peaks for more details.
+        Returns: 
+            tuple[list[int],list[int]]: list of frequency indices for the left 
+                dips, list of frequency indices for the right dips.
+        """
+        dips_indices_left = []
+        dips_indices_right = []
+        # Analyze the 2D plot line by line, each line corresponding to a
+        # specific voltage bias
+        for linecut_magn in magnitude_data[:,]:
+            average_magn = np.average(linecut_magn)
+
+            dips_indices = []
+            iteration_index = 0
+
+            new_prominence_factor = prominence_factor
+
+            # Find dips by adjusting the parameters until two peaks are found
+            # or the maximum number of iterations is reached
+            while len(dips_indices) != 2 and iteration_index < max_iterations:
+                # To find dips, we use scipy's peak finder and change the sign
+                # of the data so that dips become peaks
+                dips_indices, dips_properties = find_peaks(
+                    -linecut_magn,
+                    prominence=new_prominence_factor * average_magn,
+                    **kw)
+
+                if len(dips_indices) > 2:
+                    # If more than two peaks are found, repeat using a larger
+                    # prominence
+                    new_prominence_factor = new_prominence_factor / iteration_prominence_factor
+                if len(dips_indices) < 2:
+                    # If less than two peaks are found, repeat using a smaller
+                    # prominence
+                    new_prominence_factor = new_prominence_factor * iteration_prominence_factor
+
+                iteration_index = iteration_index + 1
+
+            # Once two peaks are found or the maximum number of iterations is
+            # reached, choose the first peak as the left one and the last as
+            # the right one.
+            # TODO: what should the behavior be when number of peaks found != 2?
+
+            if len(dips_indices) > 2:
+                # If more than two dips are found, choose the two with the
+                # highest prominence
+                prominences_dips = dips_properties['prominences']
+                indices_max_dip = np.argpartition(prominences_dips, -2)[-2:]
+                dips_indices = np.array(dips_indices)[indices_max_dip]
+            elif len(dips_indices) < 2:
+                log.warning(f"Found {len(dips_indices)} peaks instead of 2")
+
+            # Separate the left dips from the right dips
+            dips_indices_left.append(np.min(dips_indices))
+            dips_indices_right.append(np.max(dips_indices))
+
+        return dips_indices_left, dips_indices_right
+
+    def find_lss_uss(self,
+                     frequency_dips: np.ndarray,
+                     biases: np.ndarray,
+                     window_length: int = 7,
+                     polyorder: int = 2) -> tuple[float, float]:
+        """Finds the LSS and USS given the frequency of the dips (previously 
+        found in find_dips) and the corresponding voltage biases of a resonator
+        spectroscopy.
+        The algorithm works in the following way. First, the numerical
+        derivative of the frequency of the dips with respect to the voltage bias
+        is calculated. Then the extrema are found are found by interpolating
+        the numerical derivative with a CubicSpline and finding its root.
+        Afterwards, minima and maxima are distinguished by checking the sign
+        of the second derivative.
+        All the numerical derivative are calculated using a Savitzky-Golay
+        filter to smoothen the data. This prevents the derivative from crossing
+        zero just because of noisy data.
+
+        Args:
+            frequency_dips (np.ndarray): frequency of the dips previously found,
+                either the left ones or the right ones. 
+            biases (np.ndarray): voltage bias values corresponding to the values
+                in frequency_dips.
+            window_length (int, optional): length of the filter window to 
+                calculate the numerical derivatives with Savitzky-Golay filter. 
+                See SciPy documentation of savgol_filter. Defaults to 7.
+            polyorder (int, optional): order of the polynomial to calculate the
+                numerical derivatives with Savitzky-Golay filter. 
+                See SciPy documentation of savgol_filter Defaults to 2.
+
+        Returns:
+            tuple[float,float]: _description_
+        """
+
+        # Lists where the local extrema will be stored
+        local_maxima = []
+        local_minima = []
+
+        # Separation between voltage bias sweep points
+        dv = biases[1] - biases[0]
+
+        # Calculate the numerical first derivative of frequency of the dips
+        # with respect to the voltage bias
+        dfdv = savgol_filter(frequency_dips,
+                             delta=dv,
+                             window_length=window_length,
+                             deriv=1,
+                             polyorder=polyorder)
+
+        # Calculate the numerical second derivative of frequency of the dips
+        # with respect to the voltage bias
+        dfdv2 = savgol_filter(frequency_dips,
+                              delta=dv,
+                              window_length=window_length,
+                              deriv=2,
+                              polyorder=polyorder)
+
+        # Interpolate the derivatives previously calculated with a CubicSpline
+        dfdv_interp = interpolate.CubicSpline(biases, dfdv)
+        dfdv2_interp = interpolate.CubicSpline(biases, dfdv2)
+
+        # Find the roots of the df/dv: these are the local extrema
+        extrema = dfdv_interp.roots(extrapolate=False)
+
+        # Use the second derivative to distinguish between minima and maxima
+        for extremum in extrema:
+            if dfdv2_interp(extremum) > 0:
+                local_minima.append(extremum)
+            else:
+                local_maxima.append(extremum)
+
+        # Pick the minima and maxima closest to zero voltage bias for the LSS
+        # and the USS. If no local minima/maxima were found, set the LSS/USS
+        # to zero.
+
+        if len(local_minima) == 0:
+            log.warning("Failed to find local minima. Setting LSS = 0 V")
+            lss = 0
+        else:
+            lss = np.min(np.abs(local_minima))
+
+        if len(local_maxima) == 0:
+            log.warning("Failed to find local maxima. Setting USS = 0 V")
+            uss = 0
+        else:
+            uss = np.min(np.abs(local_maxima))
+
+        return lss, uss
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        for qb_name in self.qb_names:
+
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
+            fig_id_analyzed = f"{fig_id_original}_an"
+            self.plot_dicts[fig_id_analyzed] = deepcopy(
+                self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
+
+            # Change the fig_id of the copied plot in order to distinguish it 
+            # from the original
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+
+
+            # Plot the left dips
+            self.plot_dicts[f"{fig_id_analyzed}_left_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['left_dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['volts'],
+                'marker': 'o',
+                'linestyle': 'none',
+                'color': 'C0',
+            }
+
+            # Plot the right dips
+            self.plot_dicts[f"{fig_id_analyzed}_right_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['right_dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['volts'],
+                'marker': 'o',
+                'linestyle': 'none',
+                'color': 'C1',
+            }
+
+            # Interpolate the found dips in order to find where the frequencies
+            # corresponding to the left and right LSS and USS
+            left_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['left_dips_frequency'], 'cubic')
+            right_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
+
+            # Find the frequencies corresponding to the left and right LSS 
+            # and USS
+            left_lss_freq = left_dips_interpolation(
+                self.fit_res[qb_name]['left_lss'])
+            left_uss_freq = left_dips_interpolation(
+                self.fit_res[qb_name]['left_uss'])
+            right_lss_freq = right_dips_interpolation(
+                self.fit_res[qb_name]['right_lss'])
+            right_uss_freq = right_dips_interpolation(
+                self.fit_res[qb_name]['right_uss'])
+
+            # Plot the left LSS and USS
+            self.plot_dicts[f"{fig_id_analyzed}_left_lss_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([left_lss_freq, left_uss_freq]),
+                'yvals': np.array([
+                    self.fit_res[qb_name]['left_lss'],
+                    self.fit_res[qb_name]['left_uss']
+                ]),
+                'marker': 'x',
+                'linestyle': 'none',
+                'color': 'C0',
+                'line_kws': {'ms' : self.get_default_plot_params()['lines.markersize']*3}
+            }
+            
+            # Plot the right LSS and USS
+            self.plot_dicts[f"{fig_id_analyzed}_right_lss_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([right_lss_freq, right_uss_freq]),
+                'yvals': np.array([
+                    self.fit_res[qb_name]['right_lss'],
+                    self.fit_res[qb_name]['right_uss']
+                ]),
+                'marker': 'x',
+                'linestyle': 'none',
+                'color': 'C1',
+                'line_kws': {'ms' : self.get_default_plot_params()['lines.markersize']*3}
+            }
+
+            # Plot the average of the left and right
+            self.plot_dicts[f"{fig_id_analyzed}_avg_lss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_hlines,
+                'y': self.fit_res[qb_name]['avg_lss'],
+                'xmin': self.analysis_data[qb_name]['freqs'][0],
+                'xmax': self.analysis_data[qb_name]['freqs'][-1],
+                'colors': 'C3',
+            }
+
+            self.plot_dicts[f"{fig_id_analyzed}_avg_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_hlines,
+                'y': self.fit_res[qb_name]['avg_uss'],
+                'xmin': self.analysis_data[qb_name]['freqs'][0],
+                'xmax': self.analysis_data[qb_name]['freqs'][-1],
+                'colors': 'C2',
+            }
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
