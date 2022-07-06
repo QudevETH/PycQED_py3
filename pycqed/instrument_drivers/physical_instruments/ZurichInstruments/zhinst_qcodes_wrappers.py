@@ -17,7 +17,7 @@ class HDAWG8(HDAWG_core):
         super().__init__(*args, **kwargs)
 
     def _check_server(self, kwargs):
-        if kwargs.pop('server') == 'emulator':
+        if kwargs.pop('server', '') == 'emulator':
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
