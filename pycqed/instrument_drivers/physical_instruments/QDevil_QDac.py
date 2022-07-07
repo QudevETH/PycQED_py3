@@ -225,7 +225,7 @@ class QDacSmooth(QDac):
 
         try:
             super()._update_cache(*args, **kwargs)
-        except VisaIOError as e:
+        except VisaIOError:
             # Clear buffers, this is needed to put the QDAC back to a working
             # state e.g. after a keyboard interrupt during last use
             self.device_clear()
