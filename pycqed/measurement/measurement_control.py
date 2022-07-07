@@ -2133,7 +2133,7 @@ class MeasurementControl(Instrument):
                     t_left=t_left,
                     t_end=t_end,)
 
-            if percdone != 100:
+            if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
