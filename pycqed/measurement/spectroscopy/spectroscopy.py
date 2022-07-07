@@ -868,10 +868,30 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
-        if self.modulated:
-            for task in self.preprocessed_task_list:
+        for task in self.preprocessed_task_list:
+            if self.get_lo_from_qb(qb)() is None and not task['hard_sweep']:
+                # SHFSG Soft Sweep settings:
+                qb = self.get_qubit(task)
+                pulsar = qb.instr_pulsar.get_instr()
+                # FIXME: move conversion from amp to gain to SHFSG pulsar method
+                # `_direct_mod_amplitude_setter`. Afterwards the if and elif
+                # branches can be combined into one
+                amp_range = pulsar.get(f'{qb.ge_I_channel()}_amp')
+                amp = dbm_to_vp(qb.spec_power())
+                gain = amp / amp_range
+                mod_freq = qb.instr_pulsar.get_instr().parameters[
+                        f'{qb.ge_I_channel()}_direct_mod_freq'
+                ]
+                self.temporary_values.append((mod_freq,
+                                                self.get_mod_from_qb(qb)()))
+                amp = qb.instr_pulsar.get_instr().parameters[
+                    f'{qb.ge_I_channel()}_direct_output_amp'
+                ]
+                self.temporary_values.append((amp, gain))
+            elif self.modulated:
+                # HDAWG modulated spectroscopy settings:
                 if task.get('mod_freq', False):
-                    # FIXME: HDAWG specific code, should be moved to pulsar
+                    # FIXME: HDAWG specific code, should be moved to pulsar?
                     qb = self.get_qubit(task)
                     mod_freq = qb.instr_pulsar.get_instr().parameters[
                         f'{qb.ge_I_channel()}_direct_mod_freq'
@@ -882,7 +902,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         f'{qb.ge_I_channel()}_direct_output_amp'
                     ]
                     self.temporary_values.append((amp,
-                                                  qb.spec_mod_amp()))
+                                                  dbm_to_vp(qb.spec_power())))
                 else:
                     log.error('Task for modulated spectroscopy does not contain'
                               'mod_freq.')
