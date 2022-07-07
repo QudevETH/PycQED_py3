@@ -7419,6 +7419,13 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
+            # Set text colour to black.
+            # The RamseyAnalysis may produce a multi-coloured text string, in
+            # which case both the color and the text_string entries of the
+            # plot dict are lists with the same length. Not resetting the
+            # color here will cause an error in the case of multi-coloured
+            # text strings.
+            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
