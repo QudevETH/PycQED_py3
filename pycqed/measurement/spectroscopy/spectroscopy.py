@@ -2,6 +2,7 @@ import numpy as np
 import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
+from pycqed.utilities.math import dbm_to_vp
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
@@ -813,13 +814,11 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         task = self.get_task(qb)
         if self.pulsed:
             qubit = self.get_qubit(task)
-            pulse_modifs = {'all': {'element_name': 'spec_el',
-                                    'length': self.trigger_separation - 100e-9
-                                              - qubit.acq_length()}}
-            if task['hard_sweep']:
+            pulse_modifs = {'all': {'element_name': 'spec_el',}
+            if self.get_lo_from_qb(qubit)() is None:
+                # No external LO to gate, use drive channel to apply pulse
                 pulse_modifs['all']['channel'] = qubit.ge_I_channel()
-                pulse_modifs['all']['amplitude'] = \
-                    10 ** (qubit.spec_power() / 20 - 0.5)
+                pulse_modifs['all']['amplitude'] = dbm_to_vp(qubit.spec_power())
             spec = self.block_from_ops('spec', [f"Spec {qb}"],
                                        pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
