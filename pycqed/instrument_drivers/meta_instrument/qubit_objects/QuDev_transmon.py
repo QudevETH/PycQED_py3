@@ -2865,10 +2865,8 @@ class QuDev_transmon(Qubit):
             self.prepare(drive='timedomain', switch='calib')
 
             # Check commensurability of LO frequencies with trigger sep.
-            ro_lo = self.instr_ro_lo.get_instr()
-            dr_lo = self.instr_ge_lo.get_instr()
-            ro_lo_freq = ro_lo.frequency()
-            dr_lo_freq = dr_lo.frequency()
+            ro_lo_freq = self.get_ro_lo_freq()
+            dr_lo_freq = self.ge_freq() - self.ge_mod_freq()
             # Frequency of the LO phases is given by the LOs beat frequency.
             beat_freq = 0.5*(dr_lo_freq - ro_lo_freq)
             #         = 0.5*(ge_mod_freq + ro_mod_freq) in our case
