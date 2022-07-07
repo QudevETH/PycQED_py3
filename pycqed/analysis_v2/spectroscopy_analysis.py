@@ -1784,7 +1784,7 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 self.analysis_data[qb_name]['volts'])
             # LSS and USS for the dips on the right
             right_lss, right_uss = self.find_lss_uss(
-                self.analysis_data[qb_name]['left_dips_frequency'],
+                self.analysis_data[qb_name]['right_dips_frequency'],
                 self.analysis_data[qb_name]['volts'])
             # Average the two dips
             avg_lss = (left_lss + right_lss) / 2
@@ -1967,13 +1967,13 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             log.warning("Failed to find local minima. Setting LSS = 0 V")
             lss = 0
         else:
-            lss = np.min(np.abs(local_minima))
+            lss = local_minima[np.argmin(np.abs(local_minima))]
 
         if len(local_maxima) == 0:
             log.warning("Failed to find local maxima. Setting USS = 0 V")
             uss = 0
         else:
-            uss = np.min(np.abs(local_maxima))
+            uss = local_maxima[np.argmin(np.abs(local_maxima))]
 
         return lss, uss
 
