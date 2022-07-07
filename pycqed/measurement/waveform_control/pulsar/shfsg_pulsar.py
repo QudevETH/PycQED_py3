@@ -291,18 +291,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings += self._zi_playback_string_loop_end(metadata)
 
             if not any([ch_has_waveforms[ch] for ch in chids]):
-                # prevent ZI_base_instrument.start() from starting this sub AWG
+                # prevent self.start() from starting this sub AWG
                 self.awg._awg_program[awg_nr + first_sg_awg] = None
                 continue
-            # tell ZI_base_instrument that it should not compile a
-            # program on this sub AWG (because we already do it here)
-            # FIXME: delete this when overhauling sequencer cache for SG
-            # self.awg._awg_needs_configuration[awg_nr] = False
-            # tell ZI_base_instrument.start() to start this sub AWG
-            # (The base class will start sub AWGs for which _awg_program
-            # is not None. Since we set _awg_needs_configuration to False,
-            # we do not need to put the actual program here, but anything
-            # different from None is sufficient.)
+            # tell self.start() to start this sub AWG
+            # (self.start will start sub AWGs for which _awg_program
+            # is not None. We do not need to put the actual program here,
+            # but anything different from None is sufficient.)
             self.awg._awg_program[awg_nr + first_sg_awg] = True
 
             # Having determined whether the sub AWG should be started or
@@ -376,8 +371,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
     def start(self):
-        for sgchannel in self.awg.sgchannels:
-            sgchannel.awg.enable(1)
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
+        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
+            if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
+                sgchannel.awg.enable(1)
 
     def stop(self):
         for sgchannel in self.awg.sgchannels:
@@ -430,3 +427,6 @@ class SHFSGPulsar(SHFGeneratorModulePulsar):
 
     AWG_CLASSES = [SHFSG_core]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awg._awg_program = [None] * len(self.awg.sgchannels)
