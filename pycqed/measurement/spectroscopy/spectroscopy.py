@@ -810,34 +810,44 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
 
-        # add marker pulse in case we perform pulsed spectroscopy
         task = self.get_task(qb)
+
+        # For pulsed and hard_sweep spectroscopies we add an empty spec pulse to
+        # trigger the the drive/marker AWG and afterwards add the actual spec
+        # pulse (either empty for a continuous hard sweep or the pulse for the
+        # pulsed spectroscopy). This way we are able to implement a delay
+        # between the trigger and the spec pulse that is needed in hard_sweeps
+        # to set the osc. frequency.
+        # FIXME: think about cleaner solution
+        pulse_modifs = {'all': {'element_name': 'spec_el',
+                                'length': 0, 'pulse_delay': 0}}
+        empty_trigger = self.block_from_ops('spec', [f"Spec {qb}"],
+                                    pulse_modifs=pulse_modifs)
+
+        # add marker pulse in case we perform pulsed spectroscopy
         if self.pulsed:
             qubit = self.get_qubit(task)
-            pulse_modifs = {'all': {'element_name': 'spec_el',}
+            pulse_modifs = {'op_code=Spec': {'element_name': 'spec_el',}}
             if self.get_lo_from_qb(qubit)() is None:
-                # No external LO to gate, use drive channel to apply pulse
-                pulse_modifs['all']['channel'] = qubit.ge_I_channel()
-                pulse_modifs['all']['amplitude'] = dbm_to_vp(qubit.spec_power())
-            spec = self.block_from_ops('spec', [f"Spec {qb}"],
-                                       pulse_modifs=pulse_modifs)
+                # No external LO, use pulse to set the spec power
+                pulse_modifs['op_code=Spec']['amplitude'] = \
+                    dbm_to_vp(qubit.spec_power())
+            spec = self.block_from_ops('spec', [f"Z0 {qb}", f"Spec {qb}"],
+                                    pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
             for sweep_dict in sweep_points:
                 for param_name in sweep_dict:
                     for pulse_dict in spec.pulses:
                         if param_name in pulse_dict:
                             pulse_dict[param_name] = ParametricValue(param_name)
-            return [spec, ro]
+            return [empty_trigger, spec, ro]
         else:
             if task is not None and task['hard_sweep']:
-                # We need to add a pulse of length 0 to make sure the AWG
-                # channel is programmed by pulsar and pulsar gets the hard sweep
-                # information and also to make sure that the AWG gets triggered.
-                pulse_modifs = {'all': {'element_name': 'spec_el',
-                                        'nr_sigma': 0}}
-                empty = self.block_from_ops('spec', [f"X180 {qb}"],
-                                        pulse_modifs=pulse_modifs)
-                return [empty, ro]
+                # We need to add a pulse of length 0 to make sure the AWG channel is
+                # programmed by pulsar and pulsar gets the hard sweep information.
+                # The empty pulse is also used to trigger the SeqC code to set
+                # the next osc. frequency. This needs to be done after the RO.
+                return [ro, empty_trigger]
         return [ro]
 
     def get_lo_from_qb(self, qb, **kw):
