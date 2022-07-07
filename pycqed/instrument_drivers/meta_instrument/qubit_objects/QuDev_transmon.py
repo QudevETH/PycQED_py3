@@ -1317,6 +1317,17 @@ class QuDev_transmon(Qubit):
         awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
         hard_sweep = f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
                      pulsar.get(f"{awg_name}_use_hardware_sweeper")
+
+        # For pulsed and hard_sweep spectroscopies we add an empty spec pulse to
+        # trigger the the drive/marker AWG and afterwards add the actual spec
+        # pulse (either empty for a continuous hard sweep or the pulse for the
+        # pulsed spectroscopy). This way we are able to implement a delay
+        # between the trigger and the spec pulse that is needed in hard_sweeps
+        # to set the osc. frequency.
+        # FIXME: think about cleaner solution
+        empty_trigger = self.get_spec_pars()
+        empty_trigger['length'] = 0
+        empty_trigger['pulse_delay'] = 0
         if pulsed:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1327,11 +1338,10 @@ class QuDev_transmon(Qubit):
             if upload:
                 spec_pulse = self.get_spec_pars()
                 if hard_sweep or self.instr_ge_lo() is None:
+                    # No external LO, use pulse to set the spec power
                     spec_pulse["amplitude"] = dbm_to_vp(self.spec_power())
-                    spec_pulse['channel'] = self.ge_I_channel()
-                    spec_pulse['length'] = trigger_separation - 100e-9 \
-                                           - self.acq_length()
-                seq = sq.pulse_list_list_seq([[spec_pulse,
+                seq = sq.pulse_list_list_seq([[empty_trigger,
+                                               spec_pulse,
                                                self.get_ro_pars()]],
                                              upload=False)
         else:
@@ -1354,11 +1364,11 @@ class QuDev_transmon(Qubit):
                                    gain)]
                 if hard_sweep:
                     # we use the empty pulse to tell pulsar how to configure the
-                    # osc sweep and sine output
-                    spec_pulse = self.get_ge_pars()
-                    spec_pulse["nr_sigma"] = 0
-                    seq = sq.pulse_list_list_seq([[spec_pulse,
-                                                   self.get_ro_pars()]],
+                    # osc sweep and sine output. The empty pulse is also used
+                    # to trigger the SeqC code to set the next osc. frequency.
+                    # This needs to be done after the RO.
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars(),
+                                                   empty_trigger]],
                                                  upload=False)
                 else:
                     seq = sq.pulse_list_list_seq([[self.get_ro_pars()]],
