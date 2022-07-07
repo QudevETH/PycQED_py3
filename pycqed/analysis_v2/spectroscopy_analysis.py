@@ -1757,7 +1757,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                     sp2d_key = 'initialize'
                 for i, state in enumerate(pdd['sweep_points_2D_dict'][qb_name] \
                                              [sp2d_key]):
-                    yvals = data[:, i]
+                    yvals = data[i, :]
                     self.plot_dicts[f'raw_{key}_{state}_{qb_name}'] = {
                             'fig_id': plot_name,
                             'ax_id': ax_id,
