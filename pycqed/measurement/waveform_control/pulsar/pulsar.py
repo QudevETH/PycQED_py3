@@ -747,7 +747,7 @@ class Pulsar(Instrument):
 
         return trigger_groups[group]
 
-    def get_trigger_delay(self, group:str) -> float:
+    def get_trigger_delay(self, group:str):
         """
         Returns the delay of the global channel delay of
         the specified group.
@@ -760,7 +760,7 @@ class Pulsar(Instrument):
         awg = self.get_awg_from_trigger_group(group)
         delay = self.get(f"{awg}_delay")
 
-        if isinstance(delay, float):
+        if isinstance(delay, float) or isinstance(delay, int):
             return delay
         else:
             return delay[group]
