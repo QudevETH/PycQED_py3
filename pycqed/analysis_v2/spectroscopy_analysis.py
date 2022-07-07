@@ -1986,13 +1986,12 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             # non-analyzed plots
             fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
             fig_id_analyzed = f"{fig_id_original}_an"
-            self.plot_dicts[fig_id_analyzed] = deepcopy(
-                self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
+            self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
+                f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
 
-            # Change the fig_id of the copied plot in order to distinguish it 
+            # Change the fig_id of the copied plot in order to distinguish it
             # from the original
             self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
-
 
             # Plot the left dips
             self.plot_dicts[f"{fig_id_analyzed}_left_dips"] = {
@@ -2002,7 +2001,12 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'yvals': self.analysis_data[qb_name]['volts'],
                 'marker': 'o',
                 'linestyle': 'none',
-                'color': 'C0',
+                'color': 'C4',
+                'setlabel': 'Left dips',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
             }
 
             # Plot the right dips
@@ -2014,6 +2018,11 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'marker': 'o',
                 'linestyle': 'none',
                 'color': 'C1',
+                'setlabel': 'Right dips',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
             }
 
             # Interpolate the found dips in order to find where the frequencies
@@ -2025,7 +2034,7 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 self.analysis_data[qb_name]['volts'],
                 self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
 
-            # Find the frequencies corresponding to the left and right LSS 
+            # Find the frequencies corresponding to the left and right LSS
             # and USS
             left_lss_freq = left_dips_interpolation(
                 self.fit_res[qb_name]['left_lss'])
@@ -2036,53 +2045,144 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             right_uss_freq = right_dips_interpolation(
                 self.fit_res[qb_name]['right_uss'])
 
-            # Plot the left LSS and USS
-            self.plot_dicts[f"{fig_id_analyzed}_left_lss_uss"] = {
+            # Plot the left LSS
+            self.plot_dicts[f"{fig_id_analyzed}_left_lss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([left_lss_freq, left_uss_freq]),
+                'xvals': np.array([left_lss_freq]),
                 'yvals': np.array([
                     self.fit_res[qb_name]['left_lss'],
-                    self.fit_res[qb_name]['left_uss']
                 ]),
-                'marker': 'x',
+                'marker': '<',
                 'linestyle': 'none',
-                'color': 'C0',
-                'line_kws': {'ms' : self.get_default_plot_params()['lines.markersize']*3}
+                'color': 'C4',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Left LSS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
             }
-            
-            # Plot the right LSS and USS
-            self.plot_dicts[f"{fig_id_analyzed}_right_lss_uss"] = {
+
+            # Plot the left USS
+            self.plot_dicts[f"{fig_id_analyzed}_left_uss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([right_lss_freq, right_uss_freq]),
-                'yvals': np.array([
-                    self.fit_res[qb_name]['right_lss'],
-                    self.fit_res[qb_name]['right_uss']
-                ]),
-                'marker': 'x',
+                'xvals': np.array([left_uss_freq]),
+                'yvals': np.array([self.fit_res[qb_name]['left_uss']]),
+                'marker': '>',
+                'linestyle': 'none',
+                'color': 'C4',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Left USS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the right LSS
+            self.plot_dicts[f"{fig_id_analyzed}_right_lss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([right_lss_freq]),
+                'yvals': np.array([self.fit_res[qb_name]['right_lss']]),
+                'marker': '<',
                 'linestyle': 'none',
                 'color': 'C1',
-                'line_kws': {'ms' : self.get_default_plot_params()['lines.markersize']*3}
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Right LSS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the right USS
+            self.plot_dicts[f"{fig_id_analyzed}_right_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([right_uss_freq]),
+                'yvals': np.array([self.fit_res[qb_name]['right_uss']]),
+                'marker': '>',
+                'linestyle': 'none',
+                'color': 'C1',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Right USS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
             }
 
             # Plot the average of the left and right
             self.plot_dicts[f"{fig_id_analyzed}_avg_lss"] = {
                 'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_hlines,
-                'y': self.fit_res[qb_name]['avg_lss'],
-                'xmin': self.analysis_data[qb_name]['freqs'][0],
-                'xmax': self.analysis_data[qb_name]['freqs'][-1],
-                'colors': 'C3',
+                'plotfn': self.plot_line,
+                'xvals': [
+                    self.analysis_data[qb_name]['freqs'][0],
+                    self.analysis_data[qb_name]['freqs'][-1]
+                ],
+                'yvals': [
+                    self.fit_res[qb_name]['avg_lss'],
+                    self.fit_res[qb_name]['avg_lss']
+                ],
+                'color': 'C3',
+                'marker': 'None',
+                'linestyle': '--',
+                'setlabel': 'Average LSS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
             }
 
             self.plot_dicts[f"{fig_id_analyzed}_avg_uss"] = {
                 'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_hlines,
-                'y': self.fit_res[qb_name]['avg_uss'],
-                'xmin': self.analysis_data[qb_name]['freqs'][0],
-                'xmax': self.analysis_data[qb_name]['freqs'][-1],
-                'colors': 'C2',
+                'plotfn': self.plot_line,
+                'xvals': [
+                    self.analysis_data[qb_name]['freqs'][0],
+                    self.analysis_data[qb_name]['freqs'][-1]
+                ],
+                'yvals': [
+                    self.fit_res[qb_name]['avg_uss'],
+                    self.fit_res[qb_name]['avg_uss']
+                ],
+                'color': 'C5',
+                'marker': 'None',
+                'linestyle': '--',
+                'setlabel': 'Average USS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot textbox containing relevant information
+            textstr = (
+                f"Average LSS = {self.fit_res[qb_name]['avg_lss']:.3f} V"
+                f"\nAverage USS = {self.fit_res[qb_name]['avg_uss']:.3f} V"
+                f"\nLeft LSS = {self.fit_res[qb_name]['left_lss']:.3f} V"
+                f"\nLeft USS = {self.fit_res[qb_name]['left_uss']:.3f} V"
+                f"\nRight LSS = {self.fit_res[qb_name]['right_lss']:.3f} V"
+                f"\nRight USS = {self.fit_res[qb_name]['right_uss']:.3f} V")
+
+            self.plot_dicts['text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.3,
+                'xpos': 0,
+                'horizontalalignment': 'left',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': textstr
             }
 
 
