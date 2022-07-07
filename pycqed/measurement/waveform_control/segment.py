@@ -791,8 +791,7 @@ class Segment:
                                      - self.trigger_pars['buffer_length_start']
 
                 # Find the trigger channels that trigger the AWG
-                for channel in self.pulsar.get(
-                        '{}_trigger_channels'.format(group)):
+                for channel in self.pulsar.get_trigger_channels(group):
                     trigger_pulses.append(
                         (channel, trigger_pulse_time,
                          {'amplitude': 0}
@@ -896,7 +895,10 @@ class Segment:
             el_list = []
             i = 0
             for el in self.elements_on_awg[group]:
+                # add element and or group to element_start_end
                 if el not in self.element_start_end:
+                    self.element_start_length(el, group)
+                elif group not in self.element_start_end[el]:
                     self.element_start_length(el, group)
                 el_list.append([self.element_start_end[el][group][0], i, el])
                 i += 1
@@ -1215,8 +1217,7 @@ class Segment:
             awg = self.pulsar.get_awg_from_trigger_group(group)
             if awg not in awgs:
                 continue
-            if awg not in awg_wfs:
-                awg_wfs[awg] = {}
+            if awg not in awg_wfs: awg_wfs[awg] = {}
             channel_list = set(self.pulsar.get_trigger_group_channels(group)) & channels
             if channel_list == set():
                 continue
@@ -1224,7 +1225,8 @@ class Segment:
             for i, element in enumerate(self.elements_on_awg[group]):
                 if element not in elements:
                     continue
-                awg_wfs[awg][(i, element)] = {}
+                if (i, element) not in awg_wfs[awg]: awg_wfs[awg][(i, element)] = {}
+
                 tvals = self.tvals(channel_list, element)
                 wfs = {}
                 element_start_time = self.get_element_start(element, group)
@@ -1349,7 +1351,8 @@ class Segment:
 
                 # save the waveforms in the dictionary
                 for codeword in wfs:
-                    awg_wfs[awg][(i, element)][codeword] = {}
+                    if codeword not in awg_wfs[awg][(i, element)]:
+                        awg_wfs[awg][(i, element)][codeword] = {}
                     for channel in wfs[codeword]:
                         awg_wfs[awg][(i, element)][codeword][self.pulsar.get(
                             '{}_id'.format(channel))] = (
@@ -1366,7 +1369,8 @@ class Segment:
         if awg is not None:
             awg_channels = set(self.pulsar.find_awg_channels(awg))
         if group is not None:
-            group_channels = set(self.get_trigger_group_channels(group))
+            group_channels = set(self.pulsar.get_trigger_group_channels(
+                group))
 
         for pulse in self.elements[element]:
             channels = set(pulse.masked_channels())
@@ -1389,7 +1393,8 @@ class Segment:
         if awg is not None:
             awg_channels = set(self.pulsar.find_awg_channels(awg))
         if group is not None:
-            group_channels = set(self.get_trigger_group_channels(group))
+            group_channels = set(self.pulsar.get_trigger_group_channels(
+                group))
         for pulse in self.elements[element]:
             channels |= set(pulse.masked_channels())
             if awg is not None:

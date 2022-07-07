@@ -192,11 +192,6 @@ class PulsarAWGInterface(ABC):
                                        "sub groups of an AWG.",
                              vals=vals.Dict())
 
-    def create_trigger_group(self):
-        """
-        Create
-        """
-
     @abstractmethod
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """Create parameters in the pulsar specific to one added channel.
@@ -539,7 +534,7 @@ class Pulsar(Instrument):
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
         self.awgs:Set[str] = set() # AWG names
-        # self.trigger_groups: Set[str] = set()  # AWG trigger group names
+        self.trigger_groups: Set[str] = set()  # AWG trigger group names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
@@ -606,7 +601,9 @@ class Pulsar(Instrument):
         with open(self._get_pulsar_id_file(), 'w') as f:
             f.write(str(id(self)))
 
-    def define_awg_channels(self, awg:Instrument, channel_name_map:dict=None):
+    def define_awg_channels(self, awg:Instrument,
+                            channel_name_map:dict=None,
+                            trigger_group_map:dict={}):
         """Add an AWG with a channel mapping to the pulsar.
 
         Args:
@@ -642,6 +639,47 @@ class Pulsar(Instrument):
         self.awgs.add(awg.name)
         # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
+        # Define trigger groups of AWG
+        self.define_awg_trigger_groups(awg.name, trigger_group_map)
+
+    def define_awg_trigger_groups(self, awg_name: str,
+                                  trigger_group_map: dict = {}):
+        """Add the trigger group mapping to the pulsar for a given AWG.
+
+        Args:
+            awg: AWG object for which to add trigger groups.
+            trigger_group_map: dictionary defining the trigger groups
+            with group names as keys and list of AWG channel names as
+            values.
+        """
+
+        awg_channels = self.find_awg_channels(awg_name)
+
+        # prepend awg name to group name and add all non-specified
+        # channel names to default_trigger_group
+        new_trigger_group_map = {}
+        specified_channels = set()
+        for group_name, channels in trigger_group_map.items():
+            new_trigger_group_map[f"{awg_name}_{group_name}"] = \
+                trigger_group_map.get(group_name)
+
+            # some sanity checks
+            if not specified_channels.isdisjoint(set(channels)):
+                raise ValueError(f"Channel specified in more than "
+                                 f"a single trigger group on AWG "
+                                 f"{awg_name}.")
+            if not set(channels).issubset(set(awg_channels)):
+                raise ValueError(f"Non-existent channel specified "
+                                 f"on AWG {awg_name}.")
+
+            specified_channels.update(set(channels))
+
+        new_trigger_group_map[f"{awg_name}_default_trigger_group"] =\
+            list(set(awg_channels) - specified_channels)
+
+        self.set(f"{awg_name}_trigger_groups", new_trigger_group_map)
+        self.trigger_groups.update(set(new_trigger_group_map.keys()))
+
 
     def find_awg_channels(self, awg:str) -> List[str]:
         """Return a list of channels associated to an AWG."""
@@ -672,7 +710,7 @@ class Pulsar(Instrument):
 
         # currently we assume a trigger group to only
         # span over a single AWG
-        awg_name = self.get_channel_awg(channel)
+        awg_name = self.get_channel_awg(channel).name
         trigger_groups = self.get(f"{awg_name}_trigger_groups")
 
         found_group = f"{awg_name}_default_trigger_group"
@@ -695,10 +733,9 @@ class Pulsar(Instrument):
             raise ValueError(f"Provided group {group} not in "
                              f"list of defined trigger groups.")
 
-        for awg in self.awgs:
-            if group in self.get(f"{awg.name}_trigger_group"):
-                return awg.name
-
+        for awg_name in self.awgs:
+            if group in self.get(f"{awg_name}_trigger_groups"):
+                return awg_name
     def get_trigger_group_channels(self, group:str)->List[str]:
         """
         Return all channels of the trigger group. If default return all
@@ -743,13 +780,15 @@ class Pulsar(Instrument):
         awg = self.get_awg_from_trigger_group(group)
         trigger_channels = self.get(f"{awg}_trigger_channels")
 
+        # if trigger channels are list return that
+        # list for all groups
         if isinstance(trigger_channels, list):
             return trigger_channels
         else:
             return trigger_channels[group]
 
     def get_enforce_single_element(self, ch:str) -> bool:
-        awg = self.get_channel_awg(ch)
+        awg = self.get_channel_awg(ch).name
         group = self.get_trigger_group(ch)
 
         enforce_single_element = self.get(f"{awg}_enforce_single_element")
