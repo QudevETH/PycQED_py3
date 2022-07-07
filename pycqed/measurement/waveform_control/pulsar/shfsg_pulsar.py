@@ -509,6 +509,11 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         # FIXME: Partially replicated from SHFQA acq dev. Should be refactored
         #   to avoid code replication.
+        # FIXME: Extend this method to allow passing several channels and 2D
+        # requested_freqs array to allow a shared center frequency between SG
+        # channels that share one center frequency. Also think about whether it
+        # makes sense to put this functionality in the pulsar and then call
+        # the hardware specific method for groups of channels.
         if len(requested_freqs) == 1:
             id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
                                 requested_freqs[0])).argmin()
