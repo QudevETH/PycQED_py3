@@ -1027,17 +1027,7 @@ class QuDev_transmon(Qubit):
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
-        # in case of multichromatic readout, take first ro freq, else just
-        # wrap the frequency in a list and take the first
-        if np.ndim(self.ro_freq()) == 0:
-            ro_freq = [self.ro_freq()]
-        else:
-            ro_freq = self.ro_freq()
-        if np.ndim(self.ro_mod_freq()) == 0:
-            ro_mod_freq = [self.ro_mod_freq()]
-        else:
-            ro_mod_freq = self.ro_mod_freq()
-        ro_lo_freq = ro_freq[0] - ro_mod_freq[0]
+        ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
             ro_lo.get_instr().pulsemod_state('Off')
@@ -1096,6 +1086,24 @@ class QuDev_transmon(Qubit):
             # switch mode was explicitly provided by the caller (e.g.,
             # for mixer calib)
             self.set_switch(switch)
+
+    def get_ro_lo_freq(self):
+        """Returns the required local oscillator frequency for readout pulses
+
+        The RO LO freq is calculated from the ro_mod_freq (intermediate
+        frequency) and the ro_freq stored in the qubit object.
+        """
+        # in case of multichromatic readout, take first ro freq, else just
+        # wrap the frequency in a list and take the first
+        if np.ndim(self.ro_freq()) == 0:
+            ro_freq = [self.ro_freq()]
+        else:
+            ro_freq = self.ro_freq()
+        if np.ndim(self.ro_mod_freq()) == 0:
+            ro_mod_freq = [self.ro_mod_freq()]
+        else:
+            ro_mod_freq = self.ro_mod_freq()
+        return ro_freq[0] - ro_mod_freq[0]
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
