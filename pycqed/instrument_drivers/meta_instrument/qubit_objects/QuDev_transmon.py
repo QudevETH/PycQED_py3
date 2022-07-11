@@ -681,7 +681,7 @@ class QuDev_transmon(Qubit):
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
                                model='transmon_res', flux=None,
-                               branch='negative'):
+                               branch=None):
         """
         Calculates the flux pulse amplitude or DC bias required to reach a
         transition frequency using fit parameters stored in the qubit
@@ -711,7 +711,8 @@ class QuDev_transmon(Qubit):
             This parameter is ignored if the model is 'approx'.
         :param branch: which branch of the flux-to-frequency curve should be
             used. See the meaning of this parameter in Qubit_freq_to_dac
-            and Qubit_freq_to_dac_res.
+            and Qubit_freq_to_dac_res. If None, this is set to the bias (if
+            not None)
         :return: calculated bias or amplitude, depending on which parameters
             are passed in (see above and notes below).
 
@@ -745,11 +746,31 @@ class QuDev_transmon(Qubit):
                     'flux_amplitude_bias_ratio is None, but is '
                     'required for this calculation.')
 
+        if branch is None:
+            if bias is None and flux is None:
+                branch = 'negative'
+            else:
+                # select well-defined branch close to requested flux
+                if flux is None:
+                    flux = (bias - vfc['dac_sweet_spot']) / vfc['V_per_phi0']
+                if flux % 0.5:
+                    pass  # do not shift (well-defined branch)
+                elif flux != self.flux_parking():
+                    # shift slightly in the direction of flux parking
+                    flux += np.sign(self.flux_parking()-flux) * 0.25
+                elif flux != 0:
+                    # shift slightly in the direction of 0
+                    flux += -np.sign(flux) * 0.25
+                else:
+                    # shift slightly to the left to use rising branch as default
+                    flux = -0.25
+                branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
+
         if model == 'approx':
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch)
+                frequency, **vfc, branch=branch, single_branch=True)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"

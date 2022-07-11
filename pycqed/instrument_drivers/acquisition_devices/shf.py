@@ -359,9 +359,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
-        # Reset _awg_program for generators of acq units to avoid confusing
-        # the soft spectroscopy
-        self._awg_program[:self.n_acq_units] = [None] * self.n_acq_units
 
     def acquisition_progress(self):
         n_acq = {}
@@ -380,7 +377,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
-        return np.mean(n_acq.values())
+        return np.mean(list(n_acq.values()))
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
@@ -531,9 +528,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
-                    # use sign convention as is used by UHFQA to ensure
-                    # compatibility with existing  analysis classes
-                    dataset.update({(i, 1): [-np.imag(timetrace)]})
+                    # use sign convention as is used by UHFQA in avg mode
+                    # to ensure compatibility with existing analysis classes
+                    # use natural sign in averaged mode
+                    sign = {'avg': -1, 'scope': 1}[self._acq_mode]
+                    dataset.update({(i, 1): [sign*np.imag(timetrace)]})
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
