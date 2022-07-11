@@ -6623,11 +6623,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars['amplitude'].value = 0.5
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
+                guess_pars['tau'].min = 0
                 guess_pars['phase'].vary = True
                 guess_pars['n'].vary = False
                 guess_pars['oscillation_offset'].vary = \
-                        'f' in self.data_to_fit[qbn]
-                # guess_pars['exponential_offset'].value = 0.5
+                    'f' in self.data_to_fit[qbn]
                 guess_pars['exponential_offset'].vary = True
                 self.set_user_guess_pars(guess_pars)
                 self.fit_dicts[key] = {
@@ -7419,6 +7419,17 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
+            # Set text colour to black.
+            # When the change in qubit frequency is larger than the artificial
+            # detuning, the qubit freq estimation is unreliable and the
+            # RamseyAnalysis will alert the user by producing a
+            # multi-coloured text string, in which case both the "color" and
+            # the "text_string" entries of the plot dict are lists with the
+            # same length. This warning is not relevant for the EchoAnalysis
+            # since we do not use it to estimate the qubit frequency.
+            # Not resetting the colour here will cause an error in the case
+            # of multi-coloured text strings.
+            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
