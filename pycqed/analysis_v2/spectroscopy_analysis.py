@@ -1714,7 +1714,8 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
 
 class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
-    Find the dips of a 2D resonator spectroscopy and extracts the USS and LSS
+    Find the dips of a 2D resonator spectroscopy flux sweep and extracts the 
+    USS and LSS.
     TODO: More detailed description and/or constructor details and/or example
     """
 
@@ -1740,12 +1741,12 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         for qb_name in self.qb_names:
             self.analysis_data[qb_name] = OrderedDict({
                 'freqs':
-                    self.sp[0][f"{qb_name}_freq"][0],
+                    np.array(self.sp[0][f"{qb_name}_freq"][0]),
                 'volts':
-                    self.sp[1][f"{qb_name}_volt"][0],
+                    np.array(self.sp[1][f"{qb_name}_volt"][0]),
                 'magnitude':
-                    self.proc_data_dict['projected_data_dict'][qb_name]
-                    ['Magnitude']
+                    np.array(self.proc_data_dict['projected_data_dict'][qb_name]
+                    ['Magnitude'])
             })
 
     def prepare_fitting(self):
@@ -1914,6 +1915,9 @@ class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             window_length (int, optional): length of the filter window to 
                 calculate the numerical derivatives with Savitzky-Golay filter. 
                 See SciPy documentation of savgol_filter. Defaults to 7.
+            FIXME: Check that there are enough data points to use this
+                window length (it has to be smaller than the number of data
+                points)
             polyorder (int, optional): order of the polynomial to calculate the
                 numerical derivatives with Savitzky-Golay filter. 
                 See SciPy documentation of savgol_filter Defaults to 2.
