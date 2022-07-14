@@ -1712,7 +1712,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         return data_key
 
 
-class Resonator2DSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
+class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
     Find the dips of a 2D resonator spectroscopy flux sweep and extracts the 
     USS and LSS.
