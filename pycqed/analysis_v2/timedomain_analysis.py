@@ -566,9 +566,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # in options_dict/metadata/default_options
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
         if data_to_fit is None:
-            # It could happen that it was passed as None or empty dict in the
+            # It could happen that it was passed as None or was not specified in the
             # metadata. In this case, it makes sense to still check the
             # default option because data_to_fit must be specified.
+            # Note that passing an empty dict as data_to_fit will keep
+            # data_to_fit empty as expected.
             data_to_fit = deepcopy(self.default_options.get('data_to_fit'))
             if data_to_fit is None:
                 # If we have cal points, but data_to_fit is not specified,
