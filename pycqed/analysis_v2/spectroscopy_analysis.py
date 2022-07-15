@@ -1801,11 +1801,12 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
                 self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
 
             # Find the frequencies corresponding to the left and right LSS
-            # and USS
-            left_lss_freq = left_dips_interpolation(left_lss)
-            left_uss_freq = left_dips_interpolation(left_uss)
-            right_lss_freq = right_dips_interpolation(right_lss)
-            right_uss_freq = right_dips_interpolation(right_uss)
+            # and USS (need to convert to float because the interpolating
+            # function returns a numpy array)
+            left_lss_freq = float(left_dips_interpolation(left_lss))
+            left_uss_freq = float(left_dips_interpolation(left_uss))
+            right_lss_freq = float(right_dips_interpolation(right_lss))
+            right_uss_freq = float(right_dips_interpolation(right_uss))
 
             # Store data in the fit_res dict (which is then saved to the hdf
             # file)
@@ -1975,6 +1976,12 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
         # Lists where the local extrema will be stored
         local_maxima = []
         local_minima = []
+
+        # Check whether the biases are in ascending order. If not, flip the arrays
+        # This is needed when interpolating the data
+        if biases[1]-biases[0] < 0:
+            biases = np.flip(biases)
+            frequency_dips = np.flip(frequency_dips)
 
         # Separation between voltage bias sweep points
         dv = biases[1] - biases[0]
