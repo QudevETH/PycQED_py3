@@ -34,7 +34,7 @@ class PulsarShadow(InstrumentShadow):
         #     setattr(self, k, types.MethodType(getattr(instr.__class__, k), self))
 
         # for clock:
-        instr.AWGs_prequeried(True)
+        instr.awgs_prequeried = True
         self._clocks = instr._clocks
 
     def clock(self, channel=None, awg=None):

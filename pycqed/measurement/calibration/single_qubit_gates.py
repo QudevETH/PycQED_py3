@@ -2021,14 +2021,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        options_dict = analysis_kwargs.pop('options_dict', {})
-        options_dict.update(dict(
-            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
-            artificial_detuning=kw.pop('artificial_detuning', None)))
         self.analysis = tda.EchoAnalysis if self.echo else tda.RamseyAnalysis
         self.analysis = self.analysis(
             qb_names=self.meas_obj_names, t_start=self.timestamp,
-            options_dict=options_dict, **analysis_kwargs)
+            **analysis_kwargs)
 
     def run_update(self, **kw):
         """
@@ -2727,7 +2723,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
         :param kw: keyword arguments
         """
         for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']]
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
             qubit.set(f'{task["transition_name_input"]}_amp180',
                       self.analysis.proc_data_dict['analysis_params_dict'][
                           qubit.name]['corrected_amp'])

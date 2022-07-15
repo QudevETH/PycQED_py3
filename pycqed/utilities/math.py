@@ -68,5 +68,20 @@ def get_ellipse_radii_and_rotation(cov):
     theta = np.arctan2(*eigv[:, 0])
     return np.sqrt(eigs[0]), np.sqrt(eigs[1]), -theta
 
+
 def slope(p1, p2=(0,0)):
     return (p2[1] - p1[1] ) / (p2[0] - p1[0])
+
+
+def vp_to_dbm(vp, z0=50):
+    """Convert from signal peak voltage to power in dBm"""
+    vrms = vp/np.sqrt(2)
+    pwatt = vrms**2 / z0
+    return 10 * np.log10(pwatt/1e-3)
+
+
+def dbm_to_vp(dbm, z0=50):
+    """Convert from signal power in dBm to peak voltage"""
+    pwatt = 1e-3 * 10**(dbm/10)
+    vrms = np.sqrt(pwatt * z0)
+    return vrms * np.sqrt(2)
