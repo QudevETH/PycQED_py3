@@ -1790,12 +1790,33 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             # Average the two dips
             avg_lss = (left_lss + right_lss) / 2
             avg_uss = (left_uss + right_uss) / 2
+
+            # Interpolate the found dips in order to find where the frequencies
+            # corresponding to the left and right LSS and USS
+            left_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['left_dips_frequency'], 'cubic')
+            right_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
+
+            # Find the frequencies corresponding to the left and right LSS
+            # and USS
+            left_lss_freq = left_dips_interpolation(left_lss)
+            left_uss_freq = left_dips_interpolation(left_uss)
+            right_lss_freq = right_dips_interpolation(right_lss)
+            right_uss_freq = right_dips_interpolation(right_uss)
+
             # Store data in the fit_res dict (which is then saved to the hdf
             # file)
             self.fit_res[qb_name]['left_lss'] = left_lss
+            self.fit_res[qb_name]['left_lss_freq'] = left_lss_freq
             self.fit_res[qb_name]['left_uss'] = left_uss
+            self.fit_res[qb_name]['left_uss_freq'] = left_uss_freq
             self.fit_res[qb_name]['right_lss'] = right_lss
+            self.fit_res[qb_name]['right_lss_freq'] = right_lss_freq
             self.fit_res[qb_name]['right_uss'] = right_uss
+            self.fit_res[qb_name]['right_uss_freq'] = right_uss_freq
             self.fit_res[qb_name]['avg_lss'] = avg_lss
             self.fit_res[qb_name]['avg_uss'] = avg_uss
 
@@ -2029,31 +2050,11 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'legend_pos': 'upper right'
             }
 
-            # Interpolate the found dips in order to find where the frequencies
-            # corresponding to the left and right LSS and USS
-            left_dips_interpolation = interpolate.interp1d(
-                self.analysis_data[qb_name]['volts'],
-                self.analysis_data[qb_name]['left_dips_frequency'], 'cubic')
-            right_dips_interpolation = interpolate.interp1d(
-                self.analysis_data[qb_name]['volts'],
-                self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
-
-            # Find the frequencies corresponding to the left and right LSS
-            # and USS
-            left_lss_freq = left_dips_interpolation(
-                self.fit_res[qb_name]['left_lss'])
-            left_uss_freq = left_dips_interpolation(
-                self.fit_res[qb_name]['left_uss'])
-            right_lss_freq = right_dips_interpolation(
-                self.fit_res[qb_name]['right_lss'])
-            right_uss_freq = right_dips_interpolation(
-                self.fit_res[qb_name]['right_uss'])
-
             # Plot the left LSS
             self.plot_dicts[f"{fig_id_analyzed}_left_lss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([left_lss_freq]),
+                'xvals': np.array([self.fit_res[qb_name]['left_lss_freq']]),
                 'yvals': np.array([
                     self.fit_res[qb_name]['left_lss'],
                 ]),
@@ -2074,7 +2075,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.plot_dicts[f"{fig_id_analyzed}_left_uss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([left_uss_freq]),
+                'xvals': np.array([self.fit_res[qb_name]['left_uss_freq']]),
                 'yvals': np.array([self.fit_res[qb_name]['left_uss']]),
                 'marker': '>',
                 'linestyle': 'none',
@@ -2093,7 +2094,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.plot_dicts[f"{fig_id_analyzed}_right_lss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([right_lss_freq]),
+                'xvals': np.array([self.fit_res[qb_name]['right_lss_freq']]),
                 'yvals': np.array([self.fit_res[qb_name]['right_lss']]),
                 'marker': '<',
                 'linestyle': 'none',
@@ -2112,7 +2113,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.plot_dicts[f"{fig_id_analyzed}_right_uss"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': np.array([right_uss_freq]),
+                'xvals': np.array([self.fit_res[qb_name]['right_uss_freq']]),
                 'yvals': np.array([self.fit_res[qb_name]['right_uss']]),
                 'marker': '>',
                 'linestyle': 'none',
