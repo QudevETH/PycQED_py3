@@ -21,7 +21,7 @@ import pycqed.analysis.fit_toolbox.geometry as geo
 from collections import OrderedDict
 from scipy import integrate
 from scipy import interpolate
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, peak_widths
 from scipy.signal import savgol_filter
 
 log = logging.getLogger(__name__)
@@ -1746,7 +1746,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
                     np.array(self.sp[1][f"{qb_name}_volt"][0]),
                 'magnitude':
                     np.array(self.proc_data_dict['projected_data_dict'][qb_name]
-                    ['Magnitude'])
+                             ['Magnitude'])
             })
 
     def prepare_fitting(self):
@@ -1766,7 +1766,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
         # Find the dips in frequency
         for qb_name in self.qb_names:
             # Find the indices of the dips at each voltage bias
-            left_dips_indices, right_dips_indices = self.find_dips(
+            left_dips_indices, right_dips_indices, left_avg_width, right_avg_width = self.find_dips(
                 self.analysis_data[qb_name]['magnitude'])
             # Find the frequency corresponding to these indices and store it
             # in the analysis_data dict
@@ -1813,10 +1813,12 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.fit_res[qb_name]['left_lss_freq'] = left_lss_freq
             self.fit_res[qb_name]['left_uss'] = left_uss
             self.fit_res[qb_name]['left_uss_freq'] = left_uss_freq
+            self.fit_res[qb_name]['left_avg_width'] = left_avg_width
             self.fit_res[qb_name]['right_lss'] = right_lss
             self.fit_res[qb_name]['right_lss_freq'] = right_lss_freq
             self.fit_res[qb_name]['right_uss'] = right_uss
             self.fit_res[qb_name]['right_uss_freq'] = right_uss_freq
+            self.fit_res[qb_name]['right_avg_width'] = right_avg_width
             self.fit_res[qb_name]['avg_lss'] = avg_lss
             self.fit_res[qb_name]['avg_uss'] = avg_uss
 
@@ -1825,7 +1827,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
                   prominence_factor: float = 0.1,
                   max_iterations: int = 15,
                   iteration_prominence_factor: float = 0.9,
-                  **kw: dict) -> tuple[list[int], list[int]]:
+                  **kw: dict) -> tuple[list[int], list[int], float, float]:
         """
         Finds the dips in a 2D resonator spectroscopy. The algorithm tries to 
         find two dips iteratively.
@@ -1853,12 +1855,20 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
                 found. Defaults to 0.9.
             kw: additional parametrs for the dip-finding algorithm. See SciPy 
                 documentation of find_peaks for more details.
-        Returns: 
-            tuple[list[int],list[int]]: list of frequency indices for the left 
-                dips, list of frequency indices for the right dips.
+        Returns:
+            dips_indices_left (list[int]): list of frequency indices for the 
+                left dips.
+            dips_indices_right (list[int]): list of frequency indices for the 
+                right dips.
+            avg_width_left (float): average width of the left dips (in units of 
+                samples)
+            avg_width_right (float): average width of the right dips (in units of 
+                samples)
         """
         dips_indices_left = []
         dips_indices_right = []
+        dips_widths_left = []
+        dips_widths_right = []
         # Analyze the 2D plot line by line, each line corresponding to a
         # specific voltage bias
         for linecut_magn in magnitude_data[:,]:
@@ -1908,7 +1918,22 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             dips_indices_left.append(np.min(dips_indices))
             dips_indices_right.append(np.max(dips_indices))
 
-        return dips_indices_left, dips_indices_right
+            # Calculate the width of the dips in units of number of samples, at
+            # a relative height of 0.25 (0 corresponds to the bottom of the dip,
+            # 1 corresponds to its base)
+            dips_widths_left.append(
+                peak_widths(-linecut_magn, [dips_indices_left[-1]],
+                            rel_height=0.25)[0])
+            dips_widths_right.append(
+                peak_widths(-linecut_magn, [dips_indices_right[-1]],
+                            rel_height=0.25)[0])
+
+        # Calculate the average width of the left dips and of the right dips.
+        # This can be used to determine which dip corresponds to the resonator
+        # and which to the Purcell filter
+        avg_width_left = np.average(dips_widths_left)
+        avg_width_right = np.average(dips_widths_right)
+        return dips_indices_left, dips_indices_right, avg_width_left, avg_width_right
 
     def find_lss_uss(self,
                      frequency_dips: np.ndarray,
