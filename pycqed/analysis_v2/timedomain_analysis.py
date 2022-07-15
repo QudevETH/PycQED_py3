@@ -1033,10 +1033,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         provided cal points info, see get_cal_points method).
 
         Then checks whether the number of sweep points matches the size of the
-        data. If not, then no cal points information was provided but cal
-        points were used in the experiment.
-            In this case, the no_cp_but_cp_in_data is set to True (will be
-            checked in update_sweep_points_dict).
+        data. If not, then either:
+            1. no cal points information was provided but cal points were used
+            in the experiment. In this case, the no_cp_but_cp_in_data is set
+            to True (will be checked in update_sweep_points_dict).
+            2. the data_type is "singleshot", and there is obviously a mismatch
+             between the number of sweep points and the length of the data array.
+            In that case, num_cal_points is assumed to be 0 and if
+            there are any cal pointstreated correctly by the single_shot
+            processing methods.
 
         Creates the attributes
             - self.num_cal_points
