@@ -493,7 +493,11 @@ class CircuitBuilder:
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
                         reset_pulses.append(self.get_pulse(op + qbn))
-                        # TODO: add comment why
+                        # Reset pulses cannot include phase information at the moment
+                        # since we use the exact same waveform(s) (corresponding to
+                        # a given codeword) for every reset pulse(s) we play (no
+                        # matter where in the circuit). Therefore, remove phase_lock
+                        # that references the phase to algorithm time t=0.
                         reset_pulses[-1]['phaselock'] = False
                         reset_pulses[-1]['codeword'] = codeword
                         if j == 0:
