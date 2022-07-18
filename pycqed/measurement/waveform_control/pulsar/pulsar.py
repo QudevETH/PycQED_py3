@@ -775,9 +775,9 @@ class Pulsar(Instrument):
         Returns list of unique multi_core_compiler instances from
         PulsarAWGInterface._pulsar_interfaces.
         """
-        return [ps_int.multi_core_compiler for ps_int in
-                set(PulsarAWGInterface._pulsar_interfaces)
-                if ps_int.multi_core_compiler is not None]
+        return set([ps_int.multi_core_compiler for ps_int in
+                    set(PulsarAWGInterface._pulsar_interfaces)
+                    if ps_int.multi_core_compiler is not None])
 
     def reset_active_awgs_mcc(self):
         """
