@@ -55,6 +55,9 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     def __init__(self, pulsar, awg):
         super().__init__(pulsar, awg)
         try:
+            # Here we instantiate a zhinst.qcodes-based HDAWG in addition to
+            # the one based on the ZI_base_instrument because the parallel
+            # uploading of elf files is only supported by the qcodes driver
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
             self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
