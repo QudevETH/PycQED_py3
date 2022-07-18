@@ -611,12 +611,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compares what this class sets for self.data_to_fit and what was given
         # in options_dict/metadata/default_options
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if data_to_fit is None or not len(data_to_fit):
-            # It could happen that it was passed as None or empty dict in the
+        if data_to_fit is None:
+            # It could happen that it was passed as None or was not specified in the
             # metadata. In this case, it makes sense to still check the
             # default option because data_to_fit must be specified.
+            # Note that passing an empty dict as data_to_fit will keep
+            # data_to_fit empty as expected.
             data_to_fit = deepcopy(self.default_options.get('data_to_fit'))
-            if data_to_fit is None or not len(data_to_fit):
+            if data_to_fit is None:
                 # If we have cal points, but data_to_fit is not specified,
                 # choose a reasonable default value.
                 data_to_fit = {}
@@ -1079,10 +1081,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         provided cal points info, see get_cal_points method).
 
         Then checks whether the number of sweep points matches the size of the
-        data. If not, then no cal points information was provided but cal
-        points were used in the experiment.
-            In this case, the no_cp_but_cp_in_data is set to True (will be
-            checked in update_sweep_points_dict).
+        data. If not, then either:
+            1. no cal points information was provided but cal points were used
+            in the experiment. In this case, the no_cp_but_cp_in_data is set
+            to True (will be checked in update_sweep_points_dict).
+            2. the data_type is "singleshot", and there is obviously a mismatch
+             between the number of sweep points and the length of the data array.
+            In that case, num_cal_points is assumed to be 0 and if
+            there are any cal pointstreated correctly by the single_shot
+            processing methods.
 
         Creates the attributes
             - self.num_cal_points
@@ -1100,7 +1107,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
-        if self.num_cal_points == 0 and num_data_points != num_sp:
+        if self.num_cal_points == 0 and num_data_points != num_sp and \
+                self.get_param_value('data_type', 'averaged') != 'singleshot':
             # No cal_points information was provided but cal points were part
             # of the measurement.
             self.num_cal_points = num_data_points - num_sp
@@ -6623,11 +6631,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars['amplitude'].value = 0.5
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
+                guess_pars['tau'].min = 0
                 guess_pars['phase'].vary = True
                 guess_pars['n'].vary = False
                 guess_pars['oscillation_offset'].vary = \
-                        'f' in self.data_to_fit[qbn]
-                # guess_pars['exponential_offset'].value = 0.5
+                    'f' in self.data_to_fit[qbn]
                 guess_pars['exponential_offset'].vary = True
                 self.set_user_guess_pars(guess_pars)
                 self.fit_dicts[key] = {
@@ -7419,6 +7427,17 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
+            # Set text colour to black.
+            # When the change in qubit frequency is larger than the artificial
+            # detuning, the qubit freq estimation is unreliable and the
+            # RamseyAnalysis will alert the user by producing a
+            # multi-coloured text string, in which case both the "color" and
+            # the "text_string" entries of the plot dict are lists with the
+            # same length. This warning is not relevant for the EchoAnalysis
+            # since we do not use it to estimate the qubit frequency.
+            # Not resetting the colour here will cause an error in the case
+            # of multi-coloured text strings.
+            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
