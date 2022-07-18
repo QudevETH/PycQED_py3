@@ -39,6 +39,52 @@ except ImportError as e:
     log.warning('Could not import qutip, tomography code will not work')
 
 
+# Mixin classes
+class ArtificialDetuningMixin():
+    """
+    Extract the information about the artificial_detuning and
+    create the artificial_detuning_dict for each qubit.
+    """
+
+    def get_artificial_detuning_dict(self, raise_error=True):
+        """
+        - first checks whether artificial_detuning_dict was passed in
+            options_dict, metadata, or default_options
+        - then tries to create it based on the information in
+            preprocessed_task_list
+        - lastly, it falls back to the legacy version: searching for
+            artificial_detuning in options_dict, metadata, or default_options
+
+        Args:
+            raise_error (bool; default: True): whether to raise ValueError
+                if no information about artificial detuning is found
+
+        Returns:
+            artificial_detuning_dict: dict with qb names as keys and
+                value for the artificial detuning as values
+        """
+        artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    artificial_detuning_dict = artificial_detuning
+                else:
+                    artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if raise_error and artificial_detuning_dict is None:
+            raise ValueError('"artificial_detuning" not found.')
+        return artificial_detuning_dict
+
+
+# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -565,12 +611,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compares what this class sets for self.data_to_fit and what was given
         # in options_dict/metadata/default_options
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if data_to_fit is None or not len(data_to_fit):
-            # It could happen that it was passed as None or empty dict in the
+        if data_to_fit is None:
+            # It could happen that it was passed as None or was not specified in the
             # metadata. In this case, it makes sense to still check the
             # default option because data_to_fit must be specified.
+            # Note that passing an empty dict as data_to_fit will keep
+            # data_to_fit empty as expected.
             data_to_fit = deepcopy(self.default_options.get('data_to_fit'))
-            if data_to_fit is None or not len(data_to_fit):
+            if data_to_fit is None:
                 # If we have cal points, but data_to_fit is not specified,
                 # choose a reasonable default value.
                 data_to_fit = {}
@@ -1033,10 +1081,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         provided cal points info, see get_cal_points method).
 
         Then checks whether the number of sweep points matches the size of the
-        data. If not, then no cal points information was provided but cal
-        points were used in the experiment.
-            In this case, the no_cp_but_cp_in_data is set to True (will be
-            checked in update_sweep_points_dict).
+        data. If not, then either:
+            1. no cal points information was provided but cal points were used
+            in the experiment. In this case, the no_cp_but_cp_in_data is set
+            to True (will be checked in update_sweep_points_dict).
+            2. the data_type is "singleshot", and there is obviously a mismatch
+             between the number of sweep points and the length of the data array.
+            In that case, num_cal_points is assumed to be 0 and if
+            there are any cal pointstreated correctly by the single_shot
+            processing methods.
 
         Creates the attributes
             - self.num_cal_points
@@ -1054,7 +1107,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
-        if self.num_cal_points == 0 and num_data_points != num_sp:
+        if self.num_cal_points == 0 and num_data_points != num_sp and \
+                self.get_param_value('data_type', 'averaged') != 'singleshot':
             # No cal_points information was provided but cal points were part
             # of the measurement.
             self.num_cal_points = num_data_points - num_sp
@@ -6533,7 +6587,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                     'text_string': textstr}
 
 
-class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     """
     Analysis for a Ramsey measurement.
 
@@ -6577,11 +6631,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 guess_pars['amplitude'].value = 0.5
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
+                guess_pars['tau'].min = 0
                 guess_pars['phase'].vary = True
                 guess_pars['n'].vary = False
                 guess_pars['oscillation_offset'].vary = \
-                        'f' in self.data_to_fit[qbn]
-                # guess_pars['exponential_offset'].value = 0.5
+                    'f' in self.data_to_fit[qbn]
                 guess_pars['exponential_offset'].vary = True
                 self.set_user_guess_pars(guess_pars)
                 self.fit_dicts[key] = {
@@ -6601,25 +6655,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        self.artificial_detuning_dict = self.get_param_value(
-            'artificial_detuning_dict')
-        if self.artificial_detuning_dict is None:
-            artificial_detuning = self.get_param_value('artificial_detuning')
-            if 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                self.artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
-            elif artificial_detuning is not None:
-                # legacy case
-                if isinstance(artificial_detuning, dict):
-                    self.artificial_detuning_dict = artificial_detuning
-                else:
-                    self.artificial_detuning_dict = OrderedDict(
-                        [(qbn, artificial_detuning) for qbn in self.qb_names])
-        if self.artificial_detuning_dict is None:
-            raise ValueError('"artificial_detuning" not found.')
-
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
@@ -7266,9 +7303,9 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': 'gray'}
 
 
-class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
+class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, extract_only=False, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -7279,39 +7316,53 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, **kwargs)
-        # Check for artificial detuning only in the options dict because the
-        # metadata hasn't been extracted at this point (done in extract_data())
-        if self.options_dict.get('artificial_detuning') is not None or \
-                self.options_dict.get('artificial_detuning_dict') is not None:
-            self.echo_analysis = RamseyAnalysis(*args, auto=False, **kwargs)
+        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
+
+        # get experimental metadata from file
+        self.metadata = self.get_data_from_timestamp_list(
+            {'md': 'Experimental Data.Experimental Metadata'})['md']
+
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict(
+            raise_error=False)
+
+        # Decide whether to do a RamseyAnalysis or a T1Analysis
+        self.run_ramsey = self.artificial_detuning_dict is not None and \
+                any(list(self.artificial_detuning_dict.values()))
+
+        # Define options_dict for call to RamseyAnalysis or T1Analysis
+        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
+
+        if self.run_ramsey:
+            # artificial detuning was used and it is not 0
+            self.echo_analysis = RamseyAnalysis(*args, auto=auto,
+                                                extract_only=True,
+                                                options_dict=options_dict,
+                                                **kwargs)
         else:
-            if 'options_dict' in kwargs:
-                # kwargs.pop('options_dict')
-                kwargs['options_dict'].update({'vary_offset': True})
-            else:
-                kwargs['options_dict'] = {'vary_offset': True}
-            self.echo_analysis = T1Analysis(*args, auto=False, **kwargs)
+            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            self.echo_analysis = T1Analysis(*args, auto=auto,
+                                            extract_only=True,
+                                            options_dict=options_dict,
+                                            **kwargs)
 
         if auto:
-            try:
-                self.echo_analysis.extract_data()
-                self.qb_names = self.echo_analysis.qb_names
-                self.echo_analysis.process_data()
-                self.echo_analysis.prepare_fitting()
-                self.echo_analysis.run_fitting()
-                self.echo_analysis.save_fit_results()
-                self.analyze_fit_results()
-                self.prepare_plots()
-            except Exception as e:
-                if self.raise_exceptions:
-                    raise e
-                else:
-                    log.error("Unhandled error during analysis!")
-                    log.error(traceback.format_exc())
+            self.qb_names = self.echo_analysis.qb_names
+            # Run analysis of this class
+            super().run_analysis()
+
+    def extract_data(self):
+        """Skip for this class. Take raw_data_dict from self.echo_analysis
+        which is needed for a check in the BaseDataAnalsis.save_fit_results."""
+        self.raw_data_dict = self.echo_analysis.raw_data_dict
+
+    def process_data(self):
+        """Skip for this class. All relevant processing is done in
+        self.echo_analysis."""
+        pass
 
     def analyze_fit_results(self):
-        self.echo_analysis.analyze_fit_results()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
@@ -7330,8 +7381,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
-        self.echo_analysis.prepare_plots()
         for qbn in self.qb_names:
             # rename base plot
             figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
@@ -7363,7 +7415,10 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
                     else ''))
             T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = '$T_2$ echo = {:.2f} $\mu$s'.format(
+            textstr = 'Echo Measurement with'
+            art_det = self.artificial_detuning_dict[qbn]*1e-6
+            textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+            textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo']*1e6) \
                       + ' $\pm$ {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo_stderr']*1e6) \
@@ -7372,8 +7427,24 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
+            # Set text colour to black.
+            # When the change in qubit frequency is larger than the artificial
+            # detuning, the qubit freq estimation is unreliable and the
+            # RamseyAnalysis will alert the user by producing a
+            # multi-coloured text string, in which case both the "color" and
+            # the "text_string" entries of the plot dict are lists with the
+            # same length. This warning is not relevant for the EchoAnalysis
+            # since we do not use it to estimate the qubit frequency.
+            # Not resetting the colour here will cause an error in the case
+            # of multi-coloured text strings.
+            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
+    def plot(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
+
+    def save_figures(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.save_figures(
             close_figs=self.get_param_value('close_figs', True))
 
@@ -9243,13 +9314,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
 
+            means = [mu for _, mu in
+                                self.proc_data_dict['analysis_params']
+                                    ['means'][qb_name].items()]
+
+            # calculate delta of means and set tol and cov based on this
+            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                    for mu_j in means]).flatten().max()
+
+            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            reg_covar = tol**2
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=tol,
+                    reg_covar=reg_covar,
                     weights_init=weights_init,
-                    means_init=[mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()], **kw)
+                    means_init=means, **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -10677,7 +10759,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
         self.nr_averages = nr_averages
-        n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+        # metadata['detectors'] is a dict for MultiPollDetector and else a list
+        df_names = list(det_metadata['detectors'])
+        # Testing the first detector, since detectors in a MultiPollDetector
+        # should all be the same
+        if 'scope' in df_names[0]:
+            # No scaling needed, since all hsp are contained in one hardware run
+            n_hsp = 1
+        else:
+            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]

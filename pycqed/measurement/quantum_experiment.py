@@ -5,7 +5,7 @@ from pycqed.analysis_v3 import helper_functions
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
-from pycqed.utilities.timer import Timer, Checkpoint
+from pycqed.utilities.timer import Timer, TimedMetaClass
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
@@ -13,11 +13,14 @@ from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
 from copy import deepcopy
+from collections import OrderedDict as odict
+from pycqed.measurement.sweep_points import SweepPoints
 import logging
+from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
 
 
-class QuantumExperiment(CircuitBuilder):
+class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     """
     Base class for Experiments with pycqed. A QuantumExperiment consists of
     3 main parts:
@@ -29,6 +32,7 @@ class QuantumExperiment(CircuitBuilder):
       may be overwritten by child classes to start measurement-specific analysis
 
     """
+    TIMED_METHODS = ["run_analysis"]
     _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
@@ -219,6 +223,7 @@ class QuantumExperiment(CircuitBuilder):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type})
+        self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
@@ -861,3 +866,30 @@ class QuantumExperiment(CircuitBuilder):
     def __repr__(self):
         return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
                f"qubits={getattr(self, 'qubits', None)})"
+
+    def spawn_waveform_viewer(self, **kwargs):
+        if self.waveform_viewer is None:
+            self.waveform_viewer = WaveformViewer(self, **kwargs)
+        else:
+            self.waveform_viewer.spawn_waveform_viewer(**kwargs)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        return {
+            'kwargs': odict({
+                QuantumExperiment.__name__: {
+                    # kwarg: (fieldtype, default_value),
+                    'label': (str, None),
+                    'sweep_points': (SweepPoints, None),
+                    'upload': (bool, True),
+                    'measure': (bool, True),
+                    'analyze': (bool, True),
+                    'delegate_plotting': (bool, False),
+                    'compression_seg_lim': (int, None),
+                    'cz_pulse_name': (set(device.two_qb_gates()),
+                                      device.two_qb_gates()[0])
+                },
+            }),
+            'task_list_fields': odict({}),
+            'sweeping_parameters': odict({}),
+        }

@@ -120,6 +120,10 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
+        self.add_parameter('compress_dataset',
+                           vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           initial_value=True)
         self.add_parameter(
             'max_attempts', docstring=
             'Maximum number of attempts. Values larger than 1 will mean that '
@@ -336,7 +340,7 @@ class MeasurementControl(Instrument):
                 # metadata, the exception will be either logged (if an
                 # automatic retry is triggered) or raised.
                 exception = e
-                formatted_exc = traceback.format_exc()
+                log.error(traceback.format_exc())
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -358,7 +362,6 @@ class MeasurementControl(Instrument):
                           f'). Retrying.'
                     self.log_to_slack(msg)
                     log.error(msg)
-                    log.error(formatted_exc)
                     # Call the retry_cleanup_functions if there are any (see
                     # docstring of parameter max_attempts).
                     [fnc() for fnc in getattr(
@@ -1654,6 +1657,19 @@ class MeasurementControl(Instrument):
         else:
             return self.data_object.create_group(EXPERIMENTAL_DATA_GROUP_NAME)
 
+    def _get_create_dataset_kwargs(self):
+        """
+        Get the kwargs to pass to create_dataset in
+        create_experimentaldata_dataset and save_extra_data.
+
+        Returns:
+            dict with the kwargs
+        """
+        kwargs = {}
+        if self.compress_dataset():
+            kwargs.update({'compression': "gzip", 'compression_opts': 9})
+        return kwargs
+
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
@@ -1661,7 +1677,7 @@ class MeasurementControl(Instrument):
                      len(self.detector_function.value_names)),
             maxshape=(None, len(self.sweep_functions) +
                       len(self.detector_function.value_names)),
-            dtype='float64')
+            dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
         # Added to tell analysis how to extract the data
@@ -1731,7 +1747,8 @@ class MeasurementControl(Instrument):
             group = data_group.create_group(group_name)
         if dataset_name not in group:
             dset = group.create_dataset(dataset_name, data=data,
-                                        maxshape=[None] * len(data.shape))
+                                        maxshape=[None] * len(data.shape),
+                                        **self._get_create_dataset_kwargs())
             if column_names is not None:
                 dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
         else:
@@ -2115,7 +2132,7 @@ class MeasurementControl(Instrument):
                     t_left=t_left,
                     t_end=t_end,)
 
-            if percdone != 100:
+            if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
@@ -2437,24 +2454,18 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
         it from the object (used in recursive calls of this function)
     :return: (str)
     """
-    def get_short_name():
-        if short_name is not None:
-            return short_name
-        elif hasattr(object, 'short_name'):
-            return object.short_name
-        else:
-            raise AttributeError(
-                f'Could not determine the name of {object}.')
 
     if hasattr(object, 'instrument'):
         # it is a parameter
         return _get_instrument_name_for_parameter_checks(object.instrument)
     elif getattr(object, 'parent', None) is not None:
-        if object.short_name in object.parent.submodules:
+        if object in object.parent.submodules.values():
             # it is a submodule, and will appear in the snapshot with
-            # its short_name
+            # the key used in submodules
+            key = [k for k in object.parent.submodules
+                   if object.parent.submodules[k] == object][0]
             return _get_instrument_name_for_parameter_checks(
-                object.parent) + '.' + get_short_name()
+                object.parent) + '.' + key
         # It might be a channel in a channel list that references the
         # instrument as parent, but not the channel list.
         l = [(s, k) for k, s in object.parent.submodules.items()
@@ -2469,8 +2480,10 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
             object[0], 'parent', None) is not None:
         # If it is a list and we find the parent via the first element.
         # A channel list is a submodule and thus appears in the snapshot with
-        # its short_name.
+        # the key used in submodules.
+        key = [k for k in object[0].parent.submodules
+               if object[0].parent.submodules[k] == object][0]
         return _get_instrument_name_for_parameter_checks(
-            object[0].parent) + '.' + get_short_name()
+            object[0].parent) + '.' + key
     else:  # it is an instrument
         return object.name

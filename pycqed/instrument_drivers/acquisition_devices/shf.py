@@ -6,6 +6,7 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
+from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
@@ -49,7 +50,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """
     acq_length_granularity = 16
 
-    # FIXME is this still valid for the SHFSG?
     # acq_sampling_rate is the effective sampling rate provided by the SHFQA,
     # even though internally it has an ADC running at 4e9 Sa/s.
     # More details on the chain of downconversions on the SHFQA input:
@@ -65,7 +65,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized'], #FIXME data types unused
+                     'int_avg': ['raw', 'digitized'],  # FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
                      # compatibility, we allow this mode here.
                      'scope': ['timedomain', 'fft_power', ],
@@ -359,7 +359,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
-        self._awg_program = [None] * self.n_acq_units
 
     def acquisition_progress(self):
         n_acq = {}
@@ -378,7 +377,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
-        return np.mean(n_acq.values())
+        return np.mean(list(n_acq.values()))
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
@@ -527,7 +526,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
-                    dataset.update({(i, 1): [np.imag(timetrace)]})
+                    # use sign convention as is used by UHFQA in avg mode
+                    # to ensure compatibility with existing analysis classes
+                    # use natural sign in averaged mode
+                    sign = {'avg': -1, 'scope': 1}[self._acq_mode]
+                    dataset.update({(i, 1): [sign*np.imag(timetrace)]})
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
@@ -604,3 +607,13 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
         self._check_server(kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+
+
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQC
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+        self._awg_program += [None] * len(self.sgchannels)

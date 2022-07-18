@@ -8,7 +8,7 @@ from copy import deepcopy
 import time
 from string import ascii_uppercase
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.timer import Timer
+from pycqed.utilities.timer import Timer, TimedMetaClass
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
@@ -85,6 +85,15 @@ class Detector_Function(object):
                             {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
@@ -562,11 +571,12 @@ class Function_Detector(Soft_Detector):
 # pycqed.instrument_drivers.acquisition_devices
 # --------------------------------------------
 
-class PollDetector(Hard_Detector):
+class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     """
     Base Class for all polling detectors. A polling detector is one that calls
     the poll method of an acquisition device.
     """
+    TIMED_METHODS = ["prepare"]
 
     def __init__(self, acq_dev=None, detectors=None, **kw):
         """
@@ -848,7 +858,6 @@ class MultiPollDetector(PollDetector):
             self.value_names += ['correlation']
             self.value_units += ['']
 
-    @Timer()
     def prepare(self, sweep_points=None):
         """
         Calls the prepare method of each polling detector in self.detectors
@@ -1030,7 +1039,6 @@ class AveragingPollDetector(PollDetector):
         self.nr_averages = nr_averages
         self.progress_scaling = nr_averages
 
-    @Timer()
     def prepare(self, sweep_points):
         """
         Prepares instruments for acquisition by calling
@@ -1338,6 +1346,7 @@ class ScopePollDetector(PollDetector):
                  data_type,
                  **kw):
         super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
         self.channels = channels
         self.integration_length = integration_length
         self.nr_averages = nr_averages
