@@ -1,5 +1,7 @@
 import numpy as np
 import time
+
+from pyvisa import VisaIOError
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac, Mode
@@ -221,7 +223,13 @@ class QDacSmooth(QDac):
         # In turn, this ensures that methods like snapshot() get the correct
         # values, as methods like these get the values from the cache.
 
-        super()._update_cache(*args, **kwargs)
+        try:
+            super()._update_cache(*args, **kwargs)
+        except VisaIOError:
+            # Clear buffers, this is needed to put the QDAC back to a working
+            # state e.g. after a keyboard interrupt during last use
+            self.device_clear()
+            super()._update_cache(*args, **kwargs)
         # the default value {} in the following line prevents a crash in
         # __init__
         for ch_number, ch_name in getattr(self, 'channel_map', {}).items():
