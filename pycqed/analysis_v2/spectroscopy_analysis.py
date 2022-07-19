@@ -2388,10 +2388,10 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
                 f"\nRight LSS = {self.fit_res[qb_name]['right_lss']:.3f} V"
                 f"\nRight USS = {self.fit_res[qb_name]['right_uss']:.3f} V")
 
-            self.plot_dicts['text_msg'] = {
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
                 'fig_id': fig_id_analyzed,
                 'ypos': -0.3,
-                'xpos': 0,
+                'xpos': -0.2,
                 'horizontalalignment': 'left',
                 'verticalalignment': 'top',
                 'plotfn': self.plot_text,
