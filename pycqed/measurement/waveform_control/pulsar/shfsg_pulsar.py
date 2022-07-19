@@ -402,6 +402,14 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
             sgchannel.awg.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
+        if self.pulsar.use_sequence_cache():
+            if wave_hashes == self._shfsg_waveform_cache[
+                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
+                log.debug(f'{self.awg.name} awgs{awg_nr}: '
+                          f'{wave_idx} same as in cache')
+                return
+            log.debug(f'{self.awg.name} awgs{awg_nr}: '
+                      f'{wave_idx} needs to be uploaded')
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
         if m1 is not None and a1 is None:
@@ -465,13 +473,6 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
             wave_hashes: waveforms hashes
         """
         if self.pulsar.use_sequence_cache():
-            if wave_hashes == self._shfsg_waveform_cache[
-                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
-                log.debug(f'{self.awg.name} awgs{awg_nr}: '
-                          f'{wave_idx} same as in cache')
-                return
-            log.debug(f'{self.awg.name} awgs{awg_nr}: '
-                      f'{wave_idx} needs to be uploaded')
             self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
 
