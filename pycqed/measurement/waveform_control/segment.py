@@ -115,13 +115,11 @@ class Segment:
         self.pulse_pars = []
         self.is_first_segment = False
         self.fast_mode = fast_mode
-
-        for pulse_pars in pulse_pars_list:
-            self.add(pulse_pars)
-
         self.resolve_overlapping_elements = \
             kw.pop('resolve_overlapping_elements',
                    self.pulsar.resolve_overlapping_elements())
+        for pulse_pars in pulse_pars_list:
+            self.add(pulse_pars)
 
     def add(self, pulse_pars):
         """
@@ -153,11 +151,13 @@ class Segment:
         if pars_copy.get('element_name', None) == None:
             if pars_copy.get('operation_type', None) == 'RO':
                 pars_copy['element_name'] = \
-                    'RO_element_{}_{}'.format(i, self.name)
+                    'RO_element_{}'.format(i)
+            elif self.resolve_overlapping_elements:
+                j = len(self.unresolved_pulses) + 1
+                pars_copy['element_name'] = 'default_{}'.format(j)
             else:
-                pars_copy['element_name'] = 'default_{}'.format(self.name)
-        else:
-            pars_copy['element_name'] += '_' + self.name
+                pars_copy['element_name'] = 'default'
+        pars_copy['element_name'] += '_' + self.name
 
 
         # add element to set of acquisition elements
