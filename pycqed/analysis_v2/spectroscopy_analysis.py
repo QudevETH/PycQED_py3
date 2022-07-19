@@ -1711,13 +1711,90 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             return 'Magnitude (Vpeak)'
         return data_key
 
+class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
+    """
+    Find the dips of a 1D resonator spectroscopy and their widths. The
+    dip-finding algorithm is based on SciPy's find_peaks(). The algorithm tries 
+    to find 'ndips' dips iteratively.
+    If more or less than 'ndips' dips are found, the dip-finding parameters 
+    are adjusted accordingly and 'ndips' dips are searched again. The
+    algorithm stops when only 'ndips' dips are found or when the maximum 
+    number of iterations is reached. If more than 'ndips' dips are found 
+    after the maximum number of iterations is reached, the 'ndips' most 
+    prominent dips are selected.
+    """
 
-class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
-    """
-    Find the dips of a 2D resonator spectroscopy flux sweep and extracts the 
-    USS and LSS.
-    TODO: More detailed description and/or constructor details and/or example
-    """
+    def __init__(self,
+                 ndips: int,
+                 prominence_factor: float = 0.1,
+                 max_iterations: int = 15,
+                 iteration_prominence_factor: float = 0.9,
+                 height: float = None,
+                 threshold: float = None,
+                 distance: int = None,
+                 width: int = None,
+                 wlen: int = None,
+                 rel_height: float = 0.25,
+                 plateau_size: int = None,
+                 **kwargs):
+        """Initialize the analysis class by storing the keywords necessary to
+        run the dip-finding algorithm. By default, only the prominence is used
+        to select the dips. 
+        Args:
+            ndips (int): number of dips that will be searched.
+            prominence_factor (float, optional): required prominence for the 
+                dips used in the dip-finding algorithm, as a fraction of the 
+                average of the data.
+            max_iterations (int, optional): maximum number of iterations before 
+                stopping the algorithm. Defaults to 15.
+            iteration_prominence_factor (float, optional): factor that 
+                multiplies or divides the previous required prominence after 
+                each iteration, in case two dips are not found at the first 
+                iteration. Should be less than 1 for the expected behavior, i.e. 
+                increasing required prominence if more than two dips are found 
+                and decreasing required prominence if less than two dips are 
+                found. Defaults to 0.9.
+
+            The following parameters are passed directly to SciPy's find
+            peaks function. Their documentation is taken from the official 
+            find_peaks documentation with minor modifications. Consult it for 
+            more information: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html.
+
+            height (float, optional): Required depth of the dips. Due to the 
+                implementation, it should be negative. E.g., to select only the
+                dips with height below 1e-5 AU, set height = -1e-5. To select the 
+                dips with height between 1e-5 AU and 2e-5 AU, set 
+                height = (-2e-5,-1e-5). Defaults to None.
+            threshold (float, optional): Required threshold of peaks, i.e. the 
+                vertical distance to its neighboring samples. Should be negative 
+                like height. Defaults to None.
+            distance (int, optional): Required horizontal distance (in units of 
+                samples) between neighboring peaks. Defaults to None.
+            width (int, optional): Required width of the peaks (in units of 
+                samples). Defaults to None.
+            wlen (int, optional): Used for calculation of the peaks prominences. 
+                Defaults to None.
+            rel_height (float, optional): Used for the calculation of the dips 
+                width. Defaults to 0.25.
+            plateau_size (int, optional): Required size of the flat top of the 
+                dips in samples. Defaults to None.
+        """
+        self.ndips = ndips
+        self.prominence_factor = prominence_factor
+        self.max_iterations = max_iterations
+        self.iteration_prominence_factor = iteration_prominence_factor
+
+        self.dip_finder_kwargs = {
+            'height': height,
+            'threshold': threshold,
+            'distance': distance,
+            'width': width,
+            'wlen': wlen,
+            'rel_height': rel_height,
+            'plateau_size': plateau_size,
+        }
+        super().__init__(**kwargs)
+
 
     def process_data(self):
         super().process_data()
@@ -1730,7 +1807,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
         # {
         #  'qb1': {'freqs': [...],
         #           'volts': [...],
-        #           'magnitude': [[...], ...]
+        #           'magnitude': [...]
         #         },
         #  'qb2': {'freqs': ...
         #         ...
@@ -1759,15 +1836,191 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.fit_res[qb_name] = {}
 
     def run_fitting(self):
+        """Finds the dips the 1D resonator spectroscopy and extracts the LSS and
+        the USS.
+        """
+
+        # Find the dips for each measured qubit
+        for qb_name in self.qb_names:
+            # Find the indices of the dips and their widths
+            dips_indices, dips_widths = self.find_dips(
+                magnitude_data=self.analysis_data[qb_name]['magnitude'],
+                ndips=self.ndips,
+                prominence_factor=self.prominence_factor,
+                max_iterations=self.max_iterations,
+                iteration_prominence_factor=self.iteration_prominence_factor,
+                **self.dip_finder_kwargs)
+
+            # Find the frequency corresponding to these indices and store it
+            # in the analysis_data dict together with their widths
+            self.analysis_data[qb_name][
+                'dips_frequency'] = self.analysis_data[qb_name]['freqs'][
+                    dips_indices]
+            self.analysis_data[qb_name][
+                'dips_widths'] = dips_widths
+
+        for qb_name in self.qb_names:
+            # Store data in the fit_res dict (which is then saved to the hdf
+            # file)
+            self.fit_res[qb_name]['dips_frequency'] = self.analysis_data[
+                qb_name]['dips_frequency']
+            self.fit_res[qb_name]['dips_widths'] = self.analysis_data[qb_name][
+                'dips_widths']
+
+
+    def find_dips(self,
+                  magnitude_data: np.array,
+                  ndips: int,
+                  prominence_factor: float = 0.1,
+                  max_iterations: int = 15,
+                  iteration_prominence_factor: float = 0.9,
+                  **kw: dict) -> tuple[list[int], list[int], float, float]:
+        """
+        Finds the dips in a 1D resonator spectroscopy. The algorithm tries to 
+        find 'ndips' dips iteratively.
+        If more or less than 'ndips' dips are found, the dip-finding parameters 
+        are adjusted accordingly and 'ndips' dips are searched again. The
+        algorithm stops when only 'ndips' dips are found or when the maximum 
+        number of iterations is reached. If more than 'ndips' dips are found 
+        after the maximum number of iterations is reached, the 'ndips' most 
+        prominent dips are selected.
+        
+        Args:
+            magnitude_data (np.array, 1D): projection of the raw data. 
+                Frequency on the x-axis and voltage of the fluxline on the 
+                y-axis. Defaults to 0.1.
+            prominence_factor (float, optional): required prominence for the 
+                dips used in the dip-finding algorithm, as a fraction of the 
+                average of the data.
+            max_iterations (int, optional): maximum number of iterations before 
+                stopping the algorithm. Defaults to 15.
+            iteration_prominence_factor (float, optional): factor that 
+                multiplies or divides the previous required prominence after 
+                each iteration, in case two dips are not found at the first 
+                iteration. Should be less than 1 for the expected behavior, i.e. 
+                increasing required prominence if more than two dips are found 
+                and decreasing required prominence if less than two dips are 
+                found. Defaults to 0.9.
+            kw: additional parametrs for the dip-finding algorithm. See SciPy 
+                documentation of find_peaks or this class __init__ for more 
+                details.
+        Returns:
+            dips_indices (list[int]): list of frequency indices for the 
+                left dips.
+            dips_widths (list[float]): width of the dips (in units of 
+                samples)
+        """
+        # Calculate the average of the magnitude data. The prominence will be
+        # calculated as prominence_factor * average_magn
+        average_magn = np.average(magnitude_data)
+
+        # Find dips by adjusting the parameters until two peaks are found
+        # or the maximum number of iterations is reached
+        iteration_index = 0
+        dips_indices = []
+        while len(dips_indices) != ndips and iteration_index < max_iterations:
+            # To find dips, we use scipy's peak finder and change the sign
+            # of the data so that dips become peaks
+            dips_indices, dips_properties = find_peaks(
+                -magnitude_data,
+                prominence=prominence_factor * average_magn,
+                **kw)
+
+            if len(dips_indices) > ndips:
+                # If more than ndips dips are found, repeat using a larger
+                # prominence
+                prominence_factor = prominence_factor / iteration_prominence_factor
+            if len(dips_indices) < ndips:
+                # If less than ndips dips are found, repeat using a smaller
+                # prominence
+                prominence_factor = prominence_factor * iteration_prominence_factor
+
+            iteration_index = iteration_index + 1
+
+        # When the loop ends, check how many dips were found
+        if len(dips_indices) > ndips:
+            # If more than 'ndips' dips are found, choose the 'ndips' ones with 
+            # the highest prominence
+            prominences_dips = dips_properties['prominences']
+            indices_max_dip = np.argpartition(prominences_dips, -ndips)[-ndips:]
+            dips_indices = np.array(dips_indices)[indices_max_dip]
+        elif len(dips_indices) < ndips:
+            # If less than 'ndips' dips are found, just print a warning.
+            log.warning(f"Found {len(dips_indices)} peaks instead of ndips")
+
+        # Calculate the width of the dips in units of number of samples, at
+        # a relative height of 0.25 by default (0 corresponds to the bottom of 
+        # the dip, 1 corresponds to its base).
+        # This can be used to determine which dip corresponds to the resonator
+        # and which to the Purcell filter
+        dips_widths = peak_widths(-magnitude_data, dips_indices,
+                        rel_height=self.dip_finder_kwargs['rel_height'])[0]
+
+        return dips_indices, dips_widths
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+
+class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
+    """
+    Find the dips of a 2D resonator spectroscopy flux sweep and extracts the 
+    USS and LSS.
+    The dips are found using the parent class ResonatorSpectroscopyAnalysis 
+    method find_dips(), see it for more information. Only two dips are searched 
+    at each voltage bias.
+    After finding the left and the right dips, the numerical derivative of the
+    frequency of the dips with respect to the bias voltage is calculated using
+    a Savitzky-Golay filter to smoothen the curve. The zeros (i.e. the extrema) 
+    are found interpolating the numerical derivative. Maximum and minimum are
+    distinguished by checking the sign of the second derivative.
+    The output values of the analysis (saved in the HDF file) are:
+    - Voltage and frequency of the left LSS and USS,
+    - Voltage and frequency of the right LSS and USS,
+    - Average of the left and right voltage for both the LSS and USS,
+    - Average widths of the left and the dips.
+    """
+    def __init__(self,
+                 **kwargs):
+        """ Initializes the class by calling the parent class constructor 
+        setting ndips = 2.
+        Args:
+            kwargs: see ResonatorSpectroscopyAnalysis.
+        """
+        super().__init__(ndips = 2,**kwargs)
+
+    def run_fitting(self):
         """Finds the dips the 2D resonator spectroscopy and extracts the LSS and
         the USS.
         """
 
-        # Find the dips in frequency
+        # Find the dips for each measured qubit
         for qb_name in self.qb_names:
-            # Find the indices of the dips at each voltage bias
-            left_dips_indices, right_dips_indices, left_avg_width, right_avg_width = self.find_dips(
-                self.analysis_data[qb_name]['magnitude'])
+            left_dips_indices = []
+            right_dips_indices = []
+            left_dips_widths = []
+            right_dips_widths = []
+            # Find the indices of the dips at each voltage bias and their width
+            for linecut_magnitude in self.analysis_data[qb_name]['magnitude'][:,]:
+                dips_indices, dips_widths = self.find_dips(
+                    magnitude_data=linecut_magnitude,
+                    ndips=self.ndips,
+                    prominence_factor=self.prominence_factor,
+                    max_iterations=self.max_iterations,
+                    iteration_prominence_factor=self.
+                    iteration_prominence_factor,
+                    **self.dip_finder_kwargs)
+
+                # Pick the first dip as the left one and the last one as 
+                left_dips_indices.append(dips_indices[0])
+                right_dips_indices.append(dips_indices[-1])
+                left_dips_widths.append(dips_widths[0])
+                right_dips_widths.append(dips_widths[-1])
+
+            # Calculate the average width of the left and the right dips
+            left_avg_width = np.average(left_dips_widths)
+            right_avg_width = np.average(right_dips_widths)
+
             # Find the frequency corresponding to these indices and store it
             # in the analysis_data dict
             self.analysis_data[qb_name][
@@ -1823,119 +2076,6 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.fit_res[qb_name]['avg_lss'] = avg_lss
             self.fit_res[qb_name]['avg_uss'] = avg_uss
 
-    def find_dips(self,
-                  magnitude_data: np.ndarray,
-                  prominence_factor: float = 0.1,
-                  max_iterations: int = 15,
-                  iteration_prominence_factor: float = 0.9,
-                  **kw: dict) -> tuple[list[int], list[int], float, float]:
-        """
-        Finds the dips in a 2D resonator spectroscopy. The algorithm tries to 
-        find two dips iteratively.
-        If more or less than two dips are found, the dip-finding parameters are 
-        adjusted accordingly and dips are searched again. The algorithm stops 
-        when only two dips are found or when the maximum number of iterations is
-        reached. If more than two peaks are found after the maximum number of
-        iterations is reached, the two most prominent dips are selected.
-        
-        Args:
-            magnitude_data (np.ndarray, 2D): projection of the raw data. 
-                Frequency on the x-axis and voltage of the fluxline on the 
-                y-axis. Defaults to 0.1.
-            prominence_factor (float, optional): required prominence for the 
-                dips used in the dip-finding algorithm, as a fraction of the 
-                average of the data.
-            max_iterations (int, optional): maximum number of iterations before 
-                stopping the algorithm. Defaults to 15.
-            iteration_prominence_factor (float, optional): factor that 
-                multiplies or divides the previous required prominence after 
-                each iteration, in case two dips are not found at the first 
-                iteration. Should be less than 1 for the expected behavior, i.e. 
-                increasing required prominence if more than two dips are found 
-                and decreasing required prominence if less than two dips are 
-                found. Defaults to 0.9.
-            kw: additional parametrs for the dip-finding algorithm. See SciPy 
-                documentation of find_peaks for more details.
-        Returns:
-            dips_indices_left (list[int]): list of frequency indices for the 
-                left dips.
-            dips_indices_right (list[int]): list of frequency indices for the 
-                right dips.
-            avg_width_left (float): average width of the left dips (in units of 
-                samples)
-            avg_width_right (float): average width of the right dips (in units of 
-                samples)
-        """
-        dips_indices_left = []
-        dips_indices_right = []
-        dips_widths_left = []
-        dips_widths_right = []
-        # Analyze the 2D plot line by line, each line corresponding to a
-        # specific voltage bias
-        for linecut_magn in magnitude_data[:,]:
-            average_magn = np.average(linecut_magn)
-
-            dips_indices = []
-            iteration_index = 0
-
-            new_prominence_factor = prominence_factor
-
-            # Find dips by adjusting the parameters until two peaks are found
-            # or the maximum number of iterations is reached
-            while len(dips_indices) != 2 and iteration_index < max_iterations:
-                # To find dips, we use scipy's peak finder and change the sign
-                # of the data so that dips become peaks
-                dips_indices, dips_properties = find_peaks(
-                    -linecut_magn,
-                    prominence=new_prominence_factor * average_magn,
-                    **kw)
-
-                if len(dips_indices) > 2:
-                    # If more than two peaks are found, repeat using a larger
-                    # prominence
-                    new_prominence_factor = new_prominence_factor / iteration_prominence_factor
-                if len(dips_indices) < 2:
-                    # If less than two peaks are found, repeat using a smaller
-                    # prominence
-                    new_prominence_factor = new_prominence_factor * iteration_prominence_factor
-
-                iteration_index = iteration_index + 1
-
-            # Once two peaks are found or the maximum number of iterations is
-            # reached, choose the first peak as the left one and the last as
-            # the right one.
-            # TODO: what should the behavior be when number of peaks found != 2?
-
-            if len(dips_indices) > 2:
-                # If more than two dips are found, choose the two with the
-                # highest prominence
-                prominences_dips = dips_properties['prominences']
-                indices_max_dip = np.argpartition(prominences_dips, -2)[-2:]
-                dips_indices = np.array(dips_indices)[indices_max_dip]
-            elif len(dips_indices) < 2:
-                log.warning(f"Found {len(dips_indices)} peaks instead of 2")
-
-            # Separate the left dips from the right dips
-            dips_indices_left.append(np.min(dips_indices))
-            dips_indices_right.append(np.max(dips_indices))
-
-            # Calculate the width of the dips in units of number of samples, at
-            # a relative height of 0.25 (0 corresponds to the bottom of the dip,
-            # 1 corresponds to its base)
-            dips_widths_left.append(
-                peak_widths(-linecut_magn, [dips_indices_left[-1]],
-                            rel_height=0.25)[0])
-            dips_widths_right.append(
-                peak_widths(-linecut_magn, [dips_indices_right[-1]],
-                            rel_height=0.25)[0])
-
-        # Calculate the average width of the left dips and of the right dips.
-        # This can be used to determine which dip corresponds to the resonator
-        # and which to the Purcell filter
-        avg_width_left = np.average(dips_widths_left)
-        avg_width_right = np.average(dips_widths_right)
-        return dips_indices_left, dips_indices_right, avg_width_left, avg_width_right
-
     def find_lss_uss(self,
                      frequency_dips: np.ndarray,
                      biases: np.ndarray,
@@ -1962,9 +2102,6 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
             window_length (int, optional): length of the filter window to 
                 calculate the numerical derivatives with Savitzky-Golay filter. 
                 See SciPy documentation of savgol_filter. Defaults to 7.
-            FIXME: Check that there are enough data points to use this
-                window length (it has to be smaller than the number of data
-                points)
             polyorder (int, optional): order of the polynomial to calculate the
                 numerical derivatives with Savitzky-Golay filter. 
                 See SciPy documentation of savgol_filter Defaults to 2.
@@ -1972,6 +2109,20 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
         Returns:
             tuple[float,float]: _description_
         """
+
+        # The window length should be equal or less than the number of bias
+        # points. Check that this condition is satisfied, otherwise decrease
+        # the window length to satisfy it and print a warning.
+        if len(biases) < window_length:
+            # Ensure that the chosen window_length is odd (required for the
+            # Savitzky-Golay filter)
+            if len(biases) % 2 == 0:
+                window_length = len(biases) - 1
+            else:
+                window_length = len(biases)
+            log.warning(f"The number of bias points is smaller than the default "
+            f"filter window length (= 7) to find the LSS and USS. Using "
+            f"window length of {window_length} instead.")
 
         # Lists where the local extrema will be stored
         local_maxima = []
@@ -2035,6 +2186,9 @@ class ResonatorSpectroscopyFluxSweepAnalysis(MultiQubit_Spectroscopy_Analysis):
         return lss, uss
 
     def prepare_plots(self):
+        """Plots the projected data with the additional information found with
+        the analysis.
+        """
         super().prepare_plots()
 
         for qb_name in self.qb_names:
