@@ -1806,8 +1806,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
 
         # {
         #  'qb1': {'freqs': [...],
-        #           'volts': [...],
-        #           'magnitude': [...]
+        #           'magnitude': [[...]]
         #         },
         #  'qb2': {'freqs': ...
         #         ...
@@ -1819,8 +1818,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.analysis_data[qb_name] = OrderedDict({
                 'freqs':
                     np.array(self.sp[0][f"{qb_name}_freq"][0]),
-                'volts':
-                    np.array(self.sp[1][f"{qb_name}_volt"][0]),
+                # Note that the magnitude is a 2D array even for 1D spectroscopy
                 'magnitude':
                     np.array(self.proc_data_dict['projected_data_dict'][qb_name]
                              ['Magnitude'])
@@ -1844,7 +1842,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         for qb_name in self.qb_names:
             # Find the indices of the dips and their widths
             dips_indices, dips_widths = self.find_dips(
-                magnitude_data=self.analysis_data[qb_name]['magnitude'],
+                magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
                 ndips=self.ndips,
                 prominence_factor=self.prominence_factor,
                 max_iterations=self.max_iterations,
@@ -1862,10 +1860,11 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         for qb_name in self.qb_names:
             # Store data in the fit_res dict (which is then saved to the hdf
             # file)
-            self.fit_res[qb_name]['dips_frequency'] = self.analysis_data[
-                qb_name]['dips_frequency']
-            self.fit_res[qb_name]['dips_widths'] = self.analysis_data[qb_name][
-                'dips_widths']
+            for i, (dip_freq, dip_width) in enumerate(
+                    zip(self.analysis_data[qb_name]['dips_frequency'],
+                        self.analysis_data[qb_name]['dips_widths'])):
+                self.fit_res[qb_name][f'dip{i}_frequency'] = dip_freq
+                self.fit_res[qb_name][f'dip{i}_width'] = dip_width
 
 
     def find_dips(self,
@@ -1989,6 +1988,28 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
         """
         super().__init__(ndips = 2,**kwargs)
 
+    def process_data(self):
+        super().process_data()
+
+        # Collect all the relevants data of a measurement in this dict. Each
+        # entry of the dictionary corresponds to a measurement on a qubit
+        # and it contains the sweep points for the frequency, the sweep points
+        # for the voltage bias, and the projected data for the magnitude
+
+        # {
+        #  'qb1': {'freqs': [...],
+        #           'magnitude': [[...], ...],
+        #           'volts': [...],
+        #         },
+        #  'qb2': {'freqs': ...
+        #         ...
+        #         }
+        # }
+
+        for qb_name in self.qb_names:
+            self.analysis_data[qb_name]['volts'] = np.array(
+                self.sp[1][f"{qb_name}_volt"][0])
+
     def run_fitting(self):
         """Finds the dips the 2D resonator spectroscopy and extracts the LSS and
         the USS.
@@ -2011,7 +2032,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
                     iteration_prominence_factor,
                     **self.dip_finder_kwargs)
 
-                # Pick the first dip as the left one and the last one as 
+                # Pick the first dip as the left one and the last one as the
+                # right one
                 left_dips_indices.append(dips_indices[0])
                 right_dips_indices.append(dips_indices[-1])
                 left_dips_widths.append(dips_widths[0])
