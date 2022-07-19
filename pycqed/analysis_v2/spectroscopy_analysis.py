@@ -1946,6 +1946,9 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             prominences_dips = dips_properties['prominences']
             indices_max_dip = np.argpartition(prominences_dips, -ndips)[-ndips:]
             dips_indices = np.array(dips_indices)[indices_max_dip]
+            # Sort the indices again since their order after argpartition is
+            # undefined (see argpartition documentation for more information)
+            dips_indices = np.sort(dips_indices)
         elif len(dips_indices) < ndips:
             # If less than 'ndips' dips are found, just print a warning.
             log.warning(f"Found {len(dips_indices)} peaks instead of ndips")
