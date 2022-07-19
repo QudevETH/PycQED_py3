@@ -1855,6 +1855,9 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'dips_frequency'] = self.analysis_data[qb_name]['freqs'][
                     dips_indices]
             self.analysis_data[qb_name][
+                'dips_magnitude'] = self.analysis_data[qb_name]['magnitude'][0][
+                    dips_indices]
+            self.analysis_data[qb_name][
                 'dips_widths'] = dips_widths
 
         for qb_name in self.qb_names:
@@ -1958,7 +1961,63 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         return dips_indices, dips_widths
 
     def prepare_plots(self):
-        super().prepare_plots()
+        """Plots the projected data with the additional information found with
+        the analysis.
+        """
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+
+        for qb_name in self.qb_names:
+
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            fig_id_original = f"projected_plot_{qb_name}_Magnitude"
+            fig_id_analyzed = f"{fig_id_original}_an"
+            self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
+                f"projected_plot_{qb_name}_Magnitude_Magnitude"])
+
+            # Change the fig_id of the copied plot in order to distinguish it
+            # from the original
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+            self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
+
+            # Plot the dips
+            self.plot_dicts[f"{fig_id_analyzed}_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['dips_magnitude'],
+                'marker': 'x',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'linestyle': 'none',
+                'color': 'C1',
+                'setlabel': 'Dips',
+                'do_legend': True,
+                'legend_bbox_to_anchor': (0.5, -0.2),
+                'legend_pos': 'center'
+            }
+
+            # Plot textbox containing relevant information
+            textstr = ""
+            for i, (dip_freq, dip_width) in enumerate(
+                    zip(self.analysis_data[qb_name]['dips_frequency'],
+                        self.analysis_data[qb_name]['dips_widths'])):
+                if i%2 == 0:
+                    textstr = textstr + f"Dips pair {i//2}: {dip_freq/1e9:.3f}, "
+                else:
+                    textstr = textstr + f"{dip_freq/1e9:.3f} GHz\n"
+            textstr = textstr.rstrip('\n')
+
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.3,
+                'xpos': 0.5,
+                'horizontalalignment': 'center',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': textstr
+            }
 
 
 class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
@@ -2211,7 +2270,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        super().prepare_plots()
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
 
         for qb_name in self.qb_names:
 
