@@ -7,6 +7,7 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
                     virtual_setup=False,
                     qubits=None, dev=None,
                     DCSources=None,
+                    fluxlines_dict=None,
                     **kw):
     """
     Reload settings from the database.
@@ -40,17 +41,22 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
 
     if load_flux_bias:  # reload and set flux bias
 
-        if DCSources is None:
+        if DCSources is None or fluxlines_dict is None:
             ts = f"({timestamp}) " if timestamp is not None else ""
-            log.warning(f"DCSources must be specified if user wants to load flux bias. DCSources NOT reloaded. You can retry loading the settings {ts}by either passing the DCSources or by reloading settings manually with the reload_settings method from init script")
+            log.warning(
+                f"DCSources and fluxlines_dict must be specified if user "
+                f"wants to load flux bias. DCSources NOT reloaded. You can "
+                f"retry loading the settings {ts}by passing the DCSources and "
+                f"fluxlines_dict.")
             return
 
         for DCSource in DCSources:
             DCSource_params = gen.load_settings(DCSource, timestamp=timestamp,
                                                 update=False)
-            set_fluxline_dict = {'fluxline_' + qb.name[2:]:
-                                     eval(DCSource_params['volt_fluxline_' + qb.name[2:]])
-                                 for qb in qubits if qb in qbs}
+            set_fluxline_dict = {
+                fluxlines_dict[qb.name].name[5:]:  # strip "volt_"
+                    eval(DCSource_params[fluxlines_dict[qb.name].name])
+                for qb in qubits if qb in qbs}
             print(f"Setting flux line voltages to {set_fluxline_dict}")
             if 'Virtual' in DCSource.__class__.__name__:
                 for k, v in set_fluxline_dict.items():
