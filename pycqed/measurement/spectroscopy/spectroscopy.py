@@ -763,6 +763,162 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         return self.analysis
 
 
+class FeedlineSpectroscopy(ResonatorSpectroscopy):
+    """
+    Performs a 1D resonator spectroscopy for a given feedline. 
+    
+    The analysis looks for dips in the magnitude result. Two dips are searched
+    for each qubit in the feedline.
+    The sharpest dip of each pair is chosen to update the readout frequency
+    of the corresponding qubit.
+
+    Compatible task_dict keys:
+    feedline: list of QuDev_transmons belonging to the same feedline. The first
+         qubit of the list will be used to label the task.
+        FIXME: should be refactored in future to be meas_obj (see parent class)
+    freqs: List or np.array containing the drive frequencies of the
+        spectroscopy measurement. (1. dim. sweep points)
+
+    Important: The number of frequency sweep points in the 
+        first dimension needs to be the same among all tasks. The step size in 
+        the frequency sweep points needs to be the same among tasks with qubits 
+        that share an RO LO MWG (if applicable) [copied from parent class]
+    """
+
+    kw_for_sweep_points = {
+        'freqs':
+            dict(param_name='freq',
+                 unit='Hz',
+                 label=r'RO frequency, $f_{RO}$',
+                 dimension=0),
+    }
+    default_experiment_name = 'FeedlineSpectroscopy'
+
+    def __init__(self, task_list, **kw):
+        self.qubits = []
+        self.feedlines = []
+
+        # Build the task_list for the parent class
+        for task in task_list:
+            # Choose the first qubit of each feedline as the reference
+            task['qb'] = task['feedline'][0]
+            self.qubits.append(task['qb'])
+            # Remove feedline from task. This is necessary because the qubit
+            # objects that it contains are QCoDeS instruments and they can not
+            # be pickled when exp_metadata is deepcopied in the base class
+            self.feedlines.append(task['feedline'])
+            task.pop('feedline')
+
+        # Sort the qubits and the feedlines consistently with what is already
+        # done in a MultiTaskingExperiment. Namely, the tasks are sorted using
+        # the name of the qubits.
+        # Keeping track of this order ensures that each tasks can be analyzed
+        # correctly. See the link for the sorting snippet
+        # https://stackoverflow.com/questions/9764298/how-to-sort-two-lists-which-reference-each-other-in-the-exact-same-way
+        self.qubits, self.feedlines = zip(*sorted(
+            zip(self.qubits, self.feedlines), key=lambda pair: pair[0].name))
+        # Convert tuples to lists again
+        self.qubits = list(self.qubits)
+        self.feedlines = list(self.feedlines)
+        super().__init__(task_list, qubits=self.qubits, **kw)
+
+    def run_update(self, **kw):
+        """Updates the readout frequency of the qubits corresponding to the
+        measured feedlines.
+        The dips found during the analysis are paired up (starting from the one
+        at the lowest frequency) and the sharpest dip of the pair is chosen
+        as the readout frequency for the corresponding qubit.
+        If the number of pairs is different from the number of qubits belonging
+        to the feedline, priority is given arbitrarily to the qubits with lower
+        frequency.
+        """
+        # Sort the qubits in each feedline with respect to their current ro_freq
+        self.sorted_feedlines = []
+        for feedline in self.feedlines:
+            feedline_res_freqs = [qb.ro_freq() for qb in feedline]
+            sorted_feedline = [
+                qb for freq, qb in sorted(zip(feedline_res_freqs, feedline))
+            ]
+            self.sorted_feedlines.append(sorted_feedline)
+
+        for qb_name, feedline in zip(self.qb_names, self.sorted_feedlines):
+            # Extract the frequency and the width of the found dips from the
+            # analysis results
+            dips_freq = []
+            dips_width = []
+            for i, (key,
+                    value) in enumerate(self.analysis.fit_res[qb_name].items()):
+                if key.endswith('frequency'):
+                    dips_freq.append(value)
+                elif key.endswith('width'):
+                    dips_width.append(value)
+
+            # Check whether the number of dips is different than expected.
+            # Note that the dip-finding algorithm by design will never find
+            # more than the expected number of dips. Only the case where some
+            # dips are missing needs to be dealt with
+            if len(dips_freq) < 2 * len(feedline):
+                warning_msg = (f"Found {len(dips_freq)} dips instead "
+                               f"of {2*len(feedline)}.")
+                if len(dips_freq) % 2 == 1:
+                    warning_msg += (
+                        "\nOdd number of dips found, the last one "
+                        "will be considered unpaired and assigned to the last "
+                        "qubit.")
+                if len(dips_freq) < 2 * len(feedline) - 1:
+                    # If two or more dips are missing, it will still try to
+                    # update the ro frequency of the maximal amount of qubits
+                    # (e.g., 3 qubits if 5 or 6 dips are found)
+                    n_updatable_qbs = len(dips_freq) // 2 + len(dips_freq) % 2
+                    qubits_to_be_updated = feedline[:n_updatable_qbs]
+                    warning_msg += (
+                        f"\nOnly the {n_updatable_qbs} qubits with "
+                        "the lowest readout frequency will be updated, "
+                        f"namely {[qb.name for qb in qubits_to_be_updated]}.")
+
+                log.warning(warning_msg)
+
+            # Loop over pairs of dips (i = 0, 2, 4, ...)
+            for i in range(0, len(dips_freq), 2):
+                try:
+                    # Check which of two subsequent dips is sharper
+                    if dips_width[i] < dips_width[i + 1]:
+                        # Pick the leftmost dip
+                        feedline[i // 2].ro_freq(dips_freq[i])
+                    else:
+                        # Pick the rightmost dip
+                        feedline[i // 2].ro_freq(dips_freq[i + 1])
+                except IndexError:
+                    # If an odd number of dip was found, consider the last one
+                    # to be unpaired and assign it to the last qubit
+                    log.warning(
+                        (f"Odd number of dips found, picked {dips_freq[i]} for "
+                         f"qubit {feedline[i//2].name} frequency"))
+                    feedline[i // 2].ro_freq(dips_freq[i])
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Launches the analysis using ResonatorSpectroscopyAnalysis. Search
+        for the dips corresponding to the readout resonator and the Purcell 
+        filter for each qubit of the feedline.
+        The number of dips that the algorithm looks for is twice the number 
+        of qubits belonging to the feedline.
+
+        Args:
+            analysis_kwargs: keyword arguments passed to the analysis class
+
+        Returns: analysis object
+
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        analysis_kwargs['ndips'] = [
+            len(feedline) * 2 for feedline in self.feedlines
+        ]
+        self.analysis = spa.ResonatorSpectroscopyAnalysis(**analysis_kwargs)
+        return self.analysis
+
+
 class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d qubit spectroscopies on one
     or multiple qubits.
