@@ -8,6 +8,7 @@ the spectroscopy measurement analyses.
 from copy import copy,deepcopy
 import logging
 import re
+from typing import Union
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
@@ -1725,7 +1726,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
 
     def __init__(self,
-                 ndips: int,
+                 ndips: Union[int,list[int]],
                  prominence_factor: float = 0.1,
                  max_iterations: int = 15,
                  iteration_prominence_factor: float = 0.9,
@@ -1741,7 +1742,10 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         run the dip-finding algorithm. By default, only the prominence is used
         to select the dips. 
         Args:
-            ndips (int): number of dips that will be searched.
+            ndips (int or list[int]): number of dips that will be searched.
+                A list can be specified instead when multiple qubits are measured
+                in a MultiTaskingExperiment. In this case, each entry will be
+                used to analyze one experiment.
             prominence_factor (float, optional): required prominence for the 
                 dips used in the dip-finding algorithm, as a fraction of the 
                 average of the data.
@@ -1837,13 +1841,28 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         """Finds the dips the 1D resonator spectroscopy and extracts the LSS and
         the USS.
         """
+        try:
+            if len(self.ndips) != len(self.qb_names):
+                log.warning(
+                    (f"The length of the ndips list is different from the "
+                    f"number of measured qubits. Using ndips = {self.ndips[0]} "
+                    f"for all qubits.")
+                )
+                self.ndips = self.ndips[0]
+        except TypeError:
+            pass
 
         # Find the dips for each measured qubit
-        for qb_name in self.qb_names:
+        for i,qb_name in enumerate(self.qb_names):
+            if isinstance(self.ndips, int):
+                ndips = self.ndips
+            else:
+                ndips = self.ndips[i]
+
             # Find the indices of the dips and their widths
             dips_indices, dips_widths = self.find_dips(
                 magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
-                ndips=self.ndips,
+                ndips=ndips,
                 prominence_factor=self.prominence_factor,
                 max_iterations=self.max_iterations,
                 iteration_prominence_factor=self.iteration_prominence_factor,
@@ -1872,7 +1891,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
 
     def find_dips(self,
                   magnitude_data: np.array,
-                  ndips: int,
+                  ndips: Union[int,list[int]],
                   prominence_factor: float = 0.1,
                   max_iterations: int = 15,
                   iteration_prominence_factor: float = 0.9,
@@ -1888,9 +1907,12 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         prominent dips are selected.
         
         Args:
-            magnitude_data (np.array, 1D): projection of the raw data. 
-                Frequency on the x-axis and voltage of the fluxline on the 
-                y-axis. Defaults to 0.1.
+            magnitude_data (np.array, 1D): projection of the raw data, magnitude
+                as a function of frequency.
+            ndips (int or list[int]): number of dips that will be searched.
+                A list can be specified instead when multiple qubits are measured
+                in a MultiTaskingExperiment. In this case, each entry will be
+                used to analyze one experiment.
             prominence_factor (float, optional): required prominence for the 
                 dips used in the dip-finding algorithm, as a fraction of the 
                 average of the data.
