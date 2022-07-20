@@ -1018,31 +1018,25 @@ class Pulsar(Instrument):
         if self.use_mcc():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
-
-            # Use a flag to determine if parallel compilation was done. It can be
-            # that none of the active awgs support parallel compilation.
-            parallel_comp_used = False
             for mcc in self.get_unique_mccs():
                 if mcc is not None and len(mcc._awgs) > 0:
                     mcc.wait_compile()
                     mcc.upload()
-                    parallel_comp_used = True
 
-            if parallel_comp_used:
-                # Upload the waveforms to the _awgs_with_waveforms that have the
-                # attribute wfms_to_upload.
-                # ZI devices currently only support parallel compilation + upload
-                # of SeqC strings, so we must upload waveforms separately here
-                # after parallel upload is finished.
-                for awg in self._awgs_with_waveforms:
-                    awg_interface = self.awg_interfaces[awg]
-                    if hasattr(awg_interface, 'wfms_to_upload'):
-                        for k, v in awg_interface.wfms_to_upload.items():
-                            awg_nr, wave_idx = k
-                            waveforms, wave_hashes = v
-                            # awg_interface must have the method _upload_waveforms
-                            awg_interface._upload_waveforms(awg_nr, wave_idx,
-                                                            waveforms, wave_hashes)
+            # Upload the waveforms to the _awgs_with_waveforms that have the
+            # attribute wfms_to_upload.
+            # ZI devices currently only support parallel compilation + upload
+            # of SeqC strings, so we must upload waveforms separately here
+            # after parallel upload is finished.
+            for awg in self._awgs_with_waveforms:
+                awg_interface = self.awg_interfaces[awg]
+                if hasattr(awg_interface, 'wfms_to_upload'):
+                    for k, v in awg_interface.wfms_to_upload.items():
+                        awg_nr, wave_idx = k
+                        waveforms, wave_hashes = v
+                        # awg_interface must have the method _upload_waveforms
+                        awg_interface._upload_waveforms(awg_nr, wave_idx,
+                                                        waveforms, wave_hashes)
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.
