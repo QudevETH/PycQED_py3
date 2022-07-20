@@ -247,11 +247,21 @@ class Segment:
                 elif self.pulsar.get_join_or_split_elements(ch_awg) == 'split':
                     chs_split.add(ch)
 
-            if len(channels - chs_ese) == 0 and len(chs_ese) != 0 or \
-                len(channels - chs_split) == 0 and len(chs_split) != 0:
-                # in case all pulses are the same and not nominal
+            is_RO = (p.operation_type == "RO")
+            if (len(channels - chs_ese) == 0 and len(chs_ese) != 0 or
+                len(channels - chs_split) == 0 and len(chs_split) != 0)\
+                    and not is_RO:
+
                 p = deepcopy(p)
-                p.pulse_obj.element_name = default_ese_element
+
+                if len(chs_split) != 0:
+                    el_name = f'default_split_{index}_{self.name}'
+                    index += 1
+                elif len(chs_ese) != 0:
+                    el_name = default_ese_element
+
+                p.pulse_obj.element_name = el_name
+
                 if p.pulse_obj.codeword == "no_codeword":
                     self.resolved_pulses.append(p)
                 else:
@@ -259,11 +269,10 @@ class Segment:
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            else:
-                if len(channels - chs_ese - chs_split) != 0:
-                    p0 = deepcopy(p)
-                    p0.pulse_obj.channel_mask |= chs_ese | chs_split
-                    self.resolved_pulses.append(p0)
+            elif (len(chs_ese) != 0 or len(chs_split) != 0) and not is_RO:
+                p0 = deepcopy(p)
+                p0.pulse_obj.channel_mask |= chs_ese | chs_split
+                self.resolved_pulses.append(p0)
 
                 if len(chs_split) != 0:
                     default_split_element = f'default_split_{index}_{self.name}'
@@ -271,7 +280,7 @@ class Segment:
                     p1 = deepcopy(p)
                     p1.pulse_obj.element_name = default_split_element
                     if p1.pulse_obj.codeword == "no_codeword":
-                        self.resolved_pulses.append(p)
+                        self.resolved_pulses.append(p1)
                     else:
                         log.warning(
                             'Splitting waveforms cannot use codewords, '
@@ -295,6 +304,9 @@ class Segment:
                         log.warning('enforce_single_element cannot use codewords, '
                                     f'ignoring {p.pulse_obj.name} on channels '
                                     f'{", ".join(list(channels & chs_ese))}')
+            else:
+                p = deepcopy(p)
+                self.resolved_pulses.append(p)
 
     def resolve_timing(self, resolve_block_align=True):
         """
