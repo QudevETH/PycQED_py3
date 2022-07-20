@@ -152,9 +152,6 @@ class Segment:
             if pars_copy.get('operation_type', None) == 'RO':
                 pars_copy['element_name'] = \
                     'RO_element_{}'.format(i)
-            elif self.resolve_overlapping_elements:
-                j = len(self.unresolved_pulses) + 1
-                pars_copy['element_name'] = 'default_{}'.format(j)
             else:
                 pars_copy['element_name'] = 'default'
         pars_copy['element_name'] += '_' + self.name
@@ -212,7 +209,7 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
-        self.enforce_single_element()
+        self.join_or_split_elements()
         self.resolve_timing()
         self.resolve_mirror()
         self.resolve_Z_gates()
@@ -235,17 +232,24 @@ class Segment:
                 # storing segment length is not crucial for the measurement
                 log.warning(f"Could not store segment length timer: {e}")
 
-    def enforce_single_element(self):
+    def join_or_split_elements(self):
         self.resolved_pulses = []
         default_ese_element = f'default_ese_{self.name}'
+        index = 1
         for p in self.unresolved_pulses:
             channels = p.pulse_obj.masked_channels()
             chs_ese = set()
+            chs_split = set()
             for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                if self.pulsar.get(f'{ch_awg}_enforce_single_element'):
+                if self.pulsar.get_join_or_split_elements(ch_awg) == 'ese':
                     chs_ese.add(ch)
-            if len(channels - chs_ese) == 0 and len(chs_ese) != 0:
+                elif self.pulsar.get_join_or_split_elements(ch_awg) == 'split':
+                    chs_split.add(ch)
+
+            if len(channels - chs_ese) == 0 and len(chs_ese) != 0 or \
+                len(channels - chs_split) == 0 and len(chs_split) != 0:
+                # in case all pulses are the same and not nominal
                 p = deepcopy(p)
                 p.pulse_obj.element_name = default_ese_element
                 if p.pulse_obj.codeword == "no_codeword":
@@ -255,30 +259,42 @@ class Segment:
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            elif len(chs_ese) != 0:
-                p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask |= chs_ese
-                self.resolved_pulses.append(p0)
-
-                p1 = deepcopy(p)
-                p1.pulse_obj.element_name = default_ese_element
-                p1.pulse_obj.channel_mask |= channels - chs_ese
-                p1.ref_pulse = p.pulse_obj.name
-                p1.ref_point = 0
-                p1.ref_point_new = 0
-                p1.basis_rotation = {}
-                p1.delay = 0
-                p1.pulse_obj.name += '_ese'
-                p1.is_ese_copy = True
-                if p1.pulse_obj.codeword == "no_codeword":
-                    self.resolved_pulses.append(p1)
-                else:
-                    log.warning('enforce_single_element cannot use codewords, '
-                                f'ignoring {p.pulse_obj.name} on channels '
-                                f'{", ".join(list(channels & chs_ese))}')
             else:
-                p = deepcopy(p)
-                self.resolved_pulses.append(p)
+                if len(channels - chs_ese - chs_split) != 0:
+                    p0 = deepcopy(p)
+                    p0.pulse_obj.channel_mask |= chs_ese | chs_split
+                    self.resolved_pulses.append(p0)
+
+                if len(chs_split) != 0:
+                    default_split_element = f'default_split_{index}_{self.name}'
+                    index += 1
+                    p1 = deepcopy(p)
+                    p1.pulse_obj.element_name = default_split_element
+                    if p1.pulse_obj.codeword == "no_codeword":
+                        self.resolved_pulses.append(p)
+                    else:
+                        log.warning(
+                            'Splitting waveforms cannot use codewords, '
+                            f'ignoring {p.pulse_obj.name} on channels '
+                            f'{", ".join(list(channels & chs_split))}')
+
+                if len(chs_ese) != 0:
+                    p2 = deepcopy(p)
+                    p2.pulse_obj.element_name = default_ese_element
+                    p2.pulse_obj.channel_mask |= channels - chs_ese
+                    p2.ref_pulse = p.pulse_obj.name
+                    p2.ref_point = 0
+                    p2.ref_point_new = 0
+                    p2.basis_rotation = {}
+                    p2.delay = 0
+                    p2.pulse_obj.name += '_ese'
+                    p2.is_ese_copy = True
+                    if p2.pulse_obj.codeword == "no_codeword":
+                        self.resolved_pulses.append(p2)
+                    else:
+                        log.warning('enforce_single_element cannot use codewords, '
+                                    f'ignoring {p.pulse_obj.name} on channels '
+                                    f'{", ".join(list(channels & chs_ese))}')
 
     def resolve_timing(self, resolve_block_align=True):
         """
@@ -296,7 +312,7 @@ class Segment:
 
         self.elements = odict()
         if self.resolved_pulses == []:
-            self.enforce_single_element()
+            self.join_or_split_elements()
 
         visited_pulses = []
         ref_pulses_dict = {}
