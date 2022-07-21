@@ -242,16 +242,17 @@ class Segment:
             chs_split = set()
             for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                if self.pulsar.get_join_or_split_elements(ch_awg) == 'ese':
+                join_or_split = self.pulsar.get(
+                    f"{ch_awg}_join_or_split_elements")
+                if join_or_split == 'ese':
                     chs_ese.add(ch)
-                elif self.pulsar.get_join_or_split_elements(ch_awg) == 'split':
+                elif join_or_split == 'split':
                     chs_split.add(ch)
 
             is_RO = (p.operation_type == "RO")
             if (len(channels - chs_ese) == 0 and len(chs_ese) != 0 or
                 len(channels - chs_split) == 0 and len(chs_split) != 0)\
                     and not is_RO:
-
                 p = deepcopy(p)
 
                 if len(chs_split) != 0:
@@ -269,12 +270,11 @@ class Segment:
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            elif (len(chs_ese) != 0 or len(chs_split) != 0) and not is_RO:
+            elif (len(chs_ese) != 0 or len(chs_split) != 0):
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask |= chs_ese | chs_split
                 self.resolved_pulses.append(p0)
-
-                if len(chs_split) != 0:
+                if len(chs_split) != 0 and not is_RO:
                     default_split_element = f'default_split_{index}_{self.name}'
                     index += 1
                     p1 = deepcopy(p)

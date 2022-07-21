@@ -147,12 +147,15 @@ class PulsarAWGInterface(ABC):
                                        "(eg. readout) passed in "
                                        "'repeat dictionary'.")
         pulsar.add_parameter(f"{name}_enforce_single_element",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter,
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
                                        "sure the master AWG has only one "
-                                       "waveform per segment.")
+                                       "waveform per segment.",
+                             get_cmd=lambda s=self.pulsar:
+                             s.get(f'{name}_join_or_split_elements') == 'ese',
+                             set_cmd=lambda v, s=self.pulsar:
+                             (s.set(f'{name}_join_or_split_elements', 'ese')
+                              if v else None), )
         pulsar.add_parameter(f"{name}_join_or_split_elements",
                              initial_value="default",
                              vals=vals.Enum("default", "split", "ese"),
@@ -652,34 +655,6 @@ class Pulsar(Instrument):
         """
 
         return Instrument.find_instrument(self.get(f"{channel}_awg"))
-
-    def get_join_or_split_elements(self, awg:str) -> str:
-        """Return the mode of join or split for the AWG. This routine makes
-        ensures backwards compatibility for setups making use of the node
-        enforce_single_element.
-
-        Args:
-            awg: name of AWG
-
-        Returns:
-            mode for awg as a string
-        """
-
-        ese = self.get(f"{awg}_enforce_single_element")
-        join_or_split = self.get(f"{awg}_join_or_split_elements")
-
-        if join_or_split == "ese" or ese:
-            if join_or_split == "split":
-                raise ValueError(
-                    f"Conflicting settings of enforce_single_element"
-                    f"and join_or_split_element on AWG {awg}")
-            mode = 'ese'
-        elif join_or_split == "split":
-            mode = "split"
-        else:
-            mode = "default"
-
-        return mode
 
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
