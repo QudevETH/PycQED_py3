@@ -745,23 +745,6 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ]
             qb.set(f'ro_freq', ro_freq)
 
-    def run_analysis(self, analysis_class=None, analysis_kwargs=None, **kw):
-        """
-        Launches the analysis.
-        Args:
-            analysis_class: Class to use for the analysis
-            analysis_kwargs: keyword arguments passed to the analysis class
-
-        Returns: analysis object
-
-        """
-        if analysis_class is None:
-            super().run_analysis()
-        if analysis_kwargs is None:
-            analysis_kwargs = {}
-        self.analysis = analysis_class(**analysis_kwargs)
-        return self.analysis
-
 
 class FeedlineSpectroscopy(ResonatorSpectroscopy):
     """
