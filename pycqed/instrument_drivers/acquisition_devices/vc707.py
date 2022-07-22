@@ -2,6 +2,9 @@ import numpy as np
 from pycqed.instrument_drivers.acquisition_devices.base import AcquisitionDevice
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
+from qcodes.utils import validators as vals
+from qcodes.instrument.parameter import
+import time
 import logging
 log = logging.getLogger(__name__)
 
@@ -29,10 +32,22 @@ class VC707(VC707_core, AcquisitionDevice):
         self.initialize(verbose=True if verbose else False)
         self._acq_integration_weights = {}
         self._last_traces = []
+        self.add_parameter('acq_start_after_awgs', initial_value=False,
+                           vals=vals.Bool, parameter_class=ManualParameter)
 
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
-        self.averager.run()
+        if not self.acq_start_after_awgs():
+            self.averager.run()
+
+    def prepare_poll_after_AWG_start(self):
+        super().prepare_poll_after_AWG_start()
+        if self.acq_start_after_awgs():
+            # The following sleep is a workaround to avoid weird behavior
+            # that is potentially caused by an unstable main trigger signal
+            # right after starting the main trigger.
+            time.sleep(0.1)
+            self.averager.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
