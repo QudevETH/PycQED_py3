@@ -110,8 +110,14 @@ class QuDev_transmon(Qubit):
                            label='Chi')
 
         # readout pulse parameters
+        self.add_parameter(
+            'ro_fixed_lo_freq', unit='Hz',
+            set_cmd=lambda f, s=self : s.configure_mod_freqs(
+                'ro', ro_fixed_lo_freq=f),
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
         self.add_parameter('ro_freq', unit='Hz',
-                           parameter_class=ManualParameter,
+                           set_cmd=lambda f, s=self : s.configure_mod_freqs(
+                               'ro', ro_freq=f),
                            label='Readout frequency')
         self.add_parameter('ro_I_offset', unit='V', initial_value=0,
                            parameter_class=ManualParameter,
@@ -177,6 +183,12 @@ class QuDev_transmon(Qubit):
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
         self.add_pulse_parameter(
+            'RO', 'ro_disable_repeat_pattern', 'disable_repeat_pattern',
+            initial_value=False, vals=vals.Bool(),
+            docstring='True means that repeat patterns are not used for '
+                      'readout pulses of this qubit even if higher layers '
+                      '(like CircuitBuilder) configure a repeat pattern.')
+        self.add_pulse_parameter(
             'RO', 'ro_trigger_channels', 'trigger_channels',
             vals=vals.MultiType(vals.Enum(None), vals.Strings(),
                                 vals.Lists(vals.Strings())))
@@ -206,10 +218,10 @@ class QuDev_transmon(Qubit):
                                      'UHFQA and up to 4 for SHFQA).',
                            parameter_class=ManualParameter)
         self.add_parameter('acq_I_channel', initial_value=0,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_Q_channel', initial_value=1,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_averages', initial_value=1024,
                            vals=vals.Ints(0, 1000000),
@@ -320,10 +332,20 @@ class QuDev_transmon(Qubit):
 
         # add drive pulse parameters
         for tr_name in self.transition_names:
+            if tr_name == 'ge':
+                self.add_parameter(
+                    f'{tr_name}_fixed_lo_freq', unit='Hz',
+                    set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                        'ge', ge_fixed_lo_freq=f),
+                    vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
+                freq_kw = dict(set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                        'ge', ge_freq=f))
+            else:
+                freq_kw = dict(parameter_class=ManualParameter)
             self.add_parameter(f'{tr_name}_freq',
                                label=f'Qubit {tr_name} drive frequency',
                                unit='Hz', initial_value=0,
-                               parameter_class=ManualParameter)
+                               **freq_kw)
             tn = '' if tr_name == 'ge' else f'_{tr_name}'
             self.add_operation(f'X180{tn}')
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_pulse_type',
@@ -675,7 +697,7 @@ class QuDev_transmon(Qubit):
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
                                model='transmon_res', flux=None,
-                               branch='negative'):
+                               branch=None):
         """
         Calculates the flux pulse amplitude or DC bias required to reach a
         transition frequency using fit parameters stored in the qubit
@@ -691,7 +713,7 @@ class QuDev_transmon(Qubit):
         :param amplitude: (float, default: None) flux pulse amplitude. If None,
             the function calculates the required pulse amplitude to reach
             the target frequency (taking into account the given bias).
-            Otherwise, it fixes the pulse ammplitude and calculates the
+            Otherwise, it fixes the pulse amplitude and calculates the
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
@@ -705,7 +727,8 @@ class QuDev_transmon(Qubit):
             This parameter is ignored if the model is 'approx'.
         :param branch: which branch of the flux-to-frequency curve should be
             used. See the meaning of this parameter in Qubit_freq_to_dac
-            and Qubit_freq_to_dac_res.
+            and Qubit_freq_to_dac_res. If None, this is set to the bias (if
+            not None)
         :return: calculated bias or amplitude, depending on which parameters
             are passed in (see above and notes below).
 
@@ -739,11 +762,31 @@ class QuDev_transmon(Qubit):
                     'flux_amplitude_bias_ratio is None, but is '
                     'required for this calculation.')
 
+        if branch is None:
+            if bias is None and flux is None:
+                branch = 'negative'
+            else:
+                # select well-defined branch close to requested flux
+                if flux is None:
+                    flux = (bias - vfc['dac_sweet_spot']) / vfc['V_per_phi0']
+                if flux % 0.5:
+                    pass  # do not shift (well-defined branch)
+                elif flux != self.flux_parking():
+                    # shift slightly in the direction of flux parking
+                    flux += np.sign(self.flux_parking()-flux) * 0.25
+                elif flux != 0:
+                    # shift slightly in the direction of 0
+                    flux += -np.sign(flux) * 0.25
+                else:
+                    # shift slightly to the left to use rising branch as default
+                    flux = -0.25
+                branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
+
         if model == 'approx':
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch)
+                frequency, **vfc, branch=branch, single_branch=True)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"
@@ -957,12 +1000,12 @@ class QuDev_transmon(Qubit):
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
             AWG=self.instr_acq.get_instr(),
-            channels=int_channels,
+            channels=self.get_acq_int_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
             data_type='raw', real_imag=False, single_int_avg=True)
 
-        if hasattr(self.instr_acq.get_instr(), 'daq') and hasattr(
+        if 'UHF' in self.instr_acq.get_instr().__class__.__name__ and hasattr(
                 self.instr_acq.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
                 UHFQC=self.instr_acq.get_instr(),
@@ -995,6 +1038,7 @@ class QuDev_transmon(Qubit):
                 'no_drive' if drive is None and a switch mode 'no_drive' is
                 configured for this qubit; 'modulated' in all other cases).
         """
+        self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -1142,6 +1186,7 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
+        self.configure_mod_freqs()
         if operation_dict is None:
             operation_dict = {}
         operation_dict = super().get_operation_dict(operation_dict)
@@ -1197,13 +1242,13 @@ class QuDev_transmon(Qubit):
 
         Returns: the Sweep_function object
         """
-        if self.instr_ro_lo() is not None:
+        if self.instr_ro_lo() is not None:  # external LO
             return swf.Offset_Sweep(
                 self.instr_ro_lo.get_instr().frequency,
                 -self.ro_mod_freq(),
                 name='Readout frequency',
                 parameter_name='Readout frequency')
-        else:
+        else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
                 self.acq_unit(), self.ro_mod_freq())
 
@@ -1213,6 +1258,7 @@ class QuDev_transmon(Qubit):
             self.instr_ro_lo.get_instr().frequency(),
             name='Readout frequency',
             parameter_name='Readout frequency')
+
     def measure_resonator_spectroscopy(self, freqs, sweep_points_2D=None,
                                        sweep_function_2D=None,
                                        trigger_separation=3e-6,
@@ -1229,15 +1275,32 @@ class QuDev_transmon(Qubit):
                 label = 'resonator_scan_2d' + self.msmt_suffix
             else:
                 label = 'resonator_scan' + self.msmt_suffix
-
         self.prepare(drive=None)
         if upload:
             ro_pars = self.get_ro_pars()
             if self.instr_ro_lo() is None:
                 ro_pars['mod_frequency'] = 0
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
+
             for seg in seq.segments.values():
-                seg.acquisition_mode = 'sweeper'
+                if hasattr(self.instr_acq.get_instr(),
+                           'use_hardware_sweeper') and \
+                        self.instr_acq.get_instr().use_hardware_sweeper():
+                    lo_freq, delta_f, _ = self.instr_acq.get_instr()\
+                        .get_params_for_spectrum(freqs)
+                    self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
+                                                           lo_freq)
+                    seg.acquisition_mode = dict(
+                        sweeper='hardware',
+                        f_start=freqs[0] - lo_freq,
+                        f_step=delta_f,
+                        n_step=len(freqs),
+                        seqtrigger=True,
+                    )
+                else:
+                    seg.acquisition_mode = dict(
+                        sweeper='software'
+                    )
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
@@ -1250,7 +1313,14 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            self.int_avg_det.set_real_imag(False)
+            self.int_avg_det.AWG = self.int_avg_det_spec.AWG
+            MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
@@ -3617,11 +3687,11 @@ class QuDev_transmon(Qubit):
                     qb_names=[self.name], options_dict=dict(
                         fit_gaussian_decay=kw.get('fit_gaussian_decay', True)))
                 new_qubit_freq = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'new_qb_freq']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['new_qb_freq']
                 T2_star = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['exp_decay_' + self.name][
-                    'T2_star']
+                    'analysis_params_dict'][self.name][
+                    'exp_decay']['T2_star']
 
             if update:
                 if for_ef:
@@ -4788,6 +4858,48 @@ class QuDev_transmon(Qubit):
         MC.run_2D('Flux_scope_nzcz_alpha' + self.msmt_suffix)
 
         ma.MeasurementAnalysis(TwoD=True)
+
+    def configure_mod_freqs(self, operation=None, **kw):
+        """Configure modulation freqs (IF) to be compatible with fixed LO freqs
+
+        If {op}_fixed_lo_freq is not None for the operation {op},
+        {op}_mod_freq will be updated to {op}_freq' - {op}_fixed_lo_freq.
+        The method can be called with kw (see below) as a set_cmd when a
+        relevant paramter changes, or without kw as a sanity check, in which
+        case it shows a warning when updating an IF.
+
+        Args:
+            operation (str, None): configure the IF only for the operation
+                indicated by the string or for all operations for which a
+                fixed LO freq is configured.
+            **kw: If a kew equals the name of a qcodes parameter of the qb,
+                the corresponding value supersedes the parameter value.
+        """
+        def get_param(param):
+            if param in kw:
+                return kw[param]
+            else:
+                return self.get(param)
+
+        fixed_lo_suffix = '_fixed_lo_freq'
+        if operation is None:
+            ops = [k[:-len(fixed_lo_suffix)] for k in self.parameters
+                   if k.endswith(fixed_lo_suffix)]
+        else:
+            ops = [operation]
+
+        for op in ops:
+            fixed_lo = get_param(f'{op}{fixed_lo_suffix}')
+            if fixed_lo is not None:
+                mod_freq = get_param(f'{op}_freq') - fixed_lo
+                if not any([k.startswith(f'{op}_') for k in kw]):
+                    old_mod_freq = get_param(f'{op}_mod_freq')
+                    if old_mod_freq != mod_freq:
+                        log.warning(
+                            f'{self.name}: {op}_mod_freq is not consistent '
+                            f'with the fixed LO freq {fixed_lo} and will be '
+                            f'adjusted to {mod_freq}.')
+                self.set(f'{op}_mod_freq', mod_freq)
 
     def configure_pulsar(self):
         """

@@ -6,6 +6,7 @@ import itertools
 import matplotlib as mpl
 import cmath
 from collections import OrderedDict, defaultdict
+import re
 
 from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
@@ -38,6 +39,52 @@ except ImportError as e:
     log.warning('Could not import qutip, tomography code will not work')
 
 
+# Mixin classes
+class ArtificialDetuningMixin():
+    """
+    Extract the information about the artificial_detuning and
+    create the artificial_detuning_dict for each qubit.
+    """
+
+    def get_artificial_detuning_dict(self, raise_error=True):
+        """
+        - first checks whether artificial_detuning_dict was passed in
+            options_dict, metadata, or default_options
+        - then tries to create it based on the information in
+            preprocessed_task_list
+        - lastly, it falls back to the legacy version: searching for
+            artificial_detuning in options_dict, metadata, or default_options
+
+        Args:
+            raise_error (bool; default: True): whether to raise ValueError
+                if no information about artificial detuning is found
+
+        Returns:
+            artificial_detuning_dict: dict with qb names as keys and
+                value for the artificial detuning as values
+        """
+        artificial_detuning_dict = self.get_param_value(
+            'artificial_detuning_dict')
+        if artificial_detuning_dict is None:
+            artificial_detuning = self.get_param_value('artificial_detuning')
+            if 'preprocessed_task_list' in self.metadata:
+                pptl = self.metadata['preprocessed_task_list']
+                artificial_detuning_dict = OrderedDict([
+                    (t['qb'], t['artificial_detuning']) for t in pptl
+                ])
+            elif artificial_detuning is not None:
+                # legacy case
+                if isinstance(artificial_detuning, dict):
+                    artificial_detuning_dict = artificial_detuning
+                else:
+                    artificial_detuning_dict = OrderedDict(
+                        [(qbn, artificial_detuning) for qbn in self.qb_names])
+        if raise_error and artificial_detuning_dict is None:
+            raise ValueError('"artificial_detuning" not found.')
+        return artificial_detuning_dict
+
+
+# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -56,7 +103,7 @@ class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
         if self.metadata is None:
             self.metadata = {}
         cal_points = self.metadata.get('cal_points', None)
-        cal_points = self.options_dict.get('cal_points', cal_points)
+        cal_points = self.get_param_value('cal_points', cal_points)
         cal_points_list = roa.convert_channel_names_to_index(
             cal_points, len(self.raw_data_dict['measured_values'][0]),
             self.raw_data_dict['value_names'])
@@ -123,7 +170,7 @@ class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
 
     def _find_calibration_indices(self):
         cal_indices = set()
-        cal_points = self.options_dict['cal_points']
+        cal_points = self.get_param_value('cal_points')
         nr_segments = self.raw_data_dict['measured_values'].shape[-1]
         for observable in cal_points:
             if isinstance(observable, (list, np.ndarray)):
@@ -348,7 +395,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.create_sweep_points_dict()
         self.get_num_cal_points()
         self.update_sweep_points_dict()
-        if self.options_dict.get('TwoD', False):
+        if self.get_param_value('TwoD', False):
             self.create_sweep_points_2D_dict()
 
     def get_channel_map(self):
@@ -562,21 +609,39 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # Without deepcopy, the value in the options_dict/metadata would be
         # modified as well. This would break MultiCZgate_Calib_Analysis which
         # compares what this class sets for self.data_to_fit and what was given
-        # in options_dict/metadata
+        # in options_dict/metadata/default_options
         data_to_fit = deepcopy(self.get_param_value('data_to_fit'))
-        if data_to_fit is None or not len(data_to_fit):
-            # If we have cal points, but data_to_fit is not specified,
-            # choose a reasonable default value.
-            data_to_fit = {}
-            for qbn in self.qb_names:
-                if not len(self.cal_states_dict[qbn]) or \
-                        'pca' in self.rotation_type[qbn].lower():
-                    data_to_fit[qbn] = self.rotation_type[qbn]
-                else:
-                    csr = [(k, v) for k, v in
-                           self.cal_states_rotations[qbn].items()]
-                    csr.sort(key=lambda t: t[1])
-                    data_to_fit[qbn] = f'p{csr[-1][0]}'
+        if data_to_fit is None:
+            # It could happen that it was passed as None or was not specified in the
+            # metadata. In this case, it makes sense to still check the
+            # default option because data_to_fit must be specified.
+            # Note that passing an empty dict as data_to_fit will keep
+            # data_to_fit empty as expected.
+            data_to_fit = deepcopy(self.default_options.get('data_to_fit'))
+            if data_to_fit is None:
+                # If we have cal points, but data_to_fit is not specified,
+                # choose a reasonable default value.
+                data_to_fit = {}
+                for qbn in self.qb_names:
+                    if not len(self.cal_states_dict[qbn]) or \
+                            'pca' in self.rotation_type[qbn].lower():
+                        # cal states do not exist or the rotation type is some
+                        # kind of pca: assign rotation type
+                        # to the data to fit such that the rotation type appears
+                        # in the plot title and figure names. This allows for
+                        # plots with unique names if the same data is analysed
+                        # with different rotation types.
+                        data_to_fit[qbn] = self.rotation_type[qbn]
+                    else:
+                        # cal states exist or rotation_type is cal_states but
+                        # cal states weren't specified:
+                        # the highest transmon state will be fitted
+                        csr = [(k, v) for k, v in
+                               self.cal_states_rotations[qbn].items()]
+                        # sort by transmon state (lowest to highest)
+                        csr.sort(key=lambda t: t[1])
+                        # take letter of the highest transmon state
+                        data_to_fit[qbn] = f'p{csr[-1][0]}'
 
         # make sure no extra qubit names exist in data_to_fit compared to
         # self.qb_names (can happen if user passes qb_names)
@@ -1016,10 +1081,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         provided cal points info, see get_cal_points method).
 
         Then checks whether the number of sweep points matches the size of the
-        data. If not, then no cal points information was provided but cal
-        points were used in the experiment.
-            In this case, the no_cp_but_cp_in_data is set to True (will be
-            checked in update_sweep_points_dict).
+        data. If not, then either:
+            1. no cal points information was provided but cal points were used
+            in the experiment. In this case, the no_cp_but_cp_in_data is set
+            to True (will be checked in update_sweep_points_dict).
+            2. the data_type is "singleshot", and there is obviously a mismatch
+             between the number of sweep points and the length of the data array.
+            In that case, num_cal_points is assumed to be 0 and if
+            there are any cal pointstreated correctly by the single_shot
+            processing methods.
 
         Creates the attributes
             - self.num_cal_points
@@ -1037,7 +1107,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         mrpq = self.proc_data_dict['meas_results_per_qb']
         mrpq_raw_dict = mrpq[list(mrpq)[0]]
         num_data_points = len(mrpq_raw_dict[list(mrpq_raw_dict)[0]])
-        if self.num_cal_points == 0 and num_data_points != num_sp:
+        if self.num_cal_points == 0 and num_data_points != num_sp and \
+                self.get_param_value('data_type', 'averaged') != 'singleshot':
             # No cal_points information was provided but cal points were part
             # of the measurement.
             self.num_cal_points = num_data_points - num_sp
@@ -1675,15 +1746,20 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     def get_latex_prob_label(prob_label):
         if '$' in prob_label:
             return prob_label
-        elif 'p' in prob_label.lower():
-            return r'$|{}\rangle$'.format(prob_label[-1])
         else:
-            return r'$|{}\rangle$'.format(prob_label)
+            # search for "p" plus a letter between a and z, enclosed by
+            # underscores (or at beginning/end of string)
+            res = re.search('_p([a-z])_', '_' + prob_label.lower() + '_')
+            if res:
+                return r'$|{}\rangle$'.format(res.expand(r'\1'))
+            else:
+                return r'$|{}\rangle$'.format(prob_label)
 
     def get_yaxis_label(self, qb_name, data_key=None):
-        if self.rotate and ('pca' in self.rotation_type[qb_name].lower() or
-                            not len(self.cal_states_dict[
+        if self.rotate and (self.rotation_type[qb_name].lower() != 'cal_states'
+                            or not len(self.cal_states_dict[
                                         list(self.cal_states_dict)[0]])):
+            # some kind of pca was done
             return 'Strongest principal component (arb.)'
         else:
             if data_key is None:
@@ -1990,64 +2066,44 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         averaged_shots[i]
 
     def prepare_plots(self):
-        if self.get_param_value('plot_proj_data', default_value=True):
-            select_split = self.get_param_value('select_split')
-            fig_name_suffix = self.get_param_value('fig_name_suffix', '')
-            title_suffix = self.get_param_value('title_suffix', '')
-            for qb_name, corr_data in self.proc_data_dict[
-                    'projected_data_dict'].items():
-                fig_name = f'projected_plot_{qb_name}'
-                title_suf = title_suffix
-                if select_split is not None:
-                    param, idx = select_split[qb_name]
-                    # remove qb_name from param
-                    p = '_'.join([e for e in param.split('_') if e != qb_name])
-                    # create suffix
-                    suf = f'({p}, {str(np.round(idx, 3))})'
-                    # add suffix
-                    fig_name += f'_{suf}'
-                    title_suf = f'{suf}_{title_suf}' if \
-                        len(title_suf) else suf
-                if isinstance(corr_data, dict):
-                    for data_key, data in corr_data.items():
-                        fn = f'{fig_name}_{data_key}'
-                        if not self.rotate:
-                            data_label = ''
-                            plot_name_suffix = data_key
-                            plot_cal_points = False
-                        else:
-                            data_label = 'Data'
-                            plot_name_suffix = ''
-                            plot_cal_points = (
-                                not self.options_dict.get('TwoD', False))
-                        data_axis_label = self.get_yaxis_label(qb_name,
-                                                               data_key)
-                        tf = f'{data_key}_{title_suf}' if \
-                            len(title_suf) else data_key
-                        self.prepare_projected_data_plot(
-                            fn, data, qb_name=qb_name,
-                            data_label=data_label,
-                            title_suffix=tf,
-                            plot_name_suffix=plot_name_suffix,
-                            fig_name_suffix=fig_name_suffix,
-                            data_axis_label=data_axis_label,
-                            plot_cal_points=plot_cal_points)
+        """
+        Prepares the plot dicts for the raw data and the projected data.
+        """
+        self.prepare_raw_data_plots()
+        self.prepare_projected_data_plots()
 
-                else:
-                    fig_name = 'projected_plot_' + qb_name
-                    self.prepare_projected_data_plot(
-                        fig_name, corr_data, qb_name=qb_name,
-                        plot_cal_points=(
-                            not self.options_dict.get('TwoD', False)))
+    def prepare_raw_data_plots(self):
+        """
+        Calls _prepare_raw_data_plots if plot_raw_data (passed in the
+        options_dict, metadata, or default_options) is True.
 
+        If the measurement had active reset readouts (specified in
+        preparation_params), _prepare_raw_data_plots is called again with
+        plot_filtered=False (see docstring there) in order to create plots both
+        with and without the data points corresponding to the active reset
+        readouts.
+        """
         if self.get_param_value('plot_raw_data', default_value=True):
-            self.prepare_raw_data_plots(plot_filtered=False)
+            self._prepare_raw_data_plots(plot_filtered=False)
             if 'preparation_params' in self.metadata:
                 if 'active' in self.metadata['preparation_params'].get(
                         'preparation_type', 'wait'):
-                    self.prepare_raw_data_plots(plot_filtered=True)
+                    # plot raw data without the active reset readouts
+                    self._prepare_raw_data_plots(plot_filtered=True)
 
-    def prepare_raw_data_plots(self, plot_filtered=False):
+    def _prepare_raw_data_plots(self, plot_filtered=False):
+        """
+        Prepares plots of the raw data stored in
+        proc_data_dict['meas_results_per_qb'] or
+        proc_data_dict['meas_results_per_qb_raw'].
+
+        Args:
+            plot_filtered: specifies whether to plot the raw data from
+                meas_results_per_qb (True) or meas_results_per_qb_raw (False)
+                The former case is useful for measurements that contain active
+                reset readouts, which will be not be shown in the plot if
+                plot_filtered == False.
+        """
         if plot_filtered or not self.data_with_reset:
             key = 'meas_results_per_qb'
             suffix = 'filtered' if self.data_with_reset else ''
@@ -2079,44 +2135,56 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             plot_name = 'raw_plot_' + qb_name + suffix
             xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+            prep_1d_plot = True
             for ax_id, ro_channel in enumerate(raw_data_dict):
                 if self.get_param_value('TwoD', default_value=False):
-                    if self.sp is None:
-                        soft_sweep_params = self.get_param_value(
-                            'soft_sweep_params')
-                        if soft_sweep_params is not None:
-                            yunit = list(soft_sweep_params.values())[0]['unit']
-                        else:
-                            yunit = self.raw_data_dict[
-                                'sweep_parameter_units'][1]
-                        if np.ndim(yunit) > 0:
-                            yunit = yunit[0]
-                    for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                            qb_name].items():
-                        ylabel = pn
-                        if self.sp is not None:
-                            yunit = self.sp.get_sweep_params_property(
-                                'unit', dimension=1, param_names=pn)
-                            ylabel = self.sp.get_sweep_params_property(
-                                'label', dimension=1, param_names=pn)
-                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                            'fig_id': plot_name + '_' + pn,
-                            'ax_id': ax_id,
-                            'plotfn': self.plot_colorxy,
-                            'xvals': sweep_points,
-                            'yvals': ssp,
-                            'zvals': raw_data_dict[ro_channel].T,
-                            'xlabel': xlabel,
-                            'xunit': xunit,
-                            'ylabel': ylabel,
-                            'yunit': yunit,
-                            'numplotsx': numplotsx,
-                            'numplotsy': numplotsy,
-                            'plotsize': (plotsize[0]*numplotsx,
-                                         plotsize[1]*numplotsy),
-                            'title': fig_title,
-                            'clabel': '{} (Vpeak)'.format(ro_channel)}
-                else:
+                    sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+                    if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                        # Only prepare 2D plots when there is more than one soft
+                        # sweep points. When there is only one soft sweep point
+                        # we want to do 1D plots which are more meaningful
+                        prep_1d_plot = False
+                        if self.sp is None:
+                            soft_sweep_params = self.get_param_value(
+                                'soft_sweep_params')
+                            if soft_sweep_params is not None:
+                                yunit = list(soft_sweep_params.values())[0]['unit']
+                            else:
+                                yunit = self.raw_data_dict[
+                                    'sweep_parameter_units'][1]
+                            if np.ndim(yunit) > 0:
+                                yunit = yunit[0]
+                        for pn, ssp in sp2dd.items():
+                            ylabel = pn
+                            if self.sp is not None:
+                                yunit = self.sp.get_sweep_params_property(
+                                    'unit', dimension=1, param_names=pn)
+                                ylabel = self.sp.get_sweep_params_property(
+                                    'label', dimension=1, param_names=pn)
+                            self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                                'fig_id': plot_name + '_' + pn,
+                                'ax_id': ax_id,
+                                'plotfn': self.plot_colorxy,
+                                'xvals': sweep_points,
+                                'yvals': ssp,
+                                'zvals': raw_data_dict[ro_channel].T,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': ylabel,
+                                'yunit': yunit,
+                                'numplotsx': numplotsx,
+                                'numplotsy': numplotsy,
+                                'plotsize': (plotsize[0]*numplotsx,
+                                             plotsize[1]*numplotsy),
+                                'title': fig_title,
+                                'clabel': '{} (Vpeak)'.format(ro_channel)}
+
+                if prep_1d_plot:
+                    yvals = raw_data_dict[ro_channel]
+                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
+                        # only one soft sweep point: prepare 1D plot which is
+                        # more meaningful
+                        yvals = np.squeeze(yvals, axis=1)
                     self.plot_dicts[plot_name + '_' + ro_channel] = {
                         'fig_id': plot_name,
                         'ax_id': ax_id,
@@ -2124,7 +2192,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'xvals': sweep_points,
                         'xlabel': xlabel,
                         'xunit': xunit,
-                        'yvals': raw_data_dict[ro_channel],
+                        'yvals': yvals,
                         'ylabel': '{} (Vpeak)'.format(ro_channel),
                         'yunit': '',
                         'numplotsx': numplotsx,
@@ -2136,12 +2204,101 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.plot_dicts[
                     plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
 
+    def prepare_projected_data_plots(self):
+        """
+        If plot_proj_data  is True (passed in the options_dict, metadata, or
+        default_options), calls prepare_projected_data_plot with the correct
+        input parameters for each key in proc_data_dict['projected_data_dict'].
+        """
+        if self.get_param_value('plot_proj_data', default_value=True):
+            select_split = self.get_param_value('select_split')
+            fig_name_suffix = self.get_param_value('fig_name_suffix', '')
+            title_suffix = self.get_param_value('title_suffix', '')
+            for qb_name, corr_data in self.proc_data_dict[
+                    'projected_data_dict'].items():
+                fig_name = f'projected_plot_{qb_name}'
+                title_suf = title_suffix
+                if select_split is not None:
+                    param, idx = select_split[qb_name]
+                    # remove qb_name from param
+                    p = '_'.join([e for e in param.split('_') if e != qb_name])
+                    # create suffix
+                    suf = f'({p}, {str(np.round(idx, 3))})'
+                    # add suffix
+                    fig_name += f'_{suf}'
+                    title_suf = f'{suf}_{title_suf}' if \
+                        len(title_suf) else suf
+                if isinstance(corr_data, dict):
+                    for data_key, data in corr_data.items():
+                        fn = f'{fig_name}_{data_key}'
+                        if not self.rotate:
+                            data_label = ''
+                            plot_name_suffix = data_key
+                            plot_cal_points = False
+                        else:
+                            data_label = 'Data'
+                            plot_name_suffix = ''
+                            plot_cal_points = (
+                                not self.get_param_value('TwoD', False))
+                        data_axis_label = self.get_yaxis_label(qb_name,
+                                                               data_key)
+                        tf = f'{data_key}_{title_suf}' if \
+                            len(title_suf) else data_key
+                        self.prepare_projected_data_plot(
+                            fn, data, qb_name=qb_name,
+                            data_label=data_label,
+                            title_suffix=tf,
+                            plot_name_suffix=plot_name_suffix,
+                            fig_name_suffix=fig_name_suffix,
+                            data_axis_label=data_axis_label,
+                            plot_cal_points=plot_cal_points)
+
+                else:
+                    fig_name = 'projected_plot_' + qb_name
+                    self.prepare_projected_data_plot(
+                        fig_name, corr_data, qb_name=qb_name,
+                        plot_cal_points=(
+                            not self.get_param_value('TwoD', False)))
+
     def prepare_projected_data_plot(
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None):
+        """
+        Prepares one projected data plot, typically one of the keys in
+        proc_data_dict['projected_data_dict'].
 
+        Args:
+            fig_name: string with name of the figure
+            data: numpy array of data to plot, typically from
+                proc_data_dict['projected_data_dict']
+            qb_name: string with name of the qubit to which the data corresponds
+            title_suffix: string with axis title suffix (without the
+                underscore character '_' which is added by this method)
+            sweep_points: numpy array of sweep points corresponding to the data
+                If None, will be taken from proc_data_dict['sweep_points_dict']
+            plot_cal_points: bool specifying whether to prepare separate plot
+                dicts for the cal points (with individual colors taken from
+                self.get_cal_state_color)
+            plot_name_suffix: string with suffix for the key name under which
+                the plot dict will be added to self.plots_dicts (should not
+                contain the underscore character '_' which is added by this
+                method)
+            fig_name_suffix: string with figure title suffix (without the
+                underscore character '_' which is added by this method)
+            data_label: string with the legend label corresponding to the data
+            data_axis_label: string with the yaxis label. If not specified, it
+                will be taken from self.get_yaxis_label.
+            do_legend_data: bool specifying whether to set to True the do_legend
+                key of the plot dict corresponding to the data
+            do_legend_cal_states: bool specifying whether to set to True the
+                do_legend key of the plot dict corresponding to the cal points.
+                Only has an effect if plot_cal_points is True.
+            TwoD: bool specifying whether to prepare a plot dict for 2D (True)
+                or 1D data (False).
+            yrange: tuple/list of floats for the plot yrange
+        """
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
 
@@ -2208,40 +2365,52 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
         xlabel, xunit = self.get_xaxis_label_unit(qb_name)
 
+        prep_1d_plot = True
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', default_value=False)
         if TwoD:
-            if self.sp is None:
-                soft_sweep_params = self.get_param_value(
-                    'soft_sweep_params')
-                if soft_sweep_params is not None:
-                    yunit = list(soft_sweep_params.values())[0]['unit']
-                else:
-                    yunit = self.raw_data_dict['sweep_parameter_units'][1]
-                if np.ndim(yunit) > 0:
-                    yunit = yunit[0]
-            for pn, ssp in self.proc_data_dict['sweep_points_2D_dict'][
-                    qb_name].items():
-                ylabel = pn
-                if self.sp is not None:
-                    yunit = self.sp.get_sweep_params_property(
-                        'unit', dimension=1, param_names=pn)
-                    ylabel = self.sp.get_sweep_params_property(
-                        'label', dimension=1, param_names=pn)
-                self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
-                    'plotfn': self.plot_colorxy,
-                    'fig_id': fig_name + '_' + pn,
-                    'xvals': xvals,
-                    'yvals': ssp,
-                    'zvals': yvals,
-                    'xlabel': xlabel,
-                    'xunit': xunit,
-                    'ylabel': ylabel,
-                    'yunit': yunit,
-                    'zrange': self.get_param_value('zrange', None),
-                    'title': title,
-                    'clabel': data_axis_label}
-        else:
+            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+            if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                # Only prepare 2D plots when there is more than one soft
+                # sweep points. When there is only one soft sweep point
+                # we want to do 1D plots which are more meaningful
+                prep_1d_plot = False
+                if self.sp is None:
+                    soft_sweep_params = self.get_param_value(
+                        'soft_sweep_params')
+                    if soft_sweep_params is not None:
+                        yunit = list(soft_sweep_params.values())[0]['unit']
+                    else:
+                        yunit = self.raw_data_dict['sweep_parameter_units'][1]
+                    if np.ndim(yunit) > 0:
+                        yunit = yunit[0]
+                for pn, ssp in sp2dd.items():
+                    ylabel = pn
+                    if self.sp is not None:
+                        yunit = self.sp.get_sweep_params_property(
+                            'unit', dimension=1, param_names=pn)
+                        ylabel = self.sp.get_sweep_params_property(
+                            'label', dimension=1, param_names=pn)
+                    self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
+                        'plotfn': self.plot_colorxy,
+                        'fig_id': fig_name + '_' + pn,
+                        'xvals': xvals,
+                        'yvals': ssp,
+                        'zvals': yvals,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'yrange': yrange,
+                        'zrange': self.get_param_value('zrange', None),
+                        'title': title,
+                        'clabel': data_axis_label}
+
+        if prep_1d_plot:
+            if len(yvals.shape) > 1 and yvals.shape[0] == 1:
+                # only one soft sweep point: prepare 1D plot which is
+                # more meaningful
+                yvals = np.squeeze(yvals, axis=0)
             self.plot_dicts[plot_dict_name] = {
                 'plotfn': self.plot_line,
                 'fig_id': fig_name,
@@ -2252,6 +2421,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'yvals': yvals,
                 'ylabel': data_axis_label,
                 'yunit': '',
+                'yrange': yrange,
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': 'none',
@@ -3400,7 +3570,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         self.single_timestamp = True
         self.params_dict = {'exp_metadata': 'exp_metadata'}
         self.numeric_params = []
-        self.data_type = self.options_dict['data_type']
+        self.data_type = self.get_param_value('data_type')
         if self.data_type == 'averaged':
             self.base_analysis = AveragedTimedomainAnalysis(*args, **kwargs)
         elif self.data_type == 'singleshot':
@@ -3413,22 +3583,23 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             self.run_analysis()
 
     def process_data(self):
-        tomography_qubits = self.options_dict.get('tomography_qubits', None)
+        tomography_qubits = self.get_param_value('tomography_qubits')
         data, Fs, Omega = self.base_analysis.measurement_operators_and_results(
                               tomography_qubits)
-        if 'data_filter' in self.options_dict:
-            data = self.options_dict['data_filter'](data.T).T
+        data_filter = self.get_param_value('data_filter')
+        if data_filter is not None:
+            data = data_filter(data.T).T
 
         data = data.T
         for i, v in enumerate(data):
             data[i] = v / v.sum()
         data = data.T
 
-        Fs = self.options_dict.get('meas_operators', Fs)
+        Fs = self.get_param_value('meas_operators', Fs)
         Fs = [qtp.Qobj(F) for F in Fs]
         d = Fs[0].shape[0]
         self.proc_data_dict['d'] = d
-        Omega = self.options_dict.get('covar_matrix', Omega)
+        Omega = self.get_param_value('covar_matrix', Omega)
         if Omega is None:
             Omega = np.diag(np.ones(len(Fs)))
         elif len(Omega.shape) == 1:
@@ -3468,20 +3639,20 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         self.proc_data_dict['covar_matrix'] = all_Omegas
         self.proc_data_dict['meas_results'] = all_mus
 
-        if self.options_dict.get('pauli_values', False):
+        if self.get_param_value('pauli_values', False):
             rho_pauli = tomo.pauli_values_tomography(all_mus,Fs,basis_rots_str)
             self.proc_data_dict['rho_raw'] = rho_pauli
             self.proc_data_dict['rho'] = rho_pauli
-        elif self.options_dict.get('pauli_raw', False):
+        elif self.get_param_value('pauli_raw', False):
             pauli_raw = self.generate_raw_pauli_set()
             rho_raw = tomo.pauli_set_to_density_matrix(pauli_raw)
             self.proc_data_dict['rho_raw'] = rho_raw
             self.proc_data_dict['rho'] = rho_raw
-        elif self.options_dict.get('imle', False):
+        elif self.get_param_value('imle', False):
             it = metadata.get('iterations', None)
-            it = self.options_dict.get('iterations', it)
+            it = self.get_param_value('iterations', it)
             tol = metadata.get('tolerance', None)
-            tol = self.options_dict.get('tolerance', tol)
+            tol = self.get_param_value('tolerance', tol)
             rho_imle = tomo.imle_tomography(
                 all_mus, all_Fs, it, tol)
             self.proc_data_dict['rho_imle'] = rho_imle
@@ -3493,7 +3664,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
                 else None )
             self.proc_data_dict['rho_ls'] = rho_ls
             self.proc_data_dict['rho'] = rho_ls
-            if self.options_dict.get('mle', False):
+            if self.get_param_value('mle', False):
                 rho_mle = tomo.mle_tomography(
                     all_mus, all_Fs,
                     all_Omegas if self.get_param_value('use_covariance_matrix', False) else None,
@@ -3505,7 +3676,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
         self.proc_data_dict['purity'] = (rho * rho).tr().real
 
         rho_target = metadata.get('rho_target', None)
-        rho_target = self.options_dict.get('rho_target', rho_target)
+        rho_target = self.get_param_value('rho_target', rho_target)
         if rho_target is not None:
             self.proc_data_dict['fidelity'] = tomo.fidelity(rho, rho_target)
         if d == 4:
@@ -3522,12 +3693,12 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             self.prepare_pauli_basis_plot()
 
     def prepare_density_matrix_plot(self):
-        self.tight_fig = self.options_dict.get('tight_fig', False)
+        self.tight_fig = self.get_param_value('tight_fig', False)
         rho_target = self.raw_data_dict['exp_metadata'].get('rho_target', None)
-        rho_target = self.options_dict.get('rho_target', rho_target)
+        rho_target = self.get_param_value('rho_target', rho_target)
         d = self.proc_data_dict['d']
-        xtick_labels = self.options_dict.get('rho_ticklabels', None)
-        ytick_labels = self.options_dict.get('rho_ticklabels', None)
+        xtick_labels = self.get_param_value('rho_ticklabels', None)
+        ytick_labels = self.get_param_value('rho_ticklabels', None)
         if 2 ** (d.bit_length() - 1) == d:
             nr_qubits = d.bit_length() - 1
             fmt_string = '{{:0{}b}}'.format(nr_qubits)
@@ -3537,14 +3708,14 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             if ytick_labels is None:
                 ytick_labels = [r'$\langle' + lbl + '|$' for lbl in labels]
         color = (0.5 * np.angle(self.proc_data_dict['rho'].full()) / np.pi) % 1.
-        cmap = self.options_dict.get('rho_colormap', self.default_phase_cmap())
-        if self.options_dict.get('pauli_raw', False):
+        cmap = self.get_param_value('rho_colormap', self.default_phase_cmap())
+        if self.get_param_value('pauli_raw', False):
             title = 'Density matrix reconstructed from the Pauli (raw) set\n'
-        elif self.options_dict.get('pauli_values', False):
+        elif self.get_param_value('pauli_values', False):
             title = 'Density matrix reconstructed from the Pauli set\n'
-        elif self.options_dict.get('mle', False):
+        elif self.get_param_value('mle', False):
             title = 'Maximum likelihood fit of the density matrix\n'
-        elif self.options_dict.get('it_mle', False):
+        elif self.get_param_value('it_mle', False):
             title = 'Iterative maximum likelihood fit of the density matrix\n'
         else:
             title = 'Least squares fit of the density matrix\n'
@@ -3702,13 +3873,13 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
                     [53, 54, 55, 57, 58, 59, 61, 62, 63]
         else:
             order = np.arange(4**nr_qubits)[1:]
-        if self.options_dict.get('pauli_raw', False):
+        if self.get_param_value('pauli_raw', False):
             fit_type = 'raw counts'
-        elif self.options_dict.get('pauli_values', False):
+        elif self.get_param_value('pauli_values', False):
             fit_type = 'corrected counts'
-        elif self.options_dict.get('mle', False):
+        elif self.get_param_value('mle', False):
             fit_type = 'maximum likelihood estimation'
-        elif self.options_dict.get('imle', False):
+        elif self.get_param_value('imle', False):
             fit_type = 'iterative maximum likelihood estimation'
         else:
             fit_type = 'least squares fit'
@@ -3741,7 +3912,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             self.plot_dicts['pauli_basis']['plotsize'] = (10, 5)
 
         rho_target = self.raw_data_dict['exp_metadata'].get('rho_target', None)
-        rho_target = self.options_dict.get('rho_target', rho_target)
+        rho_target = self.get_param_value('rho_target', rho_target)
         if rho_target is not None:
             rho_target = qtp.Qobj(rho_target)
             ytar = tomo.density_matrix_to_pauli_basis(rho_target)
@@ -3816,8 +3987,6 @@ class ReadoutROPhotonsAnalysis(Single_Qubit_TimeDomainAnalysis):
                          options_dict=options_dict,
                          close_figs=close_figs, label=label,
                          extract_only=extract_only, do_fitting=do_fitting)
-        if self.options_dict.get('TwoD', None) is None:
-            self.options_dict['TwoD'] = True
         self.label = label
         self.params_dict = {
             'measurementstring': 'measurementstring',
@@ -4545,15 +4714,8 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
         super().__init__(qb_names, *args, **kwargs)
 
     def extract_data(self):
+        self.default_options['rotation_type'] = 'global_PCA'
         super().extract_data()
-        # Set some default values specific to FluxPulseScopeAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('rotation_type', default_value=None) is None:
-            self.options_dict['rotation_type'] = 'global_PCA'
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def process_data(self):
         super().process_data()
@@ -4699,7 +4861,7 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             if self.do_fitting:
-                if self.options_dict.get('scatter', True):
+                if self.get_param_value('scatter', True):
                     label = f'freq_scatter_{qb}_scatter'
                     self.plot_dicts[label] = {
                         'title': rdd['measurementstring'] +
@@ -4879,8 +5041,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             # Plot all fits in single figure
-            if self.options_dict.get('all_fits', False) and self.do_fitting:
-                colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            if self.get_param_value('all_fits', False) and self.do_fitting:
+                colormap = self.get_param_value('colormap', mpl.cm.Blues)
                 for i in range(len(self.amps[qb])):
                     color = colormap(i/(len(self.amps[qb])-1))
                     label = f'exp_fit_{qb}_amp_{i}'
@@ -4893,7 +5055,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ylabel': r'Excited state population',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': f'freq={fitid:.4f}' if p == 1
                                             else f'amp={fitid:.4f}',
@@ -5030,10 +5192,10 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             # Plot all fits in single figure
-            if not self.options_dict.get('all_fits', False):
+            if not self.get_param_value('all_fits', False):
                 continue
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['frequencies'])-1))
                 label = f'exp_fit_{qb}_amp_{i}'
@@ -5049,7 +5211,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'ylabel': r'Excited state population',
                     'plotfn': self.plot_fit,
                     'fit_res': self.fit_res[label],
-                    'plot_init': self.options_dict.get('plot_init', False),
+                    'plot_init': self.get_param_value('plot_init', False),
                     'color': color,
                     'setlabel': f'freq={fitid:.4f}' if freqs
                                         else f'amp={fitid:.4f}',
@@ -5185,7 +5347,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'zlabel': 'Excited state population',
                 }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i, amp in enumerate(pdd['amps_reshaped']):
                 color = colormap(i/(len(pdd['amps_reshaped'])-1))
                 label = f'cos_data_{qb}_{i}'
@@ -5214,7 +5376,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'amplitude_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': f'fit, amp={amp:.4f}',
                     }
@@ -5386,7 +5548,7 @@ class DriveCrosstalkCancellationAnalysis(MultiQubit_TimeDomain_Analysis):
                 'zlabel': 'Excited state population',
             }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.Blues)
+            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i, pval in enumerate(pdd['qb_sweep_points'][qb]):
                 if i == len(pdd['qb_sweep_points'][qb]) - 1:
                     legendlabel='data, ref.'
@@ -5426,7 +5588,7 @@ class DriveCrosstalkCancellationAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'param_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'do_legend': False,
                         # 'setlabel': legendlabel
@@ -5678,7 +5840,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                 'zlabel': 'Excited state population',
             }
 
-            colormap = self.options_dict.get('colormap', mpl.cm.plasma)
+            colormap = self.get_param_value('colormap', mpl.cm.plasma)
             for i, pval in enumerate(pdd['target_amps']):
                 legendlabel = f'data, amp. = {pval:.4f} V'
                 color = colormap(i / (len(pdd['target_amps']) - 1))
@@ -5710,7 +5872,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'param_crossections_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[label],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'color': color,
                         'setlabel': legendlabel,
                         'do_legend': False,
@@ -5798,7 +5960,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                         'ax_id': f'{param}_{qb}',
                         'plotfn': self.plot_fit,
                         'fit_res': self.fit_res[f'{param}_fit_{qb}'],
-                        'plot_init': self.options_dict.get('plot_init', False),
+                        'plot_init': self.get_param_value('plot_init', False),
                         'linestyle': '-',
                         'marker': '',
                         'color': 'C1',
@@ -6134,13 +6296,6 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
 
     def extract_data(self):
         super().extract_data()
-        # Set some default values specific to RabiFrequencySweepAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
         # Extract additional parameters from the HDF file.
         params_dict = {}
         for qbn in self.qb_names:
@@ -6360,7 +6515,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 model=exp_decay_mod, data=data, t=sweep_points)
             guess_pars['amplitude'].vary = True
             guess_pars['tau'].vary = True
-            if self.options_dict.get('vary_offset', False):
+            if self.get_param_value('vary_offset', False):
                 guess_pars['offset'].vary = True
             else:
                 guess_pars['offset'].value = 0
@@ -6432,7 +6587,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                     'text_string': textstr}
 
 
-class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
+class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     """
     Analysis for a Ramsey measurement.
 
@@ -6476,11 +6631,11 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 guess_pars['amplitude'].value = 0.5
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
+                guess_pars['tau'].min = 0
                 guess_pars['phase'].vary = True
                 guess_pars['n'].vary = False
                 guess_pars['oscillation_offset'].vary = \
-                        'f' in self.data_to_fit[qbn]
-                # guess_pars['exponential_offset'].value = 0.5
+                    'f' in self.data_to_fit[qbn]
                 guess_pars['exponential_offset'].vary = True
                 self.set_user_guess_pars(guess_pars)
                 self.fit_dicts[key] = {
@@ -6500,25 +6655,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
                 add_fit_dict(qbn, all_data, fit_keys)
 
     def analyze_fit_results(self):
-        self.artificial_detuning_dict = self.get_param_value(
-            'artificial_detuning_dict')
-        if self.artificial_detuning_dict is None:
-            artificial_detuning = self.get_param_value('artificial_detuning')
-            if 'preprocessed_task_list' in self.metadata:
-                pptl = self.metadata['preprocessed_task_list']
-                self.artificial_detuning_dict = OrderedDict([
-                    (t['qb'], t['artificial_detuning']) for t in pptl
-                ])
-            elif artificial_detuning is not None:
-                # legacy case
-                if isinstance(artificial_detuning, dict):
-                    self.artificial_detuning_dict = artificial_detuning
-                else:
-                    self.artificial_detuning_dict = OrderedDict(
-                        [(qbn, artificial_detuning) for qbn in self.qb_names])
-        if self.artificial_detuning_dict is None:
-            raise ValueError('"artificial_detuning" not found.')
-
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form fot_type_qbn_i if TwoD else fit_type_qbn
@@ -6562,7 +6700,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'artificial_detuning'] = self.artificial_detuning_dict[qbn]
 
-        hdf_group_name_suffix = self.options_dict.get(
+        hdf_group_name_suffix = self.get_param_value(
             'hdf_group_name_suffix', '')
         self.save_processed_data(key='analysis_params_dict' +
                                      hdf_group_name_suffix)
@@ -6707,15 +6845,6 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class ReparkingRamseyAnalysis(RamseyAnalysis):
-
-    def extract_data(self):
-        super().extract_data()
-        # Set some default values specific to ReparkingRamseyAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
@@ -6933,14 +7062,14 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
             # SweepPoints class.
             unique_sp = np.unique(sweep_points[:3])
             if unique_sp.size > 1:
-                if 'sp1d_filter' in self.options_dict:
+                if self.get_param_value('sp1d_filter') is not None:
                     log.warning('Passing sp1d_filter might not work '
                                 'for this QScaleAnalysis because the sweep '
                                 'points need to be repeated 3x for it to '
                                 'match the data size.')
                 else:
                     # repeat each sweep points 3x
-                    self.options_dict['sp1d_filter'] = \
+                    self.default_options['sp1d_filter'] = \
                         lambda sp: np.repeat(sp, 3)
                     # update self.num_cal_points and
                     # self.proc_data_dict['sweep_points_dict']
@@ -7174,9 +7303,9 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': 'gray'}
 
 
-class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
+class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, extract_only=False, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -7187,36 +7316,53 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, **kwargs)
-        if self.options_dict.get('artificial_detuning', None) is not None:
-            self.echo_analysis = RamseyAnalysis(*args, auto=False, **kwargs)
+        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
+
+        # get experimental metadata from file
+        self.metadata = self.get_data_from_timestamp_list(
+            {'md': 'Experimental Data.Experimental Metadata'})['md']
+
+        # get _get_artificial_detuning_dict
+        self.artificial_detuning_dict = self.get_artificial_detuning_dict(
+            raise_error=False)
+
+        # Decide whether to do a RamseyAnalysis or a T1Analysis
+        self.run_ramsey = self.artificial_detuning_dict is not None and \
+                any(list(self.artificial_detuning_dict.values()))
+
+        # Define options_dict for call to RamseyAnalysis or T1Analysis
+        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
+
+        if self.run_ramsey:
+            # artificial detuning was used and it is not 0
+            self.echo_analysis = RamseyAnalysis(*args, auto=auto,
+                                                extract_only=True,
+                                                options_dict=options_dict,
+                                                **kwargs)
         else:
-            if 'options_dict' in kwargs:
-                # kwargs.pop('options_dict')
-                kwargs['options_dict'].update({'vary_offset': True})
-            else:
-                kwargs['options_dict'] = {'vary_offset': True}
-            self.echo_analysis = T1Analysis(*args, auto=False, **kwargs)
+            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            self.echo_analysis = T1Analysis(*args, auto=auto,
+                                            extract_only=True,
+                                            options_dict=options_dict,
+                                            **kwargs)
 
         if auto:
-            try:
-                self.echo_analysis.extract_data()
-                self.qb_names = self.echo_analysis.qb_names
-                self.echo_analysis.process_data()
-                self.echo_analysis.prepare_fitting()
-                self.echo_analysis.run_fitting()
-                self.echo_analysis.save_fit_results()
-                self.analyze_fit_results()
-                self.prepare_plots()
-            except Exception as e:
-                if self.raise_exceptions:
-                    raise e
-                else:
-                    log.error("Unhandled error during analysis!")
-                    log.error(traceback.format_exc())
+            self.qb_names = self.echo_analysis.qb_names
+            # Run analysis of this class
+            super().run_analysis()
+
+    def extract_data(self):
+        """Skip for this class. Take raw_data_dict from self.echo_analysis
+        which is needed for a check in the BaseDataAnalsis.save_fit_results."""
+        self.raw_data_dict = self.echo_analysis.raw_data_dict
+
+    def process_data(self):
+        """Skip for this class. All relevant processing is done in
+        self.echo_analysis."""
+        pass
 
     def analyze_fit_results(self):
-        self.echo_analysis.analyze_fit_results()
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
@@ -7235,8 +7381,9 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
 
+        self.save_processed_data(key='analysis_params_dict')
+
     def prepare_plots(self):
-        self.echo_analysis.prepare_plots()
         for qbn in self.qb_names:
             # rename base plot
             figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
@@ -7268,7 +7415,10 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
                     '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
                     else ''))
             T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = '$T_2$ echo = {:.2f} $\mu$s'.format(
+            textstr = 'Echo Measurement with'
+            art_det = self.artificial_detuning_dict[qbn]*1e-6
+            textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+            textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo']*1e6) \
                       + ' $\pm$ {:.2f} $\mu$s'.format(
                 T2_dict[qbn]['T2_echo_stderr']*1e6) \
@@ -7277,9 +7427,26 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis):
 
             self.echo_analysis.plot_dicts['text_msg_' + qbn][
                 'text_string'] = textstr
+            # Set text colour to black.
+            # When the change in qubit frequency is larger than the artificial
+            # detuning, the qubit freq estimation is unreliable and the
+            # RamseyAnalysis will alert the user by producing a
+            # multi-coloured text string, in which case both the "color" and
+            # the "text_string" entries of the plot dict are lists with the
+            # same length. This warning is not relevant for the EchoAnalysis
+            # since we do not use it to estimate the qubit frequency.
+            # Not resetting the colour here will cause an error in the case
+            # of multi-coloured text strings.
+            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
+    def plot(self, **kw):
+        # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
-        self.echo_analysis.save_figures(close_figs=True)
+
+    def save_figures(self, **kw):
+        # Overload base method to run the method in echo_analysis
+        self.echo_analysis.save_figures(
+            close_figs=self.get_param_value('close_figs', True))
 
 
 class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -7366,7 +7533,7 @@ class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
         self.ramsey_add_pulse_analysis.save_figures(close_figs=True,
                                                     savebase='Ramsey_with')
 
-        self.options_dict['plot_proj_data'] = False
+        self.default_options['plot_proj_data'] = False
         self.metadata = {'plot_proj_data': False, 'plot_raw_data': False}
         super().prepare_plots()
 
@@ -7590,9 +7757,6 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self, *args, **kwargs):
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict.update({'TwoD': True})
-        kwargs.update({'options_dict': options_dict})
         self.phase_key = 'phase_diffs'
         self.legend_label_func = lambda qbn, row: ''
         super().__init__(*args, **kwargs)
@@ -7620,9 +7784,8 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
             for gate_qbs in self.gates_list:
                 if qbn in gate_qbs:
                     default_preselection_qbs[qbn].extend(gate_qbs)
-        preselection_qbs = self.get_param_value("preselection_qbs",
-                                                default_preselection_qbs)
-        self.options_dict.update({"preselection_qbs": preselection_qbs})
+        self.default_options.update(
+            {"preselection_qbs": default_preselection_qbs})
 
     def process_data(self):
         super().process_data()
@@ -8012,21 +8175,21 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
     def prepare_plots(self):
         len_ssp = len(self.proc_data_dict['analysis_params_dict'][
                           f'{self.phase_key}_{self.ramsey_qbnames[0]}']['val'])
-        if self.options_dict.get('plot_all_traces', True):
+        if self.get_param_value('plot_all_traces', True):
             for j, qbn in enumerate(self.qb_names):
-                if self.options_dict.get('plot_all_probs', True):
+                if self.get_param_value('plot_all_probs', True):
                     for prob_label, data_2d in self.proc_data_dict[
                             'projected_data_dict'][qbn].items():
-                        figure_name = self.plot_traces(prob_label, data_2d, qbn)
+                        self.plot_traces(prob_label, data_2d, qbn)
                 else:
                     for prob_label, data_2d in self.proc_data_dict[
                             'data_to_fit'][qbn]:
-                        figure_name = self.plot_traces(prob_label, data_2d, qbn)
+                        self.plot_traces(prob_label, data_2d, qbn)
 
                 if self.do_fitting and len_ssp == 1:
-                    self.options_dict.update({'TwoD': False,
-                                              'plot_proj_data': False})
-                    super().prepare_plots()
+                    # only plot raw data here; the projected data plots were
+                    # prepared above
+                    self.prepare_raw_data_plots()
 
                     if qbn in self.ramsey_qbnames:
                         # add the cphase + leakage textboxes to the
@@ -8202,9 +8365,6 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
 
 class CPhaseLeakageAnalysis(MultiCZgate_Calib_Analysis):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def extract_data(self):
         super().extract_data()
         # Find leakage and ramsey qubit names
@@ -8260,9 +8420,6 @@ class CPhaseLeakageAnalysis(MultiCZgate_Calib_Analysis):
 
 
 class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def process_data(self):
         super().process_data()
@@ -8667,6 +8824,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict, )
 
         if self.qb_names is None:
             # get all qubits from cal_points of first timetrace
@@ -8725,8 +8884,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                basis_labels = ["ge", "ef"] \
-                    if len(ana_params['timetraces'][qbn]) > 2 else ['ge']
+                n_labels = min(len(ana_params['timetraces'][qbn]) - 1, 2)
+                basis_labels = ["ge", "ef"][:n_labels]
 
             if isinstance(basis_labels, dict):
                 # if different basis for qubits, then select the according one
@@ -8742,7 +8901,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                               for b in basis_labels])
 
             # orthonormalize if required
-            if self.get_param_value("orthonormalize", False):
+            if self.get_param_value("orthonormalize", False) and len(basis):
                 # We need to consider the integration weights as a vector of
                 # real numbers to ensure the Gram-Schmidt transformation of the
                 # weights leads to a linear transformation of the integrated
@@ -8757,7 +8916,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                                 for bs in basis_labels]
 
             # scale if required
-            if self.get_param_value('scale_weights', True):
+            if self.get_param_value('scale_weights', True) and len(basis):
                 k = np.amax([(np.max(np.abs(b.real)),
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
@@ -9155,13 +9314,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
 
+            means = [mu for _, mu in
+                                self.proc_data_dict['analysis_params']
+                                    ['means'][qb_name].items()]
+
+            # calculate delta of means and set tol and cov based on this
+            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                    for mu_j in means]).flatten().max()
+
+            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            reg_covar = tol**2
+
             gm = GM(n_components=n_qb_states,
                     covariance_type=cov_type,
                     random_state=0,
+                    tol=tol,
+                    reg_covar=reg_covar,
                     weights_init=weights_init,
-                    means_init=[mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()], **kw)
+                    means_init=means, **kw)
             gm.fit(X)
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
@@ -9424,24 +9594,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     for reset and the residual excited state population.
 
     """
-    def __init__(self, options_dict: dict = None, auto=True, **kw):
-        '''
-        options dict options:
-            plot_raw_shots (bool): whether or not to plot histograms/scatter
-                plots of raw shots. False by default. Slows down the analysis as
-                it creates one plot per readout.
-            see BaseDataAnalysis for more.
-        '''
-        if options_dict is None:
-            options_dict = {}
-        options_dict.update({"TwoD": True})
-        super().__init__(options_dict=options_dict, auto=False,
-                         **kw)
-
-        self.create_job(options_dict=options_dict, auto=auto, **kw)
-
-        if auto:
-            self.run_analysis()
 
     def extract_data(self):
         super().extract_data()
@@ -9816,20 +9968,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _std_error(p, nshots=10000):
         return np.sqrt(np.abs(p)*(1-np.abs(p))/nshots)
 
+
 class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
-
-    def __init__(self, qb_names, *args, **kwargs):
-        params_dict = {}
-        for qbn in qb_names:
-            s = 'Instrument settings.'+qbn
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        # super().__init__(qb_names, *args, **kwargs)
-
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
-        super().__init__(qb_names, *args, **kwargs)
 
     def process_data(self):
         super().process_data()
@@ -9837,7 +9977,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
         # Make sure data has the right shape (len(hard_sp), len(soft_sp))
         for qbn, data in self.proc_data_dict['data_to_fit'].items():
             if data.shape[1] != self.proc_data_dict['sweep_points_dict'][qbn][
-                'sweep_points'].size:
+                    'sweep_points'].size:
                 self.proc_data_dict['data_to_fit'][qbn] = data.T
 
     def prepare_fitting(self):
@@ -9849,9 +9989,8 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
             if self.num_cal_points != 0:
                 data = data[:-self.num_cal_points]
             TwoErrorFuncModel = lmfit.Model(fit_mods.TwoErrorFunc)
-            guess_pars = fit_mods.TwoErrorFunc_guess(model=TwoErrorFuncModel,
-                                               data=data, \
-                                            delays=sweep_points)
+            guess_pars = fit_mods.TwoErrorFunc_guess(
+                model=TwoErrorFuncModel, data=data, delays=sweep_points)
             guess_pars['amp'].vary = True
             guess_pars['mu_A'].vary = True
             guess_pars['mu_B'].vary = True
@@ -9868,10 +10007,10 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
-            mu_A = self.fit_dicts['two_error_func_' + qbn]['fit_res'].best_values[
-                'mu_A']
-            mu_B = self.fit_dicts['two_error_func_' + qbn]['fit_res'].best_values[
-                'mu_B']
+            mu_A = self.fit_dicts['two_error_func_' + qbn][
+                'fit_res'].best_values['mu_A']
+            mu_B = self.fit_dicts['two_error_func_' + qbn][
+                'fit_res'].best_values['mu_B']
             fp_length = a_tools.get_instr_setting_value_from_file(
                 file_path=self.raw_data_dict['folder'],
                 instr_name=qbn, param_name='flux_pulse_pulse_length')
@@ -9881,32 +10020,30 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][qbn]['delay'] = \
                 mu_A + 0.5 * (mu_B - mu_A) - fp_length / 2
             try:
-                self.proc_data_dict['analysis_params_dict'][qbn]['delay_stderr'] = \
-                    1 / 2 * np.sqrt(
-                        self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                            'mu_A'].stderr ** 2
-                        + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                            'mu_B'].stderr ** 2)
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'delay_stderr'] = 1 / 2 * np.sqrt(
+                        self.fit_dicts['two_error_func_' + qbn][
+                            'fit_res'].params['mu_A'].stderr ** 2
+                        + self.fit_dicts['two_error_func_' + qbn][
+                            'fit_res'].params['mu_B'].stderr ** 2)
             except TypeError:
-                self.proc_data_dict['analysis_params_dict'][qbn]['delay_stderr']\
-                    = 0
-            self.proc_data_dict['analysis_params_dict'][qbn]['fp_length'] = \
-                (mu_B - mu_A)
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'delay_stderr'] = 0
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'fp_length'] = (mu_B - mu_A)
             try:
-                self.proc_data_dict['analysis_params_dict'][qbn]['fp_length_stderr'] = \
-                    np.sqrt(
-                        self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                            'mu_A'].stderr ** 2
-                        + self.fit_dicts['two_error_func_' + qbn]['fit_res'].params[
-                            'mu_B'].stderr ** 2)
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'fp_length_stderr'] = np.sqrt(
+                        self.fit_dicts['two_error_func_' + qbn][
+                            'fit_res'].params['mu_A'].stderr ** 2
+                        + self.fit_dicts['two_error_func_' + qbn][
+                            'fit_res'].params['mu_B'].stderr ** 2)
             except TypeError:
                 self.proc_data_dict['analysis_params_dict'][qbn][
                     'fp_length_stderr'] = 0
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        self.options_dict.update({'TwoD': False,
-                                  'plot_proj_data': False})
         super().prepare_plots()
 
         if self.do_fitting:
@@ -9922,7 +10059,8 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts['fit_' + qbn] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
-                    'fit_res': self.fit_dicts['two_error_func_' + qbn]['fit_res'],
+                    'fit_res': self.fit_dicts[
+                        'two_error_func_' + qbn]['fit_res'],
                     'setlabel': 'two error func. fit',
                     'do_legend': True,
                     'color': 'r',
@@ -9931,12 +10069,13 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper right'}
 
                 apd = self.proc_data_dict['analysis_params_dict']
-                textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay']*1e9) \
-                          + ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
+                textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay']*1e9) + \
+                          ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
                                                       * 1e9)
-                textstr += '\n\nflux_pulse_length:\n  fitted = {:.2f} ns'.format(
-                    apd[qbn]['fp_length'] * 1e9) \
-                           + ' $\pm$ {:.2f} ns'.format(
+                textstr += '\n\nflux_pulse_length:\n  ' \
+                           'fitted = {:.2f} ns'.format(
+                    apd[qbn]['fp_length'] * 1e9) + \
+                           ' $\pm$ {:.2f} ns'.format(
                     apd[qbn]['fp_length_stderr'] * 1e9)
                 textstr += '\n  set = {:.2f} ns'.format(
                     1e9 * a_tools.get_instr_setting_value_from_file(
@@ -9955,28 +10094,13 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
-        params_dict = {}
-        for qbn in qb_names:
-            s = 'Instrument settings.' + qbn
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        # super().__init__(qb_names, *args, **kwargs)
-
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
-        super().__init__(qb_names, *args, **kwargs)
-
-    #         self.analyze_results()
-
     def process_data(self):
         super().process_data()
 
         # Make sure data has the right shape (len(hard_sp), len(soft_sp))
         for qbn, data in self.proc_data_dict['data_to_fit'].items():
             if data.shape[1] != self.proc_data_dict['sweep_points_dict'][qbn][
-                'sweep_points'].size:
+                    'sweep_points'].size:
                 self.proc_data_dict['data_to_fit'][qbn] = data.T
 
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
@@ -10033,7 +10157,8 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
 
         for qbn in self.qb_names:
             self.proc_data_dict['analysis_params_dict'][qbn]['delay_fit'] = \
-                self.fit_dicts['delay_fit_' + qbn]['fit_res'].best_values['delay']
+                self.fit_dicts['delay_fit_' + qbn]['fit_res'].best_values[
+                    'delay']
             try:
                 stderr = self.fit_dicts['delay_fit_' + qbn]['fit_res'].params[
                             'delay'].stderr
@@ -10048,8 +10173,6 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        self.options_dict.update({'TwoD': False,
-                                  'plot_proj_data': False})
         apd = self.proc_data_dict['analysis_params_dict']
         super().prepare_plots()
         rdd = self.raw_data_dict
@@ -10074,11 +10197,9 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
 
-                textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay_fit'] *
-                                                     1e9) \
-                          + ' $\pm$ {:.2f} ns'.format(apd[qbn][
-                                                          'delay_fit_stderr']
-                                                      * 1e9)
+                textstr = 'delay = {:.2f} ns'.format(
+                    apd[qbn]['delay_fit'] * 1e9) + ' $\pm$ {:.2f} ns'.format(
+                    apd[qbn]['delay_fit_stderr'] * 1e9)
                 self.plot_dicts['text_msg_fit' + qbn] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
@@ -10104,7 +10225,6 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ylabel': 'Autoconvolution function',
                 'linestyle': '-',
                 'color': 'k',
-                #                                     'setlabel': legendlabel,
                 'do_legend': False,
                 'legend_bbox_to_anchor': (1, 1),
                 'legend_pos': 'upper left',
@@ -10126,8 +10246,8 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 'ymax': corr_data.max(),
                 'colors': 'gray'}
 
-            textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay'] * 1e9) \
-                      + ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
+            textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay'] * 1e9) + \
+                      ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
                                                   * 1e9)
             self.plot_dicts['text_msg_' + qbn] = {
                 'fig_id': f'Autoconvolution_{qbn}',
@@ -10171,22 +10291,9 @@ class FluxPulseScopeAnalysis(MultiQubit_TimeDomain_Analysis):
     - from_lower: unclear; should be cleaned up (TODO, Steph 07.10.2020)
     - ghost: unclear; should be cleaned up (TODO, Steph 07.10.2020)
     """
-    def __init__(self, *args, **kwargs):
-        options_dict = kwargs.pop('options_dict', {})
-        options_dict['TwoD'] = True
-        kwargs['options_dict'] = options_dict
-        super().__init__(*args, **kwargs)
-
     def extract_data(self):
+        self.default_options['rotation_type'] = 'fixed_cal_points'
         super().extract_data()
-        # Set some default values specific to FluxPulseScopeAnalysis if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('rotation_type', default_value=None) is None:
-            self.options_dict['rotation_type'] = 'fixed_cal_points'
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
 
     def process_data(self):
         super().process_data()
@@ -10652,7 +10759,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
         self.nr_averages = nr_averages
-        n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+        # metadata['detectors'] is a dict for MultiPollDetector and else a list
+        df_names = list(det_metadata['detectors'])
+        # Testing the first detector, since detectors in a MultiPollDetector
+        # should all be the same
+        if 'scope' in df_names[0]:
+            # No scaling needed, since all hsp are contained in one hardware run
+            n_hsp = 1
+        else:
+            n_hsp = len(self.raw_data_dict['hard_sweep_points'])
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
@@ -10679,11 +10794,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     The class extracts the DC biases on the I and Q channel inputs of the
     measured IQ mixer that minimize the LO leakage.
     """
-    def extract_data(self):
-        super().extract_data()
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
     def process_data(self):
         super().process_data()
 
@@ -10970,11 +11080,6 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     channel input of the measured IQ mixer that maximize the suppression of the
     unwanted sideband.
     """
-    def extract_data(self):
-        super().extract_data()
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
-
     def process_data(self):
         super().process_data()
 

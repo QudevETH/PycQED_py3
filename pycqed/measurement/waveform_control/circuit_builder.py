@@ -493,6 +493,12 @@ class CircuitBuilder:
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
                         reset_pulses.append(self.get_pulse(op + qbn))
+                        # Reset pulses cannot include phase information at the moment
+                        # since we use the exact same waveform(s) (corresponding to
+                        # a given codeword) for every reset pulse(s) we play (no
+                        # matter where in the circuit). Therefore, remove phase_lock
+                        # that references the phase to algorithm time t=0.
+                        reset_pulses[-1]['phaselock'] = False
                         reset_pulses[-1]['codeword'] = codeword
                         if j == 0:
                             reset_pulses[-1]['ref_point'] = 'start'
@@ -972,9 +978,9 @@ class CircuitBuilder:
                 1D: list of segments, number of 1d sweep points or
                 2D: list of list of segments, list of numbers of sweep points
             - else:
-                1D: sequence, number acquisition elements
-                2D: list of sequences, number of acquisition elements, number
-                    of sequences
+                1D: sequence, np.arange(number of acquisition elements)
+                2D: list of sequences, [np.arange(number of acquisition elements),
+                                        np.arange(number of sequences)]
         """
         sweep_dims = len(sweep_points)
         if sweep_dims > 2:
