@@ -808,76 +808,15 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
     def run_update(self, **kw):
         """Updates the readout frequency of the qubits corresponding to the
         measured feedlines.
-        The dips found during the analysis are paired up (starting from the one
-        at the lowest frequency) and the sharpest dip of the pair is chosen
-        as the readout frequency for the corresponding qubit.
-        If the number of pairs is different from the number of qubits belonging
-        to the feedline, priority is given arbitrarily to the qubits with lower
-        frequency.
         """
-        # Sort the qubits in each feedline with respect to their current ro_freq
-        self.sorted_feedlines = []
-        for feedline in self.feedlines:
-            feedline_res_freqs = [qb.ro_freq() for qb in feedline]
-            sorted_feedline = [
-                qb for freq, qb in sorted(zip(feedline_res_freqs, feedline))
-            ]
-            self.sorted_feedlines.append(sorted_feedline)
-
-        for qb_name, feedline in zip(self.qb_names, self.sorted_feedlines):
-            # Extract the frequency and the width of the found dips from the
-            # analysis results
-            dips_freq = []
-            dips_width = []
-            for i, (key,
-                    value) in enumerate(self.analysis.fit_res[qb_name].items()):
-                if key.endswith('frequency'):
-                    dips_freq.append(value)
-                elif key.endswith('width'):
-                    dips_width.append(value)
-
-            # Check whether the number of dips is different than expected.
-            # Note that the dip-finding algorithm by design will never find
-            # more than the expected number of dips. Only the case where some
-            # dips are missing needs to be dealt with
-            if len(dips_freq) < 2 * len(feedline):
-                warning_msg = (f"Found {len(dips_freq)} dips instead "
-                               f"of {2*len(feedline)}.")
-                if len(dips_freq) % 2 == 1:
-                    warning_msg += (
-                        "\nOdd number of dips found, the last one "
-                        "will be considered unpaired and assigned to the last "
-                        "qubit.")
-                if len(dips_freq) < 2 * len(feedline) - 1:
-                    # If two or more dips are missing, it will still try to
-                    # update the ro frequency of the maximal amount of qubits
-                    # (e.g., 3 qubits if 5 or 6 dips are found)
-                    n_updatable_qbs = len(dips_freq) // 2 + len(dips_freq) % 2
-                    qubits_to_be_updated = feedline[:n_updatable_qbs]
-                    warning_msg += (
-                        f"\nOnly the {n_updatable_qbs} qubits with "
-                        "the lowest readout frequency will be updated, "
-                        f"namely {[qb.name for qb in qubits_to_be_updated]}.")
-
-                log.warning(warning_msg)
-
-            # Loop over pairs of dips (i = 0, 2, 4, ...)
-            for i in range(0, len(dips_freq), 2):
+        for qb_name, feedline in zip(self.qb_names, self.feedlines):
+            for qb in feedline:
                 try:
-                    # Check which of two subsequent dips is sharper
-                    if dips_width[i] < dips_width[i + 1]:
-                        # Pick the leftmost dip
-                        feedline[i // 2].ro_freq(dips_freq[i])
-                    else:
-                        # Pick the rightmost dip
-                        feedline[i // 2].ro_freq(dips_freq[i + 1])
-                except IndexError:
-                    # If an odd number of dip was found, consider the last one
-                    # to be unpaired and assign it to the last qubit
-                    log.warning(
-                        (f"Odd number of dips found, picked {dips_freq[i]} for "
-                         f"qubit {feedline[i//2].name} frequency"))
-                    feedline[i // 2].ro_freq(dips_freq[i])
+                    ro_freq = self.analysis.fit_res[qb_name][
+                        f"{qb.name}_RO_frequency"]
+                    qb.ro_freq(ro_freq)
+                except KeyError:
+                    log.warning(f"RO frequency of {qb.name} was not updated")
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
@@ -895,9 +834,7 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
         """
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        analysis_kwargs['ndips'] = [
-            len(feedline) * 2 for feedline in self.feedlines
-        ]
+        analysis_kwargs['feedlines'] = self.feedlines
         self.analysis = spa.ResonatorSpectroscopyAnalysis(**analysis_kwargs)
         return self.analysis
 
@@ -1037,8 +974,13 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         """
         if analysis_kwargs is None:
             analysis_kwargs = {}
+
+        # Separate qubits in different feedlines
+        # FIXME: to be modified if a flux sweep for the whole feedline is
+        # implemented. Here it is assumed that there is one qubit per feedline
+        feedlines_qubits = [[qb] for qb in self.qubits]
         self.analysis = spa.ResonatorSpectroscopyFluxSweepAnalysis(
-            **analysis_kwargs)
+            feedlines_qubits=feedlines_qubits, **analysis_kwargs)
         return self.analysis
 
 
