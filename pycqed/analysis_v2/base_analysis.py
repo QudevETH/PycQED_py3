@@ -1146,7 +1146,7 @@ class BaseDataAnalysis(object):
         if presentation_mode is None:
             presentation_mode = self.presentation_mode
         if presentation_mode:
-            self.plot_for_presentation(key_list=key_list)
+            self.plot_for_presentation(self.key_list)
         else:
             self._plot(self.key_list)
 
@@ -1204,7 +1204,7 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
-    def _plot(self, key_list=None):
+    def _plot(self, key_list):
         """
         Creates the figures specified by key_list.
 
