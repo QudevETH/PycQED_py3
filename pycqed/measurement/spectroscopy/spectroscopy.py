@@ -890,73 +890,34 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         value of the USS and LSS.
         
         The flux_parking() value is also updated depending on the order of the 
-        sweet soits,
+        sweet spots,
         """
 
         for qb in self.qubits:
-            left_avg_width = self.analysis.fit_res[qb.name]['left_avg_width']
-            right_avg_width = self.analysis.fit_res[qb.name]['right_avg_width']
-            if left_avg_width < right_avg_width:
-                # Pick left dip
-                uss = self.analysis.fit_res[qb.name]['left_uss']
-                lss = self.analysis.fit_res[qb.name]['left_lss']
-                if qb.flux_parking() == 0:
-                    # Pick left USS
-                    # Update qubit voltage bias
-                    self.fluxlines_dict[qb.name](uss)
-                    qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = uss
-                    # Update RO frequency
-                    left_uss_freq = self.analysis.fit_res[
-                        qb.name]['left_uss_freq']
-                    qb.ro_freq(left_uss_freq)
-                elif np.abs(qb.flux_parking()) == 0.5:
-                    # Pick left LSS
-                    # Update qubit voltage bias
-                    self.fluxlines_dict[qb.name](lss)
-                    qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = lss
-                    # Update RO frequency
-                    left_lss_freq = self.analysis.fit_res[
-                        qb.name]['left_lss_freq']
-                    qb.ro_freq(left_lss_freq)
-                else:
-                    log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
+            if qb.flux_parking() != 0 and np.abs(qb.flux_parking())!=0.5:
+                log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
                                  "nor -0.5. Nothing will be updated."))
             else:
-                # Pick right dip
-                uss = self.analysis.fit_res[qb.name]['right_uss']
-                lss = self.analysis.fit_res[qb.name]['right_lss']
-                if qb.flux_parking() == 0:
-                    # Pick right USS
-                    # Update qubit voltage bias
-                    self.fluxlines_dict[qb.name](uss)
-                    qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = uss
-                    # Update RO frequency
-                    right_uss_freq = self.analysis.fit_res[
-                        qb.name]['right_uss_freq']
-                    qb.ro_freq(right_uss_freq)
-                elif np.abs(qb.flux_parking()) == 0.5:
-                    # Pick right LSS
-                    # Update qubit voltage bias
-                    self.fluxlines_dict[qb.name](lss)
-                    qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = lss
-                    # Update RO frequency
-                    right_lss_freq = self.analysis.fit_res[
-                        qb.name]['right_lss_freq']
-                    qb.ro_freq(right_lss_freq)
-                else:
-                    log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
-                                 "nor -0.5. Nothing will be updated."))
+                sweet_spot = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_sweet_spot']
+                opposite_sweet_spot = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_opposite_sweet_spot']
+                sweet_spot_RO_freq = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_sweet_spot_RO_frequency']
 
-            # Update V_per_phi0 key in each qubit. From this, it is possible to
-            # to retrieve the opposite sweet spot
-            V_per_phi0 = np.abs(2 * (uss - lss))
-            qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
-            # Update the sign of flux_parking depending to be consistent with
-            # positive V_per_phi0
-            if uss > lss and qb.flux_parking() == 0.5:
-                qb.flux_parking(-0.5)
-            elif uss < lss and qb.flux_parking() == -0.5:
-                qb.flux_parking(0.5)
+                qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = sweet_spot
+                qb.ro_freq(sweet_spot_RO_freq)
+                # Update V_per_phi0 key in each qubit. From this, it is possible to
+                # to retrieve the opposite sweet spot
+                V_per_phi0 = np.abs(2 * (sweet_spot - opposite_sweet_spot))
+                qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0 
+
+                # Update the sign of flux_parking depending to be consistent with
+                # the positive sign V_per_phi0
+                if opposite_sweet_spot > sweet_spot and qb.flux_parking() == 0.5:
+                    qb.flux_parking(-0.5)
+                elif opposite_sweet_spot < sweet_spot and qb.flux_parking() == -0.5:
+                    qb.flux_parking(0.5)
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """

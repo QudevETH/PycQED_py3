@@ -2028,7 +2028,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
 
         # When the loop ends, check how many dips were found
         if len(dips_indices) > ndips:
-            # If more than 'ndips' dips are found, choose the 'ndips' ones with 
+            # If more than 'ndips' dips are found, choose the 'ndips' ones with
             # the highest prominence
             prominences_dips = dips_properties['prominences']
             indices_max_dip = np.argpartition(prominences_dips, -ndips)[-ndips:]
@@ -2041,7 +2041,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             log.warning(f"Found {len(dips_indices)} peaks instead of ndips")
 
         # Calculate the width of the dips in units of number of samples, at
-        # a relative height of 0.25 by default (0 corresponds to the bottom of 
+        # a relative height of 0.25 by default (0 corresponds to the bottom of
         # the dip, 1 corresponds to its base).
         # This can be used to determine which dip corresponds to the resonator
         # and which to the Purcell filter
@@ -2201,11 +2201,16 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
 
     def run_fitting(self):
         """Finds the dips the 2D resonator spectroscopy and extracts the LSS and
-        the USS.
+        the USS. The sharpest dip is chosen to designate a candidate sweet spot
+        for the given qubit bias voltage and RO frequency.
         """
-
         # Find the dips for each measured qubit
-        for qb_name in self.qb_names:
+        for qb_name,feedline in zip(self.qb_names,self.sorted_feedlines):
+            # FIXME: implement the possibility of analyzing a flux sweep for the
+            # whole feedline. At the moment only one qubit per feedline is
+            # supported.
+            qb = feedline[0]
+
             left_dips_indices = []
             right_dips_indices = []
             left_dips_widths = []
@@ -2241,8 +2246,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
                 'right_dips_frequency'] = self.analysis_data[qb_name]['freqs'][
                     right_dips_indices]
 
-        # Extracts the LSS and USS from the dips previously found
-        for qb_name in self.qb_names:
+            # Extracts the LSS and USS from the dips previously found
             # LSS and USS for the dips on the left
             left_lss, left_uss = self.find_lss_uss(
                 self.analysis_data[qb_name]['left_dips_frequency'],
@@ -2251,9 +2255,6 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
             right_lss, right_uss = self.find_lss_uss(
                 self.analysis_data[qb_name]['right_dips_frequency'],
                 self.analysis_data[qb_name]['volts'])
-            # Average the two dips
-            avg_lss = (left_lss + right_lss) / 2
-            avg_uss = (left_uss + right_uss) / 2
 
             # Interpolate the found dips in order to find where the frequencies
             # corresponding to the left and right LSS and USS
@@ -2284,8 +2285,50 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
             self.fit_res[qb_name]['right_uss'] = right_uss
             self.fit_res[qb_name]['right_uss_freq'] = right_uss_freq
             self.fit_res[qb_name]['right_avg_width'] = right_avg_width
-            self.fit_res[qb_name]['avg_lss'] = avg_lss
-            self.fit_res[qb_name]['avg_uss'] = avg_uss
+
+            # Pick the designated sweet spot for the given qubit
+            if left_avg_width < right_avg_width:
+                # Pick left dip
+                uss = left_uss
+                lss = left_lss
+                if qb.flux_parking() == 0:
+                    # Pick left USS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = left_uss_freq
+                elif np.abs(qb.flux_parking()) == 0.5:
+                    # Pick left LSS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = left_lss_freq
+                else:
+                    log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
+                                 "nor -0.5. No sweet spot was chosen."))
+            else:
+                # Pick right dip
+                uss = right_uss
+                lss = right_lss
+                if qb.flux_parking() == 0:
+                    # Pick right USS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = right_uss_freq
+                elif np.abs(qb.flux_parking()) == 0.5:
+                    # Pick right LSS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = right_lss_freq
+                else:
+                    log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
+                                 "nor -0.5. No sweet spot was chosen."))
 
     def find_lss_uss(self,
                      frequency_dips: np.ndarray,
@@ -2534,43 +2577,26 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
                 'legend_pos': 'upper right'
             }
 
-            # Plot the average of the left and right
-            self.plot_dicts[f"{fig_id_analyzed}_avg_lss"] = {
+            # Mark the designated sweet spot
+            self.plot_dicts[f"{fig_id_analyzed}_designated_sweet_spot"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
-                'xvals': [
-                    self.analysis_data[qb_name]['freqs'][0],
-                    self.analysis_data[qb_name]['freqs'][-1]
-                ],
-                'yvals': [
-                    self.fit_res[qb_name]['avg_lss'],
-                    self.fit_res[qb_name]['avg_lss']
-                ],
+                'xvals': np.array(
+                        [self.fit_res[qb_name]
+                        [f'{qb_name}_sweet_spot_RO_frequency']]
+                    ),
+                'yvals': np.array(
+                        [self.fit_res[qb_name]
+                        [f'{qb_name}_sweet_spot']]
+                    ),
+                'marker': 'x',
+                'linestyle': 'none',
                 'color': 'C3',
-                'marker': 'None',
-                'linestyle': '--',
-                'setlabel': 'Average LSS',
-                'do_legend': True,
-                'legend_ncol': 2,
-                'legend_bbox_to_anchor': (1.2, -0.2),
-                'legend_pos': 'upper right'
-            }
-
-            self.plot_dicts[f"{fig_id_analyzed}_avg_uss"] = {
-                'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_line,
-                'xvals': [
-                    self.analysis_data[qb_name]['freqs'][0],
-                    self.analysis_data[qb_name]['freqs'][-1]
-                ],
-                'yvals': [
-                    self.fit_res[qb_name]['avg_uss'],
-                    self.fit_res[qb_name]['avg_uss']
-                ],
-                'color': 'C5',
-                'marker': 'None',
-                'linestyle': '--',
-                'setlabel': 'Average USS',
+                'line_kws': {
+                    'fillstyle': 'none',
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': f'{qb_name} sweet spot',
                 'do_legend': True,
                 'legend_ncol': 2,
                 'legend_bbox_to_anchor': (1.2, -0.2),
@@ -2579,9 +2605,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopyAnalysis):
 
             # Plot textbox containing relevant information
             textstr = (
-                f"Average LSS = {self.fit_res[qb_name]['avg_lss']:.3f} V"
-                f"\nAverage USS = {self.fit_res[qb_name]['avg_uss']:.3f} V"
-                f"\nLeft LSS = {self.fit_res[qb_name]['left_lss']:.3f} V"
+                f"Left LSS = {self.fit_res[qb_name]['left_lss']:.3f} V"
                 f"\nLeft USS = {self.fit_res[qb_name]['left_uss']:.3f} V"
                 f"\nRight LSS = {self.fit_res[qb_name]['right_lss']:.3f} V"
                 f"\nRight USS = {self.fit_res[qb_name]['right_uss']:.3f} V")
