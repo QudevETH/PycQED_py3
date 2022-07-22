@@ -3,7 +3,7 @@ from pycqed.instrument_drivers.acquisition_devices.base import AcquisitionDevice
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
 from qcodes.utils import validators as vals
-from qcodes.instrument.parameter import
+from qcodes.instrument.parameter import ManualParameter
 import time
 import logging
 log = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class VC707(VC707_core, AcquisitionDevice):
         self._acq_integration_weights = {}
         self._last_traces = []
         self.add_parameter('acq_start_after_awgs', initial_value=False,
-                           vals=vals.Bool, parameter_class=ManualParameter)
+                           vals=vals.Bool(), parameter_class=ManualParameter)
 
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
