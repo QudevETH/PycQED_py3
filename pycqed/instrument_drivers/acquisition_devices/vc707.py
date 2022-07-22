@@ -30,8 +30,8 @@ class VC707(VC707_core, AcquisitionDevice):
         self._acq_integration_weights = {}
         self._last_traces = []
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
         self.averager.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
