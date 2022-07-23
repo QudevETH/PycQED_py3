@@ -2925,7 +2925,13 @@ class QuDev_transmon(Qubit):
                             'is not an integer multiple of the trigger '
                             'seperation.')
                 if not force_ro_mod_freq:
+                    if self.ro_fixed_lo_freq() is not None:
+                        log.warning(
+                            'Automatic adjustment of the RO IF might lead to '
+                            'wrong results since ro_fixed_lo_freq is set.')
                     beats_per_trigger = int(beats_per_trigger + 0.5)
+                    # FIXME: changing the IF here is probably the wrong moment
+                    #  because the pulse seq has already been created above.
                     self.ro_mod_freq(2 * beats_per_trigger/trigger_sep \
                                      - self.ge_mod_freq())
                     log.warning('To ensure commensurability the RO ' 
