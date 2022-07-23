@@ -1014,6 +1014,16 @@ class QuDev_transmon(Qubit):
                 nr_averages=self.acq_averages(),
                 acquisition_length=self.acq_length()
             )
+        else:
+            self.scope_fft_det = det.ScopePollDetector(
+                acq_dev=self.instr_acq.get_instr(),
+                AWG=self.instr_acq.get_instr(),
+                channels=self.get_acq_inp_channels(),
+                data_type='fft_power',
+                nr_averages=self.acq_averages(),
+                nr_shots=1,
+                integration_length=self.acq_length()
+            )
 
     def prepare(self, drive='timedomain', switch='default'):
         """Prepare instruments for a measurement involving this qubit.
