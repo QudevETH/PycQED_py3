@@ -2893,8 +2893,9 @@ class QuDev_transmon(Qubit):
             *self._drive_mixer_calibration_tmp_vals()
         ):
             pulse_list_list = []
+            acq_pars = self.get_acq_pars()
             for alpha, phi_skew in meas_grid.T:
-                pulse_list_list.append([self.get_acq_pars(), dict(
+                pulse_list_list.append([deepcopy(acq_pars), dict(
                             pulse_type='GaussFilteredCosIQPulse',
                             pulse_length=self.acq_length(),
                             ref_point='start',
