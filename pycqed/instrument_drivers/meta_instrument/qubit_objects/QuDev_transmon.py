@@ -4900,22 +4900,25 @@ class QuDev_transmon(Qubit):
 
         ma.MeasurementAnalysis(TwoD=True)
 
-    def get_closest_lo_freq(self, fixed_lo, freq, mod_freq, operation=None):
-        """Get the closest allowed LO freq for given target freq and IF.
+    def get_closest_lo_freq(self, target_lo_freq, fixed_lo='default',
+                            operation=None):
+        """Get the closest allowed LO freq for given target LO freq.
 
         Args:
+            target_lo_freq (float): the target Lo freq
             fixed_lo: specification of the allowed LO freq(s), can be:
                 - None: no restrictions on the LO freq
                 - float: LO fixed to a single freq
-                - str: a qb name to indicated that the LO must be fixed to be
-                       the same as for that qb. operation must be provided
+                - str: (operation must be provided in this case)
+                    - 'default' (default value): use the setting in the qubit
+                      object.
+                    - a qb name to indicated that the LO must be fixed to be
+                      the same as for that qb.
                 - dict with (a subset of) the following keys:
                     'min' and/or 'max': minimal/maximal allowed LO freq
                     'step': LO fixed to a grid with this step width (grid
                             starting at 'min' if provided and at 0 otherwise)
                 - list, np.array: LO fixed to be one of the listed values
-            freq (float): the target RF
-            mod_freq (float): the target IF
             operation (str): the operation for which the LO freq is to be
                 determined (e.g., 'ge', 'ro'). Only needed if fixed_lo is a str.
 
@@ -4925,20 +4928,23 @@ class QuDev_transmon(Qubit):
 
         Examples:
             >>> freq, mod_freq = 5898765432, 150e6
-            >>> qb.get_closest_lo_freq('qb1', freq, mod_freq, 'ge')
-            >>> qb.get_closest_lo_freq(5.8e9, freq, mod_freq)
+            >>> target_lo_freq = freq - mod_freq
+            >>> qb.get_closest_lo_freq(target_lo_freq, 'qb1', 'ge')
+            >>> qb.get_closest_lo_freq(target_lo_freq, 5.8e9)
             >>> qb.get_closest_lo_freq(
-            >>>     np.arange(4e9, 6e9 + 1e6, 1e6), freq, mod_freq)
-            >>> qb.get_closest_lo_freq({'step': 100e6}, freq, mod_freq)
+            >>>     target_lo_freq, np.arange(4e9, 6e9 + 1e6, 1e6))
+            >>> qb.get_closest_lo_freq(target_lo_freq, {'step': 100e6})
             >>> qb.get_closest_lo_freq(
-            >>>     {'min': 5.4e9, 'max': 5.6e9}, freq, mod_freq)
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 5.6e9})
             >>> qb.get_closest_lo_freq(
-            >>>     {'min': 6.3e9, 'max': 6.9e9}, freq, mod_freq)
+            >>>     target_lo_freq, {'min': 6.3e9, 'max': 6.9e9})
             >>> qb.get_closest_lo_freq(
-            >>>     {'min': 5.4e9, 'max': 6.9e9, 'step': 10e6}, freq, mod_freq)
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 6.9e9, 'step': 10e6})
         """
+        if fixed_lo == 'default':
+            fixed_lo = self.get(f'{operation}_fixed_lo_freq')
         if fixed_lo is None:
-            return freq - mod_freq
+            return target_lo_freq
         elif isinstance(fixed_lo, float):
             return fixed_lo
         elif isinstance(fixed_lo, str):
@@ -4948,7 +4954,7 @@ class QuDev_transmon(Qubit):
             f_min = fixed_lo.get('min', 0)
             f_max = fixed_lo.get('max', np.inf)
             step = fixed_lo.get('step', None)
-            lo_freq = max(min(freq - mod_freq, f_max) - f_min, 0)
+            lo_freq = max(min(target_lo_freq, f_max) - f_min, 0)
             if step is not None:
                 lo_freq = round(lo_freq / step) * step
                 if lo_freq > f_max:
@@ -4956,7 +4962,7 @@ class QuDev_transmon(Qubit):
             lo_freq += f_min
             return lo_freq
         else:
-            ind = np.argmin(np.abs(np.array(fixed_lo) - (freq - mod_freq)))
+            ind = np.argmin(np.abs(np.array(fixed_lo) - (target_lo_freq)))
             return fixed_lo[ind]
 
     def configure_mod_freqs(self, operation=None, **kw):
@@ -5007,7 +5013,7 @@ class QuDev_transmon(Qubit):
                         f'{op}: Fixed LO freq in combination with '
                         f'multichromatic mod freq is not implemented.')
                 lo_freq = self.get_closest_lo_freq(
-                    fixed_lo, freq, old_mod_freq, operation=op)
+                    freq - old_mod_freq, fixed_lo, operation=op)
                 mod_freq = get_param(f'{op}_freq') - lo_freq
                 if operation is not None and f'{op}_mod_freq' in kw:
                     # called for IF change of single op: behave as set_parser
