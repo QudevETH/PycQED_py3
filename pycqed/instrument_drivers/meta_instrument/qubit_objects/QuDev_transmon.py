@@ -110,8 +110,14 @@ class QuDev_transmon(Qubit):
                            label='Chi')
 
         # readout pulse parameters
+        self.add_parameter(
+            'ro_fixed_lo_freq', unit='Hz',
+            set_cmd=lambda f, s=self : s.configure_mod_freqs(
+                'ro', ro_fixed_lo_freq=f),
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
         self.add_parameter('ro_freq', unit='Hz',
-                           parameter_class=ManualParameter,
+                           set_cmd=lambda f, s=self : s.configure_mod_freqs(
+                               'ro', ro_freq=f),
                            label='Readout frequency')
         self.add_parameter('ro_I_offset', unit='V', initial_value=0,
                            parameter_class=ManualParameter,
@@ -212,10 +218,10 @@ class QuDev_transmon(Qubit):
                                      'UHFQA and up to 4 for SHFQA).',
                            parameter_class=ManualParameter)
         self.add_parameter('acq_I_channel', initial_value=0,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_Q_channel', initial_value=1,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_averages', initial_value=1024,
                            vals=vals.Ints(0, 1000000),
@@ -326,10 +332,20 @@ class QuDev_transmon(Qubit):
 
         # add drive pulse parameters
         for tr_name in self.transition_names:
+            if tr_name == 'ge':
+                self.add_parameter(
+                    f'{tr_name}_fixed_lo_freq', unit='Hz',
+                    set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                        'ge', ge_fixed_lo_freq=f),
+                    vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
+                freq_kw = dict(set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                        'ge', ge_freq=f))
+            else:
+                freq_kw = dict(parameter_class=ManualParameter)
             self.add_parameter(f'{tr_name}_freq',
                                label=f'Qubit {tr_name} drive frequency',
                                unit='Hz', initial_value=0,
-                               parameter_class=ManualParameter)
+                               **freq_kw)
             tn = '' if tr_name == 'ge' else f'_{tr_name}'
             self.add_operation(f'X180{tn}')
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_pulse_type',
@@ -1022,6 +1038,7 @@ class QuDev_transmon(Qubit):
                 'no_drive' if drive is None and a switch mode 'no_drive' is
                 configured for this qubit; 'modulated' in all other cases).
         """
+        self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
@@ -1177,6 +1194,7 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
+        self.configure_mod_freqs()
         if operation_dict is None:
             operation_dict = {}
         operation_dict = super().get_operation_dict(operation_dict)
@@ -4846,6 +4864,48 @@ class QuDev_transmon(Qubit):
         MC.run_2D('Flux_scope_nzcz_alpha' + self.msmt_suffix)
 
         ma.MeasurementAnalysis(TwoD=True)
+
+    def configure_mod_freqs(self, operation=None, **kw):
+        """Configure modulation freqs (IF) to be compatible with fixed LO freqs
+
+        If {op}_fixed_lo_freq is not None for the operation {op},
+        {op}_mod_freq will be updated to {op}_freq' - {op}_fixed_lo_freq.
+        The method can be called with kw (see below) as a set_cmd when a
+        relevant paramter changes, or without kw as a sanity check, in which
+        case it shows a warning when updating an IF.
+
+        Args:
+            operation (str, None): configure the IF only for the operation
+                indicated by the string or for all operations for which a
+                fixed LO freq is configured.
+            **kw: If a kew equals the name of a qcodes parameter of the qb,
+                the corresponding value supersedes the parameter value.
+        """
+        def get_param(param):
+            if param in kw:
+                return kw[param]
+            else:
+                return self.get(param)
+
+        fixed_lo_suffix = '_fixed_lo_freq'
+        if operation is None:
+            ops = [k[:-len(fixed_lo_suffix)] for k in self.parameters
+                   if k.endswith(fixed_lo_suffix)]
+        else:
+            ops = [operation]
+
+        for op in ops:
+            fixed_lo = get_param(f'{op}{fixed_lo_suffix}')
+            if fixed_lo is not None:
+                mod_freq = get_param(f'{op}_freq') - fixed_lo
+                if not any([k.startswith(f'{op}_') for k in kw]):
+                    old_mod_freq = get_param(f'{op}_mod_freq')
+                    if old_mod_freq != mod_freq:
+                        log.warning(
+                            f'{self.name}: {op}_mod_freq is not consistent '
+                            f'with the fixed LO freq {fixed_lo} and will be '
+                            f'adjusted to {mod_freq}.')
+                self.set(f'{op}_mod_freq', mod_freq)
 
     def configure_pulsar(self):
         """
