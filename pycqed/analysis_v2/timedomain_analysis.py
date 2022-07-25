@@ -2264,7 +2264,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
-            do_legend_cal_states=True, TwoD=None, yrange=None):
+            do_legend_cal_states=True, TwoD=None, yrange=None,
+            linestyle='none'):
         """
         Prepares one projected data plot, typically one of the keys in
         proc_data_dict['projected_data_dict'].
@@ -2298,6 +2299,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             TwoD: bool specifying whether to prepare a plot dict for 2D (True)
                 or 1D data (False).
             yrange: tuple/list of floats for the plot yrange
+            linestyle: string with recognised matplotlib linestyle. If not set,
+                only markers for the data points will be shows. Only has an
+                effects if TwoD is False.
         """
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -2424,7 +2428,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'yrange': yrange,
                 'setlabel': data_label,
                 'title': title,
-                'linestyle': 'none',
+                'linestyle': linestyle,
                 'do_legend': do_legend_data,
                 'legend_bbox_to_anchor': (1, 0.5),
                 'legend_pos': 'center left'}
@@ -11383,3 +11387,837 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                             f'@ $\\alpha$ ={alpha_min:.2f}',
                 'do_legend': True,
             }
+
+
+class DriveAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Analysis class for the DriveAmpCalib measurement.
+    The typical accepted input parameters are described in the parent class.
+
+    Additional parameters that this class recognises, which can be passed in the
+    options_dict:
+        - nr_pulses_pi (int; default: None): specifying into how many identical
+            pulses a pi rotation was divided ( nr_pulses_pi pulses with rotation
+            angle pi/nr_pulses_pi ). See docstring of the measurement class.
+            Can also be dict with qb names as keys.
+        - fixed scaling (int; default: None): specifying the amplitude scaling
+            for the pulse that wasn't swept. See docstring of the measurement
+            class. Can also be dict with qb names as keys.
+        - fitted_scaling_errors (dict; default: None): the keys are qubit names
+            and the values are arrays of fit results for each soft sweep
+            ex: {'qb10':  np.array([-0.00077432, -0.00055945])}
+        - maxeval (int; default: 400): number of evaluations for the optimiser
+        - T1 (float; default: value from hdf): qubit T1 to use for fit (fixed)
+        - T2 (float; default: value from hdf): qubit T2 to use as starting value
+            for the fit (dimensionless fraction T2/T2_guess is varied)
+    """
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
+            params_dict[f'{trans_name}_amp180_{qbn}'] = \
+                s+f'.{trans_name}_amp180'
+            params_dict[f'{trans_name}_sigma_{qbn}'] = \
+                s+f'.{trans_name}_sigma'
+            params_dict[f'{trans_name}_nr_sigma_{qbn}'] = \
+                s+f'.{trans_name}_nr_sigma'
+            params_dict[f'T1_{qbn}'] = s+f'.T1'
+            params_dict[f'T2_{qbn}'] = s+f'.T2'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
+        self.nr_pulses_pi = self.get_param_value('n_pulses_pi')
+        if self.nr_pulses_pi is None:
+            raise ValueError('Please specify nr_pulses_pi.')
+        if not hasattr(self.nr_pulses_pi, '__iter__'):
+            # it is a number: convert to dict
+            self.nr_pulses_pi = {qbn: self.nr_pulses_pi
+                                 for qbn in self.qb_names}
+        self.fixed_scaling = self.get_param_value('fixed_scaling')
+        if self.fixed_scaling is None:
+            task_list = self.get_param_value('preprocessed_task_list')
+            self.fixed_scaling = {}
+            for qbn in self.qb_names:
+                task = [t for t in task_list if t['qb']==qbn][0]
+                self.fixed_scaling[qbn] = task.get('fixed_scaling')
+        if not isinstance(self.fixed_scaling, dict):
+            # it is a number or None: convert to dict
+            self.fixed_scaling = {qbn: self.fixed_scaling
+                                  for qbn in self.qb_names}
+        # the fixed scaling used in the experiment is potentially corrected
+        # from the ideal value. Ex: to calibrate 3pi/4, we apply groups of
+        # [Xpi/4, X3pi/4] where the fixed scaling applies to the first pulse
+        # and should ideally be pi/4 but in practice it is usually pi/4-eps
+        # to correct for small miscalibrations. However, in the analysis,
+        # we need to take the correct theoretical scaling (pi/4) for the
+        # calculation done in the fit, where only the amplitude scaling of
+        # the second pulse (X3pi/4) is varied.
+        for qbn in self.qb_names:
+            if self.fixed_scaling[qbn] is not None:
+                self.fixed_scaling[qbn] = 1/self.nr_pulses_pi[qbn]
+
+        self.ideal_scalings = {}
+        for qbn in self.qb_names:
+            if self.fixed_scaling[qbn] is None:
+                self.ideal_scalings[qbn] = 1/self.nr_pulses_pi[qbn]
+            else:
+                self.ideal_scalings[qbn] = 1 - 1/self.nr_pulses_pi[qbn]
+
+    @staticmethod
+    def apply_gate(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, zth=1):
+        """
+        Calculates the time evolution of the y and z components of the qubit
+        state vector under the application of an X gate described by the
+        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
+
+        This function is used in sim_func when fixed_scaling is not None.
+
+        Args:
+            y (float): y coordinate of the qubit state vector at the
+                start of the evolution
+            z (float): z coordinate of the qubit state vector at the
+                start of the evolution
+            ang_scaling (float or array): fraction of a pi rotation
+                (see Hamiltonian above)
+            t_gate (float): gate length (s)
+            gamma_1 (float): qubit energy relaxation rate
+            gamma_phi (float): qubit dephasing rate
+            zth (float; default=1): z coordinate at equilibrium
+
+        Returns
+            y, z: coordinates of the qubit state vector after the evolution
+        """
+        Omega = ang_scaling*np.pi/t_gate
+        f_rabi = np.sqrt(Omega**2 - (1/16)*(gamma_1-2*gamma_phi)**2)
+        yinf = 2*zth*Omega*gamma_1 / \
+               (gamma_1*(gamma_1 + 2*gamma_phi) + 2*Omega**2)
+        zinf = zth*gamma_1*(gamma_1 + 2*gamma_phi) / \
+               (gamma_1*(gamma_1 + 2*gamma_phi) + 2*Omega**2)
+
+        y_t = yinf + np.exp(-(3*gamma_1 + 2*gamma_phi)*t_gate/4) * \
+              ((y - yinf)*(np.cos(f_rabi*t_gate) + np.sin(f_rabi*t_gate) *
+                           (gamma_1 - 2*gamma_phi)/(4*f_rabi)) +
+               (z - zinf)*np.sin(f_rabi*t_gate)*Omega/f_rabi)
+        z_t = zinf + np.exp(-(3*gamma_1 + 2*gamma_phi)*t_gate/4) * \
+              ((z - zinf)*(np.cos(f_rabi*t_gate) - np.sin(f_rabi*t_gate) *
+                           (gamma_1 - 2*gamma_phi)/(4*f_rabi)) -
+               (y - yinf)*np.sin(f_rabi*t_gate)*Omega/f_rabi)
+        return y_t, z_t
+
+    @staticmethod
+    def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
+        """
+        Calculates the time evolution of the y and z components of the qubit
+        state vector under the application of an X gate described by the
+        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
+        This function implements the matrix version of apply_gate: y and z
+        here are y - yinf and z - zinf in apply_gate
+
+        This function is used in sim_func when fixed_scaling is None.
+
+        Args:
+            y (float): scaled y coordinate of the qubit state vector at the
+                start of the evolution
+            z (float): scaled z coordinate of the qubit state vector at the
+                start of the evolution
+            ang_scaling (float or array): fraction of a pi rotation
+                (see Hamiltonian above)
+            t_gate (float): gate length (s)
+            gamma_1 (float): qubit energy relaxation rate
+            gamma_phi (float): qubit dephasing rate
+            nreps (int; default: 1): number of times the gate is applied
+
+        Returns
+            y, z: scaled coordinates of the qubit state vector after the
+                evolution
+        """
+        Omega = ang_scaling * np.pi / t_gate
+        f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
+        mtx = prefactor * np.array([
+            [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
+                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
+             np.sin(f_rabi * t_gate) * Omega / f_rabi],
+            [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
+             np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
+                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
+        mtx = np.linalg.matrix_power(mtx, nreps)
+        res = mtx @ np.array([[y], [z]])
+        return res[0][0], res[1][0]
+
+    @staticmethod
+    def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
+                 T2, t2_r=1, nr_pulses_pi=None,
+                 y0=0, z0=1, zth=1, fixed_scaling=None,
+                 T1=None, t_gate=None, mobjn=None, ts=None):
+        """
+        Simulation function for the excited qubit state populations for a trace
+        of the N-pulse calibration experiment:
+            - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
+
+        The repeated groups of pulses are either:
+         - nr_pulses_pi x R(pi/nr_pulses_pi)
+         or
+         - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+            if fixed_scaling is not None
+
+         See also the docstring of the measurement class DriveAmpCalib.
+
+        Args:
+            nr_pi_pulses (array): number of repeated pulses applied to the qubit
+                prepared in the + state
+            sc_error (float or array): error(s) on the amplitude scaling
+                away from the ideal scaling. This error will be fitted
+            ideal_scaling (float): ideal amplitude scaling factor
+            T2 (float): qubit decoherence time in seconds to be used as a guess
+            t2_r (float; default=1): ratio T2_varied/T2. This ratio will be fitted
+            nr_pulses_pi (int; default=None): the number of pulses that together
+                implement a pi rotation.
+            y0 (float; default=0): y coordinate of the initial state
+            z0 (float; default=1): z coordinate of the initial state
+            zth (float; default=1): z coordinate at equilibrium
+            fixed_scaling (float; default: None): the amplitude scaling of
+                the first rotation in the description above
+            T1 (float; default: None): quit lifetime (s)
+            t_gate (float): gate length (s)
+            mobjn (str): name of the qubit
+            ts (str): measurement timestamp
+            The last two parameers will be used to extract T1/t_gate if the
+            latter are not specified (see docstring of sim_func)
+
+        Returns
+            e_pops (array): same length as nr_pi_pulses and containing the
+                qubit excited state populations after the application of
+                nr_pi_pulses repeated groups of pulses
+        """
+
+        if any([v is None for v in [T1, T2, t_gate]]):
+            assert mobjn is not None
+            assert ts is not None
+        if t_gate is None:
+            from pycqed.analysis_v3 import helper_functions as hlp_mod
+            t_gate = \
+                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_sigma', ts) * \
+                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_nr_sigma', ts)
+        if t_gate == 0:
+            raise ValueError('Please specify t_gate.')
+        if T1 is None:
+            from pycqed.analysis_v3 import helper_functions as hlp_mod
+            T1 = hlp_mod.get_instr_param_from_hdf_file(mobjn, 'T1', ts)
+        if T1 == 0:
+            raise ValueError('Please specify T1.')
+
+        T2 = t2_r * T2
+        if nr_pulses_pi is None and fixed_scaling is None:
+            raise ValueError('Please specify either nr_pulses_pi or '
+                             'fixed_scaling.')
+
+        gamma_1 = 1/T1
+        gamma_2 = 1/T2
+        gamma_phi = gamma_2 - 0.5*gamma_1
+
+        # apply initial pi/2 gate
+        y00, z00 = DriveAmpCalibAnalysis.apply_gate(
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+
+        # calculate yinf, zinf with amp_sc
+        amp_sc = sc_error + ideal_scaling
+        if hasattr(amp_sc, '__iter__'):
+            amp_sc = amp_sc[0]
+        Omega = amp_sc * np.pi / t_gate
+        yinf = 2 * zth * Omega * gamma_1 / \
+               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
+               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+
+        e_pops = np.zeros(len(nr_pi_pulses))
+        for i, n in enumerate(nr_pi_pulses):
+            if fixed_scaling is None:
+                # start in superposition state (after pi/2 pulse application)
+                # redefine variables y -> y - yinf; z -> z - zinf;
+                # adds offset to initial values
+                y, z = y00 - yinf, z00 - zinf
+                y, z = DriveAmpCalibAnalysis.apply_gate_mtx(
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi,
+                    nreps=nr_pulses_pi * n)
+                # get back the true y and z
+                y += yinf
+                z += zinf
+            else:
+                y, z = y00, z00
+                for j in range(n):
+                    # apply pulse with varying scaling
+                    y, z = DriveAmpCalibAnalysis.apply_gate(
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
+                    # apply pulse with fixed scaling
+                    y, z = DriveAmpCalibAnalysis.apply_gate(
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
+            e_pops[i] = 0.5 * (1 - z)
+        return e_pops
+
+    @staticmethod
+    def fit_trace(data_to_fit, nr_pi_pulses, amp_sc_err, T2,
+                 ideal_scaling, maxeval=500, **kw):
+        """
+        Fit the excited state population as a function of nr_pi_pulses for the
+        amplitude scalnig error amp_sc_err.
+
+        Args:
+            data_to_fit (array): excited state population measured after
+                the application of the pulses in nr_pi_pulses
+            nr_pi_pulses (array): number of repeated pulses applied to the qubit
+                prepared in the + state
+            amp_sc_err (float or array): error(s) on the amplitude scaling
+                away from the ideal scaling. This error will be fitted
+            T2 (float): qubit decoherence time (s)
+            ideal_scaling (float): ideal amplitude scaling factor
+            maxeval (int): maximum number of iterations
+
+        Kwargs:
+            - must contain either
+                - T1 (float): quit lifetime (s)
+                - t_gate (float): gate length (s)
+                or
+                - mobjn (str): name of the qubit
+                - ts (str): measurement timestamp
+                The last two will be used to extract the first two if T1/t_gate
+                are not specified (see docstring of sim_func)
+        """
+        import nlopt
+        fit_t2_r = kw.pop('fit_t2_r', True)
+        def cost_func(vars, grad):
+            sc_error = vars[0]
+            t2_r = vars[1] if fit_t2_r else 1
+            calc = DriveAmpCalibAnalysis.sim_func(
+                nr_pi_pulses, sc_error, ideal_scaling, T2, t2_r, **kw)
+            return np.sqrt(np.sum((calc - data_to_fit)**2))
+
+        opt = nlopt.opt(nlopt.GN_DIRECT, 1 + fit_t2_r)
+        opt.set_xtol_rel(1e-8)
+        opt.set_maxeval(maxeval)
+        opt.set_min_objective(cost_func)
+        opt.set_lower_bounds([-0.05] + ([0.01] if fit_t2_r else []))
+        opt.set_upper_bounds([0.1] + ([1.0] if fit_t2_r else []))
+        x = opt.optimize([amp_sc_err] + ([1] if fit_t2_r else []))
+        return x
+
+    def run_fitting(self, **kw):
+        fit_t2_r = self.get_param_value('fit_t2_r', True)
+        nr_pi_p = self.proc_data_dict['sweep_points_dict'][self.qb_names[0]][
+            'msmt_sweep_points']
+        sp2dd = self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]]
+        len_sp2dd = len(sp2dd[list(sp2dd)[0]])
+        # check if the fit results were pass by the user
+        self.fitted_amp_sc_errs = self.get_param_value('fitted_scaling_errors')
+        run_fit = False
+        if self.fitted_amp_sc_errs is None:
+            run_fit = True
+            # store fit results {qbn: len_nr_soft_sp}
+            self.fitted_amp_sc_errs = {qbn: np.zeros(len_sp2dd)
+                                       for qbn in self.qb_names}
+        # store fit results T1, T2 {qbn: len_nr_soft_sp}
+        self.fitted_coh_times = {qbn: {i: '' for i in range(len_sp2dd)}
+                                 for qbn in self.qb_names}
+        # store fit lines {qbn: 2D array (each row is a fit line)}
+        self.fit_lines = {qbn:  np.zeros((len_sp2dd, len(nr_pi_p)))
+                          for qbn in self.qb_names}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            T1 = self.get_param_value(
+                'T1', default_value=self.raw_data_dict[f'T1_{qbn}'])
+            T2 = self.get_param_value(
+                'T2', default_value=self.raw_data_dict[f'T2_{qbn}'])
+            t_gate = self.raw_data_dict[f'{trans_name}_sigma_{qbn}'] * \
+                     self.raw_data_dict[f'{trans_name}_nr_sigma_{qbn}']
+            data = self.proc_data_dict['data_to_fit'][qbn]
+            idx = data.shape[1] - self.num_cal_points
+            data = data[:, :idx]
+            nr_pi_pulses = self.proc_data_dict['sweep_points_dict'][qbn][
+                'msmt_sweep_points']
+            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qbn]
+            amp_scalings = sp2dd[list(sp2dd)[0]]
+            for i, amp_sc in enumerate(amp_scalings):
+                if run_fit:
+                    maxeval = 5000 if self.fixed_scaling[qbn] is None else 500
+                    introduced_amp_sc_err = amp_sc - self.ideal_scalings[qbn]
+                    opt_res = DriveAmpCalibAnalysis.fit_trace(
+                            data[i, :], nr_pi_pulses,
+                            introduced_amp_sc_err, T2, self.ideal_scalings[qbn],
+                            nr_pulses_pi=self.nr_pulses_pi[qbn],
+                            fixed_scaling=self.fixed_scaling[qbn],
+                            T1=T1, t_gate=t_gate, fit_t2_r=fit_t2_r,
+                            maxeval=self.get_param_value('maxeval', maxeval))
+                    self.opt_res = opt_res
+                    amp_sc_err = opt_res[0]
+                    t2_r = 1
+                    self.fitted_amp_sc_errs[qbn][i] = amp_sc_err
+                    if fit_t2_r:
+                        t2_r = opt_res[1]
+                        self.fitted_coh_times[qbn][i] = {'T2 ratio': t2_r,
+                                                         'T2 fit': t2_r*T2,
+                                                         'T2 guess': T2}
+                    self.fit_lines[qbn][i, :] = DriveAmpCalibAnalysis.sim_func(
+                        nr_pi_pulses, amp_sc_err, T2=T2, t2_r=t2_r,
+                        ideal_scaling=self.ideal_scalings[qbn],
+                        nr_pulses_pi=self.nr_pulses_pi[qbn],
+                        fixed_scaling=self.fixed_scaling[qbn],
+                        T1=T1, t_gate=t_gate)
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict(
+            {qbn: {} for qbn in self.qb_names})
+        for qbn in self.qb_names:
+            fit_sc_errs = self.fitted_amp_sc_errs[qbn]
+            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qbn]
+            amp_scalings = sp2dd[list(sp2dd)[0]]
+            ideal_sc = self.ideal_scalings[qbn]
+            # calculate the correction that must be applied to the scaling
+            # used for this experiment.
+            # fit_sc_errs is the scaling error away from the ideal scaling
+            # (ex: 0.5 for pi/2). But we have nonlinearity, so the scaling
+            # used in this measurement (amp_scalings), which might already have
+            # been corrected once, is the closes scaling that gives the
+            # intended rotation in practice. I.e. our model fits
+            # (ideal_sc + sc_err)pi/tau, but ideal scaling is in practice
+            # the one used in the measurement. So the correct scaling that
+            # this analysis must report is not ideal_sc - sc_err, but
+            # amp_scalings - sc_err.
+            sc_corrs = fit_sc_errs - (amp_scalings - ideal_sc)
+
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'fitted_scaling_errors'] = fit_sc_errs
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'scaling_corrections'] = sc_corrs
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'scaling_corrections_mean'] = np.mean(sc_corrs)
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'correct_scalings'] = ideal_sc - sc_corrs
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'correct_scalings_mean'] = ideal_sc - np.mean(sc_corrs)
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'fitted_coh_times'] = self.fitted_coh_times[qbn]
+
+            trans_name = self.get_transition_name(qbn)
+            amp180 = self.raw_data_dict[f'{trans_name}_amp180_{qbn}']
+            self.proc_data_dict['analysis_params_dict'][qbn][
+                'correct_amplitude'] = (ideal_sc - np.mean(sc_corrs))*amp180
+
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        if self.do_fitting:
+            for qbn in self.qb_names:
+                data_pe = self.proc_data_dict['data_to_fit'][qbn]
+                nr_pi_pulses = self.proc_data_dict['sweep_points_dict'][
+                    qbn]['msmt_sweep_points']
+                sp1d = self.proc_data_dict['sweep_points_dict'][
+                    qbn]['sweep_points']
+                sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qbn]
+                amp_scalings = sp2dd[list(sp2dd)[0]]
+                for i, amp_sc in enumerate(amp_scalings):
+                    base_plot_name = f'DriveAmpCalib_{qbn}_' \
+                                     f'{self.data_to_fit[qbn]}_idx{i}_' \
+                                     f'{amp_sc:.4f}'
+                    # data
+                    self.prepare_projected_data_plot(
+                        fig_name=base_plot_name,
+                        data=data_pe[i, :],
+                        title_suffix=f'set_amp_sc={amp_sc:.4f}',
+                        plot_name_suffix=f'{qbn}_data',
+                        data_label='Data',
+                        linestyle='--',
+                        TwoD=False,
+                        qb_name=qbn)
+
+                    # line at 0.5: start with this so it has the lowest zorder
+                    self.plot_dicts[f'0.5_hline_{qbn}_{i}'] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_hlines,
+                        'y': [0.5],
+                        'xmin': sp1d[0],
+                        'xmax': sp1d[-1],
+                        'linestyle': '--',
+                        'colors': 'gray'}
+
+                    # fit
+                    fit_line = self.fit_lines[qbn][i, :]
+                    self.plot_dicts[f'fit_{qbn}_{i}'] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': nr_pi_pulses,
+                        'yvals': fit_line,
+                        'setlabel': 'fit',
+                        'marker': None,
+                        'do_legend': True,
+                        'color': 'r',
+                        'legend_ncol': 2,
+                        'legend_bbox_to_anchor': (1, -0.15),
+                        'legend_pos': 'upper right'}
+
+                    # textbox
+                    trans_name = self.get_transition_name(qbn)
+                    amp180 = self.raw_data_dict[f'{trans_name}_amp180_{qbn}']
+                    ana_d = self.proc_data_dict['analysis_params_dict'][qbn]
+                    corr_sc = ana_d["correct_scalings_mean"]
+                    sc_corr = ana_d["scaling_corrections_mean"]
+                    ideal_sc = self.ideal_scalings[qbn]
+                    textstr = f'Corrected scaling: {corr_sc:.7f}\n'
+                    textstr += f'Used scaling: {amp_sc:.6f}\n'
+                    textstr += f'Ideal scaling: {ideal_sc:.3f}\n'
+                    textstr += f'Scaling corr. fit: {sc_corr:.7f}\n'
+                    # correction to amp used in measurement
+                    da = (corr_sc - amp_sc) * amp180
+                    # correction to the amplitude calculated with ideal scaling
+                    da_ideal = (corr_sc - ideal_sc) * amp180
+                    textstr += f'Diff. Amp. fit - Amp. set: {da*1000:.3f} mV\n'
+                    textstr += 'Diff. Amp. fit - Amp. ideal: ' + \
+                               f'{da_ideal*1000:.3f} mV'
+                    if self.get_param_value('fit_t2_r', True):
+                        t2f = self.fitted_coh_times[qbn][i]['T2 fit']
+                        t2s = self.get_param_value(
+                            'T2', default_value=self.raw_data_dict[f'T2_{qbn}'])
+                        textstr += f'\nT2 fit: {t2f*1e6:.1f} $\mu$s; ' \
+                                   f'T2 meas: {t2s*1e6:.1f} $\mu$s'
+                    self.plot_dicts[f'text_msg_{qbn}_{i}'] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_text,
+                        'ypos': -0.2,
+                        'xpos': -0.05,
+                        'horizontalalignment': 'left',
+                        'verticalalignment': 'top',
+                        'text_string': textstr}
+
+                    # pf without cal points
+                    if 'pf' in self.proc_data_dict['projected_data_dict'][qbn]:
+                        data_pf = self.proc_data_dict[
+                            'projected_data_dict'][qbn]['pf']
+                        # remove cal points from data_pf
+                        idx = data_pf.shape[1] - self.num_cal_points
+                        data_pf = data_pf[:, :idx]
+                        leak_plot_name = f'Leakage_{qbn}_pf_{i}_{amp_sc:.4f}'
+                        data_axis_label = self.get_yaxis_label(qbn, 'pf')
+                        self.prepare_projected_data_plot(
+                            fig_name=leak_plot_name,
+                            data=data_pf[i, :],
+                            sweep_points=nr_pi_pulses,
+                            data_axis_label=data_axis_label,
+                            title_suffix=f'amp_sc={amp_sc:.4f}',
+                            do_legend_data=False,
+                            linestyle='-',
+                            plot_cal_points=False,
+                            TwoD=False,
+                            qb_name=qbn)
+
+
+class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
+    """
+    Class to analyse an experiment run with the DriveAmpNonlinearityCurve, or a
+    set of DriveAmpCalib experiments for measuring the drive amplitude
+    non-linearity curve to calibrate the non-linearity produced by the control
+    electronics.
+
+    Args:
+        t_start (str): timestamp of the first measurement
+        t_stop (str): timestamp of the last measurement; all timestamps
+            between t_start and t_stop will be taken
+        qb_names (list of str): names of the qubits in the experiment
+        For do_fitting and auto, see docstring of parent class.
+
+    Keyword args:
+        Passed to the parent class.
+
+        Specific to this class:
+            - fit_mask (array of bools; default: all True): specified whether to
+                exclude any points of the non-linearity curve from the fit.
+                Can be passed in options_dict or metadata.
+    """
+
+    def __init__(self, t_start, t_stop, qb_names=None, do_fitting=True,
+                 auto=True, **kwargs):
+        super().__init__(t_start=t_start, t_stop=t_stop, do_fitting=do_fitting,
+                         **kwargs)
+        self.qb_names = qb_names
+        self.auto = auto
+
+        if self.auto:
+            self.run_analysis()
+
+    def extract_data(self):
+        """
+        Extracts the nonlinearity_curve for each qubit from the individual
+        DriveAmpCalib measurements specified by self.timestamps.
+        First tries to extract analysis parameters from the data file. If
+        not found, the DriveAmpCalibAnalysis will be run for that timestamp.
+
+        First sorts the timestamps in ascending order of the amplitude scaling
+        that was calibrated in the experiment.
+
+        Stores the nonlinearity curves in self.proc_data_dict and saves them
+        to file.
+        """
+        super().extract_data()
+
+        if self.qb_names is None:
+            self.qb_names = self.get_param_value(
+                'ro_qubits', default_value=self.get_param_value('qb_names'))
+            if self.qb_names is None:
+                raise ValueError('Provide the "qb_names."')
+
+        # sort timestamps by measured amplitude scaling factor (given by
+        # 1/n_pulses pi and fixed_scaling; see docstring of measurement class
+        # DriveAmpCalib.)
+        self.sorted_tss = []
+        ideal_scalings = []
+        for i, ts in enumerate(self.timestamps):
+            # assumes n_pulses_pi is the same for all qubits
+            n_pulses_pi = self.get_param_value('n_pulses_pi', index=i)
+            range_center = 1 / n_pulses_pi
+            fixed_scaling = self.get_param_value('fixed_scaling', index=i)
+            if fixed_scaling is None:
+                task_list = self.get_param_value('preprocessed_task_list', index=i)
+                fixed_scaling = {}
+                for qbn in self.qb_names:
+                    task = [t for t in task_list if t['qb'] == qbn][0]
+                    fixed_scaling[qbn] = task.get('fixed_scaling')
+            if not isinstance(fixed_scaling, dict):
+                # it is a number or None: convert to dict
+                fixed_scaling = {qbn: fixed_scaling for qbn in self.qb_names}
+            if any([fs is not None for fs in list(fixed_scaling.values())]):
+                range_center = 1 - fixed_scaling[self.qb_names[0]]
+                ideal_scalings += [1 - 1 / n_pulses_pi]
+            else:
+                ideal_scalings += [range_center]
+            self.sorted_tss += [(ts, range_center)]
+        self.sorted_tss.sort(key=lambda t: t[1])
+        ideal_scalings.sort()
+
+        nonlinearity_curves = {qbn: {label: np.zeros(len(self.sorted_tss))
+                              for label in ['set_scalings',
+                                            'corrected_scalings',
+                                            'set_amps', 'corrected_amps']}
+                               for qbn in self.qb_names}
+
+        trans_name = self.get_param_value('transition_name')
+        for ii, tup in enumerate(self.sorted_tss):
+            ts = tup[0]
+            idx = self.timestamps.index(ts)
+            task_list = self.get_param_value('preprocessed_task_list', index=idx)
+            # get corrected scalings
+            params_dict = {qbn: f'Analysis.Processed data.'
+                                f'analysis_params_dict.{qbn}.'
+                                f'correct_scalings_mean'
+                           for qbn in self.qb_names}
+            corr_sc = self.get_data_from_timestamp_list(params_dict,
+                                                        timestamps=[ts])
+
+            # Check if the corrected scalings were found in the data file
+            run_ana = any([
+                hasattr(corr_sc[qbn], '__iter__') and len(corr_sc[qbn]) == 0
+                for qbn in self.qb_names])
+            if run_ana:
+                # DriveAmpCalibAnalysis s has not been run. Run it here
+                print(f'DriveAmpCalibAnalysis was not run for {ts} (amplitude '
+                      f'scaling of {ideal_scalings[ii]}). Running it now ... ')
+                a = DriveAmpCalibAnalysis(t_start=ts,
+                                          options_dict=self.options_dict)
+                for qbn in self.qb_names:
+                    nonlinearity_curves[qbn]['corrected_scalings'][ii] = \
+                        a.proc_data_dict['analysis_params_dict'][qbn][
+                            'correct_scalings_mean']
+            else:
+                # corrected scalings were found in the data file
+                for qbn in self.qb_names:
+                    nonlinearity_curves[qbn]['corrected_scalings'][ii] = \
+                        corr_sc[qbn]
+
+            # get the ideal scalings, and the set and corrected amps
+            for qbn in self.qb_names:
+                # take the qubit amp180 from the data file
+                task = [t for t in task_list if t['qb'] == qbn][0]
+                trans_name = task.get('transition_name_input', trans_name)
+                s = 'Instrument settings.' + qbn
+                params_dict = {'amp180': s + f'.{trans_name}_amp180'}
+                amp180 = self.get_data_from_timestamp_list(
+                    params_dict, timestamps=[ts])['amp180']
+                # ideal scaling
+                nonlinearity_curves[qbn]['set_scalings'][ii] = \
+                    ideal_scalings[ii]
+                # convert set_scaling and corrected_scaling to amps
+                nonlinearity_curves[qbn]['set_amps'][ii] = \
+                    nonlinearity_curves[qbn]['set_scalings'][ii] * amp180
+                nonlinearity_curves[qbn]['corrected_amps'][ii] = \
+                    nonlinearity_curves[qbn]['corrected_scalings'][ii] * amp180
+
+        for qbn in self.qb_names:
+            # add the point (1,1) is not part of the dataset
+            if nonlinearity_curves[qbn]['set_scalings'][-1] != 1:
+                nonlinearity_curves[qbn]['set_scalings'] = np.concatenate([
+                    nonlinearity_curves[qbn]['set_scalings'], [1]])
+                nonlinearity_curves[qbn]['corrected_scalings'] = np.concatenate([
+                    nonlinearity_curves[qbn]['corrected_scalings'], [1]])
+
+        # store nonlinearity_curves in proc_data_dict
+        self.proc_data_dict['nonlinearity_curves'] = nonlinearity_curves
+        # save proc_data_dict to file
+        self.save_processed_data()
+
+    def prepare_fitting(self):
+        """
+        Prepare the fit_dict for fitting the non-linearity curves to a
+        fifth-order odd polynomial with two free coefficients 'a' and 'b.'
+        """
+        nonlinearity_curves = self.proc_data_dict['nonlinearity_curves']
+        mask = self.get_param_value('fit_mask', None)
+        if mask is None:
+            length = len(nonlinearity_curves[self.qb_names[0]]['set_scalings'])
+            mask = {qbn: np.ones(length, dtype=np.bool_) for qbn in self.qb_names}
+        if not isinstance(mask, dict):
+            mask = {qbn: mask for qbn in self.qb_names}
+
+        fit_func_poly = lambda x, a, b, c: x * (a * (x ** 4 - 1) +
+                                                b * (x ** 2 - 1) + c)
+        self.fit_dicts = OrderedDict()
+        for qbn in self.qb_names:
+            model = lmfit.Model(fit_func_poly)
+            model.set_param_hint('a', value=0.008, vary=True)
+            model.set_param_hint('b', value=0.008, vary=True)
+            model.set_param_hint('c', value=1, vary=False)
+            guess_pars = model.make_params()
+            self.set_user_guess_pars(guess_pars)
+            x = nonlinearity_curves[qbn]['set_scalings'][mask[qbn]]
+            y = nonlinearity_curves[qbn]['corrected_scalings'][mask[qbn]]
+            if x[-1] == 1:
+                y[-1] = 1
+            self.fit_dicts[f'fit_scalings_{qbn}'] = {
+                'fit_fn': fit_func_poly,
+                'fit_xvals': {'x': x},
+                'fit_yvals': {'data': y},
+                'guess_pars': guess_pars}
+
+    def analyze_fit_results(self):
+        """
+        Extract the fitted coefficients 'a' and 'b.' store them in
+        proc_data_dict under the key "nonlinearity_fit_pars," and save them to
+        file.
+        """
+        # If we store the results in the usual way under
+        # self.proc_data_dict['analysis_params_dict'], saving this entry will
+        # overwrite the existing entry in self.timestamps[0] which came from
+        # the DriveAmpCalibAnalysis. So we must use a different key.
+        self.proc_data_dict['nonlinearity_fit_pars'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            qbn = k.split('_')[-1]
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['nonlinearity_fit_pars'][qbn] = \
+                {'a': fit_res.best_values['a'], 'b': fit_res.best_values['b']}
+            self.save_processed_data(key='nonlinearity_fit_pars')
+
+    def prepare_plots(self):
+        nonlinearity_curves = self.proc_data_dict['nonlinearity_curves']
+        # Figure with 2 rows of axes
+        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        numplotsx, numplotsy = 1, 2
+        for qbn in self.qb_names:
+            fig_title = f'Non-linearity curve {qbn}:\n' \
+                        f'{self.timestamps[0]} - {self.timestamps[-1]}'
+            figname = f'Nonlinearity_curve_{qbn}'
+
+            xvals = nonlinearity_curves[qbn]['set_scalings']
+            yvals = nonlinearity_curves[qbn]['corrected_scalings']
+            if xvals[-1] == 1:
+                yvals[-1] = 1
+
+            # Plot line interpolated between (0, 0) and (1, 1)
+            # we plot this before the data in order to have the data on top of
+            # the line in the plot
+            x_with_zero = np.concatenate([[0], xvals])
+            y_with_zero = np.concatenate([[0], yvals])
+            line = x_with_zero * max(y_with_zero) / max(x_with_zero)
+            self.plot_dicts[f'{figname}_data_line'] = {
+                'fig_id': figname,
+                'ax_id': 0,
+                'plotfn': self.plot_line,
+                'xvals': x_with_zero,
+                'xlabel': 'Set amp. scaling',
+                'xunit': '',
+                'xrange': [-0.05, 1.05],
+                'yvals': line,
+                'ylabel': 'Corrected amp. scaling',
+                'yunit': '',
+                'setlabel': 'linear',
+                'marker': '',
+                'line_kws': {'color': 'k', 'linewidth': 1},
+                'numplotsx': numplotsx,
+                'numplotsy': numplotsy,
+                'plotsize': (plotsize[0] * 0.65, plotsize[1] * 1.5),
+                'title': fig_title
+                }
+
+            # plot data
+            self.plot_dicts[f'{figname}_data'] = {
+                'fig_id': figname,
+                'ax_id': 0,
+                'plotfn': self.plot_line,
+                'xvals': xvals,
+                'xlabel': 'Set amp. scaling',
+                'xunit': '',
+                'yvals': yvals,
+                'ylabel': 'Corrected amp. scaling',
+                'yunit': '',
+                'setlabel': 'data',
+                'linestyle': 'none'}
+
+            # Calculate and plot nonlinearity: difference between data and line
+            # interpolated between (0, 0) and (1, 1)
+            nonlinearity = line[1:] - yvals
+            self.plot_dicts[f'{figname}_data_diff'] = {
+                'fig_id': figname,
+                'ax_id': 1,
+                'plotfn': self.plot_line,
+                'xvals': xvals,
+                'xlabel': 'Set amp. scaling',
+                'xunit': '',
+                'xrange': [-0.05, 1.05],
+                'yvals': nonlinearity,
+                'ylabel': 'Diff. to linear',
+                'yunit': '',
+                'linestyle': 'none'}
+
+            if self.do_fitting:
+                fit_res = self.fit_dicts[f'fit_scalings_{qbn}']['fit_res']
+
+                # plot fit
+                self.plot_dicts[f'{figname}_fit'] = {
+                    'fig_id': figname,
+                    'ax_id': 0,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'cosine fit',
+                    'color': 'C0',
+                    'do_legend': True,
+                    # 'legend_ncol': 2,
+                    # 'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper left'}
+
+                # plot difference between fit and linear
+                xfine = np.linspace(0, x_with_zero[-1], 100)
+                line_fine = xfine * max(y_with_zero) / max(x_with_zero)
+                poly_line = fit_res.model.func(xfine, **fit_res.best_values)
+                self.plot_dicts[f'{figname}_fit_diff'] = {
+                    'fig_id': figname,
+                    'ax_id': 1,
+                    'plotfn': self.plot_line,
+                    'xvals': xfine,
+                    'yvals': line_fine-poly_line,
+                    'color': 'C0',
+                    'marker': ''}
+
+
+
+
+

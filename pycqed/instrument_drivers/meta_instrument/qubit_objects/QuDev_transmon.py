@@ -329,6 +329,11 @@ class QuDev_transmon(Qubit):
                                  'the same change in flux.',
                            initial_value=None, vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('amp_scaling_correction_coeffs',
+                           initial_value=[0, 0],
+                           parameter_class=ManualParameter,
+                           docstring='List/array of values ',
+                           vals=vals.MultiType(vals.Lists(), vals.Arrays()))
 
         # add drive pulse parameters
         for tr_name in self.transition_names:
@@ -612,6 +617,10 @@ class QuDev_transmon(Qubit):
                         f'fit_ro_freq_over_ge_freq is None.')
             return None
         return eval(freq_func)(ge_freq)
+
+    def calculate_nonlinearity_correction(self, x):
+        a, b = self.amp_scaling_correction_coeffs()
+        return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
 
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
                             model='transmon_res', flux=None, update=False):
