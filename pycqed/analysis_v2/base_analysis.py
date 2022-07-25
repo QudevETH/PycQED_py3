@@ -184,6 +184,8 @@ class BaseDataAnalysis(object):
             self.figs = OrderedDict()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
+            self.transparent_background = self.options_dict.get(
+                'transparent_background', self.presentation_mode)
             self.do_individual_traces = self.options_dict.get(
                 'do_individual_traces', False)
             self.tight_fig = self.options_dict.get('tight_fig', True)
@@ -241,7 +243,8 @@ class BaseDataAnalysis(object):
             if not delegate_plotting:
                 self.prepare_plots()  # specify default plots
                 if not self.extract_only:
-                    self.plot(key_list='auto')  # make the plots
+                    # make the plots
+                    self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -1132,8 +1135,8 @@ class BaseDataAnalysis(object):
                         dic['params'][param_name][k] = getattr(param, k)
         return dic
 
-    def plot(self, key_list=None, axs_dict=None,
-             presentation_mode=None, no_label=False):
+    def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
+             transparent_background=None, no_label=False):
         """
         Plot figures defined in self.plot_dict.
         Args.
@@ -1142,13 +1145,15 @@ class BaseDataAnalysis(object):
             presentation_mode (bool): whether to prepare for presentation
             no_label (bool): whether figure should have a label
         """
-        self._prepare_for_plot(key_list=None, axs_dict=None, no_label=False)
+        self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
             presentation_mode = self.presentation_mode
+        if transparent_background is None:
+            transparent_background = self.transparent_background
         if presentation_mode:
-            self.plot_for_presentation(self.key_list)
+            self.plot_for_presentation(self.key_list, transparent_background)
         else:
-            self._plot(self.key_list)
+            self._plot(self.key_list, transparent_background)
 
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
@@ -1204,7 +1209,7 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
-    def _plot(self, key_list):
+    def _plot(self, key_list, transparent_background=False):
         """
         Creates the figures specified by key_list.
 
@@ -1257,6 +1262,10 @@ class BaseDataAnalysis(object):
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
 
+            if transparent_background and 'fig_id' in pdict:
+                # transparent background around axes for presenting data
+                self.figs[pdict['fig_id']].patch.set_alpha(0)
+
         self.format_datetime_xaxes(key_list)
         self.add_to_plots(key_list=key_list)
 
@@ -1272,7 +1281,7 @@ class BaseDataAnalysis(object):
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
 
-    def plot_for_presentation(self, key_list=None):
+    def plot_for_presentation(self, key_list=None, transparent_background=True):
         """
         Prepares and produces plots for presentation.
         Args.
@@ -1282,12 +1291,8 @@ class BaseDataAnalysis(object):
             key_list = list(self.plot_dicts.keys())
         for key in key_list:
             self.plot_dicts[key]['title'] = None
-            # transparent background around axes for presenting data
-            pdict = self.plot_dicts[key]
-            if 'fig_id' in pdict:
-                self.figs[pdict['fig_id']].patch.set_alpha(0)
 
-        self._plot(key_list=key_list)
+        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
