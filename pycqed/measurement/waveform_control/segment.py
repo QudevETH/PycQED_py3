@@ -274,18 +274,22 @@ class Segment:
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask |= chs_ese | chs_split
                 self.resolved_pulses.append(p0)
-                if len(chs_split) != 0 and not is_RO:
-                    default_split_element = f'default_split_{index}_{self.name}'
-                    index += 1
-                    p1 = deepcopy(p)
-                    p1.pulse_obj.element_name = default_split_element
-                    if p1.pulse_obj.codeword == "no_codeword":
-                        self.resolved_pulses.append(p1)
+                if len(chs_split) != 0:
+                    if not is_RO:
+                        default_split_element = f'default_split_{index}_{self.name}'
+                        index += 1
+                        p1 = deepcopy(p)
+                        p1.pulse_obj.element_name = default_split_element
+                        if p1.pulse_obj.codeword == "no_codeword":
+                            self.resolved_pulses.append(p1)
+                        else:
+                            log.warning(
+                                'Splitting waveforms cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(list(channels & chs_split))}')
                     else:
-                        log.warning(
-                            'Splitting waveforms cannot use codewords, '
-                            f'ignoring {p.pulse_obj.name} on channels '
-                            f'{", ".join(list(channels & chs_split))}')
+                        p = deepcopy(p)
+                        self.resolved_pulses.append(p)
 
                 if len(chs_ese) != 0:
                     p2 = deepcopy(p)
