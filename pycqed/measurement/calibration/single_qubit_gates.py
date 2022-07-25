@@ -3461,6 +3461,19 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
                 self.n_pulses_pi = np.arange(2, 8)
             # sort lowest to highest: see docstring for reason
             self.n_pulses_pi = np.sort(self.n_pulses_pi)
+            try:
+                # If 2 in n_pulses_pi, we want to start by calibrating the
+                # amp90_scale and use it for the remaining measurements since
+                # the pulse sequence in the DriveAmpCalib experiment starts
+                # with X90.
+                idx = list(self.n_pulses_pi).index(2)
+                if idx == 1:
+                    # means first two entries are 1, 2: flip them
+                    self.n_pulses_pi = np.concatenate([
+                        [2, 1], self.n_pulses_pi[idx+1:]])
+            except ValueError:
+                # 2 is not in self.n_pulses_pi
+                pass
             self.measurements = []  # for collecting instance of DriveAmpCalib
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
