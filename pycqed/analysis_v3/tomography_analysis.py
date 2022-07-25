@@ -302,10 +302,16 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
     msmt_ops = hlp_mod.get_param('measurement_ops', data_dict)
     msmt_ops = [qtp.Qobj(F) for F in msmt_ops]
     all_msmt_ops = tomo.rotated_measurement_operators(rotations, msmt_ops)
-    all_msmt_ops = list(itertools.chain(*np.array(
-        all_msmt_ops, dtype=np.object).T))
-    hlp_mod.add_param('all_measurement_operators', all_msmt_ops, data_dict,
-                      **params)
+
+    hlp_mod.add_param('all_measurement_operators_test', all_msmt_ops,
+                      data_dict, **params)
+    all_msmt_ops = [all_msmt_ops[i][j]
+                    for j in range(len(all_msmt_ops[0]))
+                    for i in range(len(all_msmt_ops))]
+
+    hlp_mod.add_param('all_measurement_operators',
+                      [qtp.Qobj(o) for o in all_msmt_ops],
+                      data_dict, **params)
 
     all_msmt_res = np.array(list(itertools.chain(*prob_table.T)))
     hlp_mod.add_param('all_measurement_results', all_msmt_res, data_dict,
