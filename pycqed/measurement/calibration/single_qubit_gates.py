@@ -3005,7 +3005,7 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
             parallel_block_list += [self.sequential_blocks(
                 f'drive_calib_{qb}', prepend_block + [drive_calib_block])]
 
-        return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
+        return self.simultaneous_blocks(f'drive_amp_calib_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
 
     def run_analysis(self, analysis_kwargs=None, **kw):
@@ -3046,6 +3046,8 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
                     qubit.name]['correct_scalings_mean']
                 qubit.set(f'{task["transition_name_input"]}_amp90_scale',
                           amp90_sc)
+
+
 class RabiFrequencySweep(ParallelLOSweepExperiment):
     """
     Performs a series of ge Rabi experiments for multiple drive frequencies.
@@ -3403,6 +3405,7 @@ class ActiveReset(CalibBuilder):
 
         return thresholds
 
+
 class DriveAmpNonlinearityCurve(CalibBuilder):
     """
     Calibration measurement for the drive amplitude non-linearity curve.
@@ -3420,11 +3423,11 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
         - if 1 or 2 in n_pulses_pi, the corrected amp180 and amp90_scale will
         be set as temporary values for the remaining measurements.
         The above are done for two reasons:
-            - The first pulse in the DriveAmpCalib sequence is an X90, so we
-            start by calibrating the amp90_scale, and use it for the remaining
-            measurements.
             - DriveAmpCalib scales amplitudes with respect to amp180, and we
             want to use the calibrated amp180 for n_pulses_pi > 1
+            - The first pulse in the DriveAmpCalib sequence is an X90, so we
+            start by calibrating the amp90_scale and use it for the remaining
+            measurements.
 
     Keyword args particular to this class:
         - run_complement (bool; default: True): whether to run DriveAmpCalib for
@@ -3452,12 +3455,16 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
             self.init_kwargs = {}  # for passing to the DriveAmpCalib msmts
             self.init_kwargs.update(kw)
             self.init_kwargs['update'] = False  # never update in DriveAmpCalib
+
             # we measure the non-linearity of the control electronics; it
             # doesn't matter which quantum transition we use for it, so we use
             # the lowest
             self.init_kwargs['transition_name'] = 'ge'
 
             if self.n_pulses_pi is None:
+                # the pi pulse amplitude is assumed to be calibrated and its
+                # correction is not part of the calibration curve
+                # (see DriveAmpNonlinearityCurveAnalysis)
                 self.n_pulses_pi = np.arange(2, 8)
             # sort lowest to highest: see docstring for reason
             self.n_pulses_pi = np.sort(self.n_pulses_pi)
@@ -3494,6 +3501,7 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
         qb_in_exp = self.find_qubits_in_tasks(self.qubits, self.task_list)
         temp_vals = []
 
+        # analysis_kwargs to be passed to the DriveAmpCalib measurements
         ana_kw = self.init_kwargs.pop('analysis_kwargs_da_calib', {})
         opt_dict = ana_kw.pop('options_dict', {})
         for i, npp in enumerate(self.n_pulses_pi):
@@ -3501,6 +3509,7 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
                 with temporary_value(*temp_vals):
                     od = {}
                     if npp == 1 and 'fit_t2_r' not in opt_dict:
+                        # do not fit T2 in this case
                         od['fit_t2_r'] = False
                     od.update(opt_dict)
                     analysis_kwargs = {'options_dict': od}
@@ -3542,6 +3551,7 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
             else:
                 od = {}
                 if 'fit_t2_r' not in opt_dict:
+                    # do not fit T2 in this case
                     od['fit_t2_r'] = False
                 od.update(opt_dict)
                 analysis_kwargs = {'options_dict': od}
