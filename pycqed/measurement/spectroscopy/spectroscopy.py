@@ -834,7 +834,7 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
         """
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        analysis_kwargs['feedlines'] = self.feedlines
+        analysis_kwargs['feedlines_qubits'] = self.feedlines
         self.analysis = spa.ResonatorSpectroscopyAnalysis(**analysis_kwargs)
         return self.analysis
 
@@ -905,6 +905,7 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
                 sweet_spot_RO_freq = self.analysis.fit_res[
                         qb.name][f'{qb.name}_sweet_spot_RO_frequency']
 
+                self.fluxlines_dict[qb.name](sweet_spot)
                 qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = sweet_spot
                 qb.ro_freq(sweet_spot_RO_freq)
                 # Update V_per_phi0 key in each qubit. From this, it is possible to
