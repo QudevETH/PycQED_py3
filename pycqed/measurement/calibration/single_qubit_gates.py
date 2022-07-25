@@ -1393,7 +1393,7 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
 
-class SingleQubitGateCalibExperiment (CalibBuilder):
+class SingleQubitGateCalibExperiment(CalibBuilder):
     """
     Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
     T1, QScale, InPhaseAmpCalib). This is a multitasking experiment, see
@@ -1431,6 +1431,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
     """
     kw_for_task_keys = ['transition_name']
     default_experiment_name = 'SingleQubitGateCalibExperiment'
+    call_parallel_sweep = True  # whether to call parallel_sweep of parent
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         try:
@@ -1502,8 +1503,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
                 self.sweep_points.get_meas_obj_sweep_points_map(
                     self.meas_obj_names)
 
-            if 'qscale' in self.experiment_name.lower() or \
-                    'inphase_amp_calib' in self.experiment_name.lower():
+            if not self.call_parallel_sweep:
                 # For these experiments the pulse sequence is not identical for
                 # each all sweep points so the block function must be called
                 # at each iteration in sweep_n_dim.
@@ -2182,7 +2182,7 @@ class ReparkingRamsey(Ramsey):
     def run_measurement(self, **kw):
         """
         Configures additional sweep functions and temporary values for the
-        for the current dc voltage values, before calling the method of the
+        current dc voltage values, before calling the method of the
         base class.
         """
         sweep_functions = []
@@ -2457,6 +2457,7 @@ class QScale(SingleQubitGateCalibExperiment):
                         values_func=lambda q: np.repeat(q, 3))
     }
     default_experiment_name = 'Qscale'
+    call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  qscales=None, **kw):
@@ -2641,6 +2642,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
                          np.arange(nr_p + 1)[::2])
     }
     default_experiment_name = 'Inphase_amp_calib'
+    call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  n_pulses=None, **kw):
