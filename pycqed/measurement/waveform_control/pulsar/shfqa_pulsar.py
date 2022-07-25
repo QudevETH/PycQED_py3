@@ -126,6 +126,8 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
+            channels = set(self.pulsar._id_channel(chid, self.awg.name)
+                        for chid in chids)
 
             playback_strings = []
 
@@ -287,6 +289,20 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                groups = metadata['trigger_group']
+                group_channels = []
+                for group in groups:
+                    group_channels += \
+                        self.pulsar.get_trigger_group_channels(group)
+
+                if len(set(group_channels) & channels) == 0:
+                    return playback_strings
+
+                # The following line only has an effect if the metadata
+                # specifies that the segment should be repeated multiple times.
+                playback_strings += self._zi_playback_string_loop_start(
+                    metadata, [f'qa{acq_unit+1}i', f'qa{acq_unit+1}q'])
+
                 if list(awg_sequence_element.keys()) != ['no_codeword']:
                     raise NotImplementedError('SHFQA sequencer does currently\
                                                        not support codewords!')

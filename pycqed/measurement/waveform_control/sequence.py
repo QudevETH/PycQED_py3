@@ -144,6 +144,8 @@ class Sequence:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \
                         seg.allow_filter
+                    sequences[awg][elname]['metadata'].setdefault('trigger_group', set())
+                    sequences[awg][elname]['metadata']['trigger_group'].add(group)
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
