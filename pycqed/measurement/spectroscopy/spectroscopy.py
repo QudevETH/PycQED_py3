@@ -869,9 +869,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
         for task in self.preprocessed_task_list:
+            qb = self.get_qubit(task)
             if self.get_lo_from_qb(qb)() is None and not task['hard_sweep']:
                 # SHFSG Soft Sweep settings:
-                qb = self.get_qubit(task)
                 pulsar = qb.instr_pulsar.get_instr()
                 # FIXME: move conversion from amp to gain to SHFSG pulsar method
                 # `_direct_mod_amplitude_setter`. Afterwards the if and elif
