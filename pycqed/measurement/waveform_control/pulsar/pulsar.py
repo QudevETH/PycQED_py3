@@ -1035,8 +1035,9 @@ class Pulsar(Instrument):
                         awg_nr, wave_idx = k
                         waveforms, wave_hashes = v
                         # awg_interface must have the method upload_waveforms
-                        awg_interface.upload_waveforms(awg_nr, wave_idx,
-                                                       waveforms, wave_hashes)
+                        awg_interface.upload_waveforms(
+                            awg_nr=awg_nr, wave_idx=wave_idx,
+                            waveforms=waveforms, wave_hashes=wave_hashes)
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

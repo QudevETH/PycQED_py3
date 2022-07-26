@@ -10,13 +10,13 @@ except Exception:
     UHFQA = type(None)
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin
+from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
+class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA]
@@ -52,6 +52,37 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         "  {playback_string}\n"
         "}}\n"
     )
+
+    def __init__(self, pulsar, awg):
+        super().__init__(pulsar, awg)
+        try:
+            # Here we instantiate a zhinst.qcodes-based UHFQA in addition to
+            # the one based on the ZI_base_instrument because the parallel
+            # uploading of elf files is only supported by the qcodes driver
+            from pycqed.instrument_drivers.physical_instruments. \
+                ZurichInstruments.zhinst_qcodes_wrappers import UHFQA
+            kw = {'server': 'emulator'} if awg.server == 'emulator' else {}
+            self._awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
+                                  host='localhost', interface=awg.interface,
+                                  **kw)
+        except ImportError as e:
+            log.warning(f'Parallel elf compilation not supported for '
+                        f'{awg.name} ({awg.devname}):\n{e}')
+            self._awg_mcc = None
+        # add awgs to multi_core_compiler class variable
+        for awg in self.awgs_mcc:
+            self.multi_core_compiler.add_awg(awg)
+
+    @property
+    def awgs_mcc(self) -> list:
+        """
+        Returns list of the _awg_mcc cores.
+        If _awg_mcc was not defined, returns empty list.
+        """
+        if self._awg_mcc is not None:
+            return list(self._awg_mcc.awgs)
+        else:
+            return []
 
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
@@ -130,14 +161,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if not self.zi_waves_cleared:
             self._zi_clear_waves()
-
+        self.wfms_to_upload = {}
         waves_to_upload = {h: waveforms[h]
-                               for codewords in awg_sequence.values()
-                                   if codewords is not None
-                               for cw, chids in codewords.items()
-                                   if cw != 'metadata'
-                               for h in chids.values()}
-        self._zi_write_waves(waves_to_upload)
+                           for codewords in awg_sequence.values()
+                           if codewords is not None
+                           for cw, chids in codewords.items()
+                           if cw != 'metadata'
+                           for h in chids.values()}
 
         defined_waves = set()
         wave_definitions = []
@@ -314,16 +344,12 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         el_played = el_played + 1
                     return el_played, playback_strings, wave_definitions
 
-
-
             el_played, playback_strings, wave_definitions = repeat_func(repeat_pattern, 0, 0,
                                                   playback_strings, wave_definitions)
-
 
             if el_played != 'variable' and int(el_played) != int(el_total):
                 log.error(el_played, ' is not ', el_total)
                 raise ValueError('Check number of sequences in repeat pattern')
-
 
         if not (ch_has_waveforms['ch1'] or ch_has_waveforms['ch2']):
             return
@@ -342,7 +368,20 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg._awg_needs_configuration[0] = False
         self.awg._awg_program[0] = True
 
-        self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
+        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
+            # Parallel seqc string compilation and upload
+            self.multi_core_compiler.add_active_awg(self.awgs_mcc[0])
+            self.multi_core_compiler.load_sequencer_program(
+                self.awgs_mcc[0], awg_str)
+            self.wfms_to_upload[(0, 0)] = (waves_to_upload, None)
+        else:
+            # Sequential seqc string upload
+            self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,
+                                               timeout=600)
+            self.upload_waveforms(waves_to_upload)
+
+    def upload_waveforms(self, waveforms, **kw):
+        self._zi_write_waves(waveforms)
 
     def is_awg_running(self):
         return self.awg.awgs_0_enable() != 0
