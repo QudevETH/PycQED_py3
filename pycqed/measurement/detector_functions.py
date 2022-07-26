@@ -1391,8 +1391,8 @@ class ScopePollDetector(PollDetector):
 
     def get_sweep_vals(self):
         if self.data_type == 'timedomain':
-            raise NotImplementedError('get_sweep_vals for timedomain still '
-                                      'needs to be implemented.')  # FIXME
+            return np.arange(0, self.acquisition_length,
+                             1 / self.acq_dev.acq_sampling_rate)
         elif self.data_type in ('fft', 'fft_power'):
             return self.acq_dev.get_sweep_points_spectrum(
                 acquisition_length=self.acquisition_length, lo_freq=0)
