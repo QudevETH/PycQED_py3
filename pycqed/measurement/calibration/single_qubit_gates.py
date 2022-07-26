@@ -3029,7 +3029,9 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
         method updates the pi-pulse amplitude (tr_name_amp180) or the amp90
         scaling (tr_name_amp90_scale) of the qubit in each task with the value
         extracted by the analysis.
-        :param kw: keyword arguments
+
+        Keyword args:
+         to allow pass through kw even though they are not needed
         """
 
         for task in self.preprocessed_task_list:
@@ -3046,6 +3048,9 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
                     qubit.name]['correct_scalings_mean']
                 qubit.set(f'{task["transition_name_input"]}_amp90_scale',
                           amp90_sc)
+            else:
+                log.info(f'No qubit parameter to update for a {ideal_sc}pi '
+                         f'rotation. Update only possible for pi and pi/2.')
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
