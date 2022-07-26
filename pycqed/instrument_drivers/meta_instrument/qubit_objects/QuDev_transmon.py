@@ -218,10 +218,10 @@ class QuDev_transmon(Qubit):
                                      'UHFQA and up to 4 for SHFQA).',
                            parameter_class=ManualParameter)
         self.add_parameter('acq_I_channel', initial_value=0,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_Q_channel', initial_value=1,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_averages', initial_value=1024,
                            vals=vals.Ints(0, 1000000),
