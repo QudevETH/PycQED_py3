@@ -564,6 +564,17 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                             f'without an AWG program. This might result in '
                             f'not triggering the acquisition unit.')
 
+    def _check_hardware_limitations(self):
+        super()._check_hardware_limitations()
+        # FIXME: add further checks
+        n_samples = self.convert_time_to_n_samples(self._acq_length)
+        if self._acq_mode == 'scope' and n_samples > self._acq_scope_memory:
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'Acquisition length {self._acq_length} corresponds to '
+                f'{n_samples} > {self._acq_scope_memory}, which is not '
+                f'supported in scope mode.')
+
     def acquisition_set_weights(self, channels, **kw):
         # Makes super call faster
         with self.set_transaction():
