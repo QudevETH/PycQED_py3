@@ -1177,10 +1177,9 @@ class Segment:
         # we allow rounding up of the start time by half a sample, otherwise
         # we round the start time down
         awg = self.pulsar.get_awg_from_trigger_group(trigger_group)
-        start_gran = self.pulsar.get(
-            '{}_element_start_granularity'.format(awg))
+        start_gran = self.pulsar.get_element_start_granularity(trigger_group)
         sample_time = 1/self.pulsar.clock(awg=awg)
-        if start_gran is not None:
+        if start_gran != 0:
             t_start = math.floor((t_start + 0.5*sample_time) / start_gran) \
                       * start_gran
 

@@ -765,6 +765,24 @@ class Pulsar(Instrument):
         else:
             return delay[group]
 
+    def get_element_start_granularity(self, group:str):
+        """
+        Returns granularity of device for a given trigger group.
+
+        Args:
+            group: Name of the group.
+        """
+
+        awg = self.get_awg_from_trigger_group(group)
+        gran = self.get(f"{awg}_element_start_granularity")
+
+        if gran is None:
+            return 0
+        elif isinstance(gran, float) or isinstance(gran, int):
+            return gran
+        else:
+            return gran[group]
+
     def get_trigger_channels(self, group:str) -> List[str]:
         """
         Returns list of triggering channels for a given group.

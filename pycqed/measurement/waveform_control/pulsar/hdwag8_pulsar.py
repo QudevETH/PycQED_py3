@@ -361,7 +361,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     group_channels += \
                         self.pulsar.get_trigger_group_channels(group)
 
-                if len(set(group_channels) & channels) == 0:
+                if len(set(group_channels) & set(channels)) == 0:
                     continue
 
                 # The following line only has an effect if the metadata
