@@ -1341,14 +1341,14 @@ class ScopePollDetector(PollDetector):
                  AWG,
                  channels,
                  nr_shots,
-                 integration_length,  # FIXME: why not acquisition_length?
+                 acquisition_length,
                  nr_averages,
                  data_type,
                  **kw):
         super().__init__(acq_dev=acq_dev, detectors=None, **kw)
         self.name = f'{data_type}_scope'
         self.channels = channels
-        self.integration_length = integration_length
+        self.acquisition_length = acquisition_length
         self.nr_averages = nr_averages
         self.data_type = data_type
         self.AWG = AWG
@@ -1383,7 +1383,7 @@ class ScopePollDetector(PollDetector):
         self.acq_dev.acquisition_initialize(
             channels=self.channels,
             n_results=n_results,
-            acquisition_length=self.integration_length,
+            acquisition_length=self.acquisition_length,
             averages=self.nr_averages,
             loop_cnt=self.nr_shots * self.nr_averages,
             mode='scope', data_type=self.data_type,
@@ -1395,7 +1395,7 @@ class ScopePollDetector(PollDetector):
                                       'needs to be implemented.')  # FIXME
         elif self.data_type in ('fft', 'fft_power'):
             return self.acq_dev.get_sweep_points_spectrum(
-                acquisition_length=self.integration_length, lo_freq=0)
+                acquisition_length=self.acquisition_length, lo_freq=0)
         else:
             raise NotImplementedError(f'ScopePollDetector: data_type'
                                       f' {self.data_type} not implemented.')

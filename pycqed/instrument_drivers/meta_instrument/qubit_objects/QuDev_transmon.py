@@ -1032,7 +1032,7 @@ class QuDev_transmon(Qubit):
                 data_type='fft_power',
                 nr_averages=self.acq_averages(),
                 nr_shots=1,
-                integration_length=self.acq_length()
+                acquisition_length=self.acq_length()
             )
 
     def prepare(self, drive='timedomain', switch='default'):
