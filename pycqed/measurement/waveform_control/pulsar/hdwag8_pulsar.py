@@ -616,9 +616,9 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self.wfms_to_upload[(awg_nr, wave_idx)] = \
                 (wf_raw_combined, wave_hashes)
         else:
-            self._upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
+            self.upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
 
-    def _upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
         """
         Upload waveforms to an awg core (awg_nr).
 
