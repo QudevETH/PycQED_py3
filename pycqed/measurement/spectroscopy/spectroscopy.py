@@ -47,7 +47,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     task_mobj_keys = ['qb']
 
     @assert_not_none('task_list')
-    def __init__(self, task_list, trigger_separation=10e-6, **kw):
+    def __init__(self, task_list, sweep_points=None, trigger_separation=10e-6,
+                 **kw):
         df_name = kw.pop('df_name', 'int_avg_det_spec')
         df_kwargs = kw.pop('df_kwargs', {})
         df_kwargs['live_plot_transform_type'] = \
@@ -61,7 +62,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         respectively the acq. device to configure the hardware. This is used
         e.g. for hard sweeps on SHF hardware.
         """
-        super().__init__(task_list, df_name=df_name, cal_states=cal_states,
+        super().__init__(task_list, sweep_points=sweep_points,
+                         df_name=df_name, cal_states=cal_states,
                          df_kwargs=df_kwargs, **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
@@ -486,11 +488,11 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     }
     default_experiment_name = 'ResonatorSpectroscopy'
 
-    def __init__(self, task_list,
+    def __init__(self, task_list, sweep_points=None,
                  trigger_separation=5e-6,
                  **kw):
         try:
-            super().__init__(task_list,
+            super().__init__(task_list, sweep_points=sweep_points,
                             trigger_separation=trigger_separation,
                             segment_kwargs={'acquisition_mode': \
                                             dict(sweeper='software')},
@@ -683,7 +685,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     }
     default_experiment_name = 'QubitSpectroscopy'
 
-    def __init__(self, task_list,
+    def __init__(self, task_list, sweep_points=None,
                  pulsed=False,
                  trigger_separation=50e-6,
                  modulated=False,
@@ -697,13 +699,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             drive += '_modulated' if self.modulated else ''
             self.default_experiment_name += '_pulsed' if self.pulsed \
                                                     else '_continuous'
-            super().__init__(task_list,
+            super().__init__(task_list, sweep_points=sweep_points,
                             drive=drive,
                             trigger_separation=trigger_separation,
                             segment_kwargs={'mod_config':{},
                                             'sine_config':{},
                                             'sweep_params':{},},
                             **kw)
+
             self.autorun(**kw)  # run measurement & analysis if requested in kw
         except Exception as x:
             self.exception = x
@@ -930,14 +933,16 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     """
     default_experiment_name = 'MultiStateResonatorSpectroscopy'
 
-    def __init__(self, task_list, trigger_separation=150e-6,
+    def __init__(self, task_list, sweep_points=None,
+                 trigger_separation=150e-6,
                  states=["g", "e"], **kw):
         # FIXME: consider not using a temporary trigger separation for this
         # measurement (and just use the one that is currently configured in the
         # TriggerDevice, like for other measurements that include qb drive
         # pulses)
         self.states = states
-        super().__init__(task_list, trigger_separation, **kw)
+        super().__init__(task_list, sweep_points=sweep_points,
+                         trigger_separation=trigger_separation, **kw)
 
     def get_sweep_points_for_sweep_n_dim(self):
         if self.sweep_points_pulses.find_parameter('initialize') is None:
