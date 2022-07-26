@@ -61,7 +61,8 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
             self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
-                                   host='localhost')
+                                   host='localhost', interface=awg.interface,
+                                   server=awg.server)
         except ImportError as e:
             log.warning(f'Parallel elf compilation not supported for '
                         f'{awg.name} ({awg.devname}):\n{e}')
