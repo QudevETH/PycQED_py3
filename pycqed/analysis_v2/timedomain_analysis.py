@@ -12197,7 +12197,7 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                     'ax_id': 0,
                     'plotfn': self.plot_fit,
                     'fit_res': fit_res,
-                    'setlabel': 'cosine fit',
+                    'setlabel': 'poly fit',
                     'color': 'C0',
                     'do_legend': True,
                     # 'legend_ncol': 2,
