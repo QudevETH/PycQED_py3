@@ -332,7 +332,13 @@ class QuDev_transmon(Qubit):
         self.add_parameter('amp_scaling_correction_coeffs',
                            initial_value=[0, 0],
                            parameter_class=ManualParameter,
-                           docstring='List/array of values ',
+                           docstring='List/array of two floats representing '
+                                     'the coefficients a, b of the 5th order '
+                                     'polynomial used to correct for drive '
+                                     'electronics nonlinearity when scaling '
+                                     'the drive pulse amplitude with respect '
+                                     'to the pi-pulse amplitude. Used in '
+                                     'calculate_nonlinearity_correction.',
                            vals=vals.MultiType(vals.Lists(), vals.Arrays()))
 
         # add drive pulse parameters
@@ -619,6 +625,15 @@ class QuDev_transmon(Qubit):
         return eval(freq_func)(ge_freq)
 
     def calculate_nonlinearity_correction(self, x):
+        """
+        Calculates the correction to a linear scaling of the pulse amplitude
+        with respect to the pi-pulse amplitude using a 5th order odd polynomial
+        and the coefficients from self.amp_scaling_correction_coeffs()
+
+        Args:
+             x: drive amplitude scaling factor with respect to the amplitude of
+                the pi-pulse (amp180)
+        """
         a, b = self.amp_scaling_correction_coeffs()
         return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
 
