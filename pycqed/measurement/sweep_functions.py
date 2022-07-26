@@ -11,14 +11,14 @@ class Sweep_function(object):
     '''
 
     def __init__(self, **kw):
-        self.set_kw()
+        self.set_kw(**kw)
 
     def set_kw(self, **kw):
         '''
         convert keywords to attributes
         '''
         for key in list(kw.keys()):
-            exec('self.%s = %s' % (key, kw[key]))
+            setattr(self, key, kw[key])
 
     def prepare(self, **kw):
         pass
@@ -143,7 +143,7 @@ class UploadingSweepFunction(Sweep_function):
 
 class Soft_Sweep(Sweep_function):
     def __init__(self, **kw):
-        self.set_kw()
+        self.set_kw(**kw)
         self.sweep_control = 'soft'
 
 
@@ -284,7 +284,7 @@ class multi_sweep_function(Soft_Sweep):
                  parameter_name=None,
                  name=None,
                  **kw):
-        self.set_kw()
+        self.set_kw(**kw)
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
         self.parameter_name = parameter_name or 'multiple_parameters'
@@ -392,7 +392,7 @@ class two_par_joint_sweep(Soft_Sweep):
     """
 
     def __init__(self, par_A, par_B, preserve_ratio: bool = True, **kw):
-        self.set_kw()
+        self.set_kw(**kw)
         self.unit = par_A.unit
         self.sweep_control = 'soft'
         self.par_A = par_A
