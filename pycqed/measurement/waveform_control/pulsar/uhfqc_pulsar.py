@@ -161,13 +161,13 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
 
         if not self.zi_waves_cleared:
             self._zi_clear_waves()
-        self.wfms_to_upload = {}
         waves_to_upload = {h: waveforms[h]
                            for codewords in awg_sequence.values()
                            if codewords is not None
                            for cw, chids in codewords.items()
                            if cw != 'metadata'
                            for h in chids.values()}
+        self.upload_waveforms(waves_to_upload)
 
         defined_waves = set()
         wave_definitions = []
@@ -373,12 +373,10 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self.multi_core_compiler.add_active_awg(self.awgs_mcc[0])
             self.multi_core_compiler.load_sequencer_program(
                 self.awgs_mcc[0], awg_str)
-            self.wfms_to_upload[(0, 0)] = (waves_to_upload, None)
         else:
             # Sequential seqc string upload
             self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,
                                                timeout=600)
-            self.upload_waveforms(waves_to_upload)
 
     def upload_waveforms(self, waveforms, **kw):
         self._zi_write_waves(waveforms)
