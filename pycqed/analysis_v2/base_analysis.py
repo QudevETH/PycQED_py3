@@ -184,6 +184,8 @@ class BaseDataAnalysis(object):
             self.figs = OrderedDict()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
+            self.transparent_background = self.options_dict.get(
+                'transparent_background', self.presentation_mode)
             self.do_individual_traces = self.options_dict.get(
                 'do_individual_traces', False)
             self.tight_fig = self.options_dict.get('tight_fig', True)
@@ -241,7 +243,8 @@ class BaseDataAnalysis(object):
             if not delegate_plotting:
                 self.prepare_plots()  # specify default plots
                 if not self.extract_only:
-                    self.plot(key_list='auto')  # make the plots
+                    # make the plots
+                    self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -1135,14 +1138,37 @@ class BaseDataAnalysis(object):
                         dic['params'][param_name][k] = getattr(param, k)
         return dic
 
-    def plot(self, key_list=None, axs_dict=None,
-             presentation_mode=None, no_label=False):
+    def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
+             transparent_background=None, no_label=False):
         """
-        Goes over the plots defined in the plot_dicts and creates the
-        desired figures.
+        Plot figures defined in self.plot_dict.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            presentation_mode (bool): whether to prepare for presentation
+            no_label (bool): whether figure should have a label
         """
+        self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
             presentation_mode = self.presentation_mode
+        if transparent_background is None:
+            transparent_background = self.transparent_background
+        if presentation_mode:
+            self.plot_for_presentation(self.key_list, transparent_background)
+        else:
+            self._plot(self.key_list, transparent_background)
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+        """
+        Goes over the entries in self.plot_dict specified by key_list, and
+        prepares them for plotting. If key_list is None, the keys of
+        self.plot_dicts will be used.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            no_label (bool): whether figure should have a label
+        """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
@@ -1186,60 +1212,65 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
+    def _plot(self, key_list, transparent_background=False):
+        """
+        Creates the figures specified by key_list.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            plot_touching = pdict.get('touching', False)
+
+            if type(pdict['plotfn']) is str:
+                plotfn = getattr(self, pdict['plotfn'])
+            else:
+                plotfn = pdict['plotfn']
+
+            # used to ensure axes are touching
+            if plot_touching:
+                self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
+                                                                 hspace=0)
+
+            # Check if pdict is one of the accepted arguments, these are
+            # the plotting functions in the analysis base class.
+            if 'pdict' in signature(plotfn).parameters:
+                if pdict['ax_id'] is None:
+                    plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+
+            # most normal plot functions also work, it is required
+            # that these accept an "ax" argument to plot on and **kwargs
+            # the pdict is passed in as kwargs to such a function
+            elif 'ax' in signature(plotfn).parameters:
+                # Calling the function passing along anything
+                # defined in the specific plot dict as kwargs
+                if pdict['ax_id'] is None:
+                    plotfn(ax=self.axs[pdict['fig_id']], **pdict)
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+            else:
+                raise ValueError(
+                    '"{}" is not a valid plot function'.format(plotfn))
+
+            if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
 
-        if presentation_mode:
-            self.plot_for_presentation(key_list=key_list, no_label=no_label)
-        else:
-            for key in key_list:
-                pdict = self.plot_dicts[key]
-                plot_touching = pdict.get('touching', False)
-
-                if type(pdict['plotfn']) is str:
-                    plotfn = getattr(self, pdict['plotfn'])
-                else:
-                    plotfn = pdict['plotfn']
-
-                # used to ensure axes are touching
-                if plot_touching:
-                    self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
-                                                                     hspace=0)
-
-                # Check if pdict is one of the accepted arguments, these are
-                # the plotting functions in the analysis base class.
-                if 'pdict' in signature(plotfn).parameters:
-                    if pdict['ax_id'] is None:
-                        plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-
-                # most normal plot functions also work, it is required
-                # that these accept an "ax" argument to plot on and **kwargs
-                # the pdict is passed in as kwargs to such a function
-                elif 'ax' in signature(plotfn).parameters:
-                    # Calling the function passing along anything
-                    # defined in the specific plot dict as kwargs
-                    if pdict['ax_id'] is None:
-                        plotfn(ax=self.axs[pdict['fig_id']], **pdict)
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-                else:
-                    raise ValueError(
-                        '"{}" is not a valid plot function'.format(plotfn))
-
-            self.format_datetime_xaxes(key_list)
-            self.add_to_plots(key_list=key_list)
+        self.format_datetime_xaxes(key_list)
+        self.add_to_plots(key_list=key_list)
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1253,14 +1284,18 @@ class BaseDataAnalysis(object):
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
+    def plot_for_presentation(self, key_list=None, transparent_background=True):
+        """
+        Prepares and produces plots for presentation.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
         if key_list is None:
             key_list = list(self.plot_dicts.keys())
         for key in key_list:
             self.plot_dicts[key]['title'] = None
 
-        self.plot(key_list=key_list, presentation_mode=False,
-                  no_label=no_label)
+        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))

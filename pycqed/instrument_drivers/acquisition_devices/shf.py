@@ -89,6 +89,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
+        self._awg_source_strings = {}
         self.seqtrigger = None
         self.timer = None
 
@@ -384,10 +385,28 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         """
         qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
+        self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def store_awg_source_string(self, channel, awg_str):
+        """
+        Store AWG source strings to a private property for debugging.
+
+        This function is called automatically when programming a QA
+        channel via set_awg_program and currently still needs to be called
+        manually after programming an SG channel. The source strings get
+        stored in the dict self._awg_source_strings.
+
+        Args:
+             channel: the QA or SG channel object for which the AWG was
+                programmed
+            awg_str: the source string that was programmed to the AWG
+        """
+        key = channel.short_name[:2] + channel.short_name[-1:]
+        self._awg_source_strings[key] = awg_str
 
     def _arm_scope(self):
         self.scopes[0].stop()
@@ -569,12 +588,26 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
+    def _check_server(self, kwargs):
+        if kwargs.pop('server') == 'emulator':
+            from pycqed.instrument_drivers.physical_instruments\
+                .ZurichInstruments import ZI_base_qudev as zibase
+            from zhinst.qcodes import session as ziqcsess
+            daq = zibase.MockDAQServer(kwargs.get('host', 'localhost'),
+                                       port=kwargs.get('port', 8004),
+                                       apilevel=5)
+            self._session = ziqcsess.Session(
+                server_host=kwargs.get('host', 'localhost'),
+                connection=daq)
+            return daq
+
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
     """
 
     def __init__(self, *args, **kwargs):
+        self._check_server(kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
@@ -583,7 +616,10 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, serial, *args, **kwargs):
+        daq = self._check_server(kwargs)
+        if daq is not None:
+            daq.set_device_type(serial, 'SHFQC')
+        super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)
