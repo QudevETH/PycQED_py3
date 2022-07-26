@@ -1756,7 +1756,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 return r'$|{}\rangle$'.format(prob_label)
 
     def get_yaxis_label(self, qb_name, data_key=None):
-        if self.rotate and (self.rotation_type[qb_name].lower() != 'cal_states'
+        if self.rotate and (self.rotation_type[qb_name].lower() not in
+                            ['cal_states', 'fixed_cal_points']
                             or not len(self.cal_states_dict[
                                         list(self.cal_states_dict)[0]])):
             # some kind of pca was done
