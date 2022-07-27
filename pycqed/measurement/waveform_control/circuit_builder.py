@@ -291,6 +291,8 @@ class CircuitBuilder:
                         # configure virtual Z gate for this angle
                         p['basis_rotation'] = {qbn: factor * float(angle)}
                 else:
+                    qb, _ = self.get_qubits(qbn)
+                    corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
@@ -298,16 +300,19 @@ class CircuitBuilder:
                             func = (
                                 lambda x, a=p['amplitude'], f=factor,
                                        fnc=eval('lambda x : ' + angle):
-                                a / 180 * ((f * fnc(x) + 180) % (-360) + 180))
+                                a * corr_func(
+                                    ((f * fnc(x) + 180) % (-360) + 180) / 180))
                         else:  # angle = parameter
                             func = lambda x, a=p['amplitude'], f=factor: \
-                                a / 180 * ((f * x + 180) % (-360) + 180)
+                                a * corr_func(
+                                    ((f * x + 180) % (-360) + 180) / 180)
                         p['amplitude'] = ParametricValue(
                             param, func=func, op_split=(op_name, op_info[1]))
                     else:  # angle is a given value
                         angle = factor * float(angle)
                         # configure drive pulse amplitude for this angle
-                        p['amplitude'] *= ((angle + 180) % (-360) + 180) / 180
+                        p['amplitude'] *= corr_func(
+                            ((angle + 180) % (-360) + 180) / 180)
         else:
             raise KeyError(f"Operation {' '.join(op_info)} not found.")
         p['op_code'] = op
@@ -493,6 +498,12 @@ class CircuitBuilder:
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
                         reset_pulses.append(self.get_pulse(op + qbn))
+                        # Reset pulses cannot include phase information at the moment
+                        # since we use the exact same waveform(s) (corresponding to
+                        # a given codeword) for every reset pulse(s) we play (no
+                        # matter where in the circuit). Therefore, remove phase_lock
+                        # that references the phase to algorithm time t=0.
+                        reset_pulses[-1]['phaselock'] = False
                         reset_pulses[-1]['codeword'] = codeword
                         if j == 0:
                             reset_pulses[-1]['ref_point'] = 'start'

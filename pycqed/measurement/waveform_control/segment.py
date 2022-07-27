@@ -249,8 +249,6 @@ class Segment:
                     chs_ese.add(ch)
             if len(channels - chs_ese) == 0 and len(chs_ese) != 0:
                 p = deepcopy(p)
-                if p.pulse_obj.element_name in self.acquisition_elements:
-                    self.acquisition_elements.add(default_ese_element)
                 p.pulse_obj.element_name = default_ese_element
                 if p.pulse_obj.codeword == "no_codeword":
                     self.resolved_pulses.append(p)
@@ -265,8 +263,6 @@ class Segment:
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
-                if p1.pulse_obj.element_name in self.acquisition_elements:
-                    self.acquisition_elements.add(default_ese_element)
                 p1.pulse_obj.element_name = default_ese_element
                 p1.pulse_obj.channel_mask |= channels - chs_ese
                 p1.ref_pulse = p.pulse_obj.name
@@ -538,6 +534,17 @@ class Segment:
             if last_element in self.acquisition_elements:
                 RO_awg = self.pulsar.get('{}_awg'.format(c))
                 if RO_awg not in comp_dict:
+                    # FIXME We create a segment here, but it will never get
+                    #  triggered because trigger pulses are generated before
+                    #  calling add_charge_compensation. This bug causes
+                    #  hard-to-debug behavior, e.g., when using FP-assisted
+                    #  RO without enabling enforce_single_element for the
+                    #  flux AWG.
+                    log.warning(
+                        'Segment: Creating a separate element for charge '
+                        'compensation. This might let your experiment fail. '
+                        'Have you forgotten to enable enforce_single_element '
+                        'for the flux AWG?')
                     last_element = 'compensation_el{}_{}'.format(
                         comp_i, self.name)
                     comp_dict[RO_awg] = last_element

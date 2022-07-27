@@ -253,6 +253,8 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     # The acquisition modules will each be triggered by their
                     # sequencer
                     self.awg.seqtrigger = True
+                else:
+                    self.awg._awg_program[i] = None  # do not start generator
 
                 # FIXME: check whether some of this code should be moved to
                 #  the SHFQA class in the next cleanup

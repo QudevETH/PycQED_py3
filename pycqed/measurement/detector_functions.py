@@ -8,7 +8,7 @@ from copy import deepcopy
 import time
 from string import ascii_uppercase
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.timer import Timer
+from pycqed.utilities.timer import Timer, TimedMetaClass
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
@@ -571,11 +571,12 @@ class Function_Detector(Soft_Detector):
 # pycqed.instrument_drivers.acquisition_devices
 # --------------------------------------------
 
-class PollDetector(Hard_Detector):
+class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     """
     Base Class for all polling detectors. A polling detector is one that calls
     the poll method of an acquisition device.
     """
+    TIMED_METHODS = ["prepare"]
 
     def __init__(self, acq_dev=None, detectors=None, **kw):
         """
@@ -857,7 +858,6 @@ class MultiPollDetector(PollDetector):
             self.value_names += ['correlation']
             self.value_units += ['']
 
-    @Timer()
     def prepare(self, sweep_points=None):
         """
         Calls the prepare method of each polling detector in self.detectors
@@ -1039,7 +1039,6 @@ class AveragingPollDetector(PollDetector):
         self.nr_averages = nr_averages
         self.progress_scaling = nr_averages
 
-    @Timer()
     def prepare(self, sweep_points):
         """
         Prepares instruments for acquisition by calling
