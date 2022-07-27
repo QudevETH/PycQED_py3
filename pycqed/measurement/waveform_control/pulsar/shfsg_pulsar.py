@@ -12,6 +12,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement import mc_parameter_wrapper
 import zhinst
 
 try:
@@ -607,16 +608,24 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             osc_index=osc_index,
             sine_generator_index=sine_generator_index)
 
-    def get_frequency_sweep_function(self, ch, mod_freq=0):
+    def get_frequency_sweep_function(self, ch, mod_freq=0,
+                                     allow_IF_sweep=True):
         """
         Args:
             ch (str): Name of the SGChannel to configure
             mod_freq(float): Modulation frequency of the pulse uploaded to the
                 AWG. In case the continuous output is used, this should be set
                 to 0. Defaults to 0.
+            allow_IF_sweep (bool): specifies whether a combined LO and IF
+                sweep may be used (default: True). Note that setting this to
+                False leads to a sweep function that is only allowed to take
+                values on the 100 MHz grid supported by the synthesizer.
         """
         chid = self.pulsar.get(ch + '_id')
         name = 'Frequency'
+        if not allow_IF_sweep:
+            return mc_parameter_wrapper.wrap_par_to_swf(
+                self.pulsar.parameters[f'{ch}_centerfreq'])
         if self.pulsar.get(f"{self.awg.name}_use_hardware_sweeper"):
             return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
