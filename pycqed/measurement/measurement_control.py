@@ -340,7 +340,7 @@ class MeasurementControl(Instrument):
                 # metadata, the exception will be either logged (if an
                 # automatic retry is triggered) or raised.
                 exception = e
-                formatted_exc = traceback.format_exc()
+                log.error(traceback.format_exc())
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -362,7 +362,6 @@ class MeasurementControl(Instrument):
                           f'). Retrying.'
                     self.log_to_slack(msg)
                     log.error(msg)
-                    log.error(formatted_exc)
                     # Call the retry_cleanup_functions if there are any (see
                     # docstring of parameter max_attempts).
                     [fnc() for fnc in getattr(
@@ -2050,7 +2049,7 @@ class MeasurementControl(Instrument):
             [self.remove_parameter_check(p) for p in parameter]
         iname = _get_instrument_name_for_parameter_checks(parameter)
         if parameter.name in self.parameter_checks.get(iname, {}):
-            self.parameter_checks[iname].pop(parameter)
+            self.parameter_checks[iname].pop(parameter.name)
         else:
             log.warning(f'No check for parameter {iname}.{parameter.name} was '
                         f'configured.')
@@ -2137,7 +2136,7 @@ class MeasurementControl(Instrument):
                     t_left=t_left,
                     t_end=t_end,)
 
-            if percdone != 100:
+            if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
@@ -2459,24 +2458,18 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
         it from the object (used in recursive calls of this function)
     :return: (str)
     """
-    def get_short_name():
-        if short_name is not None:
-            return short_name
-        elif hasattr(object, 'short_name'):
-            return object.short_name
-        else:
-            raise AttributeError(
-                f'Could not determine the name of {object}.')
 
     if hasattr(object, 'instrument'):
         # it is a parameter
         return _get_instrument_name_for_parameter_checks(object.instrument)
     elif getattr(object, 'parent', None) is not None:
-        if object.short_name in object.parent.submodules:
+        if object in object.parent.submodules.values():
             # it is a submodule, and will appear in the snapshot with
-            # its short_name
+            # the key used in submodules
+            key = [k for k in object.parent.submodules
+                   if object.parent.submodules[k] == object][0]
             return _get_instrument_name_for_parameter_checks(
-                object.parent) + '.' + get_short_name()
+                object.parent) + '.' + key
         # It might be a channel in a channel list that references the
         # instrument as parent, but not the channel list.
         l = [(s, k) for k, s in object.parent.submodules.items()
@@ -2491,8 +2484,10 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
             object[0], 'parent', None) is not None:
         # If it is a list and we find the parent via the first element.
         # A channel list is a submodule and thus appears in the snapshot with
-        # its short_name.
+        # the key used in submodules.
+        key = [k for k in object[0].parent.submodules
+               if object[0].parent.submodules[k] == object][0]
         return _get_instrument_name_for_parameter_checks(
-            object[0].parent) + '.' + get_short_name()
+            object[0].parent) + '.' + key
     else:  # it is an instrument
         return object.name

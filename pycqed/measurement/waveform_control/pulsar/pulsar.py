@@ -787,10 +787,11 @@ class Pulsar(Instrument):
         self.last_sequence = sequence
 
         if awgs == 'all':
-            awgs = self.active_awgs()
+            awgs = None  # default value for generate_waveforms_sequences
 
         # initializes the set of AWGs with waveforms
-        self._awgs_with_waveforms -= awgs
+        self._awgs_with_waveforms -= set(
+            self.active_awgs() if awgs is None else awgs)
 
 
         # Setting the property will prequery all AWG clock and amplitudes
@@ -803,7 +804,8 @@ class Pulsar(Instrument):
             
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
-                sequence.generate_waveforms_sequences(get_channel_hashes=True)
+                sequence.generate_waveforms_sequences(
+                    awgs=awgs, get_channel_hashes=True)
             log.debug(f'End of waveform hashing sequence {sequence.name} '
                       f'{time.time() - t0}')
             sequence_cache = self._sequence_cache
@@ -943,7 +945,8 @@ class Pulsar(Instrument):
                       f'channels_to_program = {repr(channels_to_program)}'
                       )
         else:
-            waveforms, awg_sequences = sequence.generate_waveforms_sequences()
+            waveforms, awg_sequences = sequence.generate_waveforms_sequences(
+                awgs=awgs)
             awgs_to_program = list(awg_sequences.keys())
             awgs_with_channels_to_upload = []
         log.info(f'Finished compilation of sequence {sequence.name} in '
@@ -1138,7 +1141,7 @@ class Pulsar(Instrument):
             repeat_dict_per_awg[awg] = repeat_dict_per_ch[cname]
 
         for awg_repeat, chs_repeat in awg_ch_repeat_dict.items():
-            for ch in channels_used[awg_repeat]:
+            for ch in channels_used.get(awg_repeat, []):
                 assert ch in chs_repeat, f"Repeat pattern " \
                     f"provided for {awg_repeat} but no pattern was given on " \
                     f"{ch}. All used channels on the same awg must have a " \
