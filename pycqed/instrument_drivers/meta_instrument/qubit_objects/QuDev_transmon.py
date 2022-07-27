@@ -1164,8 +1164,7 @@ class QuDev_transmon(Qubit):
         return self.ge_freq() - self.ge_mod_freq()
 
     def get_ge_lo_identifier(self):
-        """Returns the ge lo identifier for a given qubit in the format as
-        specified below.
+        """Returns the ge LO identifier in one of the formats specified below.
 
         Returns:
             str indicating the instrument name of an external LO
@@ -1202,15 +1201,14 @@ class QuDev_transmon(Qubit):
         return ro_freq[0] - ro_mod_freq[0]
 
     def get_ro_lo_identifier(self):
-        """Returns the ro lo identifier for a given qubit in the format as
-        specified below.
+        """Returns the ro LO identifier in one of the formats specified below.
 
         Returns:
             str indicating the instrument name of an external LO
             tuple of acquisition device name (str) and acquisition
               unit index (int), identifying the internal LO in an
               acquisition unit of an acquisition device
-          """
+        """
 
         if self.instr_ro_lo() is None:
             return (self.instr_acq(), self.acq_unit())
