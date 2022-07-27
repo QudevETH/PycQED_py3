@@ -388,8 +388,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 f_start[qb] = self.sweep_points.get_sweep_params_property(
                     'values', 1, freq_sp)[0]
                 self.qb_offsets[qb] = f_start[qb] - self.lo_sweep_points[0]
-                # FIXME: for chellings
-                lo = qb.instr_ge_lo.get_instr()
+                lo = qb.get_ge_lo_identifier()
                 if lo not in self.lo_qubits:
                     self.lo_qubits[lo] = [qb]
                 else:
@@ -425,8 +424,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 modifs = {}
                 for task in self.preprocessed_task_list:
                     qb = self.get_qubits(task['qb'])[0][0]
-                    # FIXME: for chellings
-                    lo = qb.instr_ge_lo.get_instr()
+                    lo = qb.get_ge_lo_identifier()
                     if len(self.lo_qubits[lo]) > 1:
                         raise NotImplementedError(
                             'ParallelLOSweepExperiment with '
@@ -550,7 +548,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
         temp_vals = []
         name = 'Drive frequency shift'
         sweep_functions = [swf.Offset_Sweep(
-            lo.frequency, offset, name=name, parameter_name=name, unit='Hz')
+            self.lo_qubits[lo][0].swf_drive_lo_freq(allow_IF_sweep=False),
+            offset, name=name, parameter_name=name, unit='Hz')
             for lo, offset in self.lo_offsets.items()]
         if self.allowed_lo_freqs is not None:
             minor_sweep_functions = []
