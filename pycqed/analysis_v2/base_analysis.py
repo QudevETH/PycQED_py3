@@ -245,7 +245,7 @@ class BaseDataAnalysis(object):
                         self.do_fitting = False
 
             if self.do_fitting:
-                # Fitting had not failed: continue with saving and analysing
+                # Fitting has not failed: continue with saving and analysing
                 # the fit results
                 self.save_fit_results()  # saving the fit results
                 self.analyze_fit_results()  # analyzing the fit results
