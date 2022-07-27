@@ -475,7 +475,7 @@ class PulsarAWGInterface(ABC):
                                   f"implemented by AWG interface "
                                   f"{self.__class__}.")
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         """Convenience method for retrieving SWF for sweeping a channels freq.
 
         Subclasses must override this. Subclasses should raise an error when a
@@ -1227,10 +1227,10 @@ class Pulsar(Instrument):
         return self.awg_interfaces[awg_name] \
             .get_params_for_spectrum(ch, requested_freqs)
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
-            .get_frequency_sweep_function(ch)
+            .get_frequency_sweep_function(ch, **kw)
 
     def get_centerfreq_generator(self, ch: str):
         """Return the generator of the center frequency associated with a given channel.
