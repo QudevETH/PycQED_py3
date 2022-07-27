@@ -1302,6 +1302,8 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
         sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
 
     MC.set_sweep_points(sweep_points)
+    if qbm.instr_ge_lo is None:
+        raise NotImplementedError('measure_J_coupling is not implemented for non-mixer based drive pulse generation.')
     MC.set_sweep_function_2D(swf.Offset_Sweep(
         qbm.instr_ge_lo.get_instr().frequency,
         -qbm.ge_mod_freq(),

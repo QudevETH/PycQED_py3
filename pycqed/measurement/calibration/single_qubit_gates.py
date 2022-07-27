@@ -388,6 +388,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 f_start[qb] = self.sweep_points.get_sweep_params_property(
                     'values', 1, freq_sp)[0]
                 self.qb_offsets[qb] = f_start[qb] - self.lo_sweep_points[0]
+                # FIXME: for chellings
                 lo = qb.instr_ge_lo.get_instr()
                 if lo not in self.lo_qubits:
                     self.lo_qubits[lo] = [qb]
@@ -424,6 +425,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 modifs = {}
                 for task in self.preprocessed_task_list:
                     qb = self.get_qubits(task['qb'])[0][0]
+                    # FIXME: for chellings
                     lo = qb.instr_ge_lo.get_instr()
                     if len(self.lo_qubits[lo]) > 1:
                         raise NotImplementedError(

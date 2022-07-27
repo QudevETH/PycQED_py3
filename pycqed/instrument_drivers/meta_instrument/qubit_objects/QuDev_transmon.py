@@ -1129,6 +1129,10 @@ class QuDev_transmon(Qubit):
                                  + ". Valid options are None, 'continuous_spec"
                                  + "', 'pulsed_spec' and 'timedomain'.")
 
+        param = f'{self.ge_I_channel()}_centerfreq'
+        if param in self.instr_pulsar.get_instr().parameters:
+            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
@@ -1159,6 +1163,26 @@ class QuDev_transmon(Qubit):
         """
         return self.ge_freq() - self.ge_mod_freq()
 
+    def get_ge_lo_identifier(self):
+        """Returns the ge lo identifier for a given qubit in the format as
+        specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of drive pulse generating device name (str) and
+              synthesizer unit index (int), identifying the internal
+              LO in an signal generation unit of an drive pulse
+              generating device
+          """
+
+        if self.instr_ge_lo() is None:
+            pulsar = self.instr_pulsar.get_instr()
+            awg = pulsar.get_channel_awg(self.ge_I_channel())
+            gen = pulsar.get_centerfreq_generator(self.ge_I_channel())
+            return (awg, gen)
+        else:
+            return self.instr_ge_lo()
+
     def get_ro_lo_freq(self):
         """Returns the required local oscillator frequency for readout pulses
 
@@ -1176,6 +1200,22 @@ class QuDev_transmon(Qubit):
         else:
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
+
+    def get_ro_lo_identifier(self):
+        """Returns the ro lo identifier for a given qubit in the format as
+        specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+          """
+
+        if self.instr_ro_lo() is None:
+            return (self.instr_acq(), self.acq_unit())
+        else:
+            return self.instr_ro_lo()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
@@ -2219,6 +2259,7 @@ class QuDev_transmon(Qubit):
             verbose=verbose,
             upload=upload))
         MC.set_sweep_points(delays)
+        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency),
@@ -4628,6 +4669,7 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
             sequence=seq, upload=upload, parameter_name='Delay', unit='s'))
         MC.set_sweep_points(sweep_points)
+        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             self.instr_ge_lo.get_instr().frequency,
             -self.ge_mod_freq(),
@@ -4717,6 +4759,7 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
             sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
         MC.set_sweep_points(sweep_points)
+        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             self.instr_ge_lo.get_instr().frequency,
             -self.ge_mod_freq(),

@@ -739,17 +739,32 @@ def temporary_value(*param_value_pairs):
 
 
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):
-    mwgs_set = set()
+    """Configure qubits for multiplexed drive.
+
+    This helper function configures the given qubits for multiplexed drive
+    as follows:
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
+
+    By passing a list with only a single qubit, the function can also be
+    used to ensure that a given LO frequency is used for a qubit, even in a
+    non-multiplexed drive setting.
+
+    Args:
+        qubits (list of qubit objects): The qubits for which the drive
+            should be configured.
+        lo_freqs_dict (dict): A dict where each key identifies a drive LO
+            in one of the formats as returned by qb.get_ge_lo_identifier,
+            and the corresponding value determines the LO frequency that
+            this LO should use.
+    """
     for qb in qubits:
-        qb_ge_mwg = qb.instr_ge_lo()
+        qb_ge_mwg = qb.get_ge_lo_identifier()
         if qb_ge_mwg not in lo_freqs_dict:
-            raise ValueError(
-                f'{qb_ge_mwg} for {qb.name} not found in lo_freqs_dict.')
-        else:
-            qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
-            if qb_ge_mwg not in mwgs_set:
-                qb.instr_ge_lo.get_instr().frequency(lo_freqs_dict[qb_ge_mwg])
-                mwgs_set.add(qb_ge_mwg)
+            log.info(f'{qb.name}: {qb_ge_mwg} not'
+                     f'found in lo_freqs_dict.')
+
+        qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
 
 
 def configure_qubit_mux_readout(qubits, lo_freqs_dict):
@@ -771,25 +786,18 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
     Args:
         qubits (list of qubit objects): The qubits for which the readout
             should be configured.
-        lo_freqs_dict (dict): A dict where each key identifies a readout LO
-            in one of the following formats, and the corresponding value
-            determines the LO frequency that this LO should use. Keys can be:
-            - str indicating the instrument name of an external LO
-            - tuple of acquisition device name (str) and acquisition
-              unit index (int), identifying the internal LO in an
-              acquisition unit of an acquisition device
+        lo_freqs_dict (dict): A dict where each key identifies a drive LO
+            in one of the formats as returned by qb.get_ro_lo_identifier,
+            and the corresponding value determines the LO frequency that
+            this LO should use.
     """
     idx = {lo: 0 for lo in lo_freqs_dict}
     for qb in qubits:
-        # try whether the external LO name is found in the lo_freqs_dict
-        qb_ro_mwg = qb.instr_ro_lo()
+        qb_ro_mwg = qb.get_ro_lo_identifier()
         if qb_ro_mwg not in lo_freqs_dict:
-            # try whether the acquisition device & unit is in the lo_freqs_dict
-            qb_ro_mwg2 = (qb.instr_acq(), qb.acq_unit())
-            if qb_ro_mwg2 not in lo_freqs_dict:
-                raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
-                                 f'{qb_ro_mwg2} found in lo_freqs_dict.')
-            qb_ro_mwg = qb_ro_mwg2
+            log.info(f'{qb.name}: {qb_ro_mwg} not'
+                     f'found in lo_freqs_dict.')
+
         qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
         qb.acq_I_channel(2 * idx[qb_ro_mwg])
         qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)

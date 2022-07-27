@@ -412,6 +412,17 @@ class PulsarAWGInterface(ABC):
         """
         return []
 
+    def get_centerfreq_generator(self, ch:str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        return None
+
     def set_filter_segments(self, val):
         """TODO: Document"""
 
@@ -1220,3 +1231,16 @@ class Pulsar(Instrument):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
             .get_frequency_sweep_function(ch)
+
+    def get_centerfreq_generator(self, ch: str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_centerfreq_generator(ch)

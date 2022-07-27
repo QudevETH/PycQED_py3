@@ -632,6 +632,17 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 name=name_offset, parameter_name=name_offset),
             -mod_freq, name=name, parameter_name=name)
 
+    def get_centerfreq_generator(self, ch: str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+        chid = self.pulsar.get(ch + '_id')
+        return self.awg.sgchannels[int(chid[2]) - 1].synthesizer() - 1
+
     def start(self):
         first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
