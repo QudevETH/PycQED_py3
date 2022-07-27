@@ -259,7 +259,7 @@ class MockAwgModule(zibase.MockAwgModule):
                 os.makedirs(base_dir, exist_ok=True)
                 fn = os.path.join(base_dir, f'{self._device}_{self._index}_awg_default.elf')
                 with open(fn, "w") as f:
-                    f.write(value)
+                    f.write('')
         else:
             super().set(path, value)
 
