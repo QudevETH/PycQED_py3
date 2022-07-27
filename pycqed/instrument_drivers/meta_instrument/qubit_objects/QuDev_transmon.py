@@ -1332,13 +1332,30 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
-    def swf_drive_lo_freq(self):
+    def swf_drive_lo_freq(self, allow_IF_sweep=True):
+        """Create a sweep function for sweeping the drive frequency.
+
+        The sweep is implemented as an LO sweep in case of drive pulse
+        generation with an external LO. The implementation depends on the
+        get_frequency_sweep_function method of the acquisition device in case
+        of an internal LO.
+
+        Args:
+            allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
+                LO and IF sweep) may be used (default: True). Note that
+                setting this to False might lead to a sweep function that is
+                only allowed to taken specific value supported by the
+                internal LO.
+
+        Returns: the Sweep_function object
+        """
         if self.instr_ge_lo() is not None:  # external LO
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency)
         else:  # no external LO
             pulsar = self.instr_pulsar.get_instr()
-            return pulsar.get_frequency_sweep_function(self.ge_I_channel())
+            return pulsar.get_frequency_sweep_function(
+                self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
 
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
