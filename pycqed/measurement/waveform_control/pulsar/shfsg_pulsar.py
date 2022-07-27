@@ -461,9 +461,9 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
         sgchannel = self.awg.sgchannels[awg_nr]
         sgchannel.awg.write_to_waveform_memory(waveforms)
         # Save hashes in the cache memory after a successful waveform upload.
-        self.save_hashes(awg_nr, wave_idx, wave_hashes)
+        self._save_hashes(awg_nr, wave_idx, wave_hashes)
 
-    def save_hashes(self, awg_nr, wave_idx, wave_hashes):
+    def _save_hashes(self, awg_nr, wave_idx, wave_hashes):
         """
         Save hashes in the cache memory after a successful waveform upload.
 
