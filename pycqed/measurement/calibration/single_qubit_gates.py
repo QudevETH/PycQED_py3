@@ -406,7 +406,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     temp_vals.append(
                         (qb.ge_mod_freq, f_start[qb] - self.lo_offsets[lo]))
             self.exp_metadata['lo_offsets'] = {
-                k.name: v for k, v in self.lo_offsets.items()}
+                k: v for k, v in self.lo_offsets.items()}
 
         if self.allowed_lo_freqs is not None:
             if self.internal_modulation:
