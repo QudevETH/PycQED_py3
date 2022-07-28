@@ -341,7 +341,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
-                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='timedomain',
                 **kw)
             for uhf in uhfs])
@@ -350,7 +350,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             det.ScopePollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
                 nr_shots=nr_shots,
-                integration_length=max_int_len[uhf], nr_averages=nr_averages,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
                 data_type='fft_power',
                 **kw)
             for uhf in uhfs])
@@ -554,7 +554,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
-                         "data_to_fit": {}
+                         "data_to_fit": {},
+                         "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
             'int_log_det', qubits, nr_shots=n_shots)
