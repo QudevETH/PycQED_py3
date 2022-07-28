@@ -1178,7 +1178,7 @@ class QuDev_transmon(Qubit):
             pulsar = self.instr_pulsar.get_instr()
             awg = pulsar.get_channel_awg(self.ge_I_channel())
             gen = pulsar.get_centerfreq_generator(self.ge_I_channel())
-            return (awg, gen)
+            return (awg.name, gen)
         else:
             return self.instr_ge_lo()
 

@@ -763,6 +763,7 @@ def configure_qubit_mux_drive(qubits, lo_freqs_dict):
         if qb_ge_mwg not in lo_freqs_dict:
             log.info(f'{qb.name}: {qb_ge_mwg} not'
                      f'found in lo_freqs_dict.')
+            continue
 
         qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
 
@@ -797,6 +798,7 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
         if qb_ro_mwg not in lo_freqs_dict:
             log.info(f'{qb.name}: {qb_ro_mwg} not'
                      f'found in lo_freqs_dict.')
+            continue
 
         qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
         qb.acq_I_channel(2 * idx[qb_ro_mwg])
