@@ -241,7 +241,8 @@ class BaseDataAnalysis(object):
                     if self.raise_exceptions:
                         raise e
                     else:
-                        log.warning('Fitting has failed.')
+                        log.error('Fitting has failed.')
+                        log.error(traceback.format_exc())
                         self.do_fitting = False
 
             if self.do_fitting:
