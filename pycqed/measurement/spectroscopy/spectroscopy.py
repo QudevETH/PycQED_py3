@@ -754,7 +754,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
            and not preprocessed_task['hard_sweep'] \
            and prefix + 'spec_power' not in self.sweep_functions_dict.keys():
             self.sweep_functions_dict[prefix + 'spec_power'] = \
-                qb.instr_lo.get_instr().power()
+                qb.instr_ge_lo.get_instr().power()
         return preprocessed_task
 
     def group_tasks(self, **kw):
