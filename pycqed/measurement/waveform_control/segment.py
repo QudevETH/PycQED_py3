@@ -240,6 +240,8 @@ class Segment:
             channels = p.pulse_obj.masked_channels()
             chs_ese = set()
             chs_split = set()
+            chs_def = set()
+            is_RO = (p.operation_type == "RO")
             for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
                 join_or_split = self.pulsar.get(
@@ -247,70 +249,77 @@ class Segment:
                 if join_or_split == 'ese':
                     chs_ese.add(ch)
                 elif join_or_split == 'split':
-                    chs_split.add(ch)
+                    if is_RO:
+                        log.info(f'Splitting elements is not implemented'
+                                    f'with RO pulses. Not splitting '
+                                    f'{p.pulse_obj.name} on channel {ch}.')
+                        chs_def.add(ch)
+                    else:
+                        chs_split.add(ch)
+                else:
+                    chs_def.add(ch)
 
-            is_RO = (p.operation_type == "RO")
-            if (len(channels - chs_ese) == 0 and len(chs_ese) != 0 or
-                len(channels - chs_split) == 0 and len(chs_split) != 0)\
-                    and not is_RO:
-                p = deepcopy(p)
+            if len(chs_def) != 0:
+                p_def = deepcopy(p)
+                channel_mask = channels - chs_def
+                p_def.pulse_obj.channel_mask |= channel_mask
+                self.resolved_pulses.append(p_def)
 
-                if len(chs_split) != 0:
-                    el_name = f'default_split_{index}_{self.name}'
-                    index += 1
-                elif len(chs_ese) != 0:
-                    el_name = default_ese_element
+            if len(chs_ese) != 0:
+                p_ese = deepcopy(p)
+                channel_mask = channels - chs_ese
+                p_ese.pulse_obj.channel_mask |= channel_mask
 
-                p.pulse_obj.element_name = el_name
+                el_name = default_ese_element
+                p_ese.pulse_obj.element_name = el_name
 
-                if p.pulse_obj.codeword == "no_codeword":
-                    self.resolved_pulses.append(p)
+                # modify p_ese in case there are already non-ese pulses added
+                # to have ese pulse start at the same time
+                if len(chs_def) != 0:
+                    p_ese.ref_pulse = p.pulse_obj.name
+                    p_ese.ref_point = 0
+                    p_ese.ref_point_new = 0
+                    p_ese.basis_rotation = {}
+                    p_ese.delay = 0
+                    p_ese.pulse_obj.name += '_ese'
+                    p_ese.is_ese_copy = True
+
+                if p_ese.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p_ese)
                 else:
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            elif (len(chs_ese) != 0 or len(chs_split) != 0):
-                p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask |= chs_ese | chs_split
-                self.resolved_pulses.append(p0)
-                if len(chs_split) != 0:
-                    if not is_RO:
-                        default_split_element = f'default_split_{index}_{self.name}'
-                        index += 1
-                        p1 = deepcopy(p)
-                        p1.pulse_obj.element_name = default_split_element
-                        if p1.pulse_obj.codeword == "no_codeword":
-                            self.resolved_pulses.append(p1)
-                        else:
-                            log.warning(
-                                'Splitting waveforms cannot use codewords, '
-                                f'ignoring {p.pulse_obj.name} on channels '
-                                f'{", ".join(list(channels & chs_split))}')
-                    else:
-                        p = deepcopy(p)
-                        self.resolved_pulses.append(p)
+            if len(chs_split) != 0:
+                p_split = deepcopy(p)
+                channel_mask = channels - chs_split
+                p_split.pulse_obj.channel_mask |= channel_mask
 
-                if len(chs_ese) != 0:
-                    p2 = deepcopy(p)
-                    p2.pulse_obj.element_name = default_ese_element
-                    p2.pulse_obj.channel_mask |= channels - chs_ese
-                    p2.ref_pulse = p.pulse_obj.name
-                    p2.ref_point = 0
-                    p2.ref_point_new = 0
-                    p2.basis_rotation = {}
-                    p2.delay = 0
-                    p2.pulse_obj.name += '_ese'
-                    p2.is_ese_copy = True
-                    if p2.pulse_obj.codeword == "no_codeword":
-                        self.resolved_pulses.append(p2)
-                    else:
-                        log.warning('enforce_single_element cannot use codewords, '
-                                    f'ignoring {p.pulse_obj.name} on channels '
-                                    f'{", ".join(list(channels & chs_ese))}')
-            else:
-                p = deepcopy(p)
-                self.resolved_pulses.append(p)
+                el_name = f'default_split_{index}_{self.name}'
+                index += 1
+                p_split.pulse_obj.element_name = el_name
+
+                if len(chs_def) != 0:
+                    p_split.ref_pulse = p.pulse_obj.name
+                    p_split.ref_point = 0
+                    p_split.ref_point_new = 0
+                    p_split.basis_rotation = {}
+                    p_split.delay = 0
+                    p_split.pulse_obj.name += '_split'
+                    p_split.is_ese_copy = True
+                elif len(chs_ese) != 0:
+                    raise NotImplementedError(f'Having pulse {p.pulse_obj.name}'
+                                              f' distributed over only ese and '
+                                              f'split channles is not '
+                                              f'implemented.')
+
+                if p_split.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p_ese)
+                else:
+                    log.warning('Split pulses cannot use codewords, '
+                                f'ignoring {p.pulse_obj.name} on channels '
+                                f'{", ".join(list(channels))}')
 
     def resolve_timing(self, resolve_block_align=True):
         """
