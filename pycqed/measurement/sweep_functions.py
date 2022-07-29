@@ -292,6 +292,10 @@ class multi_sweep_function(Soft_Sweep):
         self.parameter_name = parameter_name or 'multiple_parameters'
         self.sweep_functions = []
         self.add_sweep_functions(sweep_functions)
+        # we need to set unit here because it will not get set in
+        # self.insert_sweep_function() inside the call above if sweep_functions
+        # is an empty list
+        self.set_unit()
 
     def set_unit(self, unit=None):
         """Set self.unit either from self.sweep_functions or passed string.
@@ -341,11 +345,8 @@ class multi_sweep_function(Soft_Sweep):
                 Sweep_functions before they are added to the
                 multi_sweep_function.
         """
-        self.sweep_functions += [mc_parameter_wrapper.wrap_par_to_swf(s)
-                                 if isinstance(s, qcodes.Parameter) else s
-                                 for s in sweep_functions]
-        self.set_unit()
-        self.check_units()
+        for s in sweep_functions:
+            self.add_sweep_function(s)
 
     def add_sweep_function(self, sweep_function):
         """Adds a single sweep_function to the multi_sweep_function
@@ -353,10 +354,10 @@ class multi_sweep_function(Soft_Sweep):
         Implemented as simple wrapper around add_sweep_functions. See docstring
         of add_sweep_functions for details.
         """
-        return self.add_sweep_functions([sweep_function])
+        self.insert_sweep_function(len(self.sweep_functions), sweep_function)
 
     def insert_sweep_function(self, pos, sweep_function):
-        """Inserts sweep_function at specified position to self.sweep_fucntions.
+        """Inserts sweep_function at specified position to self.sweep_functions.
 
         Args:
             pos (int): Index of the position the sweep_function is inserted.
@@ -365,6 +366,15 @@ class multi_sweep_function(Soft_Sweep):
                 qcodes.Parameter object is passed it will be converted to a
                 Sweep_function beforehand.
         """
+        if self.sweep_functions and self.sweep_functions[0].sweep_control != \
+                sweep_function.sweep_control:
+            raise ValueError(f'Sweep control "{sweep_function.sweep_control}" '
+                             f'of added sweep function does not match the '
+                             f'sweep control of the previously added functions '
+                             f'("{self.sweep_functions[0].sweep_control}"). '
+                             f'All sweep functions must have the same '
+                             f'sweep_control.')
+
         if isinstance(sweep_function, qcodes.Parameter):
             sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
                 sweep_function
