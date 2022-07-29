@@ -200,7 +200,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 elif 'freq' in param and 'mod' not in param:
                     # Probably qb frequency that is now contained in an lo sweep
                     pass
-                elif i == 1:
+                elif i == 1:  # dimension 1
                     # assuming that this parameter is a pulse parameter and we
                     # therefore need a SegmentSoftSweep as the first sweep
                     # function in our multi_sweep_function
@@ -213,11 +213,26 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                         )
                     self.sweep_points_pulses[i][param] = \
                         self.sweep_points[i][param]
-                else:
-                    log.warning(f"Sweep function for sweep parameter {param} "
-                                f"in first dimension could not be found. This "
-                                f"parameter will no be included in the "
-                                f"experiment.")
+                else:  # dimension 0
+                    # assuming that this parameter is a pulse parameter, and we
+                    # therefore need a SegmentHardSweep as the first sweep
+                    # function in our multi_sweep_function
+                    if not self.sweep_functions[i].sweep_functions:
+                        # no previous sweep functions defined in dim 0
+                        self.sweep_functions[i].insert_sweep_function(
+                            pos=0,
+                            sweep_function=awg_swf.SegmentHardSweep)
+                    elif self.sweep_functions[i].sweep_functions[
+                             0].sweep_control != 'hard':
+                        # sweep_functinos[0] is not empty but what is there
+                        # isn't a hard sweep;
+                        raise NotImplementedError(
+                            'Combined sweeping of pulse parameters and other '
+                            'parameters for which a sweep function is provided '
+                            'is not supported in dimensino 0.')
+
+                    self.sweep_points_pulses[i][param] = \
+                        self.sweep_points[i][param]
 
     def resolve_freq_sweep_points(self, **kw):
         """
