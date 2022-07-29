@@ -142,9 +142,10 @@ class UploadingSweepFunction(Sweep_function):
 
 
 class Soft_Sweep(Sweep_function):
+    sweep_control = 'soft'
+
     def __init__(self, **kw):
         self.set_kw(**kw)
-        self.sweep_control = 'soft'
 
 
 ##############################################################################
@@ -253,9 +254,10 @@ class Delayed_None_Sweep(Soft_Sweep):
 
 
 class Hard_Sweep(Sweep_function):
+    sweep_control = 'hard'
+
     def __init__(self, **kw):
         super().__init__()
-        self.sweep_control = 'hard'
         self.parameter_name = 'None'
         self.name = 'Hard_Sweep'
         self.unit = 'a.u.'
