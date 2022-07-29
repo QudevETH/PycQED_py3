@@ -260,7 +260,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             # We resolve the LO frequency.
             # For LOs supplying several qubits, the LO is set to the value
             # minimizing the maximum absolut modulation frequency.
-            freqs_all = np.array([task['freqs'] for task in tasks])
+            freqs_all = np.array([
+                task['sweep_points'].get_sweep_params_property(
+                    'values', param_names='freq')for task in tasks])
             # optimize the mod freq to lie in the middle of the overall
             # frequency range of this LO
             lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
@@ -318,8 +320,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         if not self.preprocessed_task_list:
             # task_list is empty
             return
-        lengths = np.array([len(task['freqs']) for task
-                                               in self.preprocessed_task_list])
+
+        lengths = np.array([])
+        for task in self.preprocessed_task_list:
+            swpts = task['sweep_points']
+            dim = swpts.find_parameter('freq')
+            lengths = np.append(lengths, swpts.length(dim))
         diffs = lengths - lengths[0]
         if not all([d == 0 for d in diffs]):
             raise ValueError("All tasks need to have the same number of "
@@ -330,7 +336,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         increment in each step.
         """
         for lo, tasks in self.grouped_tasks.items():
-            all_freqs = np.array([task['freqs'] for task in tasks])
+            all_freqs = np.array([
+                task['sweep_points'].get_sweep_params_property(
+                    'values', param_names='freq')for task in tasks])
             if np.ndim(all_freqs) == 1:
                 all_freqs = [all_freqs]
             all_diffs = [np.diff(freqs) for freqs in all_freqs]
@@ -565,7 +573,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             if task['hard_sweep']:
                 qb = self.get_qubit(task)
                 acq_instr = qb.instr_acq.get_instr()
-                freqs = task['freqs']
+                freqs = task['sweep_points'].get_sweep_params_property(
+                        'values', param_names='freq')
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
                 # adjust ro_freq in tmp_vals such that qb.prepare will set the
                 # correct lo_freq.
@@ -792,7 +801,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
             pulsar = qb.instr_pulsar.get_instr()
-            freqs = task['freqs']
+            freqs = task['sweep_points'].get_sweep_params_property(
+                'values', param_names='freq')
             ch = qb.ge_I_channel()
             amp_range = pulsar.get(f'{ch}_amp')
             amp = 10 ** (qb.spec_power() / 20 - 0.5)
