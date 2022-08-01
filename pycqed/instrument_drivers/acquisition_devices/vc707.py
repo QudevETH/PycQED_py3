@@ -14,7 +14,6 @@ class VC707(VC707_core, AcquisitionDevice):
 
     n_acq_units = 2
     n_acq_int_channels = 2  # TODO
-    acq_sampling_rate = 1.0e9
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
     # TODO: In state discrimination mode this is actually 256.
@@ -34,6 +33,10 @@ class VC707(VC707_core, AcquisitionDevice):
         self._last_traces = []
         self.add_parameter('acq_start_after_awgs', initial_value=False,
                            vals=vals.Bool(), parameter_class=ManualParameter)
+
+    @property
+    def acq_sampling_rate(self):
+        return 1.0e9 / self.preprocessing_decimation()
 
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
