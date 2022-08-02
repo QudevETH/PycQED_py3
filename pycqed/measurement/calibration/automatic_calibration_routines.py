@@ -957,6 +957,45 @@ class AutomaticCalibrationRoutine(Step):
 
         return settings
 
+    def extract_step_settings(self, step_class, step_label, step_settings):
+        """Extract the settings of a step from the configuration from the
+        configuration parameter dictionary that was loaded and built from the
+        JSON config files. The entry 'settings' of step_settings is also
+        included in the returned settings.
+
+        Args:
+            step_class (Step): The class of the step whose settings need to be
+                extracted.
+            step_label (str): The label of the step whose settings need to be
+                extracted.
+            step_settings (dict): Additional settings of the step whose settings
+                need to be extracted. The entry step_settings['settings'] will
+                be included in the returned settings. The settings contained
+                there will have priority over those found in the configuration
+                parameter dictionary.
+
+        Returns:
+            dict: A dictionary containing the settings extracted from the
+                configuration parameter dictionary.
+        """
+        if not issubclass(step_class, Step):
+            raise NotImplementedError(
+                "Steps have to inherit from class Step.")
+
+        # no 'General' lookup since in 'General' should only be raw
+        # parameters and no step descriptions for children
+        lookups = [step_label, self.get_lookup_class().__name__]
+        # no 'General' lookup
+        sublookups = [step_label, step_class.get_lookup_class().__name__]
+
+        autocalib_settings = self.settings.copy({
+            step_class.get_lookup_class().__name__:
+                self.merge_settings(lookups, sublookups)
+        })
+        update_nested_dictionary(autocalib_settings,
+                                    step_settings.get('settings', {}))
+        return autocalib_settings
+
     def create_routine_template(self):
         """Creates routine template. Can be overwritten or extended by children
         for more complex routines that require adaptive creation.
@@ -968,26 +1007,8 @@ class AutomaticCalibrationRoutine(Step):
 
         for step in self.routine_template:
             # Convert basic experiments into Autoroutine Steps
-            if not issubclass(step[0], Step):
-                raise NotImplementedError(
-                    "Steps have to inherit from class Step.")
-                # class TmpStep(Step, step[0]):
-                #    pass
-                #step[0] = TmpStep
-
-            # no 'General' lookup since in 'General' should only be raw
-            # parameters and no step descriptions for children
-            lookups = [self.step_label, self.get_lookup_class().__name__]
-            # no 'General' lookup
-            sublookups = [step[1], step[0].get_lookup_class().__name__]
-
-            autocalib_settings = self.settings.copy({
-                step[0].get_lookup_class().__name__:
-                    self.merge_settings(lookups, sublookups)
-            })
-            update_nested_dictionary(autocalib_settings,
-                                     step[2].get('settings', {}))
-            step[2]['settings'] = autocalib_settings
+            step_settings = self.extract_step_settings(step[0], step[1], step[2])
+            step[2]['settings'] = step_settings
 
         # standard global settings
         delegate_plotting = self.get_param_value('delegate_plotting')
@@ -1348,6 +1369,24 @@ class AutomaticCalibrationRoutine(Step):
                  step_settings,
                  step_tmp_vals=None,
                  index=None):
+        """Adds a step to the routine template. The settings of the step are
+        extracted from the configuration parameter dictionary.
+
+        Args:
+            step_class (Step): Class of the Step
+            step_label (str): Label of the step
+            step_settings (dict): Settings of the step. If any settings
+                are found in step_settings['settings'], they will have priority
+                over those found in the configuration parameter dictionary.
+            step_tmp_vals (dict, optional): Temporary values for the step.
+                Defaults to None.
+            index (int, optional): Index of the routine template at which the
+                step should be added. If None, the step will be added at the end
+                of the routine. Defaults to None.
+        """
+        updated_step_settings = self.extract_step_settings(
+            step_class, step_label, step_settings)
+        step_settings['settings'] = updated_step_settings
         self.routine_template.add_step(step_class,
                                        step_label,
                                        step_settings,
