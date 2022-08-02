@@ -12,9 +12,9 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 from .pulsar import PulsarAWGInterface
 
 import zhinst
-import zhinst.toolkit
 
 try:
+    import zhinst.toolkit
     from zhinst.qcodes import SHFSG as SHFSG_core
 except Exception:
     SHFSG_core = type(None)
