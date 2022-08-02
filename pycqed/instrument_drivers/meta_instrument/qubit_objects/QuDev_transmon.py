@@ -1505,7 +1505,7 @@ class QuDev_transmon(Qubit):
         else:
             # The following ensures that we use a hard detector if the swf
             # provided by swf_drive_lo_freq uses a hardware IF sweep.
-            self.int_avg_det.set_polar(True)
+            self.int_avg_det.set_real_imag(False)
             MC.set_detector_function(self.int_avg_det)
         temp_vals += [(self.instr_trigger.get_instr().pulse_period,
                        trigger_separation)]
