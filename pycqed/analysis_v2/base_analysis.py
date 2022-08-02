@@ -457,9 +457,12 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
-    def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
+    def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
+                                     timestamps=None):
+        if timestamps is None:
+            timestamps = self.timestamps
         raw_data_dict = []
-        for timestamp in self.timestamps:
+        for timestamp in timestamps:
             raw_data_dict_ts = OrderedDict([(param, []) for param in
                                             params_dict])
 
