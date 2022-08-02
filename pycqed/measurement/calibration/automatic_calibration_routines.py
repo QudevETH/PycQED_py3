@@ -7,9 +7,7 @@ from pycqed.utilities.state_and_transition_translation import *
 from pycqed.utilities.general import temporary_value, configure_qubit_mux_drive, configure_qubit_mux_readout
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 from pycqed.utilities.reload_settings import reload_settings
-from pycqed.utilities import devicedb
 from collections import OrderedDict as odict
-from pycqed.utilities.devicedb import utils as db_utils
 
 import pycqed.analysis.analysis_toolbox as a_tools
 import numpy as np
@@ -25,6 +23,15 @@ import re
 
 log = logging.getLogger(__name__)
 
+try:
+    from pycqed.utilities import devicedb
+    from pycqed.utilities.devicedb import utils as db_utils
+except ModuleNotFoundError:
+    log.warning("The module 'device-db-client' was not successfully imported. "
+        "The device database features will not be available.")
+    _device_db_client_module_missing = True
+else:
+    _device_db_client_module_missing = False
 
 class SettingsDictionary(dict):
     """This class represents the configuration parameters specified in default,
@@ -61,9 +68,19 @@ class SettingsDictionary(dict):
 
         self.db_client = None
         if db_client is not None:
-            self.db_client = db_client
+            if _device_db_client_module_missing:
+                log.warning("Can't use the given client to connect to the "
+                    "device database. The module 'device-db-client' was not "
+                    "successfully imported.")
+            else:
+                self.db_client = db_client
         elif db_client_config:
-            self.enable_use_database(db_client_config)
+            if _device_db_client_module_missing:
+                log.warning("Can't use the given configuration to connect to "
+                    "the device database. The module 'device-db-client' was "
+                    "not successfully imported.")
+            else:
+                self.enable_use_database(db_client_config)
 
     def update_user_settings(self, settings_user):
         """Updates the current configuration parameter dictionary with the
@@ -183,20 +200,25 @@ class SettingsDictionary(dict):
         # Use database value
         if isinstance(val, list) and len(
                 val) and val[0] == SettingsDictionary._USE_DB_STRING:
-            if qubit is None:
-                raise ValueError(
-                    "When using the database, only parameters associated with"\
-                    "a qubit are allowed. Provide qubit as a keyword."
-                )
-            db_value = self.db_client.get_property_value_from_param_args(
-                qubit.name, param, associated_component_type_hint)
-            success = db_value is not None
-            if success:
-                return db_value.value, success
-            elif len(val) > 1:
-                return val[1], True
+            if _device_db_client_module_missing:
+                log.warning("Can't read values from the device database. "
+                    "The module 'device-db-client' was not successfully "
+                    "imported.")
             else:
-                return None, False
+                if qubit is None:
+                    raise ValueError(
+                        "When using the database, only parameters associated "
+                        "with a qubit are allowed. Provide qubit as a keyword."
+                    )
+                db_value = self.db_client.get_property_value_from_param_args(
+                    qubit.name, param, associated_component_type_hint)
+                success = db_value is not None
+                if success:
+                    return db_value.value, success
+                elif len(val) > 1:
+                    return val[1], True
+                else:
+                    return None, False
 
         return val, success
 
@@ -1738,7 +1760,11 @@ class RamseyStep(qbcal.Ramsey, Step):
 
         results = self.get_empty_device_properties_dict()
         sweet_spots = kwargs.get('qubit_sweet_spots', {})
-        if self.analysis:
+        if _device_db_client_module_missing:
+            log.warning("Assemblying the dictionary of high-level device "
+            "property values requires the module 'device-db-client', which was "
+            "not imported successfully.")
+        elif self.analysis:
             # Get the analysis parameters dictionary
             analysis_params_dict = self.analysis.proc_data_dict[
                 'analysis_params_dict']
@@ -2000,7 +2026,11 @@ class T1Step(qbcal.T1, Step):
         """
         results = self.get_empty_device_properties_dict()
         sweet_spots = kwargs.get('qubit_sweet_spots', {})
-        if self.analysis:
+        if _device_db_client_module_missing:
+            log.warning("Assemblying the dictionary of high-level device "
+            "property values requires the module 'device-db-client', which was "
+            "not imported successfully.")
+        elif self.analysis:
             analysis_params_dict = self.analysis.proc_data_dict[
                 'analysis_params_dict']
 
@@ -3273,7 +3303,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
             results = self.get_empty_device_properties_dict()
             sweet_spots = kwargs.get('qubit_sweet_spots', {})
-            if self.__result_dict is not None:
+            if _device_db_client_module_missing:
+                log.warning("Assemblying the dictionary of high-level device "
+                "property values requires the module 'device-db-client', which "
+                "was not imported successfully.")
+            elif self.__result_dict is not None:
                 # For DetermineModel, the results are in
                 # self.__result_dict from self.run()
                 # The timestamp is the end of run timestamp or the one
