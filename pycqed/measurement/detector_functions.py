@@ -265,6 +265,13 @@ class Multi_Detector(Detector_Function):
             ind += self.detector_values_length[i]
         return data.reshape(original_shape)
 
+    @property
+    def live_plot_labels(self):
+        labels = []
+        for d in self.detectors:
+            labels += d.live_plot_labels
+        return labels
+
 
 class IndexDetector(Detector_Function):
     """Detector function that indexes the result of another detector function.
@@ -1095,6 +1102,13 @@ class MultiPollDetector(PollDetector):
                 = d.live_plot_transform(data[:, ind:ind + self.detector_values_length[i]])
             ind += self.detector_values_length[i]
         return data.reshape(original_shape)
+
+    @property
+    def live_plot_labels(self):
+        labels = []
+        for d in self.detectors:
+            labels += d.live_plot_labels
+        return labels
 
 
 class AveragingPollDetector(PollDetector):
