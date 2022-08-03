@@ -1305,6 +1305,31 @@ class Cryoscope(CalibBuilder):
         for qb, block in self.blocks_to_save.items():
             self.exp_metadata['flux_pulse_blocks'][qb] = block.build()
 
+class FluxPulseTiming(FluxPulseScope):
+    default_experiment_name = 'FluxPulseTiming'
+    kw_for_sweep_points = dict(
+        **FluxPulseScope.kw_for_sweep_points,
+        qb=dict(param_name='freq', unit='Hz',
+                label=r'drive frequency, $f_d$',
+                values_func='get_ge_freq',
+                dimension=1),
+    )
+
+    def get_ge_freq(self, qb):
+        qb = self.get_qubits(qb)[0][0]
+        return [qb.ge_freq()]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw:
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = tda.FluxPulseTimingAnalysis(
+            qb_names=self.meas_obj_names, **analysis_kwargs)
 
 class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
     """

@@ -4620,6 +4620,11 @@ class QuDev_transmon(Qubit):
             return
 
     def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment FluxPulseTiming "
+                                      "instead.")
         if label is None:
             label = 'Flux_pulse_timing_{}'.format(self.name)
         self.measure_flux_pulse_scope([self.ge_freq()], delays,
