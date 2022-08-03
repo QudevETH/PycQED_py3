@@ -337,6 +337,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = (wave[0], None, wave[1], None)
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
+                        if sine_config.get('ignore_waveforms'):
+                            wave = (None, None, None, None)
                         if wave == (None, None, None, None):
                             continue
                         if nr_cw != 0:

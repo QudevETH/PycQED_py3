@@ -1485,6 +1485,7 @@ class QuDev_transmon(Qubit):
                         pulsar.get_params_for_spectrum(ch, freqs)
                     pulsar.set(f'{ch}_centerfreq', center_freq)
                     seg.sine_config[ch] = dict(continuous=not pulsed,
+                                               ignore_waveforms=not pulsed,
                                                gains=tuple(gain * x for x in (
                                                0.0, 1.0, 1.0, 0.0)))
                     seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs
