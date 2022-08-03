@@ -464,9 +464,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     run_compiler = True
 
             if run_compiler:
-                sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
                 if hasattr(self.awg, 'store_awg_source_string'):
                     self.awg.store_awg_source_string(sgchannel, awg_str)
+                sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
 
                 if use_placeholder_waves:
                     self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'] = {}
