@@ -337,7 +337,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = (wave[0], None, wave[1], None)
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
-                        wave = tuple(None if w is None or not len(waveforms[w])
+                        # wave contains hashlists and the first entry of
+                        # each hashlist corresponds to the waveform length.
+                        # If this is 0, we do not program the waveform
+                        wave = tuple(None if w is None or not w[0]
                                      else w for w in wave)
                         if wave == (None, None, None, None):
                             continue
@@ -353,13 +356,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
-                        # wave contains hashlists and the first entry of
-                        # each hashlist corresponds to the waveform length.
-                        # If this is 0, we do not program the waveform
-                        wave = tuple(None if w is None or not w[0]
-                                     else w for w in wave)
-                        if wave == (None, None, None, None):
-                            continue
                         if not len(channels_to_upload):
                             # _program_awg was called only to decide which
                             # sub-AWGs are active, and the rest of this loop
