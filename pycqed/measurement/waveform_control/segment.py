@@ -1378,20 +1378,22 @@ class Segment:
         return channels
 
     def calculate_hash(self, elname, codeword, channel):
+        awg = self.pulsar.get(f'{channel}_awg')
+        tstart, length = self.element_start_end[elname][awg]
+        # length needs to be the first entry in hashlist because this allows
+        # pulsar to easily access the length of a waveform without having
+        # generated the waveform.
+        hashlist = [length]  # element length in samples
+
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
-            hashlist = [self.name, elname, codeword, channel]
+            hashlist += [self.name, elname, codeword, channel]
             if not self.pulsar.use_sequence_cache():
                 return tuple(hashlist)
             # when sequence cache is used, we still need to add the other
             # hashables to allow pulsar to detect when a re-upload is required
-        else:
-            hashlist = []
 
-        awg = self.pulsar.get(f'{channel}_awg')
-        tstart, length = self.element_start_end[elname][awg]
-        hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_distortion') == 'precalculate':
             hashlist.append(repr(self.pulsar.get(
