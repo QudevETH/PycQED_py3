@@ -957,27 +957,25 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
             ["e", "f", ...] instead of e.g. ["g", "e", "f"].
     """
     default_experiment_name = 'MultiStateResonatorSpectroscopy'
+    kw_for_sweep_points = dict(
+        **ResonatorSpectroscopy.kw_for_sweep_points,
+        states=dict(param_name='initialize', unit='',
+                    label='qubit init state',
+                    dimension=1),
+    )
 
     def __init__(self, task_list, sweep_points=None,
                  trigger_separation=150e-6,
-                 states=["g", "e"], **kw):
+                 states=("g", "e"), **kw):
         # FIXME: consider not using a temporary trigger separation for this
         # measurement (and just use the one that is currently configured in the
         # TriggerDevice, like for other measurements that include qb drive
         # pulses)
-        self.states = states
+        self.states = list(states)
         super().__init__(task_list, sweep_points=sweep_points,
-                         trigger_separation=trigger_separation, **kw)
+                         trigger_separation=trigger_separation, states=states,
+                         **kw)
 
-    def get_sweep_points_for_sweep_n_dim(self):
-        if self.sweep_points_pulses.find_parameter('initialize') is None:
-            self.sweep_points_pulses.add_sweep_parameter(
-                param_name='initialize',
-                values=self.states, unit='',
-                label=r'qubit init state',
-                dimension=1
-            )
-        return self.sweep_points_pulses
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
