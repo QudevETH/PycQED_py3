@@ -130,10 +130,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         if param == "amp":
             self.awg.sgchannels[ch].output.range(vp_to_dbm(value))
         if param == "centerfreq":
-            self.awg.synthesizers[self.awg.sgchannels[ch].synthesizer()] \
-                .centerfreq(value)
             new_center_freq = self.awg.synthesizers[
-                self.awg.sgchannels[ch].synthesizer()].centerfreq()
+                self.awg.sgchannels[ch].synthesizer()].centerfreq(value,
+                                                                  deep=True)
             if np.abs(new_center_freq - value) > 1:
                 log.warning(f'{self.name}: center frequency {value/1e6:.6f} '
                             f'MHz not supported. Setting center frequency to '
@@ -338,6 +337,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = (wave[0], None, wave[1], None)
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
+                        wave = tuple(None if w is None or not len(waveforms[w])
+                                     else w for w in wave)
                         if wave == (None, None, None, None):
                             continue
                         if nr_cw != 0:
