@@ -141,7 +141,7 @@ class ZIPulsarMixin:
                 if k == f"{ch}_osc_sweep":
                     playback_string.append('//set up frequency sweep')
                     start_freq = v[0]
-                    freq_inc = v[1] - v[0]
+                    freq_inc = 0 if len(v) <= 1 else v[1] - v[0]
                     playback_string.append(
                         f'configFreqSweep(SWEEP_OSC,{start_freq},{freq_inc});')
                 else:
