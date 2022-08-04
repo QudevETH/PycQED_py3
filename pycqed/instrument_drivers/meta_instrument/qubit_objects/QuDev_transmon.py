@@ -4661,6 +4661,12 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_scope is '
+                                      'not implemented for setups '
+                                      'without external drive LO. Use '
+                                      'FluxPulseScope class instead!')
+
         if label is None:
             label = 'Flux_scope_{}'.format(self.name)
         MC = self.instr_mc.get_instr()
@@ -4689,7 +4695,6 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
             sequence=seq, upload=upload, parameter_name='Delay', unit='s'))
         MC.set_sweep_points(sweep_points)
-        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             self.instr_ge_lo.get_instr().frequency,
             -self.ge_mod_freq(),
@@ -4754,6 +4759,13 @@ class QuDev_transmon(Qubit):
 
         '''
 
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_amplitude()'
+                                      ' is not implemented for setups'
+                                      ' without external drive LO. Use'
+                                      ' FluxPulseAmplitudeSweep class'
+                                      ' instead!')
+
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
 
@@ -4779,7 +4791,6 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
             sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
         MC.set_sweep_points(sweep_points)
-        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             self.instr_ge_lo.get_instr().frequency,
             -self.ge_mod_freq(),
