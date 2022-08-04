@@ -811,6 +811,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 dict(internal_mod=self.pulsed)
             self.segment_kwargs['sine_config'][ch] = \
                 dict(continous=not self.pulsed,
+                     ignore_waveforms=not self.pulsed,
                      gains=tuple(gain * x for x in (0.0, 1.0, 1.0, 0.0)))
             if task['hard_sweep']:
                 center_freq, mod_freqs = pulsar.get_params_for_spectrum(
