@@ -13,27 +13,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHFSpectroscopyHardSweep(swf.UploadingSweepFunction, swf.Hard_Sweep):
-    """Defines a hard sweep function specific to the SHFQA hard spectroscopy.
-
-    The frequency range over which this sweep function should sweep is not
-    set in the sweep function itself, but in the acquisition_mode attribute
-    of the segment used by the sweep function. This gives Pulsar access to the
-    frequency range, allowing Pulsar to program the corresponding frequency
-    parameters in the seqc code.
-    """
-    def __init__(self, acq_dev, acq_unit, parameter_name='None', upload_first=True,
-                 start_pulsar=True):
-        super().__init__(upload_first=upload_first, start_pulsar=start_pulsar)
-        self.parameter_name = parameter_name
-        self.unit = 'Hz'
-        self.acq_dev = acq_dev
-        self.acq_unit = acq_unit
-
-    def set_parameter(self, value):
-        pass  # Set in the Segment, see docstring
-
-
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
 
@@ -106,6 +85,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
+        # FIXME: This parameter should be removed and existing code should be
+        #  refactored to use the parameter "{awg_name}_use_hardware_sweeper" in
+        #  pulsar.
         self.add_parameter(
             'use_hardware_sweeper',
             initial_value=False,
@@ -205,15 +187,23 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
-        diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0] < 1e-3):
-            # not equally spaced (arbitrary 1 mHz)
-            log.warning(f'Unequal frequency spacing not supported, '
-                        f'the measurement will return equally spaced values.')
-        # Find closest allowed center frequency
-        approx_center_freq = np.mean(requested_freqs)
-        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
-                             approx_center_freq)).argmin()
+        if len(requested_freqs) == 1:
+            id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+                                requested_freqs[0])).argmin()
+            if self.awg.allowed_lo_freqs()[id_closest] - requested_freqs[0] < 10e6:
+                # resulting mod_freq would be smaller than 10 MHz
+                # TODO: arbitrarily chosen limit of 10 MHz
+                id_closest = id_closest + (-1 if id_closest != 0 else +1)
+        else:
+            diff_f = np.diff(requested_freqs)
+            if not all(diff_f-diff_f[0] < 1e-3):
+                # not equally spaced (arbitrary 1 mHz)
+                log.warning(f'Unequal frequency spacing not supported, '
+                            f'the measurement will return equally spaced values.')
+            # Find closest allowed center frequency
+            approx_center_freq = np.mean(requested_freqs)
+            id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+                                approx_center_freq)).argmin()
         center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
@@ -541,8 +531,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
-                                              parameter_name=name)
+            return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -590,7 +579,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         return properties
 
     def _check_server(self, kwargs):
-        if kwargs.pop('server') == 'emulator':
+        if kwargs.pop('server', None) == 'emulator':
             from pycqed.instrument_drivers.physical_instruments\
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess

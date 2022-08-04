@@ -24,6 +24,7 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
 from pycqed.utilities.general import temporary_value
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement import optimization as opti
@@ -61,17 +62,20 @@ class QuDev_transmon(Qubit):
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ge_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_pulsar',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_acq',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ro_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
 
         # device parameters for user only
         # could be cleaned up
@@ -1135,7 +1139,6 @@ class QuDev_transmon(Qubit):
                                  + "'continuous_spec_modulated' and "
                                  + "'timedomain'.")
 
-
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
@@ -1307,10 +1310,7 @@ class QuDev_transmon(Qubit):
                 self.instr_ge_lo.get_instr().frequency)
         else:  # no external LO
             pulsar = self.instr_pulsar.get_instr()
-            awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
-            awg_interface = pulsar.awg_interfaces[awg_name]
-            return awg_interface.get_frequency_sweep_function(
-                self.ge_I_channel())
+            return pulsar.get_frequency_sweep_function(self.ge_I_channel())
 
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
@@ -1421,6 +1421,22 @@ class QuDev_transmon(Qubit):
         if np.any(freqs < 500e6):
             log.warning(('Some of the values in the freqs array might be '
                              'too small. The units should be Hz.'))
+        temp_vals = list()
+        pulsar = self.instr_pulsar.get_instr()
+        awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+        hard_sweep = f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
+                     pulsar.get(f"{awg_name}_use_hardware_sweeper")
+
+        # For pulsed and hard_sweep spectroscopies we add an empty spec pulse to
+        # trigger the the drive/marker AWG and afterwards add the actual spec
+        # pulse (either empty for a continuous hard sweep or the pulse for the
+        # pulsed spectroscopy). This way we are able to implement a delay
+        # between the trigger and the spec pulse that is needed in hard_sweeps
+        # to set the osc. frequency.
+        # FIXME: think about cleaner solution
+        empty_trigger = self.get_spec_pars()
+        empty_trigger['length'] = 0
+        empty_trigger['pulse_delay'] = 0
         if pulsed:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1429,8 +1445,14 @@ class QuDev_transmon(Qubit):
                     label = 'pulsed_spec' + self.msmt_suffix
             self.prepare(drive='pulsed_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_spec_pars(),
-                                         self.get_ro_pars()]])
+                spec_pulse = self.get_spec_pars()
+                if hard_sweep or self.instr_ge_lo() is None:
+                    # No external LO, use pulse to set the spec power
+                    spec_pulse["amplitude"] = dbm_to_vp(self.spec_power())
+                seq = sq.pulse_list_list_seq([[empty_trigger,
+                                               spec_pulse,
+                                               self.get_ro_pars()]],
+                                             upload=False)
         else:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1439,10 +1461,48 @@ class QuDev_transmon(Qubit):
                     label = 'continuous_spec' + self.msmt_suffix
             self.prepare(drive='continuous_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_ro_pars()]])
+                if self.instr_ge_lo() is None and not hard_sweep:
+                    amp_range = pulsar.get(f'{self.ge_I_channel()}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_mod_freq"],
+                                   self.ge_mod_freq())]
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_output_amp"],
+                                   gain)]
+                if hard_sweep:
+                    # we use the empty pulse to tell pulsar how to configure the
+                    # osc sweep and sine output. The empty pulse is also used
+                    # to trigger the SeqC code to set the next osc. frequency.
+                    # This needs to be done after the RO.
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars(),
+                                                   empty_trigger]],
+                                                 upload=False)
+                else:
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars()]],
+                                                 upload=False)
+        if upload:
+            for seg in seq.segments.values():
+                ch = self.ge_I_channel()
+                seg.mod_config[ch] = \
+                    dict(internal_mod=pulsed)
+                if hard_sweep:
+                    amp_range = pulsar.get(f'{ch}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    center_freq, mod_freqs = \
+                        pulsar.get_params_for_spectrum(ch, freqs)
+                    pulsar.set(f'{ch}_centerfreq', center_freq)
+                    seg.sine_config[ch] = dict(continuous=not pulsed,
+                                               ignore_waveforms=not pulsed,
+                                               gains=tuple(gain * x for x in (
+                                               0.0, 1.0, 1.0, 0.0)))
+                    seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs
+            pulsar.program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.instr_ge_lo.get_instr().frequency)
+        MC.set_sweep_function(self.swf_drive_lo_freq())
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
@@ -1451,13 +1511,19 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
-
-        with temporary_value(self.instr_trigger.get_instr().pulse_period,
-                             trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the swf
+            # provided by swf_drive_lo_freq uses a hardware IF sweep.
+            self.int_avg_det.set_real_imag(False)
+            MC.set_detector_function(self.int_avg_det)
+        temp_vals += [(self.instr_trigger.get_instr().pulse_period,
+                       trigger_separation)]
+        with temporary_value(*temp_vals):
+            pulsar.start(exclude=[self.instr_acq()])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            pulsar.stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
@@ -5113,10 +5179,10 @@ class QuDev_transmon(Qubit):
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
+            elif ge_lo() is not None:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
