@@ -259,7 +259,10 @@ class Segment:
                 else:
                     chs_def.add(ch)
 
-            if len(chs_def) != 0:
+            # add the pulses as default pulse if it has a default channel or
+            # if it is not part of any channel (i.e. only used as a flag)
+            if len(chs_def) != 0 or \
+                len(chs_def) == 0 and len(chs_ese) == 0 and len(chs_split) == 0:
                 p_def = deepcopy(p)
                 channel_mask = channels - chs_def
                 p_def.pulse_obj.channel_mask |= channel_mask
@@ -315,7 +318,7 @@ class Segment:
                                               f'implemented.')
 
                 if p_split.pulse_obj.codeword == "no_codeword":
-                    self.resolved_pulses.append(p_ese)
+                    self.resolved_pulses.append(p_split)
                 else:
                     log.warning('Split pulses cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
