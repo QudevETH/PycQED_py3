@@ -1,0 +1,54 @@
+{
+    "General":{
+        "rabi": true,
+        "ramsey_large_AD": false,
+        "ramsey_small_AD": true,
+        "rabi_after_ramsey": false,
+        "qscale": true,
+        "rabi_after_qscale": false,
+        "t1": false,
+        "echo_large_AD": false,
+        "echo_small_AD": false,
+        "in_phase_calib": false,
+
+        "nr_rabis": {
+            "ge": [1],
+            "ef": [1]
+        },
+
+        "update": true,
+        "transition_names": ["ge","ef"],
+        "df_name": "int_avg_det",
+        "configure_mux_readout": true,
+        "configure_mux_drive": true
+
+
+    },
+    "Rabi":{
+        "clip_drive_amp": true,
+        "v_low":"({n}-1) * {current} / {n}",
+        "v_high":"min(({n} + 0.45) * {current} / {n}, {max})"
+    },
+    "SQCPreparation":{
+        "trigger_pulse_period": 300e-6,
+        "reset_to_defaults": true,
+        "preparation_type": "wait",
+        "acq_weights_type":"SSB"
+    },
+    "ramsey_large_AD":{
+        "delta_t": 210.0e-9,
+        "t0": 60e-9,
+        "n_periods": 6,
+        "pts_per_period": 15
+    },
+    "echo_small_AD":{
+        "delta_t": 40e-6,
+        "t0": 60e-9,
+        "n_periods": 6,
+        "pts_per_period": 5,
+        "echo":true
+    },
+    "echo_large_AD":{
+        "echo":true
+    }
+}

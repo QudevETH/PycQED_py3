@@ -1,0 +1,20 @@
+{
+    "General":{
+        "transition_name": "ge",
+        "adaptive": false,
+        "allowed_delta_f": 1e6,
+        "max_iterations": 3,
+        "f_factor": 1e9,
+        "f_unit": "GHz",
+        "delta_f_factor": 1e6,
+        "delta_f_unit": "MHz",
+        "use_T2_star": false,
+        "max_waiting_seconds":1
+    },
+    "Ramsey": {
+        "delta_t": 310.0e-9,
+        "t0": 60e-9,
+        "n_periods": 5,
+        "pts_per_period": 6
+    }
+}

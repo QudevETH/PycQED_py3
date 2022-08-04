@@ -1,0 +1,11 @@
+{
+"delegate_plotting": false,
+"upload": true,
+"update": false,
+"transition_name": "ge",
+"default_ge_sigma": 10e-9,
+"default_ef_sigma": 10e-9,
+"acq_averages":4096,
+"verbose": true,
+"save_instrument_settings":false
+}
