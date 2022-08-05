@@ -1687,9 +1687,9 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         super().process_data()
 
         mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
-        self.proc_data_dict['projected_data_dict'] = {
-            qb: self._transform(raw_data, True) for qb, raw_data in mdata_per_qb.items()
-        }
+        for qb, raw_data in mdata_per_qb.items():
+            self.proc_data_dict['projected_data_dict'][qb].update(
+                self._transform(raw_data, True))
 
     def _transform(self, data, transpose=True):
         polar_data = dict()
