@@ -728,13 +728,14 @@ class MeasurementControl(Instrument):
         '''
         # this data can be plotted by enabling persist_mode
         n = len(self.sweep_par_names)
-        self._persist_dat = np.concatenate([
-            result[:, :n],
-            self.detector_function.live_plot_transform(result[:, n:])
-        ], axis=1)
-        self._persist_xlabs = self.sweep_par_names
-        self._persist_ylabs = self.detector_function.live_plot_labels
-        self._persist_plotmon_axes_info = self._plotmon_axes_info
+        if self._live_plot_enabled():
+            self._persist_dat = np.concatenate([
+                result[:, :n],
+                self.detector_function.live_plot_transform(result[:, n:])
+            ], axis=1)
+            self._persist_xlabs = self.sweep_par_names
+            self._persist_ylabs = self.detector_function.live_plot_labels
+            self._persist_plotmon_axes_info = self._plotmon_axes_info
 
         for attr in ['TwoD_array',
                      'dset',
