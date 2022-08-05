@@ -71,12 +71,24 @@ class PulsarAWGInterface(ABC):
     Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
     """
 
+    CHANNEL_CENTERFREQ_BOUNDS:Dict[str, Tuple[float, float]] = {}
+    """Dictionary containing the center freq boudaries for each type of channels.
+
+    Format is similar to :attr:`CHANNEL_AMPLITUDE_BOUNDS`.
+    """
+
     DEFAULT_SEGMENT = _DEFAULT_SEGMENT
     """TODO"""
 
-    IMPLEMENTED_ACCESSORS:List[str] = ["offset", "amp"]
-    """List of parameters that can be set or retrieved by :meth:`awg_setter`
+    IMPLEMENTED_ACCESSORS = ["offset", "amp"]
+    """Parameters that can be set or retrieved by :meth:`awg_setter`
     and :meth:`awg_getter`.
+
+    If `IMPLEMENTED_ACCESSORS` is a list of strings it is assumed that the
+    accessor is implemented for all channels. Alternatively one can specify a
+    dictionary with the accessor names being the keys and the values being lists
+    of channel names that implement this accessor.
+    For example: `IMPLEMENTED_ACCESSORS = {'amp': ['sg1i', 'sg2i']}`
     """
 
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
@@ -202,19 +214,26 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
         pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
         pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
-        if 'amp' in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, "amp"):
             pulsar.add_parameter(f"{ch_name}_amp",
                                  label=f"{ch_name} amplitude", unit='V',
                                  set_cmd=partial(self.awg_setter, id, "amp"),
                                  get_cmd=partial(self.awg_getter, id, "amp"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_AMPLITUDE_BOUNDS[ch_type]))
-        if 'offset' in self.IMPLEMENTED_ACCESSORS:
+        if self._check_if_implemented(id, "offset"):
             pulsar.add_parameter(f"{ch_name}_offset", unit='V',
                                  set_cmd=partial(self.awg_setter, id, "offset"),
                                  get_cmd=partial(self.awg_getter, id, "offset"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_OFFSET_BOUNDS[ch_type]))
+        if self._check_if_implemented(id, "centerfreq"):
+            pulsar.add_parameter(f"{ch_name}_centerfreq",
+                                 label=f"{ch_name} center frequency", unit='Hz',
+                                 set_cmd=partial(self.awg_setter, id, "centerfreq"),
+                                 get_cmd=partial(self.awg_getter, id, "centerfreq"),
+                                 vals=vals.Numbers(
+                                     *self.CHANNEL_CENTERFREQ_BOUNDS[ch_type]))
 
         if ch_type == "analog":
             pulsar.add_parameter(f"{ch_name}_distortion",
@@ -251,7 +270,7 @@ class PulsarAWGInterface(ABC):
             param: Parameter to get.
         """
 
-        if param not in self.IMPLEMENTED_ACCESSORS:
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -264,7 +283,7 @@ class PulsarAWGInterface(ABC):
             value: Value to set the parameter.
         """
 
-        if param not in self.IMPLEMENTED_ACCESSORS:
+        if not self._check_if_implemented(id, param):
             raise NotImplementedError(f"Unknown parameter '{param}'.")
 
     @abstractmethod
@@ -420,6 +439,49 @@ class PulsarAWGInterface(ABC):
                 self.awg.set(regs[1], self._filter_segment_functions(val[0],
                                                                      val[1]))
 
+    def _check_if_implemented(self, id:str, param:str):
+        if param in self.IMPLEMENTED_ACCESSORS and (
+            not isinstance(self.IMPLEMENTED_ACCESSORS, dict)
+            or id in self.IMPLEMENTED_ACCESSORS[param]
+        ):
+            return True
+        return False
+
+    def get_params_for_spectrum(self, ch:str, requested_freqs:list[float]):
+        """Convenience method for retrieving parameters needed to measure a
+        spectrum
+
+        Subclasses for which this feature is used have to overwrite this method.
+
+        Args:
+            ch (str): Channel name of the output channel whos frequency is swept
+            requested_freqs (list of floats): frequencies to be measured.
+                Note that the effectively measured frequencies will be a
+                rounded version of these values.
+
+        Returns:
+            center_freq, mod_freqs
+        """
+        raise NotImplementedError(f"'get_params_for_spectrum' is not "
+                                  f"implemented by AWG interface "
+                                  f"{self.__class__}.")
+
+    def get_frequency_sweep_function(self, ch:str):
+        """Convenience method for retrieving SWF for sweeping a channels freq.
+
+        Subclasses must override this. Subclasses should raise an error when a
+        swf is requested for a channel that does not support a frequency sweep.
+
+        Args:
+            ch (str): Channel name of the output channel whos frequency is swept
+
+        Returns:
+            Sweep_Function
+        """
+        raise NotImplementedError(f"Either 'get_frequency_sweep_function' is "
+                                  f"not implemented by AWG interface "
+                                  f"{self.__class__} or it is not supported "
+                                  f"for channel {ch}.")
 
 class Pulsar(Instrument):
     """A meta-instrument responsible for all communication with the AWGs.
@@ -1198,3 +1260,13 @@ class Pulsar(Instrument):
                     f"repeat pattern."
 
         return repeat_dict_per_awg
+
+    def get_params_for_spectrum(self, ch:str, requested_freqs:list[float]):
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_params_for_spectrum(ch, requested_freqs)
+
+    def get_frequency_sweep_function(self, ch:str):
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_frequency_sweep_function(ch)
