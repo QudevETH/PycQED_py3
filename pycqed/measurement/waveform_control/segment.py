@@ -111,6 +111,8 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.acquisition_mode = acquisition_mode
+        self.mod_config = kw.pop('mod_config', dict())
+        self.sine_config = kw.pop('sine_config', dict())
         self.timer = Timer(self.name)
         self.pulse_pars = []
         self.is_first_segment = False
@@ -1341,11 +1343,11 @@ class Segment:
                         # normalize the waveforms
                         amp = self.pulsar.get('{}_amp'.format(c))
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
-                            if np.max(wfs[codeword][c]) > amp:
+                            if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
                                     'Clipping waveform {} > {}'.format(
                                         np.max(wfs[codeword][c]), amp))
-                            if np.min(wfs[codeword][c]) < -amp:
+                            if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
                                     'Clipping waveform {} < {}'.format(
                                         np.min(wfs[codeword][c]), -amp))

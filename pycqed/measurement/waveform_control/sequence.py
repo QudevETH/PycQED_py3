@@ -146,6 +146,13 @@ class Sequence:
                         seg.allow_filter
                     sequences[awg][elname]['metadata'].setdefault('trigger_group', set())
                     sequences[awg][elname]['metadata']['trigger_group'].add(group)
+                    # Write modulation and sine configuration to element
+                    if seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] = \
+                                seg.mod_config
+                    if seg.sine_config:
+                        sequences[awg][elname]['metadata']['sine_config'] = \
+                                seg.sine_config
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.

@@ -23,6 +23,6 @@ pyserial
 nidaqmx
 pylint
 plotly
-sphinx
+sphinx==5.0.2
 sphinx-rtd-theme
 myst-parser
