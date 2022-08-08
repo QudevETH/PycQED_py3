@@ -7389,60 +7389,62 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        for qbn in self.qb_names:
-            # rename base plot
-            figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
-            echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts if
-                                'T1_'+qbn in key]
-            echo_plot_key_ram = [key for key in self.echo_analysis.plot_dicts if
-                                 'Ramsey_'+qbn in key]
-            if len(echo_plot_key_t1) != 0:
-                echo_plot_name = echo_plot_key_t1[0]
-            elif len(echo_plot_key_ram) != 0:
-                echo_plot_name = echo_plot_key_ram[0]
-            else:
-                raise ValueError('Neither T1 nor Ramsey plots were found.')
+        if self.do_fitting:
+            for qbn in self.qb_names:
+                # rename base plot
+                figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
+                echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts
+                                    if 'T1_'+qbn in key]
+                echo_plot_key_rm = [key for key in self.echo_analysis.plot_dicts
+                                    if 'Ramsey_'+qbn in key]
+                if len(echo_plot_key_t1) != 0:
+                    echo_plot_name = echo_plot_key_t1[0]
+                elif len(echo_plot_key_rm) != 0:
+                    echo_plot_name = echo_plot_key_rm[0]
+                else:
+                    raise ValueError('Neither T1 nor Ramsey plots were found.')
 
-            self.echo_analysis.plot_dicts[echo_plot_name][
-                'legend_pos'] = 'upper right'
-            self.echo_analysis.plot_dicts[echo_plot_name][
-                'legend_bbox_to_anchor'] = (1, -0.15)
+                self.echo_analysis.plot_dicts[echo_plot_name][
+                    'legend_pos'] = 'upper right'
+                self.echo_analysis.plot_dicts[echo_plot_name][
+                    'legend_bbox_to_anchor'] = (1, -0.15)
 
-            for plot_label in self.echo_analysis.plot_dicts:
-                if qbn in plot_label:
-                    if 'raw' not in plot_label and 'projected' not in plot_label:
-                        self.echo_analysis.plot_dicts[plot_label]['fig_id'] = \
-                            figure_name
+                for plot_label in self.echo_analysis.plot_dicts:
+                    if qbn in plot_label:
+                        if 'raw' not in plot_label and \
+                                'projected' not in plot_label:
+                            self.echo_analysis.plot_dicts[
+                                plot_label]['fig_id'] = figure_name
 
-            old_T2e_val = a_tools.get_instr_setting_value_from_file(
-                file_path=self.echo_analysis.raw_data_dict['folder'],
-                instr_name=qbn, param_name='T2{}'.format(
-                    '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
-                    else ''))
-            T2_dict = self.proc_data_dict['analysis_params_dict']
-            textstr = 'Echo Measurement with'
-            art_det = self.artificial_detuning_dict[qbn]*1e-6
-            textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
-            textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
-                T2_dict[qbn]['T2_echo']*1e6) \
-                      + ' $\pm$ {:.2f} $\mu$s'.format(
-                T2_dict[qbn]['T2_echo_stderr']*1e6) \
-                      + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
-                old_T2e_val*1e6)
+                old_T2e_val = a_tools.get_instr_setting_value_from_file(
+                    file_path=self.echo_analysis.raw_data_dict['folder'],
+                    instr_name=qbn, param_name='T2{}'.format(
+                        '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
+                        else ''))
+                T2_dict = self.proc_data_dict['analysis_params_dict']
+                textstr = 'Echo Measurement with'
+                art_det = self.artificial_detuning_dict[qbn]*1e-6
+                textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
+                textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
+                    T2_dict[qbn]['T2_echo']*1e6) \
+                          + ' $\pm$ {:.2f} $\mu$s'.format(
+                    T2_dict[qbn]['T2_echo_stderr']*1e6) \
+                          + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
+                    old_T2e_val*1e6)
 
-            self.echo_analysis.plot_dicts['text_msg_' + qbn][
-                'text_string'] = textstr
-            # Set text colour to black.
-            # When the change in qubit frequency is larger than the artificial
-            # detuning, the qubit freq estimation is unreliable and the
-            # RamseyAnalysis will alert the user by producing a
-            # multi-coloured text string, in which case both the "color" and
-            # the "text_string" entries of the plot dict are lists with the
-            # same length. This warning is not relevant for the EchoAnalysis
-            # since we do not use it to estimate the qubit frequency.
-            # Not resetting the colour here will cause an error in the case
-            # of multi-coloured text strings.
-            self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
+                self.echo_analysis.plot_dicts['text_msg_' + qbn][
+                    'text_string'] = textstr
+                # Set text colour to black.
+                # When the change in qubit frequency is larger than artificial
+                # detuning, the qubit freq estimation is unreliable and the
+                # RamseyAnalysis will alert the user by producing a
+                # multi-coloured text string, in which case both the "color" and
+                # the "text_string" entries of the plot dict are lists with the
+                # same length. This warning is not relevant for the EchoAnalysis
+                # since we do not use it to estimate the qubit frequency.
+                # Not resetting the colour here will cause an error in the case
+                # of multi-coloured text strings.
+                self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
@@ -8178,8 +8180,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
-        len_ssp = len(self.proc_data_dict['analysis_params_dict'][
-                          f'{self.phase_key}_{self.ramsey_qbnames[0]}']['val'])
+        if self.do_fitting:
+            len_ssp = len(
+                self.proc_data_dict['analysis_params_dict'][
+                    f'{self.phase_key}_{self.ramsey_qbnames[0]}']['val'])
         if self.get_param_value('plot_all_traces', True):
             for j, qbn in enumerate(self.qb_names):
                 if self.get_param_value('plot_all_probs', True):
@@ -11215,23 +11219,24 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                         f'{self.qb_names[0]}'
             }
 
-            alpha_min = pdict['analysis_params_dict']['alpha']
-            phase_min = pdict['analysis_params_dict']['phase']
-            self.plot_dicts['raw_histogram_fit_result'] = {
-                'fig_id': hist_plot_name,
-                'plotfn': self.plot_line,
-                'xvals': np.array([alpha_min]),
-                'yvals': np.array([phase_min]),
-                'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                            f'$\phi$ ={phase_min:.2f}$^\\circ$',
-                'color': 'red',
-                'marker': 'o',
-                'linestyle': 'None',
-                'do_legend': True,
-                'legend_pos': 'upper right',
-                'legend_title': None,
-                'legend_frameon': True
-            }
+            if self.do_fitting:
+                alpha_min = pdict['analysis_params_dict']['alpha']
+                phase_min = pdict['analysis_params_dict']['phase']
+                self.plot_dicts['raw_histogram_fit_result'] = {
+                    'fig_id': hist_plot_name,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([alpha_min]),
+                    'yvals': np.array([phase_min]),
+                    'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
+                                f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                    'color': 'red',
+                    'marker': 'o',
+                    'linestyle': 'None',
+                    'do_legend': True,
+                    'legend_pos': 'upper right',
+                    'legend_title': None,
+                    'legend_frameon': True
+                }
 
         raw_alpha_plot_name = 'alpha_vs_sb_magn'
         self.plot_dicts['raw_alpha_vs_sb_magn'] = {
