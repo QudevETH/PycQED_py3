@@ -2034,6 +2034,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             For Ramsey measurement:
                 - transition frequency: tr_name_freq
                 - averaged dephasing time: T2_star_tr_name
+            In addition, for Ramsey ef measurement:
+                - anharmonicity
             For Echo measurement:
                 - dephasing time: T2_tr_name
 
@@ -2055,6 +2057,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+            if 'ef' in task["transition_name"]:
+                qubit.anharmonicity(qubit.ef_freq()-qubit.ge_freq())
 
     @classmethod
     def gui_kwargs(cls, device):
