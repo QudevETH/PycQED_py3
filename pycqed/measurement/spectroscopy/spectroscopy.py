@@ -748,8 +748,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
 
 class FeedlineSpectroscopy(ResonatorSpectroscopy):
     """
-    Performs a 1D resonator spectroscopy for a given feedline. 
-    
+    Performs a 1D resonator spectroscopy for a given feedline.
+
     The analysis looks for dips in the magnitude result. Two dips are searched
     for each qubit in the feedline.
     The sharpest dip of each pair is chosen to update the readout frequency
@@ -762,9 +762,9 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
     freqs: List or np.array containing the drive frequencies of the
         spectroscopy measurement. (1. dim. sweep points)
 
-    Important: The number of frequency sweep points in the 
-        first dimension needs to be the same among all tasks. The step size in 
-        the frequency sweep points needs to be the same among tasks with qubits 
+    Important: The number of frequency sweep points in the
+        first dimension needs to be the same among all tasks. The step size in
+        the frequency sweep points needs to be the same among tasks with qubits
         that share an RO LO MWG (if applicable) [copied from parent class]
     """
 
@@ -821,9 +821,9 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
         Launches the analysis using ResonatorSpectroscopyAnalysis. Search
-        for the dips corresponding to the readout resonator and the Purcell 
+        for the dips corresponding to the readout resonator and the Purcell
         filter for each qubit of the feedline.
-        The number of dips that the algorithm looks for is twice the number 
+        The number of dips that the algorithm looks for is twice the number
         of qubits belonging to the feedline.
 
         Args:
@@ -843,13 +843,13 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
     """
     Performs a 2D resonator spectroscopy for a given qubit, sweeping the
     frequency and the voltage bias.
-    
-    The analysis looks for two dips in the magnitude result at each bias 
+
+    The analysis looks for two dips in the magnitude result at each bias
     voltage. Afterwards, the extrema closest to zero voltage are chosen as the
     USS and LSS.
 
-    If update is True, the qubits are parked at their sweet spot. The readout 
-    frequency is also updated accordingly. The width of the dips is used to 
+    If update is True, the qubits are parked at their sweet spot. The readout
+    frequency is also updated accordingly. The width of the dips is used to
     decide which of the two dips should be used.
 
     Compatible task_dict keys:
@@ -888,8 +888,8 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         The 'dac_sweet_spot' and 'V_per_phi0' keys of the
         'fit_ge_freq_from_dc_offset' dictionary are updated, to store the found
         value of the USS and LSS.
-        
-        The flux_parking() value is also updated depending on the order of the 
+
+        The flux_parking() value is also updated depending on the order of the
         sweet spots,
         """
 
@@ -911,7 +911,7 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
                 # Update V_per_phi0 key in each qubit. From this, it is possible to
                 # to retrieve the opposite sweet spot
                 V_per_phi0 = np.abs(2 * (sweet_spot - opposite_sweet_spot))
-                qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0 
+                qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
 
                 # Update the sign of flux_parking depending to be consistent with
                 # the positive sign V_per_phi0
@@ -922,8 +922,8 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
-        Launches the analysis using ResonatorSpectroscopyFluxSweepAnalysis. 
-        At each voltage bias, search for two dips corresponding to the readout 
+        Launches the analysis using ResonatorSpectroscopyFluxSweepAnalysis.
+        At each voltage bias, search for two dips corresponding to the readout
         resonator and the Purcell filter. The found dips are used to determine
         the USS and LSS closest to zero. The average width of the dips is
         also calculated.
