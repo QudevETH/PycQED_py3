@@ -12353,6 +12353,93 @@ class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
 
+class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
+    def extract_data(self):
+        super().extract_data()
+
+        self.task_list = self.get_param_value('task_list')
+        # self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        #
+        # params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
+        #           'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
+        # for qbn in self.qb_names:
+        #     self.raw_data_dict.update({f"{p}_{qbn}":
+        #                                    self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
+        #                                for p in params})
+
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+
+        def pe_function(t, w_p, delta_w=100e6, g_ro=10e6, kappa=10e6):
+            # From: 'A Fast and Universal Leakage Reduction Unit', Sebastian Krinner, (Dated: August 2, 2022)
+            g = np.sqrt(2)*g_ro*sp.special.jv(1, delta_w/(2*w_p))
+            pe = 1/(1-(kappa/(4*g))**2)*np.exp(-kappa*t/2)*np.sin(np.sqrt(g**2-(kappa/4)**2)*t)**2
+            return pe
+
+        def add_fit_dict(qbn, data, key):
+            if self.num_cal_points != 0:
+                data = np.array([element[:-self.num_cal_points] for element in data])
+            # Normalize the time to ns for fitting
+            t = self.proc_data_dict['sweep_points_dict'][qbn]['msmt_sweep_points'] * 1e9
+            w_p = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
+
+            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'w_p'])
+            pe_model.set_param_hint('kappa', value= 10e6, min= 1e6, max=100e6)
+            pe_model.set_param_hint('g_ro', value=10e6, min=1e6, max=100e6)
+            pe_model.set_param_hint('delta_w', value=100e6, min=80e6, max=120e6)
+            guess_pars = pe_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            self.fit_dicts[key] = {
+                'model': pe_model,  # if this is missing, Model is None and Delta is assigned as parameter..
+                'fit_fn': pe_model.func,
+                'fit_xvals': {'x': t, 'mod_freq': w_p},
+                'fit_yvals': {'data': data},
+                'method': 'dual_annealing',
+                'guess_params': guess_pars}
+
+        for task in self.get_param_value('task_list'):
+            qbn = task['qb']
+            if qbn in self.qb_names:
+                data = self.proc_data_dict['projected_data_dict'][qbn]['pe']
+
+                add_fit_dict(qbn=qbn, data=data, key=f'leakage_reduction_unit_{qbn}')
+    #
+    # def analyze_fit_results(self):
+    #     a = 1
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        # for task in self.get_param_value('task_list'):
+        #     qbn = task['qb']
+        #     if qbn in self.qb_names:
+        #         base_plot_name = f'Leakage_reduction_unit_{qbn}_pe'
+        #         xlabel, xunit = self.get_xaxis_label_unit(qbn)
+        #         # Find name of 1st sweep point in sweep dimension 1
+        #         param_name = [p for p in self.mospm[qbn]
+        #                       if self.sp.find_parameter(p)][0]
+        #         ylabel = self.sp.get_sweep_params_property(
+        #             'label', dimension=1, param_names=param_name)
+        #         yunit = self.sp.get_sweep_params_property(
+        #             'unit', dimension=1, param_names=param_name)
+        #         xvals = self.proc_data_dict['sweep_points_dict'][qbn][
+        #             'msmt_sweep_points']
+        #         yvals = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
+        #         self.plot_dicts[f'{base_plot_name}_main'] = {
+        #             'plotfn': self.plot_colorxy,
+        #             'fig_id': base_plot_name,
+        #             'xvals': xvals,
+        #             'yvals': yvals,
+        #             'zvals': self.proc_data_dict['projected_data_dict'][qbn]['pe'],
+        #             'xlabel': xlabel,
+        #             'xunit': xunit,
+        #             'ylabel': ylabel,
+        #             'yunit': yunit,
+        #             'title': (self.raw_data_dict['timestamp'] + ' ' +
+        #                       self.measurement_strings[qbn]),
+        #             'clabel': self.get_yaxis_label(qb_name=qbn, data_key='e')}
+
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
