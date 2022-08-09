@@ -1239,6 +1239,59 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                               dbm_to_vp(qb.spec_power())))
 
 
+class FindQubitFrequency(QubitSpectroscopy):
+    """
+    Performs a 1D QubitSpectroscopy and fits the result the result to extract
+    the qubit frequency. See QubitSpectroscopy for allowed keywords.
+
+    The analysis class is FindQubitFrequencyAnalysis, see it for the allowed
+    keyword arguments for the analysis. The keyword arguments for the analysis
+    can be passed as a dict via the argument 'analysis_kwargs' of
+    FindQubitFrequency.
+    """
+
+    kw_for_sweep_points = {
+        'freqs':
+            dict(param_name='freq',
+                 unit='Hz',
+                 label=r'Drive frequency, $f_{DR}$',
+                 dimension=0),
+    }
+    default_experiment_name = 'FindQubitFrequency'
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs the analysis to find the qubit frequency. The analysis class is
+        FindQubitFrequencyAnalysis
+
+        Args:
+            analysis_kwargs (dict, optional): keyword arguments for
+                FindQubitFrequencyAnalysis. See it for the allowed keyword
+                arguments. Defaults to None.
+
+        Returns:
+            FindQubitFrequencyAnalysis: the analysis that was run.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = spa.FindQubitFrequencyAnalysis(**analysis_kwargs)
+        return self.analysis
+
+    def run_update(self, **kw):
+        """
+        Updates the qubit frequency. If the ef transition was analyzed, updates
+        both the ge and the ef frequency, otherwise updates only the ge
+        frequency.
+        """
+        for qb in self.qubits:
+            f0 = self.analysis.fit_res[qb.name].params['f0'].value
+            qb.ge_freq(f0)
+            if self.analysis.analyze_ef:
+                f0_ef = 2 * self.analysis.fit_res[
+                    qb.name].params['f0_gf_over_2'] - f0
+                qb.ef_freq(f0_ef)
+
+
 class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     """Perform feedline spectroscopies for several initial states to determine
     the RO frequency with the highest contrast.
