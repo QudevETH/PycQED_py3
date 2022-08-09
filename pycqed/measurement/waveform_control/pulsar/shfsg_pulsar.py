@@ -482,7 +482,6 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
                     run_compiler = True
 
             if run_compiler:
-<<<<<<< HEAD
                 if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
                     # Parallel seqc string compilation and upload
                     self.multi_core_compiler.add_active_awg(self.awgs_mcc[awg_nr])
@@ -490,14 +489,9 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
                         self.awgs_mcc[awg_nr], awg_str)
                 else:
                     # Sequential seqc string upload
-                    sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
                     if hasattr(self.awg, 'store_awg_source_string'):
                         self.awg.store_awg_source_string(sgchannel, awg_str)
-=======
-                if hasattr(self.awg, 'store_awg_source_string'):
-                    self.awg.store_awg_source_string(sgchannel, awg_str)
-                sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
->>>>>>> qudev_master
+                    sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
 
                 if use_placeholder_waves:
                     self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'] = {}
