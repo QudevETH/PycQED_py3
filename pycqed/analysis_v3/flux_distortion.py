@@ -1125,6 +1125,24 @@ class fd_combine(CombiningNode):
         return data
 
 
+class fd_elementwise_norm(CombiningNode):
+    empty_output = ((), ())
+    def __init__(self, data_dict, keys_in, keys_out, **params):
+        super().__init__(data_dict, keys_in=keys_in, keys_out=keys_out,
+                         **params)
+
+    @staticmethod
+    def node_action(data_in):
+        print([d for d in data_in])
+        if np.array(data_in[0]).ndim == 2:
+            # FIXME: check that time vals are the same in all inputs
+            data = [data_in[0][0],
+                    np.linalg.norm([d[1] for d in data_in], axis=0)]
+        else:
+            data = np.linalg.norm([d for d in data_in], axis=0)
+        return data
+
+
 def export_IIR_coeffs(IIR_filter_coeffs_dict, fluxline='FL_XY',
                       awg_channel=None, step_resp_filename=None, folder=None):
     '''
