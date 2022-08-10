@@ -747,7 +747,10 @@ class Step:
                     leaf=leaf,
                     associated_component_type_hint=associated_component_type_hint
                 )
-                success = True
+                if val is not None:
+                    success = True
+                else:
+                    success = False
             elif sublookups:
                 val, success = self.settings.get_param_value(
                     param,
