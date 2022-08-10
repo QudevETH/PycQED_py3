@@ -7950,7 +7950,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'plotsize': plotsize,
                 'xvals': phases,
                 'xlabel': xlabel,
-                'xunit': xunit,
+                'xunit': 'rad',  # overriden from deg to rad in process_data
                 'yvals': data,
                 'ylabel': self.get_yaxis_label(qbn, prob_label),
                 'yunit': '',

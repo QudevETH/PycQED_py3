@@ -93,7 +93,7 @@ def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
     ax.hlines(best_val, cphases[0]*180/np.pi, cphases[-1]*180/np.pi)
     ax.vlines(180, sweep_points.min(), sweep_points.max())
     ax.set_ylabel('Flux pulse {} ({})'.format(sweep_param_name, unit))
-    ax.set_xlabel('Conditional phase (rad)')
+    ax.set_xlabel('Conditional phase (deg)')
     ax.set_title('CZ {}-{}'.format(qbc_name, qbt_name))
 
     ax.text(0.5, 0.95, 'Best {} = {:.6f} ({})'.format(
