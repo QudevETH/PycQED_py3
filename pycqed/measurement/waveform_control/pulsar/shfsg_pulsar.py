@@ -61,7 +61,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._shfsg_waveform_cache = dict()
-        self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
         """Determines the sgchannels for which the sine generator is turned on
         (off) in :meth:`start` (:meth:`stop`).
         """
@@ -234,7 +233,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         for ch, config in combined_mod_config.items():
             if ch.endswith('q'):
                 continue
-            self.configure_internal_mod(ch,
+            self.awg.configure_internal_mod(
+                self.pulsar.get(ch + '_id'),
                 enable=config.get('internal_mod', False),
                 osc_index=config.get('osc', 0),
                 sine_generator_index=config.get('sine', 0),
@@ -245,7 +245,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         for ch, config in combined_sine_config.items():
             if ch.endswith('q'):
                 continue
-            self.configure_sine_generation(ch,
+            self.awg.configure_sine_generation(
+                self.pulsar.get(ch + '_id'),
                 enable=config.get('continuous', False),
                 osc_index=config.get('osc', 0),
                 sine_generator_index=config.get('sine', 0),
@@ -531,83 +532,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         mod_freqs = requested_freqs - center_freq
         return center_freq, mod_freqs
 
-    def configure_sine_generation(self, ch, enable=True, osc_index=0, freq=None,
-                                  phase=0.0, gains=(0.0, 1.0, 1.0, 0.0),
-                                  sine_generator_index=0,
-                                  force_enable=False):
-        """Configure the direct output of the SHF sine generators.
-
-        Unless `force_enable` is set tor True, this method does not enable the
-        sine output and instead only sets the corresponding flag in
-        'self._sgchannel_sine_enable' which is used in :meth:`self.start`.
-
-        Args:
-            ch (str): Name of the SGChannel to configure
-            enable (bool, optional): Enable of the sine generator. Also see
-                comment above and parameter description of `force_enable`.
-                Defaults to True.
-            osc_index (int, optional): Index of the digital oscillator to be
-                used. Defaults to 0.
-            freq (float, optional): Frequency of the digital oscillator. If
-                `None` the frequency of the oscillator will
-                not be changed. Defaults to `None`.
-            phase (float, optional): Phase of the sine generator.
-                Defaults to 0.0.
-            gains (tuple, optional): Tuple of floats of length 4. Structure:
-                (sin I, cos I, sin Q, cos Q). Defaults to `(0.0, 1.0, 1.0, 0.0)`.
-            sine_generator_index (int, optional): index of the sine generator to
-                be used. Defaults to 0.
-            force_enable (bool): In combination with `enable` this parameter
-                determines whether the sine output is enabled. Defaults to False
-        """
-        chid = self.pulsar.get(ch + '_id')
-        if freq is None:
-            freq = self.awg.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq()
-        self.awg.sgchannels[int(chid[2]) - 1].configure_sine_generation(
-            enable=(enable and force_enable),
-            osc_index=osc_index,
-            osc_frequency=freq,
-            phase=phase,
-            gains=gains,
-            sine_generator_index=sine_generator_index,
-        )
-        self._sgchannel_sine_enable[int(chid[2]) - 1] = enable
-
-    def configure_internal_mod(self, ch, enable=True, osc_index=0, phase=0.0,
-                               global_amp=0.5, gains=(1.0, - 1.0, 1.0, 1.0),
-                               sine_generator_index=0):
-        """Configure the internal modulation of the SG channel.
-
-        Args:
-            ch (str): Name of the SGChannel to configure
-            enable (bool, optional): Enable of the digital modulation.
-                Defaults to True.
-            osc_index (int, optional): Index of the digital oscillator to be
-                used. Defaults to 0.
-            phase (float, optional): Phase of the digital modulation.
-                Defaults to 0.0.
-            global_amp (float, optional): Defaults to 0.5.
-            gains (tuple, optional): Tuple of floats of length 4. Structure:
-                (sin I, cos I, sin Q, cos Q). Defaults to (1.0, -1.0, 1.0, 1.0).
-            sine_generator_index (int, optional): index of the sine generator to
-                be used. Defaults to 0.
-        """
-        chid = self.pulsar.get(ch + '_id')
-        self.awg.sgchannels[int(chid[2]) - 1].configure_pulse_modulation(
-            enable=enable,
-            osc_index=osc_index,
-            osc_frequency=self.awg.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq(),
-            phase=phase,
-            global_amp=global_amp,
-            gains=gains,
-            sine_generator_index=sine_generator_index,
-        )
-        self.configure_sine_generation(ch,
-            enable=False, # do not turn on the output of the sine
-                          # generator for internal modulation
-            osc_index=osc_index,
-            sine_generator_index=sine_generator_index)
-
     def get_frequency_sweep_function(self, ch, mod_freq=0):
         """
         Args:
@@ -632,22 +556,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 self.awg.allowed_lo_freqs(),
                 name=name_offset, parameter_name=name_offset),
             -mod_freq, name=name, parameter_name=name)
-
-    def start(self):
-        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
-        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
-            if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
-                sgchannel.awg.enable(1)
-            if self._sgchannel_sine_enable[awg_nr]:
-                sgchannel.sines[0].i.enable(1)
-                sgchannel.sines[0].q.enable(1)
-
-    def stop(self):
-        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
-            sgchannel.awg.enable(0)
-            if self._sgchannel_sine_enable[awg_nr]:
-                sgchannel.sines[0].i.enable(0)
-                sgchannel.sines[0].q.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.pulsar.use_sequence_cache():
@@ -693,10 +601,12 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def _direct_mod_setter(self, ch):
         def s(val):
             if val == None:
-                self.configure_sine_generation(ch, enable=False)
+                self.awg.configure_sine_generation(
+                    self.pulsar.get(ch + '_id'), enable=False)
             else:
-                self.configure_sine_generation(ch, enable=True, freq=val,
-                                               force_enable=True)
+                self.awg.configure_sine_generation(
+                    self.pulsar.get(ch + '_id'), enable=True, freq=val,
+                    force_enable=True)
         return s
 
     def _direct_mod_getter(self, ch):

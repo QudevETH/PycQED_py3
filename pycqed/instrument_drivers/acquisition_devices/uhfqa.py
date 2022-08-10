@@ -175,6 +175,16 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         self._n_acquisition_progress_last = n_acq
         return n_acq + self._n_acquisition_progress_add
 
+    def get_awg_control_object(self):
+        """
+        Returns the AWG control object and its name. See docstring in
+        AcquisitionDevice for more details.
+
+        Returns:
+            itself, its own name
+        """
+        return self, self.name
+
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()
         # For the UHF, we currently only check whether the total number of

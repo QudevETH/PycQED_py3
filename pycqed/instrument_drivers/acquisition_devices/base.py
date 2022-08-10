@@ -428,6 +428,18 @@ class AcquisitionDevice():
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
 
+    def get_awg_control_object(self):
+        """
+        To be overloaded by children to return the AWG control object and its
+        name. The AWG control object will be passed as the AWG parameters of
+        the PollingDetector functions, and it will be called in poll to start
+        and stop acquisition.
+
+        Returns:
+            class instance, name of class instance
+        """
+        return None, 'none'
+
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
                                       weights_I=(), weights_Q=()):

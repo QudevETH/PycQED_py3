@@ -5,6 +5,8 @@ from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
+    zhinst_qcodes_wrappers import ZHInstMixin, ZHInstSHFMixin
 from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
@@ -13,7 +15,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
+class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
 
     This is not meant to be instantiated directly, but should be inherited
@@ -578,38 +580,36 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
-    def _check_server(self, kwargs):
-        if kwargs.pop('server', None) == 'emulator':
-            from pycqed.instrument_drivers.physical_instruments\
-                .ZurichInstruments import ZI_base_qudev as zibase
-            from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer(kwargs.get('host', 'localhost'),
-                                       port=kwargs.get('port', 8004),
-                                       apilevel=5)
-            self._session = ziqcsess.Session(
-                server_host=kwargs.get('host', 'localhost'),
-                connection=daq)
-            return daq
-
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
     """
 
     def __init__(self, *args, **kwargs):
-        self._check_server(kwargs)
+        server = kwargs.pop('server', None)
+        self.check_server(server, kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
-class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSHFMixin):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
     def __init__(self, serial, *args, **kwargs):
-        daq = self._check_server(kwargs)
+        server = kwargs.pop('server', None)
+        daq = self.check_server(server, kwargs)
         if daq is not None:
             daq.set_device_type(serial, 'SHFQC')
         super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)
+        self._sgchannel_sine_enable = [False] * len(self.sgchannels)
+
+    def start(self, **kwargs):
+        SHF_AcquisitionDevice.start(self, **kwargs)
+        ZHInstSHFMixin.start(self)
+
+    def stop(self):
+        SHF_AcquisitionDevice.stop(self)
+        ZHInstSHFMixin.stop(self)
