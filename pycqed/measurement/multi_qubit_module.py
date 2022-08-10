@@ -605,7 +605,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
 
 
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
-                         acq_length=4096/1.8e9, exp_metadata=None,
+                         acq_length=None, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
                          update=True, measure=True, operation_dict=None,
@@ -670,7 +670,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
 
         if exp_metadata is None:
             exp_metadata = dict()
-        temp_val = [(qb.acq_length, acq_length) for qb in qubits]
+        temp_val = []
+        if acq_length is not None:
+            temp_val += [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
             # create dict with acq instr as keys and nr samples corresponding to
