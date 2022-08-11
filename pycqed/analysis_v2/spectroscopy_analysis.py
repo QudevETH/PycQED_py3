@@ -1715,7 +1715,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         return data_key
 
 
-class FindQubitFrequencyAnalysis(MultiQubit_Spectroscopy_Analysis):
+class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
     Analysis script for a regular (ge peak/dip only) or a high power
     (ge and gf/2 peaks/dips) Qubit Spectroscopy:
@@ -1732,12 +1732,12 @@ class FindQubitFrequencyAnalysis(MultiQubit_Spectroscopy_Analysis):
     "_ef," they refer to the parameters for the gf/2 transition NOT for the ef
     transition. It was easier to write x_ef than x_gf_over_2 or x_gf_half.
 
-    This class adapts the code of Qubit_Spectroscopy_Analysis from 
+    This class adapts the code of Qubit_Spectroscopy_Analysis from
     analysis.measurement_analysis to the QuantumExperiment framework.
     """
 
     def __init__(self, analyze_ef=False, **kw):
-        """Initialize the analysis for FindQubitFrequency.
+        """Initialize the analysis for QubitSpectroscopy1D.
 
         Args:
             analyze_ef (bool, optional):  whether to look for a second peak/dip,

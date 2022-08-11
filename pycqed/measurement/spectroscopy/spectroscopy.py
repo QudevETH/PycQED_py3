@@ -1239,15 +1239,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                               dbm_to_vp(qb.spec_power())))
 
 
-class FindQubitFrequency(QubitSpectroscopy):
+class QubitSpectroscopy1D(QubitSpectroscopy):
     """
     Performs a 1D QubitSpectroscopy and fits the result the result to extract
     the qubit frequency. See QubitSpectroscopy for allowed keywords.
 
-    The analysis class is FindQubitFrequencyAnalysis, see it for the allowed
+    The analysis class is QubitSpectroscopy1DAnalysis, see it for the allowed
     keyword arguments for the analysis. The keyword arguments for the analysis
     can be passed as a dict via the argument 'analysis_kwargs' of
-    FindQubitFrequency.
+    QubitSpectroscopy1D.
     """
 
     kw_for_sweep_points = {
@@ -1257,24 +1257,24 @@ class FindQubitFrequency(QubitSpectroscopy):
                  label=r'Drive frequency, $f_{DR}$',
                  dimension=0),
     }
-    default_experiment_name = 'FindQubitFrequency'
+    default_experiment_name = 'QubitSpectroscopy1D'
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
         Runs the analysis to find the qubit frequency. The analysis class is
-        FindQubitFrequencyAnalysis
+        QubitSpectroscopy1DAnalysis
 
         Args:
             analysis_kwargs (dict, optional): keyword arguments for
-                FindQubitFrequencyAnalysis. See it for the allowed keyword
+                QubitSpectroscopy1DAnalysis. See it for the allowed keyword
                 arguments. Defaults to None.
 
         Returns:
-            FindQubitFrequencyAnalysis: the analysis that was run.
+            QubitSpectroscopy1DAnalysis: the analysis that was run.
         """
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        self.analysis = spa.FindQubitFrequencyAnalysis(**analysis_kwargs)
+        self.analysis = spa.QubitSpectroscopy1DAnalysis(**analysis_kwargs)
         return self.analysis
 
     def run_update(self, **kw):
