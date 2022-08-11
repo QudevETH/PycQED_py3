@@ -886,8 +886,11 @@ class QuDev_transmon(Qubit):
         if flux is not None:
             bias = self.calculate_voltage_from_flux(flux)
         v = fit_mods.Qubit_freq_to_dac_res(
-            ge_freq, **self.fit_ge_freq_from_dc_offset())
+            ge_freq, **self.fit_ge_freq_from_dc_offset(), branch=bias)
         flux_amplitude_bias_ratio = amplitude / (v - bias)
+        if flux_amplitude_bias_ratio < 0:
+            log.warning('The extracted flux_amplitude_bias_ratio is negative, '
+                        'please check your input values.')
         if update:
             self.flux_amplitude_bias_ratio(flux_amplitude_bias_ratio)
         return flux_amplitude_bias_ratio
@@ -1540,6 +1543,7 @@ class QuDev_transmon(Qubit):
                         pulsar.get_params_for_spectrum(ch, freqs)
                     pulsar.set(f'{ch}_centerfreq', center_freq)
                     seg.sine_config[ch] = dict(continuous=not pulsed,
+                                               ignore_waveforms=not pulsed,
                                                gains=tuple(gain * x for x in (
                                                0.0, 1.0, 1.0, 0.0)))
                     seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs

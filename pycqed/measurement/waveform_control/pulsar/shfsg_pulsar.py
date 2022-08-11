@@ -131,8 +131,11 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         if param == "amp":
             self.awg.sgchannels[ch].output.range(vp_to_dbm(value))
         if param == "centerfreq":
-            self.awg.synthesizers[self.awg.sgchannels[ch].synthesizer()] \
-                .centerfreq(value)
+            # set centerfreq
+            self.awg.synthesizers[
+                self.awg.sgchannels[ch].synthesizer()].centerfreq(value,
+                                                                  deep=True)
+            # get the new value of centerfreq that was set above
             new_center_freq = self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
             if np.abs(new_center_freq - value) > 1:
@@ -339,6 +342,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                         wave = (wave[0], None, wave[1], None)
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch2id] |= wave[2] is not None
+                        if sine_config.get('ignore_waveforms'):
+                            wave = (None, None, None, None)
                         if wave == (None, None, None, None):
                             continue
                         if nr_cw != 0:
@@ -353,10 +358,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
-                        wave = tuple(None if w is None or not len(waveforms[w])
-                                     else w for w in wave)
-                        if wave == (None, None, None, None):
-                            continue
                         if not len(channels_to_upload):
                             # _program_awg was called only to decide which
                             # sub-AWGs are active, and the rest of this loop
@@ -468,9 +469,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     run_compiler = True
 
             if run_compiler:
-                sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
                 if hasattr(self.awg, 'store_awg_source_string'):
                     self.awg.store_awg_source_string(sgchannel, awg_str)
+                sgchannel.awg.load_sequencer_program(awg_str, timeout=600)
 
                 if use_placeholder_waves:
                     self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'] = {}

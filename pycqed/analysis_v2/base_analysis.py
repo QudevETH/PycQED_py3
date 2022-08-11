@@ -235,9 +235,22 @@ class BaseDataAnalysis(object):
             self.process_data()  # binning, filtering etc
             if self.do_fitting:
                 self.prepare_fitting()  # set up fit_dicts
-                self.run_fitting()  # fitting to models
-                self.save_fit_results()
-                self.analyze_fit_results()  # analyzing the results of the fits
+                try:
+                    self.run_fitting()  # fitting to models
+                except Exception as e:
+                    if self.raise_exceptions:
+                        raise e
+                    else:
+                        log.error('Fitting has failed.')
+                        log.error(traceback.format_exc())
+                        self.do_fitting = False
+
+            if self.do_fitting:
+                # Fitting has not failed: continue with saving and analysing
+                # the fit results
+                self.save_fit_results()  # saving the fit results
+                self.analyze_fit_results()  # analyzing the fit results
+
 
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:

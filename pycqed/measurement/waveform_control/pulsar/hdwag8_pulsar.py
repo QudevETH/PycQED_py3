@@ -372,10 +372,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 continue
                         chid_to_hash = awg_sequence_element[cw]
                         wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
-                        ch_has_waveforms[ch1id] |= wave[0] is not None
-                        ch_has_waveforms[ch1mid] |= wave[1] is not None
-                        ch_has_waveforms[ch2id] |= wave[2] is not None
-                        ch_has_waveforms[ch2mid] |= wave[3] is not None
                         if wave == (None, None, None, None):
                             continue
                         if nr_cw != 0:
@@ -390,10 +386,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
-                        wave = tuple(None if w is None or not len(waveforms[w])
-                                     else w for w in wave)
-                        if wave == (None, None, None, None):
-                            continue
+                        ch_has_waveforms[ch1id] |= wave[0] is not None
+                        ch_has_waveforms[ch1mid] |= wave[1] is not None
+                        ch_has_waveforms[ch2id] |= wave[2] is not None
+                        ch_has_waveforms[ch2mid] |= wave[3] is not None
                         if not len(channels_to_upload):
                             # _program_awg was called only to decide which
                             # sub-AWGs are active, and the rest of this loop
