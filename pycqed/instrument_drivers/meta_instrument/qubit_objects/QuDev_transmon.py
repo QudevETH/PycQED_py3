@@ -1094,6 +1094,7 @@ class QuDev_transmon(Qubit):
         ge_lo = self.instr_ge_lo
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
+        self.set_distortion_in_pulsar()
         # configure readout local oscillators
         ro_lo_freq = self.get_ro_lo_freq()
 
