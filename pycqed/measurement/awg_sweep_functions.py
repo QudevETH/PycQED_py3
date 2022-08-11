@@ -193,16 +193,20 @@ class SegmentSoftSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
     def __init__(self, sequence_list, parameter_name='None', unit='',
                  upload_first=False, upload=True, **kw):
         super().__init__(sequence=sequence_list[0], upload=upload,
+                         upload_first=upload_first,
                          parameter_name=parameter_name, unit=unit, **kw)
         self.name = 'Segment soft sweep'
         self.sequence_list = sequence_list
-        self.upload_next = upload_first
+        self._is_first_sweep_point = True
 
     def set_parameter(self, val, **kw):
         self.sequence = self.sequence_list[val]
-        if self.upload_next:
+        if self._is_first_sweep_point and val == 0:
+            # upload has been done in self.prepare or by the hard sweep
+            pass
+        else:
             self.upload_sequence()
-        self.upload_next = True
+        self._is_first_sweep_point = False
 
 
 class T1_2nd_exc(swf.Hard_Sweep):

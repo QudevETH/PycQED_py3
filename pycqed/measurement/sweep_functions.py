@@ -114,11 +114,11 @@ class UploadingSweepFunction(Sweep_function):
                 Defaults to False.
 
         Raises:
-            ValueError: Raised if sequence is None.
+            ValueError: Raised if sequence is None and force_upload is True.
         """
-        if self.sequence is None:
+        if self.sequence is None and force_upload:
             raise ValueError('Cannot upload with sequence being None')
-        if self.upload or force_upload:
+        if (self.upload or force_upload) and self.sequence is not None:
             self.sequence.upload()
 
     def configure_upload(self, upload=True, upload_first=True,
@@ -133,12 +133,13 @@ class UploadingSweepFunction(Sweep_function):
             start_pulsar (bool, optional): Defaults to True.
 
         Returns:
-            bool: True, because UploadingSweepFunction can upload sequences.
+            bool: True if a sequence to upload is stored in the
+                UploadingSweepFunction, and False otherwise
         """
         self.upload = upload
         self.upload_first = upload_first
         self.start_pulsar = start_pulsar
-        return True
+        return self.sequence is not None
 
 
 class Soft_Sweep(Sweep_function):
