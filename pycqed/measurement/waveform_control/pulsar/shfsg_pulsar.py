@@ -271,6 +271,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             use_filter = any([e is not None and
                               e.get('metadata', {}).get('allow_filter', False)
                               for e in awg_sequence.values()])
+            use_filter = False  # FIXME: deactivated until implemented for QA
             if use_filter:
                 playback_strings += ['var i_seg = -1;']
                 wave_definitions += [
@@ -318,6 +319,9 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+
+                # FIXME: manually deactivate until implemented for QA
+                metadata['allow_filter'] = False
 
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
