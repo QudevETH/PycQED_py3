@@ -725,6 +725,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                     # and only start the acq device for repetitions or averages
                     # of the timetrace measurement.
                     single_acq_dev = qubits[0].instr_acq.get_instr()
+                    # FIXME: use df.prepare_and_finish_pulsar instead
                     MC.set_sweep_function(awg_swf.SegmentHardSweep(
                         sequence=seq, upload=upload, start_pulsar=True,
                         start_exclude_awgs=[single_acq_dev.name]))
@@ -746,6 +747,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 finally:
                     try:
                         if single_acq_dev is not None:
+                            # FIXME: use df.prepare_and_finish_pulsar instead
                             ps.Pulsar.get_instance().stop()
                     except Exception:
                         pass

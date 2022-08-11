@@ -77,6 +77,9 @@ class UploadingSweepFunction(Sweep_function):
                 only one unique segment and do not need to be synchronized to
                 other AWGs and therefore do not need to be stopped when
                 switching to the next segment in the sweep. Defaults to False.
+                FIXME: Check whether start_pulsar can be removed in the future
+                 by instead letting measurements configure the detector
+                 functions such that it starts pulsar.
             start_exclude_awgs (collection[str], optional):
                 A collection of AWG names that will not be started directly
                 after upload in case start_pulsar is True. Defaults to empty
