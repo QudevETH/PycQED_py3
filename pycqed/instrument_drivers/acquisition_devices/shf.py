@@ -98,7 +98,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
         self.add_parameter(
             'acq_trigger_delay',
-            initial_value=200e-9,
+            initial_value=300e-9,
             parameter_class=ManualParameter,
             docstring='Delay between the pulse generation and acquisition. '
                       'This is used both in the scope and the integration '
@@ -340,6 +340,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             trigger_input=trigger_channel,
             num_segments=num_segments,
             num_averages=num_hard_avg,
+            trigger_delay=self.scopes[0].trigger.delay(),
         )
 
     def acquisition_finalize(self):
