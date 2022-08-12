@@ -2,6 +2,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 
 from pycqed.measurement.calibration.single_qubit_gates import SingleQubitGateCalibExperiment
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
+from pycqed.measurement.quantum_experiment import QuantumExperiment
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
 from pycqed.utilities.general import temporary_value, configure_qubit_mux_drive, configure_qubit_mux_readout
@@ -946,6 +947,8 @@ class Step:
                 based on.
         """
         if issubclass(cls, SingleQubitGateCalibExperiment):
+            return cls.__bases__[0]
+        if issubclass(cls, QuantumExperiment):
             return cls.__bases__[0]
         return cls
 
