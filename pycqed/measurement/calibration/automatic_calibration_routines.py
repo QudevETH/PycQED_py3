@@ -357,25 +357,34 @@ class SettingsDictionary(dict):
 class RoutineTemplate(list):
     """Class to describe templates for (calibration) routines.
 
-    The class is essentially a list of tuples that contain a class, a label, and
+    The class is essentially a list of lists that contain a class, a label, and
     the corresponding settings of a step in a routine. Steps may be
     measurements, calibration routines, or intermediate steps.
-
-    FIXME it is confusing but right now I the parameter is part of the routine
-    and the routine template does not. In a sense, the parameters form the
-    instructions to construct the template. I am not sure if this is the best
-    way to do it. - Joost
     """
 
     def __init__(
         self,
-        routine_template,
+        steps,
         global_settings=None,
         routine=None,
-        **kw,
     ):
-        # Initializing routine template as list object
-        super().__init__(routine_template)
+        """Initialize the routine template.
+
+        Args:
+            steps (list): List of steps that define the routine. Each step
+                consists of a list of three elements. Namely, the step class,
+                the step label (a string), and the step settings (a dictionary).
+                For example:
+                steps = [
+                    [StepClass1, step_label_1, step_settings_1],
+                    [StepClass2, step_label_2, step_settings_2],
+                ]
+            global_settings (dict, optional): Dictionary containing global
+                settings for the whole routine. Defaults to None.
+            routine (AutomaticCalibrationRoutine, optional): Routine that the
+                RoutineTemplate defines. Defaults to None.
+        """
+        super().__init__(steps)
 
         if routine is not None:
             self.routine = routine
@@ -848,6 +857,23 @@ class Step:
 
     @classmethod
     def gui_kwargs(cls, device):
+        """Returns the kwargs necessary to run a QuantumExperiment. Every
+        QuantumExperiment should implement them. The keywords returned by
+        this method will be included in the requested settings (see
+        get_requested_settings) and eventually extracted from the configuration
+        parameter dictionary (see parse_settings).
+
+        NOTE: The name of the function could be confusing. This function was
+        first implemented to retrieve the kwargs to be specified with a GUI.
+        The same name was maintained to make use of the already implemented
+        functions.
+
+        Args:
+            device (Device): The device that is being measured.
+
+        Returns:
+            dict: Dictionary of kwargs necessary to run a QuantumExperiment.
+        """
         return {
             'kwargs':
                 odict({
@@ -896,9 +922,12 @@ class Step:
         kwargs = {}
         for k, v in requested_kwargs['kwargs'].items():
             kwargs[k] = self.get_param_value(k, default=v[1])
+
+        # FIXME: It should not be necessary to remove the 'ro_qubits' keyword.
+        # There is a bug in two_qubits_gate.py's parallel_sweep function, where
+        # the default value 'None' for ro_qubits causes problems.
         kwargs.pop('ro_qubits', None)
-        # kwargs.pop('compression_seg_lim',None)
-        # kwargs.pop('cz_pulse_name',None)
+
         kwargs['measure'] = False
         kwargs['analyze'] = False
         kwargs['qubits'] = self.qubits
@@ -944,7 +973,8 @@ class Step:
         """
         Returns:
             class: The class corresponding to the experiment that the Step is
-                based on.
+                based on. If there is no experiment, the class itself is
+                returned.
         """
         if issubclass(cls, SingleQubitGateCalibExperiment):
             return cls.__bases__[0]
@@ -956,6 +986,10 @@ class Step:
 class IntermediateStep(Step):
     """Class used for defining intermediate steps between automatic calibration
     steps.
+
+    NOTE: Currently, there is no difference between an IntermediateStep and a
+    Step. A different class was implemented just in case future modifications
+    will make it necessary.
     """
 
     def __init__(self, **kw):
@@ -999,9 +1033,6 @@ class AutomaticCalibrationRoutine(Step):
         **kw,
     ):
         """Initializes the routine.
-
-        NOTE: currently only one qubit is supported. If a list of multiple
-            qubits is passed, only the first qubit is used.
 
         Args:
             dev (Device): Device to be used for the routine
@@ -1081,8 +1112,8 @@ class AutomaticCalibrationRoutine(Step):
             step_settings (dict): Additional settings of the step whose settings
                 need to be extracted. The entry step_settings['settings'] will
                 be included in the returned settings. The settings contained
-                there will have priority over those found in the configuration
-                parameter dictionary.
+                in step_settings['settings'] will have priority over those found
+                in the configuration parameter dictionary.
 
         Returns:
             dict: A dictionary containing the settings extracted from the
@@ -1121,7 +1152,6 @@ class AutomaticCalibrationRoutine(Step):
             # Convert basic experiments into Autoroutine Steps
             step_settings = self.extract_step_settings(step[0], step[1], step[2])
             step[2]['settings'] = step_settings
-            pprint.pprint(step_settings)
 
         # standard global settings
         delegate_plotting = self.get_param_value('delegate_plotting')
@@ -2519,7 +2549,8 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
         Args:
             dev (Device): The device which is currently measured.
-            qubits: List of qubits to be calibrated
+            qubits (list): List of qubits to be calibrated. FIXME: currently
+                only one qubit is supported. E.g., qubits = [qb1].
 
         Keyword Arguments:
             autorun (bool): Whether to run the routine automatically
@@ -3228,7 +3259,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         self.add_step(self.DetermineModel, 'determine_model_final', {})
 
         # Interweave routine if the user wants to include mixer calibration
-        # FIXME: taken out right now
+        # FIXME: Currently not included because it still needs to be properly
+        # tested (there were problem with mixer calibration on Otemma)
         # self.add_mixer_calib_steps(**self.kw)
 
     def add_mixer_calib_steps(self, **kw):
@@ -3971,7 +4003,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         """Initialize the SingleQubitCalib routine.
 
         Args:
-            dev (Device): Device to be used for the routine
+            dev (Device): Device to be used for the routine.
 
         Keyword args:
             qubits (list): The qubits which should be calibrated. By default,
@@ -4216,7 +4248,12 @@ def keyword_subset_for_function(keyword_arguments, function):
 
 
 def update_nested_dictionary(d, u):
-    """Updates a nested dictionary.
+    """Updates a nested dictionary. Each value of 'u' will update the
+    corresponding entry of 'd'. If an entry of 'u' is a dictionary itself,
+    then the function is called recursively, and the subdictionary of 'd' will
+    be the dictionary to be updated.
+
+    If 'u' contains a key that does not exist in 'd', it will be added to 'd'.
 
     Args:
         d (dict): Dictionary to be updated.
@@ -4226,6 +4263,9 @@ def update_nested_dictionary(d, u):
         dict: The updated dictionary.
     """
     for k, v in u.items():
+        # Check whether the value 'v' is a dictionary. In this case,
+        # updates_nested_dictionary is called again recursively. The
+        # subdictionary d[k] will be updated with v.
         if isinstance(v, collections.abc.Mapping):
             d[k] = update_nested_dictionary(d.get(k, {}), v)
         else:
