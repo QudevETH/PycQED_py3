@@ -592,7 +592,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         d['kwargs'].update({
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
-                'cal_states': (str, None),
+                'cal_states': (str, 'auto'),
                 'ro_qubits': ((Qubit, 'multi_select'), None),
             })
         })
