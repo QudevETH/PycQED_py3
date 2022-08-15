@@ -90,6 +90,12 @@ class virtualRohdeSchwarz_SGS100A(Instrument):
 
         self.connect_message()
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def connect_message(self):
         return 'virtualRohdeSchwarz_SGS100A'
 

@@ -93,6 +93,12 @@ class virtual_SignalHound_USB_SA124B(Instrument):
     def default_server_name(cls, **kwargs):
         return 'USB'
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def openDevice(self):
         pass
 

@@ -25,6 +25,12 @@ class VirtualNationalInstrumentsUSB6501(Instrument):
         self.port_vals = [0,0,0]
         self.prev_port_vals = [0,0,0]
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def write_port(self, port_number, value):
         self.prev_port_vals[port_number] = self.port_vals[port_number]
         self.port_vals[port_number] = value
@@ -100,6 +106,12 @@ class SwitchControl(Instrument):
 
         # ensure that the initial switch states are written to the controller
         self.set_switch({})
+
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
 
     def set_switch(self, values):
         """
@@ -219,6 +231,12 @@ class MultiSwitchControl(Instrument):
         return {self._format_switch_name(sc.name, sw_name): sw
                 for sc in self.switch_controls if hasattr(sc, 'switches')
                 for sw_name, sw in sc.switches.items()}
+
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
 
     def set_switch(self, values):
         """

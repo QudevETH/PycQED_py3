@@ -40,3 +40,9 @@ class Weinschel_8320(Instrument):
         ret = ret.decode('ascii')
         tn.close()
         return int(ret.split('\r\n')[-3],10)
+
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}

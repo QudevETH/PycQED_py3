@@ -30,6 +30,12 @@ class FluxDecoupler(Instrument):
         self._source_names = []
         self._source_active = []
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def add_target(self, name):
         if name in self._target_names:
             raise KeyError(

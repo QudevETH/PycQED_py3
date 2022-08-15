@@ -39,6 +39,12 @@ class InstrumentMonitor(Instrument):
         self.last_update_time = 0
         self.create_tree(figsize=figsize)
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def update(self):
         time_since_last_update = time.time()-self.last_update_time
         if time_since_last_update > self.update_interval():

@@ -273,6 +273,12 @@ class ArduinoSwitchControl(Instrument):
         if start_serial:
             self.start_serial()
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     # Magic methods
     # -------------
 

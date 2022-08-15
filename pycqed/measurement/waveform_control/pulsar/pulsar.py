@@ -612,6 +612,12 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
         return val
 
+    def get_idn(self):
+        """
+        Required as a standard interface for QCoDeS instruments.
+        """
+        return {'driver': str(self.__class__), 'name': self.name}
+
     def reset_sequence_cache(self):
         """Resets the sequence cache.
 
