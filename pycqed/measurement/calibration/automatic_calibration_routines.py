@@ -1068,7 +1068,7 @@ class AutomaticCalibrationRoutine(Step):
             try:
                 self.MC = source.instr_mc.get_instr()
                 break
-            except:
+            except KeyError:  # instr_mc not a valid instrument (e.g., None)
                 pass
 
         self.create_initial_parameters()
