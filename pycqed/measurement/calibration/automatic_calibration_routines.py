@@ -1340,25 +1340,17 @@ class AutomaticCalibrationRoutine(Step):
             )
 
     def create_initial_parameters(self):
-        """Creates the initial parameters for the routine.
-
-        Keyword arguments are accessed through self. Relevant kwargs stored in
-        self are:
-            get_parameters_from_qubit_object: if True, initial guesses and
-                estimates for the transmon parameters are retrieved from the
-                (transmon) qubit object.
-            parameters_device: nested dictionary containing the device settings
-                folder. If non-existent, the device folder is loaded (second
-                highest priority).
-            parameters_user: nested dictionary containing relevant parameters
-                from the user (highest priority).
-
-        FIXME: In the future, we might want to swap the hierarchy and give
-        priority to the settings in the qubit object, but that would require
-        implementing plausibility checks and falling back to the config file if
-        there is no reasonable value set in the qubit object.
+        """Adds any keyword passed to the routine constructor to the
+        configuration parameter dictionary. For an AutomaticCalibrationRoutine,
+        these keyword will be added to the 'General' scope. These settings
+        would have priority over the settings specified in the keyword
+        'settings_user'.
         """
-        self.process_kw()
+        update_nested_dictionary(self.settings, {
+            self.highest_lookup: {
+                self.highest_sublookup: self.kw
+            }
+        })
 
     def create_initial_routine(self, load_parameters=True):
         """Creates (or recreates) initial routine by defining the routine
@@ -1438,21 +1430,6 @@ class AutomaticCalibrationRoutine(Step):
         settings.update(hamfit_model)
 
         return settings
-
-    @property
-    def parameters_init(self):
-        settings = copy.copy(self.kw)
-        return settings
-
-    def process_kw(self):
-        """Updates the settings with the keyword arguments passed to the class
-        constructor.
-        """
-        update_nested_dictionary(self.settings, {
-            self.highest_lookup: {
-                self.highest_sublookup: self.parameters_init
-            }
-        })
 
     def view(self, **kw):
         """Prints a user friendly representation of the routine settings
@@ -2601,19 +2578,6 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
         self.final_init(**kw)
 
-    @property
-    def parameters_init(self):
-        # FIXME: the current implementation uses different parameters
-
-        # writing keyword arguments into correct categroty of parameters dict
-        # for x in ["rabi_amps", "ramsey_delays", "artificial_detuning"]:
-        #    self.settings["PiPulseCalibration"][x] = self.kw.pop(
-        #        x, self.settings["PiPulseCalibration"][x]
-        #    )
-
-        parameters = super().parameters_init
-        return parameters
-
     class Decision(IntermediateStep):
 
         def __init__(self, routine, index, **kw):
@@ -3026,51 +2990,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 }})
 
         self.final_init(**kw)
-
-    @property
-    def parameters_init(self):
-        # writing keyword arguments into correct category of parameters dict
-        # and removing them from self.kw. Note that the parameters should already
-        # be present in the parameters dict (so there should be no KeyError),
-        # the parameters passed in the init simply take precedence.
-
-        # This is the structure: FIXME - add a generalized way to extract and
-        # store the parameters in the parameters dict from a structure dict like
-        # the one below (possibly of varying depth).
-        #
-        # {
-        #     "Transmon": {"anharmonicity"},
-        #     "DetermineModel": {"method"},
-        # }
-
-        # Transmon
-        # for x in ["anharmonicity"]:
-        #     v = self.kw.pop(x, None)
-        #     if v:
-        #         update_nested_dictionary(
-        #             self.settings, {
-        #                 self.highest_lookup: {
-        #                     self.highest_sublookup: {
-        #                         "Transmon": {
-        #                             x: v
-        #                         }
-        #                     }
-        #                 }
-        #             })
-
-        # DetermineModel
-        for x in ["method"]:
-            v = self.kw.pop(x, None)
-            if v:
-                update_nested_dictionary(
-                    self.settings,
-                    {self.highest_lookup: {
-                        "DetermineModel": {
-                            x: v
-                        }
-                    }})
-
-        return super().parameters_init
 
     def create_routine_template(self):
         """Creates the routine template for the HamiltonianFitting routine using
