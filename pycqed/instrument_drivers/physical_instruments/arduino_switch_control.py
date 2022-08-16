@@ -1,5 +1,4 @@
 import time
-import serial
 import numpy as np
 from typing import Union, Tuple, List
 from copy import copy, deepcopy
@@ -415,6 +414,7 @@ class ArduinoSwitchControl(Instrument):
             override (bool): whether an existing serial communication should be
                       closed and replaced. Recommended: True
         """
+        import serial
         ser = self.get_serial(self.port)
 
         if ser is None or override:
