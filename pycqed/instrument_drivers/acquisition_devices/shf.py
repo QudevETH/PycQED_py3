@@ -574,6 +574,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 f'Acquisition length {self._acq_length} corresponds to '
                 f'{n_samples} > {self._acq_scope_memory}, which is not '
                 f'supported in scope mode.')
+        if n_samples != self.convert_time_to_n_samples(self._acq_length, True):
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'Acquisition length {self._acq_length} corresponds to '
+                f'{n_samples}samples , which is not a multiple of the '
+                f'granularity {self.acq_length_granularity}.')
+
 
     def acquisition_set_weights(self, channels, **kw):
         # Makes super call faster
