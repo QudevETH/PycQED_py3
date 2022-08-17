@@ -380,7 +380,8 @@ class RoutineTemplate(list):
                     [StepClass2, step_label_2, step_settings_2],
                 ]
             global_settings (dict, optional): Dictionary containing global
-                settings for the whole routine. Defaults to None.
+                settings for each step of the routine (e.g., "dev", "update",
+                "delegate_plotting"). Defaults to None.
             routine (AutomaticCalibrationRoutine, optional): Routine that the
                 RoutineTemplate defines. Defaults to None.
         """
@@ -506,16 +507,16 @@ class RoutineTemplate(list):
     def view(
         self,
         print_global_settings=True,
-        print_parameters=True,
+        print_general_settings=True,
         print_tmp_vals=False,
     ):
-        """Prints a user-friendly representation of the routine template
+        """Prints a user-friendly representation of the routine template.
 
         Args:
             print_global_settings (bool): If True, prints the global settings
                 of the routine. Defaults to True.
-            print_parameters (bool): If True, prints the parameters of the
-                routine. Defaults to True.
+            print_general_settings (bool): If True, prints the 'General' scope
+                of the routine settings. Defaults to True.
             print_tmp_vals (bool): If True, prints the temporary values of the
                 routine. Defaults to False.
         """
@@ -529,16 +530,16 @@ class RoutineTemplate(list):
             pprint.pprint(self.global_settings)
             print()
 
-        if print_parameters:
+        if print_general_settings:
             try:
-                print("Parameters:")
-                pprint.pprint(self.routine.parameters)
+                print("General settings:")
+                pprint.pprint(self.routine.settings[self.routine.name]['General'])
                 print()
             except AttributeError:
                 pass
 
         for i, x in enumerate(self):
-            print(f"Step {i}, {x[0].__name__}")
+            print(f"Step {i}, {x[0].__name__} ({x[1]})")
             print("Settings:")
             pprint.pprint(x[2], indent=4)
 
@@ -566,8 +567,9 @@ class RoutineTemplate(list):
 
         try:
             if self.routine.settings:
-                s += "Parameters:\n"
-                s += pprint.pformat(self.global_settings) + "\n"
+                s += "General settings:\n"
+                s += pprint.pformat(
+                    self.routine.settings[self.routine.name]['General']) + "\n"
         except AttributeError:
             pass
 
@@ -1230,7 +1232,6 @@ class AutomaticCalibrationRoutine(Step):
         # Create RoutineTemplate based on _DEFAULT_ROUTINE_TEMPLATE
         self.routine_template = copy.deepcopy(self._DEFAULT_ROUTINE_TEMPLATE)
         self.routine_template.routine = self
-        self.routine_template.settings = self.settings
 
         for step in self.routine_template:
             # Retrieve the step settings from the configuration parameter
@@ -1245,7 +1246,6 @@ class AutomaticCalibrationRoutine(Step):
 
         self.routine_template.global_settings.update({
             "dev": self.dev,
-            # "qubits": self.qubits,
             "update": True,  # all subroutines should update relevant params
             "delegate_plotting": delegate_plotting,
         })
