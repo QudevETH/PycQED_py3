@@ -1073,36 +1073,120 @@ class AutomaticCalibrationRoutine(Step):
 
         self.create_initial_parameters()
 
-    def merge_settings(self, lookups, sublookups=None):
-        """Merges all subscopes relevant for a particular child step.
+    def merge_settings(self, lookups, sublookups):
+        """Merges all scopes relevant for a particular child step. The settings
+        are retrieved and merged recursively to ensure that the priority
+        specified in lookups and sublookups is respected.
+
+        Example of how the settings are merged in chronological order
+        with the following routine:
+            Routine [None, "Routine"]
+                SubRoutine ["subroutine_label", "SubRoutine"]
+                    ExperimentStep ["experiment_label", "Experiment"]
+
+        a) Initialization of Routine's steps. This will extract the settings
+        of SubRoutine from the configuration parameter dictionary.
+
+        Call: Routine.merge_settings(lookups=[None,"Routine"],
+                               sublookups=["subroutine_label", "SubRoutine"])
+
+            Look for the relevant settings in this order:
+            1) Routine.settings["SubRoutine"]
+            2) Routine.settings["subroutine_label"]
+            3) Routine.settings["Routine"]["SubRoutine"]
+            4) Routine.settings["Routine"]["subroutine_label"]
+
+        At the end, SubRoutine.settings will be updated according to the
+        hierarchy specified in the lookups.
+
+        b) Initialization of SubRoutine's steps (occurs at runtime). This will
+        extract the settings of ExperimentStep from the configuration parameter
+        dictionary.
+
+        Call: SubRoutine.merge_settings(lookups=["subroutine_label","SubRoutine"],
+                                sublookups=["experiment_label","Experiment"])
+
+            Call: Routine.merge_settings(lookups=["subroutine_label","SubRoutine"],
+                                sublookups=["experiment_label","Experiment"])
+
+                Look for the relevant settings in this order:
+                1) Routine.settings["Experiment"]
+                2) Routine.settings["experiment_label"]
+                3) Routine.settings["SubRoutine"]["Experiment"]
+                4) Routine.settings["SubRoutine"]["experiment_label"]
+                5) Routine.settings["subroutine_label"]["Experiment"]
+                6) Routine.settings["subroutine_label"]["experiment_label"]
+
+            7) SubRoutine.settings["Experiment"]
+            8) SubRoutine.settings["experiment_label"]
+
+        At the end, ExperimentStep.settings will be updated according to the
+        hierarchy specified in the lookups.
 
         Arguements:
-            lookups (list): A list of all subscopes of the routine relevant for
-                the child step.
-            sublookups (list): A list of subscopes of the lookups (relevant if
-                the child step is a routine).
+            lookups (list): A list of all scopes for the parent routine
+                of the step whose settings need to be merged. The elements
+                of the list will be interpreted in descending order of priority.
+            sublookups (list): A list of scopes for the step whose settings need
+                to be merged. The elements of the list will be interpreted in
+                descending order of priority.
 
         Returns:
             dict: The dictionary containing the merged settings.
         """
-        settings = {}
-        for lookup in reversed(lookups):
-            if lookup in self.settings:
-                if sublookups is not None:
-                    for sublookup in reversed(sublookups):
-                        if sublookup in self.settings[lookup]:
-                            update_nested_dictionary(
-                                settings, self.settings[lookup][sublookup])
-                else:
-                    update_nested_dictionary(settings, self.settings[lookup])
+        if self.routine is not None:
+            # If the current step has a parent routine, call its merge_settings
+            # recursively
+            settings = self.routine.merge_settings(lookups,sublookups)
+        else:
+            # If the root routine is calling the function, then initialize
+            # an empty dictionary for the settings of the child step
+            settings = {}
+
+        for sublookup in reversed(sublookups):
+            # Looks for the sublookups directly in the settings. If self is the
+            # root routine, this corresponds to looking in the first layer of
+            # the configuration parameter dictionary, where the most general
+            # settings are stored.
+            # E.g., ['experiment_label', 'Experiment'] will first be looked
+            # up in the most general settings.
+            if sublookup in self.settings:
+                update_nested_dictionary(
+                    settings, self.settings[sublookup]
+                )
+
+
+        # The control statement prevents looking for the step scopes inside
+        # the step settings this is to avoid considering the following settings:
+        #       9) SubRoutine.settings["SubRoutine"]["Experiment"]
+        #       10) SubRoutine.settings["SubRoutine"]["experiment_label"]
+        #       11) SubRoutine.settings["subroutine_label"]["Experiment"]
+        #       12) SubRoutine.settings["subroutine_label"]["experiment_label"]
+
+        # The only exception is when self is the root routine, in this case
+        # the routine settings are whole configuration parameter dictionary,
+        # hence we need to look for the routine scopes within the routine
+        # settings (this is why it is included or self.routine is None).
+        if self.get_lookup_class(
+        ).__name__ not in lookups or self.routine is None:
+            for lookup in reversed(lookups):
+                if lookup in self.settings:
+                    if sublookups is not None:
+                        for sublookup in reversed(sublookups):
+                            if sublookup in self.settings[lookup]:
+                                update_nested_dictionary(
+                                    settings, self.settings[lookup][sublookup])
+                    else:
+                        update_nested_dictionary(settings,
+                                                 self.settings[lookup])
 
         return settings
 
     def extract_step_settings(self, step_class, step_label, step_settings):
-        """Extract the settings of a step from the configuration from the
-        configuration parameter dictionary that was loaded and built from the
-        JSON config files. The entry 'settings' of step_settings is also
-        included in the returned settings.
+        """Extract the settings of a step from the configuration parameter
+        dictionary that was loaded and built from the JSON config files. The
+        entry 'settings' of step_settings is also included in the returned
+        settings.
 
         Args:
             step_class (Step): The class of the step whose settings need to be
@@ -1123,10 +1207,10 @@ class AutomaticCalibrationRoutine(Step):
             raise NotImplementedError(
                 "Steps have to inherit from class Step.")
 
-        # no 'General' lookup since in 'General' should only be raw
-        # parameters and no step descriptions for children
-        lookups = [step_label, self.get_lookup_class().__name__]
-        # no 'General' lookup
+        # No 'General' lookup since at this point we are only interested
+        # in retrieving the settings of each step of a routine, not the settings
+        # of the routine itself
+        lookups = [self.step_label, self.get_lookup_class().__name__]
         sublookups = [step_label, step_class.get_lookup_class().__name__]
 
         autocalib_settings = self.settings.copy({
@@ -1149,7 +1233,10 @@ class AutomaticCalibrationRoutine(Step):
         self.routine_template.settings = self.settings
 
         for step in self.routine_template:
-            # Convert basic experiments into Autoroutine Steps
+            # Retrieve the step settings from the configuration parameter
+            # dictionary. The settings will be merged according to the correct
+            # hierarchy (more specific settings will overwrite less specific
+            # settings)
             step_settings = self.extract_step_settings(step[0], step[1], step[2])
             step[2]['settings'] = step_settings
 
