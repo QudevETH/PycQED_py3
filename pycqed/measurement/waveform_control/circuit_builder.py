@@ -18,7 +18,10 @@ class CircuitBuilder:
     :param qubits: a list of qubit objects or names if the builder should
         act only on a subset of qubits (default: all qubits of the device)
     :param kw: keyword arguments
-         cz_pulse_name: (str) the prefix of CZ gates (default: upCZ)
+         cz_pulse_name: (str) the prefix of CZ gates (default: None,
+             in which case we use the first operation from the operation_dict
+             whose name contains 'CZ', or we fall back to 'CZ' if no
+             such operation is found.)
          decompose_rotation_gates: (dict of bool) whether arbitrary
             rotation gates should be decomposed into pi rotations
             and virtual Z gates, e.g., {'X': True, 'Y': False}.
@@ -47,7 +50,11 @@ class CircuitBuilder:
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
         self.update_operation_dict(operation_dict)
-        self.cz_pulse_name = kw.get('cz_pulse_name', 'upCZ')
+        self.cz_pulse_name = kw.get('cz_pulse_name')
+        if self.cz_pulse_name is None:
+            op_types = [o.split(' ')[0] for o in self.operation_dict]
+            cz_gates = [o for o in op_types if 'CZ' in o] + ['CZ']
+            self.cz_pulse_name = cz_gates[0]
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
         self.fast_mode = kw.get('fast_mode', False)
         self.prep_params = kw.get('prep_params', None)
