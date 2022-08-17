@@ -1531,7 +1531,8 @@ class Segment:
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
              show_and_close=True, col_ind=0, normalized_amplitudes=True,
-             save_kwargs=None, figtitle_kwargs=None, sharex=True):
+             save_kwargs=None, figtitle_kwargs=None, sharex=True,
+             trigger_groups=None):
         """
         Plots a segment. Can only be done if the segment can be resolved.
         :param instruments (list): instruments for which pulses have to be
@@ -1565,6 +1566,8 @@ class Segment:
         :param figtitle_kwargs (dict): figure.title kwargs passed on to fig.suptitle if
         not None
         :param sharex (bool): whether the xaxis is shared between the subfigures or not
+        :param trigger_groups (list): trigger groups for which pulses have to be
+            plotted. Defaults to all.
         :return: The figure and axes objects if show_and_close is False,
             otherwise no return value.
         """
@@ -1587,7 +1590,8 @@ class Segment:
                             pulse.mod_frequency = 0
                         if hasattr(pulse, "phase"):
                             pulse.phase = 0
-            wfs = self.waveforms(awgs=instruments, channels=None)
+            wfs = self.waveforms(awgs=instruments, channels=None,
+                                 trigger_groups=trigger_groups)
             n_instruments = len(wfs) if channel_map is None else \
                 len(channel_map)
             if axes is not None:

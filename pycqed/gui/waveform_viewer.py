@@ -450,7 +450,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         with plt.rc_context(self.rc_params):
             fig, axes = self.get_current_segment().plot(
                 channel_map=channel_map,
-                instruments=instruments,
+                trigger_groups=instruments,
                 **self.gui_kwargs
             )
             add_picker_to_line_artists(axes)
