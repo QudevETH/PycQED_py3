@@ -355,7 +355,10 @@ class MultiTaskingExperiment(QuantumExperiment):
             creation function creates a list of N blocks, block_align can be
             a list of N strings (otherwise the same alignment is used for
             all parallel blocks).
-        :param kw: keyword arguments are passed to sweep_n_dim
+        :param kw: keyword arguments are passed to sweep_n_dim, except:
+            - 'ro_qubits', which is ignored because we instead use all
+              qubits in meas_obj_names, except those for which there are
+              already readout pulses in the parallel blocks.
         :return: see sweep_n_dim
         """
         parallel_blocks = []
@@ -420,17 +423,11 @@ class MultiTaskingExperiment(QuantumExperiment):
             # and the data format will be the same as for a true soft sweep.
             self.sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
                                                   dimension=1)
-        # ro_qubits in kw determines for which qubits sweep_n_dim will add
-        # readout pulses. If it is not provided (which is usually the case
-        # since create_meas_objs_list pops it from kw) all qubits in
-        # meas_obj_names will be used, except those for which there are
-        # already readout pulses in the parallel blocks.
-        if 'ro_qubits' not in kw:
-            op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
-                        'op_code' in p]
-            kw = copy(kw)
-            kw['ro_qubits'] = [m for m in self.meas_obj_names if f'RO {m}'
-                               not in op_codes]
+        # Generate kw['ro_qubits'] as explained in the docstring
+        op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
+                    'op_code' in p]
+        kw['ro_qubits'] = [m for m in self.meas_obj_names if f'RO {m}'
+                           not in op_codes]
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(self.sweep_points,
                                 body_block=self.all_main_blocks,
@@ -508,9 +505,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             task_list = self.task_list
         if task_list is None:
             task_list = [{}]
-        # We can pop ro_qubits: if parallel_sweep does not find ro_qubits in
-        # kw, it uses self.meas_obj_names, which we generate here
-        ro_qubits = kw.pop('ro_qubits', None)
+        ro_qubits = kw.get('ro_qubits')
         if ro_qubits is None:
             # Combine for all tasks, fall back to get_meas_objs_from_task if
             # ro_qubits does not exist in a task.
