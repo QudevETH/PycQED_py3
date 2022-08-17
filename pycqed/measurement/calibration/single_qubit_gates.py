@@ -1492,16 +1492,16 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         #  set to 0 for acq instruments. Access parameter like this for now.
         gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
         ro_separation -= ro_separation % (-gran)
-
         b_ro.pulses[0]['pulse_delay'] = ro_separation
-        b = self.simultaneous_blocks('final', [b, b_ro])
 
         if prepend_pulse_dicts is not None:
+            for pulse in prepend_pulse_dicts:
+                pulse['pulse_delay'] = -2*np.abs(min(sweep_points['delay']))
             pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
                                              block_name='prepend')
-            b = self.sequential_blocks('final_with_prep', [pb, b],
-                                       set_end_after_all_pulses=True)
-
+            b = self.simultaneous_blocks('final', [b, b_ro, pb])
+        else:
+            b = self.simultaneous_blocks('final', [b, b_ro])
         return b
 
     @Timer()
