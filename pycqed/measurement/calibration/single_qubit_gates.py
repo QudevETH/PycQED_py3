@@ -1418,6 +1418,114 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
             qb.fit_ge_freq_from_flux_pulse_amp(
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
+class ReadoutPulseScope(ParallelLOSweepExperiment):
+    """
+        Readout pulse scope measurement used to determine the delay of the
+        qubit's drive AWG with respect to the qubit readout pulse.
+
+        pulse sequence:
+           |    -------------    |X180|  ---------------------  |RO|
+           |    ---   | ---- RO ----- |
+
+
+            sweep_points:
+            delays (numpy array): array of delays of the drive pulse w.r.t.
+            the readout pulse
+            freq (numpy array): array of drive frequencies
+
+        Returns: None
+
+    """
+
+    kw_for_task_keys = ['ro_separation']
+    kw_for_sweep_points = {
+        'freqs': dict(param_name='freq', unit='Hz',
+                      label=r'drive frequency, $f_d$',
+                      dimension=1),
+        'delays': dict(param_name='delay', unit='s',
+                       label=r'readout pulse delay',
+                       dimension=0),
+    }
+    default_experiment_name = 'Readout_pulse_scope'
+
+    def __init__(self, task_list, sweep_points=None, **kw):
+        # configure detector function parameters
+        kw['df_kwargs'] = kw.get('df_kwargs', {})
+        kw['df_kwargs'].update(
+            {'values_per_point': 2,
+             'values_per_point_suffix': ['_probe', '_measure']})
+
+        try:
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+            self.exp_metadata.update({'rotation_type': 'global_PCA'})
+            self.autorun(**kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, ro_separation,
+                    prepend_pulse_dicts=None, **kw):
+        """
+        Performs X180 pulse on top of a readout pulse.
+        :param qb: (str) the name of the qubit
+        :param kw:
+        """
+        b = self.block_from_ops('ro_ge', [f'RO {qb}', f'X180 {qb}'])
+
+        ro = b.pulses[0]
+        probe = b.pulses[1]
+
+        probe['ref_point'] = 'start'
+        probe['ref_point_new'] = 'end'
+
+        ro['pulse_delay'] = -min(sweep_points['delay'])
+
+        probe['pulse_delay'] = ParametricValue('delay')
+
+        b_ro = self.block_from_ops('final_ro', [f'RO {qb}'])
+
+        # Assure that ro separation is comensurate with start granularity
+        pulsar_obj = self.get_qubits(qb)[0][0].instr_pulsar.get_instr()
+        acq_instr = self.get_qubits(qb)[0][0].instr_acq()
+        # FIXME: apprently the pulsar parameter _element_start_granularity is
+        #  set to 0 for acq instruments. Access parameter like this for now.
+        gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
+        ro_separation -= ro_separation % (-gran)
+
+        b_ro.pulses[0]['pulse_delay'] = ro_separation
+        b = self.simultaneous_blocks('final', [b, b_ro])
+
+        if prepend_pulse_dicts is not None:
+            pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                             block_name='prepend')
+            b = self.sequential_blocks('final_with_prep', [pb, b],
+                                       set_end_after_all_pulses=True)
+
+        return b
+
+    @Timer()
+    def run_analysis(self, analysis_kwargs={}, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: currently ignored
+        """
+
+        self.analysis = tda.MultiQubit_TimeDomain_Analysis(
+            qb_names=self.meas_obj_names, **analysis_kwargs)
+
+    def seg_from_cal_points(self, *args, **kw):
+        n_reps = 2
+        kw['df_values_per_point'] = n_reps
+        return super().seg_from_cal_points(*args, **kw)
+
+    def sweep_n_dim(self, *args, **kw):
+        n_reps = 2
+        seqs, vals = super().sweep_n_dim(*args, **kw)
+        n_acqs = int(len(vals[0])/n_reps)
+        vals[0] = vals[0][:n_acqs]
+        return seqs, vals
 
 class SingleQubitGateCalibExperiment(CalibBuilder):
     """
