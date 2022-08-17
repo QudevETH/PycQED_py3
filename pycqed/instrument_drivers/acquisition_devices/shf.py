@@ -467,8 +467,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
                 # In readout mode the data isn't rescaled yet in the SHF
                 # by the number of points
-                scaling_factor = np.sqrt(2) \
-                                 / (self.acq_sampling_rate * self._acq_length)
+                scaling_factor = 1 / (self.acq_sampling_rate * self._acq_length)
                 dataset.update(
                     {(i, ch): [np.real(res[n][self._acq_poll_inds[i][n]:])
                                * scaling_factor]
@@ -481,7 +480,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 if progress >= self._acq_loop_cnt * self._acq_n_results:
                     data = self.qachannels[i].spectroscopy.result.data.wave()
                     data = [[np.real(a), np.imag(a)] for a in data]
-                    scaling_factor = np.sqrt(2)
+                    scaling_factor = 1
                     dataset.update({(i, ch): [[a[n % 2] * scaling_factor
                                               for a in data]]
                                     for n, ch in enumerate(channels)})
