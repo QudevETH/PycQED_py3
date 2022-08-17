@@ -129,10 +129,10 @@ class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
         server = kwargs.pop('server', '')
         daq = self.check_server(server, kwargs)
         if daq is not None:
-            daq.set_device_type(serial, 'SHFSG')
+            daq.set_device_type(serial, 'SHFSG4')
         self._awg_source_strings = {}
         super().__init__(serial, *args, **kwargs)
-        self._awg_program += [None] * len(self.sgchannels)
+        self._awg_program = [None] * len(self.sgchannels)
         self._sgchannel_sine_enable = [False] * len(self.sgchannels)
 
         self.add_parameter(

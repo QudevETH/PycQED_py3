@@ -63,12 +63,14 @@ class MockDAQServer(zibase.MockDAQServer):
             #  distinguish by serial. A virtual SHFQC currently has to set it
             #  beforehand using set_device_type.
         super().connectDevice(device, interface)
-        if self.devtype == 'SHFQC':
-            for awg_nr in range(6):
-                for i in range(2048):
-                    self.nodes[f'/{self.device}/sgchannels/{awg_nr}/awg/' \
-                               f'waveform/waves/{i}'] = {
-                        'type': 'ZIVectorData', 'value': np.array([])}
+        pattern = f'/{self.device}/sgchannels/*'
+        awg_nrs = list(np.unique([n[len(pattern) - 1:][:1] for n in
+                                  self.nodes if fnmatch.fnmatch(n, pattern)]))
+        for awg_nr in awg_nrs:
+            for i in range(2048):
+                self.nodes[f'/{self.device}/sgchannels/{awg_nr}/awg/' \
+                           f'waveform/waves/{i}'] = {
+                    'type': 'ZIVectorData', 'value': np.array([])}
 
     def listNodesJSON(self, path):
         dd = {k: copy.copy(v) for k, v in self.nodes.items()
