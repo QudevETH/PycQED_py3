@@ -533,7 +533,8 @@ class RoutineTemplate(list):
         if print_general_settings:
             try:
                 print("General settings:")
-                pprint.pprint(self.routine.settings[self.routine.name]['General'])
+                pprint.pprint(
+                    self.routine.settings[self.routine.name]['General'])
                 print()
             except AttributeError:
                 pass
