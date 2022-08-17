@@ -13,9 +13,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
-    import QuDev_transmon
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects import qubit_object
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
@@ -457,7 +455,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
-            if isinstance(candidate, QuDev_transmon):
+            if isinstance(candidate, qubit_object.Qubit):
                 if candidate not in found_qubits:
                     found_qubits.append(candidate)
             elif isinstance(candidate, str):
@@ -588,7 +586,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
                 'cal_states': (str, None),
-                'ro_qubits': ((Qubit, 'multi_select'), None),
+                'ro_qubits': ((qubit_object.Qubit, 'multi_select'), None),
             })
         })
         d['task_list_fields'].update({
