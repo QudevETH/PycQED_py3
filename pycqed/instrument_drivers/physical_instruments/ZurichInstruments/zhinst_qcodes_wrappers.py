@@ -13,6 +13,16 @@ from qcodes.instrument.parameter import ManualParameter
 
 class ZHInstMixin:
 
+    @property
+    def devname(self):
+        return self.serial
+
+    @property
+    def daq(self):
+        """Returns the ZI data server (DAQ).
+        """
+        return self.session.daq_server
+
     def check_server(self, server, kwargs):
         if server == 'emulator':
             from pycqed.instrument_drivers.physical_instruments \

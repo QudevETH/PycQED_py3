@@ -107,16 +107,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                       'units for consistency.',
             vals=validators.Numbers())
 
-    @property
-    def devname(self):
-        return self.serial
-
-    @property
-    def daq(self):
-        """Returns the ZI data server (DAQ).
-        """
-        return self.session.daq_server
-
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
