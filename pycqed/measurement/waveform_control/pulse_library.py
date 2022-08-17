@@ -7,6 +7,7 @@ import numpy as np
 import scipy as sp
 from pycqed.measurement.waveform_control import pulse
 import logging
+from scipy.interpolate import interp1d
 
 log = logging.getLogger(__name__)
 
@@ -334,6 +335,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     """
     def __init__(self, element_name, name='NZTC pulse', **kw):
         super().__init__(name, element_name, **kw)
+        if self.cphase is not None:
+            self.trans_amplitude2, self.basis_rotation = \
+                self.calc_cphase_params(self.cphase, self.cphase_calib_dict)
         self._update_lengths_amps_channels()
 
 
@@ -357,8 +361,66 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'buffer_length_end': 30e-9,
             'channel_relative_delay': 0,
             'gaussian_filter_sigma': 1e-9,
+            'cphase': None,
+            'cphase_calib_dict': None,
         }
         return params
+
+    @staticmethod
+    def calc_cphase_params(phi, cphase_calib_dict):
+        # calib: measure trans_amplitude2 -> cphase and finetuning params
+        # this function: cphase -> trans_amplitude2 and finetuning params
+
+        # Currently cphase_calib_dict = {'param': [values...] ...} including
+        # 'cphase', all with the same number of points.
+        # Could be extended to instead hold tuples of (cphase_vals,
+        # param_vals) for each param, to allow different granularities.
+        # FIXME deal with phase wrapping for cphase and basis_rotation
+        params_to_interpolate = ['trans_amplitude2', 'basis_rotation']
+        param_vals = []
+
+        cp = cphase_calib_dict['cphase']
+        for param_name in params_to_interpolate:
+            cal_data = cphase_calib_dict[param_name]
+            if isinstance(cal_data, dict):  # for 'basis_rotation'
+                param_vals_dict = {}
+                for qbn, qbn_data in cal_data.items():
+                    f = interp1d(cp, qbn_data)
+                    param_vals_dict.update({qbn: float(f(phi))})
+                param_vals.append(param_vals_dict)
+            else:
+                f = interp1d(cp, cal_data)
+                print(f"cal_data = {cal_data}")
+                print(f"phi = {phi}")
+                param_vals.append(float(f(phi)))
+        return param_vals
+
+        # --- Below is code from Nathan's CARB
+        # th = cphase_calib_dict.get('zero_angle_threshold', 0)
+        # assert 'phase_amplitude_array' in cphase_calib_dict, \
+        #     "phase_amplitude_array not provided"
+        # paa = cphase_calib_dict['phase_amplitude_array']
+        # # the following asarray makes the function robust to work for phi
+        # # being float, list, or array
+        # offset = np.asarray(cphase_calib_dict.get('offset', paa[0][0]))
+        # amplitude = np.interp((phi - offset) % (2 * np.pi),
+        #                       paa[0] - offset, paa[1], period=2 * np.pi) \
+        #             * (1 - np.less(np.abs(np.mod(phi, 2 * np.pi)), th))
+        #
+        # if 'amplitude_dynphase_dict' not in cphase_calib_dict:
+        #     log.warning('amplitude_dynphase_dict not provided. '
+        #                 'Using basis_rotation from pulse settings.')
+        #     basis_rotation = None
+        # else:
+        #     basis_rotation = {}
+        #     kind = cphase_calib_dict.get('dynphase_interp_kind', 'cubic')
+        #     for qbn, ada in cphase_calib_dict['amplitude_dynphase_dict'].items():
+        #         basis_rotation[qbn] = sp.interpolate.interp1d(ada[0],
+        #                 (np.unwrap(ada[1] / 180 * np.pi) * 180 / np.pi),
+        #                 kind=kind, fill_value='extrapolate'
+        #             )(amplitude) \
+        #             * (1 - np.less(np.abs(np.mod(phi, 2 * np.pi)), th))
+        # return (amplitude, basis_rotation)
 
     def _update_lengths_amps_channels(self):
         self.channels = [c for c in [self.channel, self.channel2]

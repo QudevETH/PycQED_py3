@@ -231,10 +231,49 @@ class CircuitBuilder:
 
         if op in self.operation_dict:
             p = deepcopy(self.operation_dict[op])
-        elif op_info[0].rstrip('0123456789.') == 'CZ' or \
-                op_info[0].startswith('CZ:'):
-            operation = self.get_cz_operation_name(op_info[1], op_info[2])
+        # elif op_info[0].rstrip('0123456789.') == 'CZ' or \
+        #         op_info[0].startswith('CZ:'):
+        elif op_name.startswith('CZ'):
+            # print(f"{op_name} starts with 'CZ'!")
+            # FIXME just copied stuff from below, to be cleaned up
+            factor = -1 if op_name[0] == 'm' else 1
+            if factor == -1:
+                op_name = op_name[1:]
+            if len(op_name.split(':'))>1:  # format 'CZ_name:function
+                # print("parameterised pulse")
+                pulse_name, angle = op_name.split(':')
+                # Parse param
+                param_start = angle.find('[') + 1
+                # If '[' is contained, this indicates that the parameter
+                # is part of a mathematical expression. Otherwise, the angle
+                # is equal to the parameter.
+                if param_start > 0:
+                    param_end = angle.find(']', param_start)
+                    param = angle[param_start:param_end]
+                    angle = angle.replace('[' + param + ']', 'x')
+                    f = eval('lambda x : ' + angle)
+                    func = (lambda x, f=factor, fnc=f:
+                            f * fnc(x))
+                else:
+                    param = angle
+                    func = (lambda x, f=factor: f * x)
+                # print(f"angle = {angle}")
+                cphase = ParametricValue(
+                    param, func=func, op_split=(op_name, op_info[1]))
+            elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'name:val
+                pulse_name = op_name.rstrip('0123456789.')
+                angle = float(op_name[len(pulse_name):])
+                cphase = angle
+            else:  # non-arbitrary CZ
+                pulse_name = op_name
+                cphase = None
+            if pulse_name == 'CZ':  # to keep previous behaviour
+                pulse_name = self.cz_pulse_name
+            operation = self.get_cz_operation_name(op_info[1], op_info[2],
+                                                   cz_pulse_name=pulse_name)
             p = deepcopy(self.operation_dict[operation])
+            p['cphase'] = cphase
+
         elif parse_rotation_gates and op not in self.operation_dict:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
