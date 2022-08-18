@@ -55,6 +55,9 @@ class VC707(VC707_core, AcquisitionDevice):
         self.averager.configure()
         self._last_traces = []
 
+    def acquisition_progress(self):
+        return self.averager.trigger_counter()
+
     def poll(self, *args, **kwargs):
         dataset = {}
         if self._acq_mode in ['avg', 'int_avg']:
