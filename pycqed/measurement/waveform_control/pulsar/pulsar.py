@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Dict, List, Set, Tuple, Type, Union
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
@@ -147,9 +147,6 @@ class PulsarAWGInterface(ABC):
         pulsar.add_parameter(f"{name}_active",
                              initial_value=True,
                              vals=vals.Bool(),
-                             parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_reuse_waveforms",
-                             initial_value=True, vals=vals.Bool(),
                              parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
                              initial_value=False, vals=vals.Bool(),

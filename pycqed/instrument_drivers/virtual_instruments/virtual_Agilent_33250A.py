@@ -1,5 +1,5 @@
 import logging
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils.validators import Numbers, Enum, MultiType
 
 log = logging.getLogger(__name__)

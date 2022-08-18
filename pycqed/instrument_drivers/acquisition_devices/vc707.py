@@ -119,6 +119,13 @@ class VC707(VC707_core, AcquisitionDevice):
             #         DiscriminationUnit()
             #     )
 
+    def acquisition_progress(self):
+        if self._get_current_fpga_module_name() == "averager":
+            return self.averager.trigger_counter()
+        else:
+            # FIXME: implement trigger_counter for other modules
+            return 0
+
     def poll(self, poll_time=0.1) -> dict:
 
         # Sanity check
