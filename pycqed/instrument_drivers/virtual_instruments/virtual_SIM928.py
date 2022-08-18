@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 from qcodes.instrument.parameter import ManualParameter
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 
 log = logging.getLogger(__name__)

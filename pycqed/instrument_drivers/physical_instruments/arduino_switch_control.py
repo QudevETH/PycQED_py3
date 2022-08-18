@@ -6,7 +6,7 @@ from copy import copy, deepcopy
 from collections import OrderedDict
 
 import qcodes as qc
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 
 
 class ArduinoSwitchControl(Instrument):

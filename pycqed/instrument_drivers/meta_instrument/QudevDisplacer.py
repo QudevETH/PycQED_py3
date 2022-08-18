@@ -1,7 +1,7 @@
 import time
 import logging
 
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import InstrumentRefParameter
 from qcodes.utils.validators import Enum, Ints, Numbers
 

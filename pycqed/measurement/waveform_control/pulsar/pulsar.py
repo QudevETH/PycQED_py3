@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Dict, List, Set, Tuple, Type, Union
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
