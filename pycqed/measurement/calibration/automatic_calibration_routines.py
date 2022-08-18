@@ -271,8 +271,6 @@ class SettingsDictionary(dict):
             settings_default_folder (string): User settings as a dictionary.
         """
         if settings_default_folder == None:
-            log.warning("No settings_default_folder specified. Using the "
-                        "default PycQED one.")
             dirname = os.path.dirname(os.path.abspath(__file__))
             settings_default_folder = os.path.join(
                 dirname, "autocalib_default_settings")
