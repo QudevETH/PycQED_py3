@@ -436,9 +436,10 @@ class AcquisitionDevice():
         and stop acquisition.
 
         Returns:
-            class instance, name of class instance
+            class instance, name of class instance (or None, None if no
+            awg control is needed for the acquisition device)
         """
-        return None, 'none'
+        return None, None
 
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
