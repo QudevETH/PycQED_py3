@@ -85,7 +85,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Try to get qubits or at least qb_names
         _, qb_names = self.extract_qubits(dev, qubits, operation_dict)
         # Filter to the ones that are needed
-        qb_names = self.find_qubits_in_tasks(qb_names, task_list)
+        qb_names = self.find_qubits_in_tasks(qb_names, task_list + [kw])
         # Initialize the QuantumExperiment
         super().__init__(dev=dev, qubits=qubits,
                          operation_dict=operation_dict,
@@ -456,7 +456,11 @@ class MultiTaskingExperiment(QuantumExperiment):
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
             if isinstance(candidate, qubit_object.Qubit):
-                if candidate not in found_qubits:
+                if candidate.name in qbs_dict:
+                    # avoid duplicates by adding it exactly in the form
+                    # contained in the qbs_dict
+                    append_qbs(found_qubits, candidate.name)
+                elif candidate not in found_qubits:
                     found_qubits.append(candidate)
             elif isinstance(candidate, str):
                 if candidate in qbs_dict.keys():
