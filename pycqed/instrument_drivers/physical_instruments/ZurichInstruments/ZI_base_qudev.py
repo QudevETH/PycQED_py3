@@ -49,6 +49,9 @@ class MockDAQServer(zibase.MockDAQServer):
             if k.startswith('set') and len(k) > 3:
                 setattr(self, f'syncS{k[1:]}', getattr(self, k))
 
+    def listNodes(self, path):
+        return json.loads(self.listNodesJSON(path + "/*"))
+
     def set_device_type(self, device, devtype):
         self._device_types[device] = devtype
 

@@ -150,9 +150,6 @@ class PulsarAWGInterface(ABC):
                              initial_value=True,
                              vals=vals.Bool(),
                              parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_reuse_waveforms",
-                             initial_value=True, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
