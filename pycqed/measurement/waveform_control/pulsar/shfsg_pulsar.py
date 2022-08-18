@@ -564,10 +564,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 log.debug(
                     f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
                 return
-            log.debug(
-                f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
             self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
+        log.debug(
+            f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
         if m1 is not None and a1 is None:
