@@ -182,14 +182,12 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # otherwise SHFQA.USER_REG_... would crash on setups which do not
             # have an SHFQA object initialised
             shfqa_sequence_string_template = (
-                "var loop_cnt = "
-                f"getUserReg({SHF_AcquisitionDevice.USER_REG_LOOP_COUNT});\n"
                 "var acq_len = "
                 f"getUserReg({SHF_AcquisitionDevice.USER_REG_ACQ_LEN});"
                 f" // only needed in sweeper mode\n"
                 "{prep_string}"
                 "\n"
-                "repeat (loop_cnt) {{\n"
+                "while(1) {{\n"
                 "  {playback_string}\n"
                 "}}\n"
             )
