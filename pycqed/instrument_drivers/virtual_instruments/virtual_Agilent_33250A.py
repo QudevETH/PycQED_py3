@@ -89,7 +89,7 @@ class Virtual_Agilent_33250A(Instrument):
                            docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))						   
         
         self.connect_message()
-
+    
     def reset(self):
         """
         pass
