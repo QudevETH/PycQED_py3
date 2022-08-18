@@ -59,9 +59,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # TODO: Check if it is meaningful that this AWG has a different initial
-        # value for this parameter
-        pulsar.set(f"{name}_minimize_sequencer_memory", True)
+        pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
+                             initial_value=True, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Minimizes the sequencer memory by "
+                                       "repeating specific sequence patterns "
+                                       "(eg. readout) passed in "
+                                       "'repeat dictionary'.")
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
