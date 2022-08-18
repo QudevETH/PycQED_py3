@@ -1,4 +1,4 @@
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import validators as vals
 
