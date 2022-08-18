@@ -1,7 +1,7 @@
 import time
 import logging
 
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import InstrumentRefParameter
 from qcodes.utils.validators import Enum, Ints, Numbers
 
@@ -46,9 +46,3 @@ class QudevDisplacer(Instrument):
             docstring=('Phase shifter setting (normalized)'
                        'Min value: 0.0'
                        'Max value: 1.0'))
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}

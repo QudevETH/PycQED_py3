@@ -1,4 +1,4 @@
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_PQSC as pqsc
 import qcodes.utils.validators as vals
 
@@ -35,12 +35,6 @@ class PQSC_control(Instrument):
             unit='',
             vals=vals.Ints(1, int(1e15)),
             docstring=('Command for setting the number of repetitions'))
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def start(self, **kw):
         """Start the playback of trigger pulses at the PQSC device

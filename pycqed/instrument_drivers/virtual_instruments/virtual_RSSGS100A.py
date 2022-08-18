@@ -1,6 +1,6 @@
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import VisaInstrument, validators as vals
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 
 
 class virtualRohdeSchwarz_SGS100A(Instrument):
@@ -89,12 +89,6 @@ class virtualRohdeSchwarz_SGS100A(Instrument):
         self.add_function('run_self_tests', call_cmd='*TST?')
 
         self.connect_message()
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def connect_message(self):
         return 'virtualRohdeSchwarz_SGS100A'

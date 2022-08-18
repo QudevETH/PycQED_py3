@@ -2,7 +2,7 @@ import time
 import pyqtgraph as pg
 import pyqtgraph.multiprocess as pgmp
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
@@ -38,12 +38,6 @@ class InstrumentMonitor(Instrument):
         # initial value is fake but ensures it will update the first time
         self.last_update_time = 0
         self.create_tree(figsize=figsize)
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def update(self):
         time_since_last_update = time.time()-self.last_update_time

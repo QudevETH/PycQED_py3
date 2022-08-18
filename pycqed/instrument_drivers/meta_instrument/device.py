@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -122,12 +122,6 @@ class Device(Instrument):
 
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                            initial_value=default_prep_params, vals=vals.Dict())
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     # General Class Methods
 

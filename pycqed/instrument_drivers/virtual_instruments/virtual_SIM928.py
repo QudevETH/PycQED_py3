@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 from qcodes.instrument.parameter import ManualParameter
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 
 log = logging.getLogger(__name__)
@@ -76,12 +76,6 @@ class VirtualSIM928(Instrument):
                            vals=vals.Bool(), initial_value=False)
 
         self._voltages = {i: 0 for i in self.modules}
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def get_module_idn(self, i):
         """

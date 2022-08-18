@@ -1,4 +1,4 @@
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 import numpy as np
@@ -40,9 +40,3 @@ class Weinschel_8320(Instrument):
         ret = ret.decode('ascii')
         tn.close()
         return int(ret.split('\r\n')[-3],10)
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}

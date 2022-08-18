@@ -1,5 +1,5 @@
 import logging
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils.validators import Numbers, Enum, MultiType
 
 log = logging.getLogger(__name__)
@@ -89,12 +89,6 @@ class Virtual_Agilent_33250A(Instrument):
                            docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))						   
         
         self.connect_message()
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def reset(self):
         """

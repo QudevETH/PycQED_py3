@@ -1,5 +1,5 @@
 import numpy as np
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 from pycqed.instrument_drivers.pq_parameters import InstrumentParameter
 
@@ -29,12 +29,6 @@ class FluxDecoupler(Instrument):
         self._target_active = []
         self._source_names = []
         self._source_active = []
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def add_target(self, name):
         if name in self._target_names:

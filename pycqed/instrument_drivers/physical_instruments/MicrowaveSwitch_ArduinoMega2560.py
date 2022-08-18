@@ -1,4 +1,4 @@
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 import numpy as np
@@ -83,9 +83,3 @@ class MicrowaveSwitchSP6TArduinoMega2560(Instrument):
         else:
             # otherwise (more than one channel is on) raise an error
             raise ValueError("Unexpected reading from indicator output!")
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}

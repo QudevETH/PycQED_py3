@@ -6,7 +6,7 @@ from copy import copy, deepcopy
 from collections import OrderedDict
 
 import qcodes as qc
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 
 
 class ArduinoSwitchControl(Instrument):
@@ -272,12 +272,6 @@ class ArduinoSwitchControl(Instrument):
         self.serial = None
         if start_serial:
             self.start_serial()
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     # Magic methods
     # -------------

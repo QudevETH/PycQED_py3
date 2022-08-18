@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Dict, List, Set, Tuple, Type, Union
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
@@ -611,12 +611,6 @@ class Pulsar(Instrument):
         if val and not self.use_sequence_cache():
             self.reset_sequence_cache()
         return val
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def reset_sequence_cache(self):
         """Resets the sequence cache.

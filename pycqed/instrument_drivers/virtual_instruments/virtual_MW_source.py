@@ -1,4 +1,4 @@
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import validators as vals
 
@@ -53,12 +53,6 @@ class VirtualMWsource(Instrument):
                            vals=vals.Enum('10MHz', '100MHz', '1000MHz'))
 
         self.connect_message()
-
-    def get_idn(self):
-        """
-        Required as a standard interface for QCoDeS instruments.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def reset(self):
         pass
