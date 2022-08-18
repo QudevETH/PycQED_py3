@@ -302,6 +302,11 @@ class PulsarAWGInterface(ABC):
                      channels_to_program:Union[List[str], str]="all",
                      filter_segments=None):
         """Preprocess filter segments before programming actual hardware"""
+        # Switch of repeat_pattern if not supported or if disabled via
+        # _minimize_sequencer_memory parameter.
+        param = f'{self.awg.name}_minimize_sequencer_memory'
+        if param not in self.pulsar.parameters or not self.pulsar.get(param):
+            repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
             awg_sequence, waveforms, filter_segments, repeat_pattern,
             channels_to_upload=channels_to_upload,
@@ -876,6 +881,7 @@ class Pulsar(Instrument):
             # to changed AWG settings or due to changed metadata
             awgs_to_program = []
             settings_to_check = ['{}_use_placeholder_waves',
+                                 '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
                                  'prepend_zeros']
             settings = {}
@@ -1180,6 +1186,11 @@ class Pulsar(Instrument):
         repeat_dict_per_awg = dict()
         for cname in repeat_dict_per_ch:
             awg = self.get(f"{cname}_awg")
+            param = f'{awg}_minimize_sequencer_memory'
+            if param not in self.parameters or not self.get(param):
+                # repeat_pattern is not supported or is disabled via
+                # _minimize_sequencer_memory parameter.
+                continue
             chid = self.get(f"{cname}_id")
 
             if not awg in awg_ch_repeat_dict.keys():
