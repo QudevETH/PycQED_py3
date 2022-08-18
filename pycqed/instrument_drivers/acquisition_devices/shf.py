@@ -13,26 +13,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHFSpectroscopyHardSweep(swf.Hard_Sweep):
-    """Defines a hard sweep function specific to the SHF hard spectroscopy.
-
-    The frequency range over which this sweep function should sweep is not
-    set in the sweep function itself, but in the acquisition_mode attribute
-    of the segment used by the sweep function. This gives Pulsar access to the
-    frequency range, allowing Pulsar to program the corresponding frequency
-    parameters in the seqc code.
-    """
-    def __init__(self, acq_dev, acq_unit, parameter_name='None'):
-        super().__init__()
-        self.parameter_name = parameter_name
-        self.unit = 'Hz'
-        self.acq_dev = acq_dev
-        self.acq_unit = acq_unit
-
-    def set_parameter(self, value):
-        pass  # Set in the Segment, see docstring
-
-
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
 
@@ -89,6 +69,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
+        self._awg_source_strings = {}
         self.seqtrigger = None
         self.timer = None
 
@@ -104,6 +85,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
+        # FIXME: This parameter should be removed and existing code should be
+        #  refactored to use the parameter "{awg_name}_use_hardware_sweeper" in
+        #  pulsar.
         self.add_parameter(
             'use_hardware_sweeper',
             initial_value=False,
@@ -203,15 +187,23 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
-        diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0] < 1e-3):
-            # not equally spaced (arbitrary 1 mHz)
-            log.warning(f'Unequal frequency spacing not supported, '
-                        f'the measurement will return equally spaced values.')
-        # Find closest allowed center frequency
-        approx_center_freq = np.mean(requested_freqs)
-        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
-                             approx_center_freq)).argmin()
+        if len(requested_freqs) == 1:
+            id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+                                requested_freqs[0])).argmin()
+            if self.awg.allowed_lo_freqs()[id_closest] - requested_freqs[0] < 10e6:
+                # resulting mod_freq would be smaller than 10 MHz
+                # TODO: arbitrarily chosen limit of 10 MHz
+                id_closest = id_closest + (-1 if id_closest != 0 else +1)
+        else:
+            diff_f = np.diff(requested_freqs)
+            if not all(diff_f-diff_f[0] < 1e-3):
+                # not equally spaced (arbitrary 1 mHz)
+                log.warning(f'Unequal frequency spacing not supported, '
+                            f'the measurement will return equally spaced values.')
+            # Find closest allowed center frequency
+            approx_center_freq = np.mean(requested_freqs)
+            id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+                                approx_center_freq)).argmin()
         center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
@@ -384,10 +376,28 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         """
         qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
+        self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def store_awg_source_string(self, channel, awg_str):
+        """
+        Store AWG source strings to a private property for debugging.
+
+        This function is called automatically when programming a QA
+        channel via set_awg_program and currently still needs to be called
+        manually after programming an SG channel. The source strings get
+        stored in the dict self._awg_source_strings.
+
+        Args:
+             channel: the QA or SG channel object for which the AWG was
+                programmed
+            awg_str: the source string that was programmed to the AWG
+        """
+        key = channel.short_name[:2] + channel.short_name[-1:]
+        self._awg_source_strings[key] = awg_str
 
     def _arm_scope(self):
         self.scopes[0].stop()
@@ -521,8 +531,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFSpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
-                                              parameter_name=name)
+            return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -569,12 +578,26 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
+    def _check_server(self, kwargs):
+        if kwargs.pop('server', None) == 'emulator':
+            from pycqed.instrument_drivers.physical_instruments\
+                .ZurichInstruments import ZI_base_qudev as zibase
+            from zhinst.qcodes import session as ziqcsess
+            daq = zibase.MockDAQServer(kwargs.get('host', 'localhost'),
+                                       port=kwargs.get('port', 8004),
+                                       apilevel=5)
+            self._session = ziqcsess.Session(
+                server_host=kwargs.get('host', 'localhost'),
+                connection=daq)
+            return daq
+
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
     """
 
     def __init__(self, *args, **kwargs):
+        self._check_server(kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
@@ -583,7 +606,10 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, serial, *args, **kwargs):
+        daq = self._check_server(kwargs)
+        if daq is not None:
+            daq.set_device_type(serial, 'SHFQC')
+        super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)

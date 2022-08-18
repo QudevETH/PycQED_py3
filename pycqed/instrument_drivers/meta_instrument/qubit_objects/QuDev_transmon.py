@@ -24,6 +24,7 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
 from pycqed.utilities.general import temporary_value
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement import optimization as opti
@@ -61,17 +62,20 @@ class QuDev_transmon(Qubit):
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ge_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_pulsar',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_acq',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ro_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
 
         # device parameters for user only
         # could be cleaned up
@@ -112,13 +116,16 @@ class QuDev_transmon(Qubit):
         # readout pulse parameters
         self.add_parameter(
             'ro_fixed_lo_freq', unit='Hz',
-            set_cmd=lambda f, s=self : s.configure_mod_freqs(
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
                 'ro', ro_fixed_lo_freq=f),
-            vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
-        self.add_parameter('ro_freq', unit='Hz',
-                           set_cmd=lambda f, s=self : s.configure_mod_freqs(
-                               'ro', ro_freq=f),
-                           label='Readout frequency')
+            docstring='Fix the ro LO to a single frequency or to a set of '
+                      'allowed frequencies. For allowed options, see the '
+                      'argument fixed_lo in the docstring of '
+                      'get_closest_lo_freq.')
+        self.add_parameter(
+            'ro_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs('ro', ro_freq=f),
+            label='Readout frequency')
         self.add_parameter('ro_I_offset', unit='V', initial_value=0,
                            parameter_class=ManualParameter,
                            label='DC offset for the readout I channel')
@@ -154,9 +161,11 @@ class QuDev_transmon(Qubit):
                                  initial_value=2e-6, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_delay', 'pulse_delay',
                                  initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('RO', 'ro_mod_freq', 'mod_frequency',
-                                 initial_value=100e6,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+        self.add_pulse_parameter(
+            'RO', 'ro_mod_freq', 'mod_frequency', initial_value=100e6,
+            set_parser=lambda f, s=self: s.configure_mod_freqs('ro',
+                                                               ro_mod_freq=f),
+            vals=vals.MultiType(vals.Numbers(), vals.Lists()))
         self.add_pulse_parameter('RO', 'ro_phase', 'phase',
                                  initial_value=0,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -329,17 +338,31 @@ class QuDev_transmon(Qubit):
                                  'the same change in flux.',
                            initial_value=None, vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('amp_scaling_correction_coeffs',
+                           initial_value=[0, 0],
+                           parameter_class=ManualParameter,
+                           docstring='List/array of two floats representing '
+                                     'the coefficients a, b of the 5th order '
+                                     'polynomial used to correct for drive '
+                                     'electronics nonlinearity when scaling '
+                                     'the drive pulse amplitude with respect '
+                                     'to the pi-pulse amplitude. Used in '
+                                     'calculate_nonlinearity_correction.',
+                           vals=vals.MultiType(vals.Lists(), vals.Arrays()))
 
         # add drive pulse parameters
         for tr_name in self.transition_names:
             if tr_name == 'ge':
                 self.add_parameter(
                     f'{tr_name}_fixed_lo_freq', unit='Hz',
-                    set_cmd=lambda f, s=self: s.configure_mod_freqs(
-                        'ge', ge_fixed_lo_freq=f),
-                    vals=vals.MultiType(vals.Enum(None), vals.Numbers()))
-                freq_kw = dict(set_cmd=lambda f, s=self: s.configure_mod_freqs(
-                        'ge', ge_freq=f))
+                    set_cmd=lambda f, s=self, t=tr_name: s.configure_mod_freqs(
+                        t, **{f'{t}_fixed_lo_freq': f}),
+                    docstring=f'Fix the {tr_name} LO to a single frequency or '
+                              f'to a set of allowed frequencies. For allowed '
+                              f'options, see the argument fixed_lo in the '
+                              f'docstring of get_closest_lo_freq.')
+                freq_kw = dict(set_cmd=lambda f, s=self, t=tr_name:
+                               s.configure_mod_freqs(t, **{f'{t}_freq': f}))
             else:
                 freq_kw = dict(parameter_class=ManualParameter)
             self.add_parameter(f'{tr_name}_freq',
@@ -390,10 +413,12 @@ class QuDev_transmon(Qubit):
                                          'Q_channel',
                                          initial_value=None,
                                          vals=vals.Strings())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_mod_freq',
-                                         'mod_frequency',
-                                         initial_value=-100e6,
-                                         vals=vals.Numbers())
+                self.add_pulse_parameter(
+                    f'X180{tn}', f'{tr_name}_mod_freq',
+                    'mod_frequency', initial_value=-100e6,
+                    set_parser=lambda f, s=self, t=tr_name:
+                               s.configure_mod_freqs(t, **{f'{t}_mod_freq': f}),
+                    vals=vals.Numbers())
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
                                          'phi_skew',
                                          initial_value=0,
@@ -612,6 +637,19 @@ class QuDev_transmon(Qubit):
                         f'fit_ro_freq_over_ge_freq is None.')
             return None
         return eval(freq_func)(ge_freq)
+
+    def calculate_nonlinearity_correction(self, x):
+        """
+        Calculates the correction to a linear scaling of the pulse amplitude
+        with respect to the pi-pulse amplitude using a 5th order odd polynomial
+        and the coefficients from self.amp_scaling_correction_coeffs()
+
+        Args:
+             x: drive amplitude scaling factor with respect to the amplitude of
+                the pi-pulse (amp180)
+        """
+        a, b = self.amp_scaling_correction_coeffs()
+        return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
 
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
                             model='transmon_res', flux=None, update=False):
@@ -1014,6 +1052,16 @@ class QuDev_transmon(Qubit):
                 nr_averages=self.acq_averages(),
                 acquisition_length=self.acq_length()
             )
+        else:
+            self.scope_fft_det = det.ScopePollDetector(
+                acq_dev=self.instr_acq.get_instr(),
+                AWG=self.instr_acq.get_instr(),
+                channels=self.get_acq_inp_channels(),
+                data_type='fft_power',
+                nr_averages=self.acq_averages(),
+                nr_shots=1,
+                acquisition_length=self.acq_length()
+            )
 
     def prepare(self, drive='timedomain', switch='default'):
         """Prepare instruments for a measurement involving this qubit.
@@ -1044,17 +1092,7 @@ class QuDev_transmon(Qubit):
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
-        # in case of multichromatic readout, take first ro freq, else just
-        # wrap the frequency in a list and take the first
-        if np.ndim(self.ro_freq()) == 0:
-            ro_freq = [self.ro_freq()]
-        else:
-            ro_freq = self.ro_freq()
-        if np.ndim(self.ro_mod_freq()) == 0:
-            ro_mod_freq = [self.ro_mod_freq()]
-        else:
-            ro_mod_freq = self.ro_mod_freq()
-        ro_lo_freq = ro_freq[0] - ro_mod_freq[0]
+        ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
             ro_lo.get_instr().pulsemod_state('Off')
@@ -1084,13 +1122,12 @@ class QuDev_transmon(Qubit):
             elif drive == 'timedomain':
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.ge_lo_power())
-                ge_lo.get_instr().frequency(self.ge_freq() - self.ge_mod_freq())
+                ge_lo.get_instr().frequency(self.get_ge_lo_freq())
                 ge_lo.get_instr().on()
             else:
                 raise ValueError("Invalid drive parameter '{}'".format(drive)
                                  + ". Valid options are None, 'continuous_spec"
                                  + "', 'pulsed_spec' and 'timedomain'.")
-
 
         # other preparations
         self.update_detector_functions()
@@ -1113,6 +1150,32 @@ class QuDev_transmon(Qubit):
             # switch mode was explicitly provided by the caller (e.g.,
             # for mixer calib)
             self.set_switch(switch)
+
+    def get_ge_lo_freq(self):
+        """Returns the required local oscillator frequency for drive pulses
+
+        The drive LO freq is calculated from the ge_mod_freq (intermediate
+        frequency) and the ge_freq stored in the qubit object.
+        """
+        return self.ge_freq() - self.ge_mod_freq()
+
+    def get_ro_lo_freq(self):
+        """Returns the required local oscillator frequency for readout pulses
+
+        The RO LO freq is calculated from the ro_mod_freq (intermediate
+        frequency) and the ro_freq stored in the qubit object.
+        """
+        # in case of multichromatic readout, take first ro freq, else just
+        # wrap the frequency in a list and take the first
+        if np.ndim(self.ro_freq()) == 0:
+            ro_freq = [self.ro_freq()]
+        else:
+            ro_freq = self.ro_freq()
+        if np.ndim(self.ro_mod_freq()) == 0:
+            ro_mod_freq = [self.ro_mod_freq()]
+        else:
+            ro_mod_freq = self.ro_mod_freq()
+        return ro_freq[0] - ro_mod_freq[0]
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
@@ -1231,6 +1294,14 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
+    def swf_drive_lo_freq(self):
+        if self.instr_ge_lo() is not None:  # external LO
+            return mc_parameter_wrapper.wrap_par_to_swf(
+                self.instr_ge_lo.get_instr().frequency)
+        else:  # no external LO
+            pulsar = self.instr_pulsar.get_instr()
+            return pulsar.get_frequency_sweep_function(self.ge_I_channel())
+
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
 
@@ -1340,6 +1411,22 @@ class QuDev_transmon(Qubit):
         if np.any(freqs < 500e6):
             log.warning(('Some of the values in the freqs array might be '
                              'too small. The units should be Hz.'))
+        temp_vals = list()
+        pulsar = self.instr_pulsar.get_instr()
+        awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+        hard_sweep = f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
+                     pulsar.get(f"{awg_name}_use_hardware_sweeper")
+
+        # For pulsed and hard_sweep spectroscopies we add an empty spec pulse to
+        # trigger the the drive/marker AWG and afterwards add the actual spec
+        # pulse (either empty for a continuous hard sweep or the pulse for the
+        # pulsed spectroscopy). This way we are able to implement a delay
+        # between the trigger and the spec pulse that is needed in hard_sweeps
+        # to set the osc. frequency.
+        # FIXME: think about cleaner solution
+        empty_trigger = self.get_spec_pars()
+        empty_trigger['length'] = 0
+        empty_trigger['pulse_delay'] = 0
         if pulsed:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1348,8 +1435,14 @@ class QuDev_transmon(Qubit):
                     label = 'pulsed_spec' + self.msmt_suffix
             self.prepare(drive='pulsed_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_spec_pars(),
-                                         self.get_ro_pars()]])
+                spec_pulse = self.get_spec_pars()
+                if hard_sweep or self.instr_ge_lo() is None:
+                    # No external LO, use pulse to set the spec power
+                    spec_pulse["amplitude"] = dbm_to_vp(self.spec_power())
+                seq = sq.pulse_list_list_seq([[empty_trigger,
+                                               spec_pulse,
+                                               self.get_ro_pars()]],
+                                             upload=False)
         else:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1358,10 +1451,48 @@ class QuDev_transmon(Qubit):
                     label = 'continuous_spec' + self.msmt_suffix
             self.prepare(drive='continuous_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_ro_pars()]])
+                if self.instr_ge_lo() is None and not hard_sweep:
+                    amp_range = pulsar.get(f'{self.ge_I_channel()}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_mod_freq"],
+                                   self.ge_mod_freq())]
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_output_amp"],
+                                   gain)]
+                if hard_sweep:
+                    # we use the empty pulse to tell pulsar how to configure the
+                    # osc sweep and sine output. The empty pulse is also used
+                    # to trigger the SeqC code to set the next osc. frequency.
+                    # This needs to be done after the RO.
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars(),
+                                                   empty_trigger]],
+                                                 upload=False)
+                else:
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars()]],
+                                                 upload=False)
+        if upload:
+            for seg in seq.segments.values():
+                ch = self.ge_I_channel()
+                seg.mod_config[ch] = \
+                    dict(internal_mod=pulsed)
+                if hard_sweep:
+                    amp_range = pulsar.get(f'{ch}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    center_freq, mod_freqs = \
+                        pulsar.get_params_for_spectrum(ch, freqs)
+                    pulsar.set(f'{ch}_centerfreq', center_freq)
+                    seg.sine_config[ch] = dict(continuous=not pulsed,
+                                               ignore_waveforms=not pulsed,
+                                               gains=tuple(gain * x for x in (
+                                               0.0, 1.0, 1.0, 0.0)))
+                    seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs
+            pulsar.program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.instr_ge_lo.get_instr().frequency)
+        MC.set_sweep_function(self.swf_drive_lo_freq())
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
@@ -1370,13 +1501,19 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
-
-        with temporary_value(self.instr_trigger.get_instr().pulse_period,
-                             trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the swf
+            # provided by swf_drive_lo_freq uses a hardware IF sweep.
+            self.int_avg_det.set_real_imag(False)
+            MC.set_detector_function(self.int_avg_det)
+        temp_vals += [(self.instr_trigger.get_instr().pulse_period,
+                       trigger_separation)]
+        with temporary_value(*temp_vals):
+            pulsar.start(exclude=[self.instr_acq()])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            pulsar.stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
@@ -2857,8 +2994,9 @@ class QuDev_transmon(Qubit):
             *self._drive_mixer_calibration_tmp_vals()
         ):
             pulse_list_list = []
+            acq_pars = self.get_acq_pars()
             for alpha, phi_skew in meas_grid.T:
-                pulse_list_list.append([self.get_acq_pars(), dict(
+                pulse_list_list.append([deepcopy(acq_pars), dict(
                             pulse_type='GaussFilteredCosIQPulse',
                             pulse_length=self.acq_length(),
                             ref_point='start',
@@ -2875,10 +3013,8 @@ class QuDev_transmon(Qubit):
             self.prepare(drive='timedomain', switch='calib')
 
             # Check commensurability of LO frequencies with trigger sep.
-            ro_lo = self.instr_ro_lo.get_instr()
-            dr_lo = self.instr_ge_lo.get_instr()
-            ro_lo_freq = ro_lo.frequency()
-            dr_lo_freq = dr_lo.frequency()
+            ro_lo_freq = self.get_ro_lo_freq()
+            dr_lo_freq = self.ge_freq() - self.ge_mod_freq()
             # Frequency of the LO phases is given by the LOs beat frequency.
             beat_freq = 0.5*(dr_lo_freq - ro_lo_freq)
             #         = 0.5*(ge_mod_freq + ro_mod_freq) in our case
@@ -2890,7 +3026,13 @@ class QuDev_transmon(Qubit):
                             'is not an integer multiple of the trigger '
                             'seperation.')
                 if not force_ro_mod_freq:
+                    if self.ro_fixed_lo_freq() is not None:
+                        log.warning(
+                            'Automatic adjustment of the RO IF might lead to '
+                            'wrong results since ro_fixed_lo_freq is set.')
                     beats_per_trigger = int(beats_per_trigger + 0.5)
+                    # FIXME: changing the IF here is probably the wrong moment
+                    #  because the pulse seq has already been created above.
                     self.ro_mod_freq(2 * beats_per_trigger/trigger_sep \
                                      - self.ge_mod_freq())
                     log.warning('To ensure commensurability the RO ' 
@@ -4859,6 +5001,71 @@ class QuDev_transmon(Qubit):
 
         ma.MeasurementAnalysis(TwoD=True)
 
+    def get_closest_lo_freq(self, target_lo_freq, fixed_lo='default',
+                            operation=None):
+        """Get the closest allowed LO freq for given target LO freq.
+
+        Args:
+            target_lo_freq (float): the target Lo freq
+            fixed_lo: specification of the allowed LO freq(s), can be:
+                - None: no restrictions on the LO freq
+                - float: LO fixed to a single freq
+                - str: (operation must be provided in this case)
+                    - 'default' (default value): use the setting in the qubit
+                      object.
+                    - a qb name to indicated that the LO must be fixed to be
+                      the same as for that qb.
+                - dict with (a subset of) the following keys:
+                    'min' and/or 'max': minimal/maximal allowed LO freq
+                    'step': LO fixed to a grid with this step width (grid
+                            starting at 'min' if provided and at 0 otherwise)
+                - list, np.array: LO fixed to be one of the listed values
+            operation (str): the operation for which the LO freq is to be
+                determined (e.g., 'ge', 'ro'). Only needed if fixed_lo is a str.
+
+        Returns:
+            The allowed LO freq that most closely matches the target
+            combination of RF and IF.
+
+        Examples:
+            >>> freq, mod_freq = 5898765432, 150e6
+            >>> target_lo_freq = freq - mod_freq
+            >>> qb.get_closest_lo_freq(target_lo_freq, 'qb1', 'ge')
+            >>> qb.get_closest_lo_freq(target_lo_freq, 5.8e9)
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, np.arange(4e9, 6e9 + 1e6, 1e6))
+            >>> qb.get_closest_lo_freq(target_lo_freq, {'step': 100e6})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 5.6e9})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 6.3e9, 'max': 6.9e9})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 6.9e9, 'step': 10e6})
+        """
+        if fixed_lo == 'default':
+            fixed_lo = self.get(f'{operation}_fixed_lo_freq')
+        if fixed_lo is None:
+            return target_lo_freq
+        elif isinstance(fixed_lo, float):
+            return fixed_lo
+        elif isinstance(fixed_lo, str):
+            instr = self.find_instrument(fixed_lo)
+            return getattr(instr, f'get_{operation}_lo_freq')()
+        elif isinstance(fixed_lo, dict):
+            f_min = fixed_lo.get('min', 0)
+            f_max = fixed_lo.get('max', np.inf)
+            step = fixed_lo.get('step', None)
+            lo_freq = max(min(target_lo_freq, f_max) - f_min, 0)
+            if step is not None:
+                lo_freq = round(lo_freq / step) * step
+                if lo_freq > f_max:
+                    lo_freq -= step
+            lo_freq += f_min
+            return lo_freq
+        else:
+            ind = np.argmin(np.abs(np.array(fixed_lo) - (target_lo_freq)))
+            return fixed_lo[ind]
+
     def configure_mod_freqs(self, operation=None, **kw):
         """Configure modulation freqs (IF) to be compatible with fixed LO freqs
 
@@ -4874,6 +5081,11 @@ class QuDev_transmon(Qubit):
                 fixed LO freq is configured.
             **kw: If a kew equals the name of a qcodes parameter of the qb,
                 the corresponding value supersedes the parameter value.
+
+        Returns:
+            - The new IF if called with arguments operation and
+              {operation}_mod_freq (can be used as set_parser).
+            - None otherwise.
         """
         def get_param(param):
             if param in kw:
@@ -4890,16 +5102,33 @@ class QuDev_transmon(Qubit):
 
         for op in ops:
             fixed_lo = get_param(f'{op}{fixed_lo_suffix}')
-            if fixed_lo is not None:
-                mod_freq = get_param(f'{op}_freq') - fixed_lo
-                if not any([k.startswith(f'{op}_') for k in kw]):
-                    old_mod_freq = get_param(f'{op}_mod_freq')
-                    if old_mod_freq != mod_freq:
+            if fixed_lo is None:
+                if operation is not None and f'{op}_mod_freq' in kw:
+                    # called for IF change of single op: behave as set_parser
+                    return kw[f'{op}_mod_freq']
+            else:
+                freq = get_param(f'{op}_freq')
+                old_mod_freq = get_param(f'{op}_mod_freq')
+                if np.ndim(old_mod_freq):
+                    raise NotImplementedError(
+                        f'{op}: Fixed LO freq in combination with '
+                        f'multichromatic mod freq is not implemented.')
+                lo_freq = self.get_closest_lo_freq(
+                    freq - old_mod_freq, fixed_lo, operation=op)
+                mod_freq = get_param(f'{op}_freq') - lo_freq
+                if operation is not None and f'{op}_mod_freq' in kw:
+                    # called for IF change of single op: behave as set_parser
+                    return mod_freq
+                elif old_mod_freq != mod_freq:
+                    if not any([k.startswith(f'{op}_') and k != f'{op}_mod_freq'
+                            for k in kw]):
                         log.warning(
-                            f'{self.name}: {op}_mod_freq is not consistent '
+                            f'{self.name}: {op}_mod_freq {old_mod_freq} is not '
+                            f'consistent '
                             f'with the fixed LO freq {fixed_lo} and will be '
                             f'adjusted to {mod_freq}.')
-                self.set(f'{op}_mod_freq', mod_freq)
+                    self.parameters[f'{op}_mod_freq'].cache._set_from_raw_value(
+                        mod_freq)
 
     def configure_pulsar(self):
         """
@@ -4940,10 +5169,10 @@ class QuDev_transmon(Qubit):
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
+            elif ge_lo() is not None:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()

@@ -2045,7 +2045,7 @@ class MeasurementControl(Instrument):
             [self.remove_parameter_check(p) for p in parameter]
         iname = _get_instrument_name_for_parameter_checks(parameter)
         if parameter.name in self.parameter_checks.get(iname, {}):
-            self.parameter_checks[iname].pop(parameter)
+            self.parameter_checks[iname].pop(parameter.name)
         else:
             log.warning(f'No check for parameter {iname}.{parameter.name} was '
                         f'configured.')
