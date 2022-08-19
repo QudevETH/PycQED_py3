@@ -1172,15 +1172,16 @@ class AutomaticCalibrationRoutine(Step):
 
 
         # The control statement prevents looking for the step scopes inside
-        # the step settings this is to avoid considering the following settings:
+        # the step settings. This is to avoid considering the following
+        # settings:
         #       9) SubRoutine.settings["SubRoutine"]["Experiment"]
         #       10) SubRoutine.settings["SubRoutine"]["experiment_label"]
         #       11) SubRoutine.settings["subroutine_label"]["Experiment"]
         #       12) SubRoutine.settings["subroutine_label"]["experiment_label"]
 
         # The only exception is when self is the root routine, in this case
-        # the routine settings are whole configuration parameter dictionary,
-        # hence we need to look for the routine scopes within the routine
+        # the routine settings are whole configuration parameter dictionary.
+        # Hence, we need to look for the routine scopes within the routine
         # settings (this is why it is included or self.routine is None).
         if self.get_lookup_class(
         ).__name__ not in lookups or self.routine is None:
