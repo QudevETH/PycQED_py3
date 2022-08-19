@@ -1269,6 +1269,59 @@ class AutomaticCalibrationRoutine(Step):
             self.kw.get("global_settings", {}),
         )
 
+    def split_step_for_parallel_groups(self, index):
+        """Replace the step at the given index with multiple steps according
+        to the parallel groups defined in the configuration parameter
+        dictionary.
+        The multiple steps will be added starting from the given index and after
+        it (the first one at the given index, the second one at index + 1 and so
+        on).
+        If no parallel groups are found, the step is left unchanged.
+
+        Args:
+            index (int): Index of the step to be replaced with the rearranged
+                steps.
+        """
+        # Get the details of the step to be replaced
+        step = self.routine_template[index]
+        step_class = step[0]
+        step_label = step[1]
+        step_settings = step[2]
+        try:
+            step_tmp_settings = step[3]
+        except IndexError:
+            step_tmp_settings = []
+
+        # Look for the keyword 'parallel_groups' in the settings
+        lookups = [
+            step_label,
+            step_class.get_lookup_class().__name__, 'General'
+        ]
+        parallel_groups = self.get_param_value('parallel_groups',
+                                               sublookups=lookups,
+                                               leaf=True)
+        if parallel_groups is not None:
+            new_step_index = index
+            # Remove existing step
+            self.routine_template.pop(index)
+            for parallel_group in parallel_groups:
+                # Find the qubits belonging to parallel_group
+                qubits_filtered = [
+                    qb for qb in self.qubits if qb.name is parallel_group or
+                    parallel_group in self.get_qubit_groups(qb.name)
+                ]
+                # Create a new step for qubits_filtered only and add it to the
+                # routine template
+                if len(qubits_filtered) != 0:
+                    new_settings = copy.deepcopy(step_settings)
+                    new_settings['qubits'] = qubits_filtered
+                    self.add_step(step_class,
+                                  step_label,
+                                  new_settings,
+                                  step_tmp_settings,
+                                  index=new_step_index)
+                    new_step_index += 1
+
     def prepare_step(self, i=None):
         """Prepares the next step in the routine. That is, it initializes the
         measurement object. The steps of the routine are instantiated here.
@@ -2569,36 +2622,11 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         """Creates routine template.
         """
         super().create_routine_template()
-
-        detailed_routine_template = copy.copy(self.routine_template)
-        detailed_routine_template.clear()
-
-        # Looks for parallel groups and modifies the routine template
-        # accordingly
-        for step in self.routine_template:
-            step_class = step[0]
-            settings = copy.deepcopy(step[2])
-            label = step[1]
-
-            lookups = [label, step_class.get_lookup_class().__name__, 'General']
-            for parallel_group in self.get_param_value('parallel_groups',
-                                                       sublookups=lookups,
-                                                       leaf=True):
-                qubits_filtered = [
-                    qb for qb in self.qubits if qb.name is parallel_group or
-                    parallel_group in self.get_qubit_groups(qb.name)
-                ]
-                if len(qubits_filtered) != 0:
-                    temp_settings = copy.deepcopy(settings)
-                    temp_settings['qubits'] = qubits_filtered
-                    qubit_label = label + "_"
-                    for qb in qubits_filtered:
-                        qubit_label += qb.name
-
-                    detailed_routine_template.add_step(step_class, qubit_label,
-                                                       temp_settings)
-
-        self.routine_template = detailed_routine_template
+        # Loop in reverse order so that the correspondence between the index
+        # of the loop and the index of the routine_template steps is preserved
+        # when new steps are added
+        for i,step in reversed(list(enumerate(self.routine_template))):
+            self.split_step_for_parallel_groups(index=i)
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [RabiStep, 'rabi', {}],
@@ -4093,49 +4121,30 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                                 'transition_name': transition_name
                             }
                         })
-                    # FIXME: Search for parallel groups in settings
-                    lookups = [
-                        label,
-                        step_class.get_lookup_class().__name__, 'General'
-                    ]
-                    for parallel_group in self.get_param_value(
-                            'parallel_groups', sublookups=lookups, leaf=True):
-                        qubits_filtered = [
-                            qb for qb in self.qubits
-                            if qb.name is parallel_group or
-                            parallel_group in self.get_qubit_groups(qb.name)
-                        ]
-                        if len(qubits_filtered) != 0:
-                            temp_settings = copy.deepcopy(settings)
-                            temp_settings['qubits'] = qubits_filtered
-                            qubit_label = new_label + "_"
-                            for qb in qubits_filtered:
-                                qubit_label += qb.name
 
-                            if issubclass(step_class, qbcal.Rabi):
-                                for n in self.get_param_value(
-                                        'nr_rabis')[transition_name]:
-                                    qubits = temp_settings.pop('qubits')
-                                    temp_settings['settings'] = copy.deepcopy(
-                                        temp_settings['settings'])
-                                    temp_settings['qubits'] = qubits
-                                    update_nested_dictionary(
-                                        temp_settings['settings'], {
-                                            step_class.get_lookup_class().__name__:
-                                                {
-                                                    'n': n
-                                                }
-                                        })
-                                    detailed_routine_template.add_step(
-                                        step_class, qubit_label, temp_settings)
+                    if issubclass(step_class, qbcal.Rabi):
+                        for n in self.get_param_value(
+                                'nr_rabis')[transition_name]:
+                            update_nested_dictionary(
+                                settings['settings'], {
+                                    step_class.get_lookup_class().__name__:
+                                        {
+                                            'n': n
+                                        }
+                                })
 
-                            else:
-                                detailed_routine_template.add_step(
-                                    step_class, qubit_label, temp_settings)
+                    detailed_routine_template.add_step(
+                            step_class, new_label, settings)
                 else:
                     detailed_routine_template.add_step(step_class, label,
                                                        settings)
         self.routine_template = detailed_routine_template
+
+        # Loop in reverse order so that the correspondence between the index
+        # of the loop and the index of the routine_template steps is preserved
+        # when new steps are added
+        for i,step in reversed(list(enumerate(self.routine_template))):
+            self.split_step_for_parallel_groups(index=i)
 
     class SQCPreparation(IntermediateStep):
         """Intermediate step that configures qubits for Mux drive and
