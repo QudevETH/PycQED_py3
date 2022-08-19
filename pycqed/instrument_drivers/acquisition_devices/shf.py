@@ -580,15 +580,15 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
     def _check_server(self, kwargs):
         if kwargs.pop('server', None) == 'emulator':
-            from pycqed.instrument_drivers.physical_instruments\
+            from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer(kwargs.get('host', 'localhost'),
-                                       port=kwargs.get('port', 8004),
-                                       apilevel=5)
-            self._session = ziqcsess.Session(
+            daq = zibase.MockDAQServer.get_instance(
+                kwargs.get('host', 'localhost'),
+                port=kwargs.get('port', 8004))
+            self._session = ziqcsess.ZISession(
                 server_host=kwargs.get('host', 'localhost'),
-                connection=daq)
+                connection=daq, new_session=False)
             return daq
 
 
