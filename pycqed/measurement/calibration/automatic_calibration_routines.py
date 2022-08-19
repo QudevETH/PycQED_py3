@@ -707,7 +707,7 @@ class Step:
         self.leaf = True
 
     class NotFound:
-        """This class is used in get_param_value to identify the cases where 
+        """This class is used in get_param_value to identify the cases where
         a keyword could not be found in the configuration parameter dictionary.
         It is necessary to distinguish between the cases when None is explicitly
         specified for a keyword argument and when no keyword argument was found.
@@ -739,8 +739,8 @@ class Step:
                 None.
                 FIXME: A better solution would be to change the function and
                 return also a bool indicating whether a parameter was found.
-                This would require minimal changes in this function, but it 
-                would require to go through the code and fix all the lines 
+                This would require minimal changes in this function, but it
+                would require to go through the code and fix all the lines
                 containing a call to get_param_value.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
