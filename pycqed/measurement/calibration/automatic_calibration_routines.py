@@ -1197,7 +1197,12 @@ class AutomaticCalibrationRoutine(Step):
 
         return settings
 
-    def extract_step_settings(self, step_class, step_label, step_settings):
+    def extract_step_settings(self,
+                              step_class,
+                              step_label,
+                              step_settings=None,
+                              lookups=None,
+                              sublookups=None):
         """Extract the settings of a step from the configuration parameter
         dictionary that was loaded and built from the JSON config files. The
         entry 'settings' of step_settings is also included in the returned
@@ -1208,11 +1213,23 @@ class AutomaticCalibrationRoutine(Step):
                 extracted.
             step_label (str): The label of the step whose settings need to be
                 extracted.
-            step_settings (dict): Additional settings of the step whose settings
-                need to be extracted. The entry step_settings['settings'] will
-                be included in the returned settings. The settings contained
-                in step_settings['settings'] will have priority over those found
-                in the configuration parameter dictionary.
+            step_settings (dict, optional): Additional settings of the step
+                whose settings need to be extracted. The entry
+                step_settings['settings'] will be included in the returned
+                settings. The settings contained in step_settings['settings']
+                will have priority over those found in the configuration
+                parameter dictionary. If None, an empty dictionary is used.
+                Defaults to None.
+            lookups (list, optional): A list of all scopes for the parent
+                routine of the step whose settings need to be merged. The
+                elements of the list will be interpreted in descending order of
+                priority. If None, [routine_label, RoutineClass] will be used.
+                Defaults to None.
+            sublookups (list, optional): A list of scopes for the step whose
+                settings need to be merged. The elements of the list will be
+                interpreted in descending order of priority. If None,
+                [step_label, StepClass] will be used. Defaults to None.
+                Defaults to None.
 
         Returns:
             dict: A dictionary containing the settings extracted from the
@@ -1221,12 +1238,15 @@ class AutomaticCalibrationRoutine(Step):
         if not issubclass(step_class, Step):
             raise NotImplementedError(
                 "Steps have to inherit from class Step.")
-
+        if step_settings is None:
+            step_settings = {}
         # No 'General' lookup since at this point we are only interested
         # in retrieving the settings of each step of a routine, not the settings
         # of the routine itself
-        lookups = [self.step_label, self.get_lookup_class().__name__]
-        sublookups = [step_label, step_class.get_lookup_class().__name__]
+        if lookups is None:
+            lookups = [self.step_label, self.get_lookup_class().__name__]
+        if sublookups is None:
+            sublookups = [step_label, step_class.get_lookup_class().__name__]
 
         autocalib_settings = self.settings.copy({
             step_class.get_lookup_class().__name__:
@@ -4105,18 +4125,23 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         for transition_name in self.get_param_value('transition_names'):
             for step in self.routine_template:
                 step_class = step[0]
-                settings = copy.deepcopy(step[2])
-                label = step[1]
-                if issubclass(step_class, SingleQubitGateCalibExperiment):
+                step_label = step[1]
+                step_settings = copy.deepcopy(step[2])
+                try:
+                    step_tmp_settings = step[3]
+                except IndexError:
+                    step_tmp_settings = []
 
-                    if 'qscale' in label or 'echo' in label:
+                if issubclass(step_class, SingleQubitGateCalibExperiment):
+                    if 'qscale' in step_label or 'echo' in step_label:
                         if transition_name != 'ge':
                             continue
-                    if not self.get_param_value(label):
+                    # Check whether the step is supposed to be included
+                    if not self.get_param_value(step_label):
                         continue
-                    new_label = label + "_" + transition_name
+
                     update_nested_dictionary(
-                        settings['settings'], {
+                        step_settings['settings'], {
                             step_class.get_lookup_class().__name__: {
                                 'transition_name': transition_name
                             }
@@ -4126,18 +4151,29 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                         for n in self.get_param_value(
                                 'nr_rabis')[transition_name]:
                             update_nested_dictionary(
-                                settings['settings'], {
+                                step_settings['settings'], {
                                     step_class.get_lookup_class().__name__:
                                         {
                                             'n': n
                                         }
                                 })
 
-                    detailed_routine_template.add_step(
-                            step_class, new_label, settings)
-                else:
-                    detailed_routine_template.add_step(step_class, label,
-                                                       settings)
+                    sublookups = [
+                        f"{step_label}_{transition_name}", step_label,
+                        step_class.get_lookup_class().__name__
+                    ]
+
+                    new_step_settings = self.extract_step_settings(
+                        step_class, step_label,sublookups=sublookups)
+                    update_nested_dictionary(step_settings['settings'],
+                                    new_step_settings)
+
+                    step_label = step_label + "_" + transition_name
+
+
+                detailed_routine_template.add_step(step_class, step_label,
+                                        step_settings,step_tmp_settings)
+
         self.routine_template = detailed_routine_template
 
         # Loop in reverse order so that the correspondence between the index
