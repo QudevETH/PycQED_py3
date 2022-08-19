@@ -576,8 +576,7 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """
 
     def __init__(self, *args, **kwargs):
-        server = kwargs.pop('server', None)
-        self.check_server(server, kwargs)
+        self.check_server(kwargs)
         super().__init__(*args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
@@ -587,8 +586,7 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSHFMixin):
     """
 
     def __init__(self, serial, *args, **kwargs):
-        server = kwargs.pop('server', None)
-        daq = self.check_server(server, kwargs)
+        daq = self.check_server(kwargs)
         if daq is not None:
             daq.set_device_type(serial, 'SHFQC')
         super().__init__(serial, *args, **kwargs)

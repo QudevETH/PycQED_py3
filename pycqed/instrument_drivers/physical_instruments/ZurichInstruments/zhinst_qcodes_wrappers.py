@@ -23,8 +23,8 @@ class ZHInstMixin:
         """
         return self.session.daq_server
 
-    def check_server(self, server, kwargs):
-        if server == 'emulator':
+    def check_server(self, kwargs):
+        if kwargs.pop('server', '') == 'emulator':
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
@@ -136,8 +136,7 @@ class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
     """
 
     def __init__(self, serial, *args, **kwargs):
-        server = kwargs.pop('server', '')
-        daq = self.check_server(server, kwargs)
+        daq = self.check_server(kwargs)
         if daq is not None:
             daq.set_device_type(serial, 'SHFSG4')
         self._awg_source_strings = {}
