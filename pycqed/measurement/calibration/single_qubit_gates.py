@@ -1479,8 +1479,9 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         probe['ref_point'] = 'start'
         probe['ref_point_new'] = 'end'
 
-        ro['pulse_delay'] = -min(sweep_points['delay'])
-
+        # make sure that no pulse starts before 0 point of the block
+        probe_pulse_length = probe['sigma'] * probe['nr_sigma']
+        ro['pulse_delay'] = -min(sweep_points['delay']) + probe_pulse_length
         probe['pulse_delay'] = ParametricValue('delay')
 
         b_ro = self.block_from_ops('final_ro', [f'RO {qb}'])
@@ -1493,15 +1494,12 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
         ro_separation -= ro_separation % (-gran)
         b_ro.pulses[0]['pulse_delay'] = ro_separation
+        b = self.simultaneous_blocks('final', [b, b_ro])
 
         if prepend_pulse_dicts is not None:
-            for pulse in prepend_pulse_dicts:
-                pulse['pulse_delay'] = -2*np.abs(min(sweep_points['delay']))
             pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
                                              block_name='prepend')
-            b = self.simultaneous_blocks('final', [b, b_ro, pb])
-        else:
-            b = self.simultaneous_blocks('final', [b, b_ro])
+            b = self.sequential_blocks('final_with_prepend', [pb, b])
         return b
 
     @Timer()
