@@ -38,6 +38,25 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
 
 
 class MockDAQServer(zibase.MockDAQServer):
+    _instances = {}
+
+    @classmethod
+    def get_instance(cls, host='localhost', port=8004):
+        """
+        Returns an instance of the class if not already created for the host
+        and port.
+        Collects new instances in cls._instances.
+        Instantiating this class with this method allows to have multiple
+        devices running on the same server/session.
+
+        Arguments:
+            host   (str) the host where the ziDataServer is running
+            port   (int) the port to connect to for the ziDataServer
+        """
+        if cls._instances.get((host, port)) is None:
+            cls._instances[(host, port)] = cls(host, port=port, apilevel=5)
+        return cls._instances[(host, port)]
+
     def __init__(self, server, port, apilevel, verbose=False):
         super().__init__(server, port, apilevel, verbose=verbose)
         self.devices = set()  # devices on the same server
@@ -59,6 +78,7 @@ class MockDAQServer(zibase.MockDAQServer):
         return MockAwgModule(self)
 
     def connectDevice(self, device, interface):
+        print(device, interface)
         if device in self._device_types:
             self.devtype = self._device_types[device]
         elif device.lower().startswith('dev12'):
