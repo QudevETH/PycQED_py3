@@ -579,6 +579,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         return properties
 
     def _check_server(self, kwargs):
+        # Note: kwargs are passed without ** in order to allow modifying them.
         if kwargs.pop('server', None) == 'emulator':
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase

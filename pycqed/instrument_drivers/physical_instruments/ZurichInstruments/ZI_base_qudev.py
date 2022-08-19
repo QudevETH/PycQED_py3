@@ -39,25 +39,41 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
 
 class MockDAQServer(zibase.MockDAQServer):
     _instances = {}
+    """Dict of existing instances, keys are tuples of host (str) and 
+    port (int)."""
 
     @classmethod
     def get_instance(cls, host='localhost', port=8004):
         """
-        Returns an instance of the class if not already created for the host
-        and port.
+        Provides a MockDAQServer instance for the given host and port.
+        A new instance is automatically created if no existing instance for
+        the given combination of host and port is found.
         Collects new instances in cls._instances.
+
         Instantiating this class with this method allows to have multiple
         devices running on the same server/session.
 
         Arguments:
-            host   (str) the host where the ziDataServer is running
-            port   (int) the port to connect to for the ziDataServer
+            host (str): the host where the ziDataServer is running.
+            port (int): the port to connect to for the ziDataServer.
         """
         if cls._instances.get((host, port)) is None:
             cls._instances[(host, port)] = cls(host, port=port, apilevel=5)
         return cls._instances[(host, port)]
 
     def __init__(self, server, port, apilevel, verbose=False):
+        """
+        Mock ZI daq server.
+        This class should be instantiated via the class method get_instance
+        to ensure that all instruments belong to the same server/session.
+
+        Arguments:
+            server (str): the host where the ziDataServer is running.
+            port (int): the port to connect to for the ziDataServer.
+            apilevel (int) the API version level to use.
+            verbose (bool): the port to connect to for the ziDataServer
+                (default: False).
+        """
         super().__init__(server, port, apilevel, verbose=verbose)
         self.devices = set()  # devices on the same server
         self.nodes['/zi/about/dataserver'] = {
