@@ -15,12 +15,17 @@ from pycqed.gui import qt_compat as qt
 import logging
 from enum import Enum
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.instrument_drivers.meta_instrument import device
 import traceback
 
 log = logging.getLogger(__name__)
 
 
 class ExperimentTypes(Enum):
+    """
+    QuantumExperiments registered in this Enum are added to the list of
+    experiments available in the QuantumExperimentGUI
+    """
     RABI = single_qubit_gates.Rabi
     RAMSEY = single_qubit_gates.Ramsey
     QSCALE = single_qubit_gates.QScale
@@ -34,13 +39,31 @@ def get_members_by_experiment_class_name(experiment_class_name):
 
 
 class QuantumExperimentGUI:
+    """
+    QuantumExperimentGUI objects contain the main window to perform
+    selected quantum experiments in a graphical user interface.
+    """
 
     def __init__(self, device, **kwargs):
         """
-
+        Instantiates and spawns the main quantum experiment GUI window and
+        sets up the GUI application instance.
         Args:
-            device:
-            **kwargs:
+            device (device.Device): Device object containing information
+                about the currently installed superconducting device.
+            **kwargs: Keyword arguments are passed to the init method of the
+                instance attribute main_window.
+        Attributes:
+            main_window (QuantumExperimentGUIMainWindow): Main window to of
+                the GUI application to perform quantum experiments. After
+                closing the main window, it can be respawned by calling the
+                spawn_gui method.
+            app (qt.QtWidgets.QApplication): Manages the control flow of the
+                GUI application.
+            experiments (list): Contains QuantumExperiment objects that
+                were created using the QuantumExperimentGUI instance.
+            experiments_failed_in_init (list): Contains QuantumExperiment
+                objects that raised an Exception during the initialisation.
         """
         if qt.QtWidgets.__package__ not in ['PySide2']:
             log.warning('This GUI is optimized to run with the PySide2 Qt '
@@ -65,6 +88,13 @@ class QuantumExperimentGUI:
         self.spawn_gui()
 
     def spawn_gui(self):
+        """
+        Spawns the main quantum experiment GUI window.
+        Additionally, the matplotlib backend is set to 'Agg'. After closing the
+        last GUI window, the matplotlib backend that was selected at the
+        time of spawning the quantum experiment GUI window is automatically
+        reset.
+        """
         # update the matplotlib backend identifier stored in
         # self.app._matplotlib_backend such that the backend can be properly
         # reset after the last gui window has been closed
@@ -80,8 +110,25 @@ class QuantumExperimentGUI:
 
 
 class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
+    """
+    Main window of the quantum experiment GUI.
+    """
     def __init__(self, device, experiments, experiments_failed_in_init,
                  *args, **kwargs):
+        """
+        Instantiates the Qt Widgets of the main window, sets the layout and
+        connects the relevant signals of the widgets to their slots.
+        Args:
+            device (device.Device): Device object containing information
+                about the currently installed superconducting device.
+            experiments (list): List where QuantumExperiment objects created
+                in the quantum experiment GUI are appended.
+            experiments_failed_in_init (list): List where QuantumExperiment
+                objects that raised an exception during the initialisation
+                are appended.
+            *args: are passed to init of parent class
+            **kwargs: are passed to init of parent class
+        """
         super().__init__(*args, **kwargs)
         self.setWindowTitle("Quantum Experiment GUI")
         self.device = device
@@ -219,6 +266,17 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         self.threadpool = qt.QtCore.QThreadPool.globalInstance()
 
     def connect_widgets(self):
+        """
+        Connects the relevant signals of the GUI widgets to their slots.
+
+        In Qt, widgets (i.e. the interactive elements in the GUI, such as
+        checkboxes, text fields, and dropdown menus) emit signals whenever
+        the user performs specific actions. For example, a dropdown menu
+        emits a signal called 'currentIndexChanged' whenever the item
+        selected in the dropdown menu widget is changed. By connecting a
+        slot (any Python callable) to these signals, the Qt application
+        calls the slot every time the signal is emitted.
+        """
         self.cbox_experiment_options.currentIndexChanged.connect(
             self.handle_experiment_choice)
         self.add_task_form_button.clicked.connect(self.add_task_form)
@@ -243,6 +301,9 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         )
 
     def set_layout(self):
+        """
+        Sets the main layout and sub-layouts of the QuantumExperimentGUI.
+        """
         self.general_options_field_container.layout().addRow(
             "Choose Experiment: ", self.cbox_experiment_options)
         self.general_options_field_container.layout().addRow(
@@ -324,6 +385,12 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         self.scroll.setWidgetResizable(True)
 
     def handle_experiment_choice(self):
+        """
+        Slot connected to the signal that is emitted whenever the selected
+        item in the self.cbox_experiment_options dropdown menu changes.
+        Updates the displayed configuration widgets to match the newly
+        selected quantum experiment type.
+        """
         self.add_task_form_button.setEnabled(True)
         g_utils.clear_QFormLayout(self.experiment_configuration_container)
         g_utils.clear_layout(self.tasks_configuration_container.layout())
@@ -331,7 +398,11 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         self.add_experiment_fields()
 
     def add_experiment_fields(self):
-        exp = self.get_selected_experiment()
+        """
+        Creates widgets to configure the selected quantum experiment based
+        on the information contained in the exp.gui_kwargs() dict.
+        """
+        exp = self._get_selected_experiment()
         input_field_dict = exp.gui_kwargs(self.device)["kwargs"]
         # automatically add global fields for task fields that are listed in
         # kw_for_task_keys
@@ -359,29 +430,40 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             if len(kwarg_dict):
                 self.experiment_configuration_container.addRow(class_name_label)
             for kwarg, field_information in kwarg_dict.items():
-                self.add_widget_to_experiment_section(kwarg, field_information)
+                self._add_widget_to_experiment_section(kwarg,
+                                                       field_information)
         self.experiment_actions_container.show()
         self.create_experiment_pushbutton.show()
 
-    def show_experiment_action_buttons(self):
+    def _show_experiment_action_buttons(self):
         self.spawn_waveform_viewer_button.show()
         self.run_measurement_button.show()
         self.run_analysis_button.show()
         self.run_update_button.show()
         self.open_in_explorer_button.show()
 
-    def add_widget_to_experiment_section(self, kwarg, field_information):
+    def _add_widget_to_experiment_section(self, kwarg, field_information):
         widget = self.create_field_from_field_information(field_information)
         if widget is None:
             return
         self.experiment_configuration_container.addRow(kwarg, widget)
 
     def add_task_form(self):
+        """
+        Slot connected to the signal that is emitted whenever the
+        self.add_task_form_button is clicked.
+        Creates widgets to configure a task list for the selected quantum
+        experiment based on the information contained in the exp.gui_kwargs()
+        dict.
+        """
         self.tasks_configuration_container.show()
-        experiment_kwargs = self.get_selected_experiment().gui_kwargs(
+        experiment_kwargs = self._get_selected_experiment().gui_kwargs(
             self.device)
         self.tasks_configuration_container.layout().addWidget(
             TaskForm(parent=self, experiment_kwargs=experiment_kwargs))
+        # Users should select qubits individually for the different tasks in
+        # the task list in most cases. When the first task is added,
+        # all qubits in the self.selectbox_qubits are thus deselected.
         if sum([isinstance(widget, TaskForm) for widget in
                 self.tasks_configuration_container.children()]) == 1:
             check_state = qt.QtCore.Qt.CheckState.Unchecked
@@ -389,7 +471,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
                 self.selectbox_qubits.model().item(i).setCheckState(
                     check_state)
 
-    def get_selected_experiment(self):
+    def _get_selected_experiment(self):
         experiment_name = self.cbox_experiment_options.currentText()
         experiment_list = get_members_by_experiment_class_name(experiment_name)
         if experiment_list:
@@ -399,10 +481,11 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
     def create_field_from_field_information(self, field_information):
         """
-
+        Creates a widget and sets a default value based on the information
+        passed in the field_information tuple.
         Args:
-            field_information: tuple holding information about the field that
-                should be created.
+            field_information(tuple): tuple holding information about the
+                field that should be created.
 
                 First entry must specify the field type, which must be one
                 of the following:
@@ -437,7 +520,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         Returns:
             An instance of the specified widget type
         """
-        experiment_kwargs = self.get_selected_experiment().gui_kwargs(
+        experiment_kwargs = self._get_selected_experiment().gui_kwargs(
             self.device)
         if field_information[0] is str:
             widget = qt.QtWidgets.QLineEdit()
@@ -502,6 +585,18 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         return widget
 
     def get_argument_value_from_widget(self, widget, kwarg):
+        """
+        Checks the type of widget and returns the selected value of widget
+        in an appropriate format.
+        Args:
+            widget(qt.QtWidgets.QWidget): Widget to set the value of a
+                quantum experiment configuration option.
+            kwarg (str): Name of the quantum experiment configuration option.
+
+        Returns: Returns the selected value of widget in an appropriate
+            format.
+
+        """
         if isinstance(widget, QLineEditInitStateSelection):
             return widget.text() if widget.hasAcceptableInput() else None
         elif isinstance(widget, GlobalChoiceOptionWidget):
@@ -540,10 +635,17 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             return None
 
     def create_experiment(self):
+        """
+        Slot connected to the signal that is emitted whenever the
+        self.create_experiment_pushbutton is clicked.
+        Instantiates a quantum experiment object using the on the values
+        selected in the configuration option widgets of the GUI as keyword
+        arguments.
+        """
         self.create_experiment_pushbutton.setEnabled(False)
         self.run_waiting_animation.start()
         self.run_waiting_label.show()
-        experiment = self.get_selected_experiment()
+        experiment = self._get_selected_experiment()
         # The creation of a SweepPoints instance while trying to retrieve
         # the argument values for the instantiation of the quantum experiment
         # might raise an error if the sweep points configuration by the user
@@ -596,6 +698,22 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
     @qt.QtCore.Slot(object, str)
     def handle_experiment_result(self, experiment, argument_string):
+        """
+        Slot connected to the signal that is emitted whenever an experiment
+        has been successfully created or when an Exception is raised during
+        the creation process.
+        Adds the experiment to the self.experiments attribute and to the
+        self.performed_experiments_cbox dropdown menu and updates the state
+        of the interface.
+
+        Args:
+            experiment (QuantumExperiment): The newly created
+                QuantumExperiment instance. In case an exception was raised,
+                experiment may also be a basic SimpleNamespace object,
+                only containing an attribute named 'exception'.
+            argument_string (str): Summary of the configuration options that
+                were used to create the quantum experiment.
+        """
         self.active_threads -= 1
         self.run_waiting_animation.stop()
         self.run_waiting_label.hide()
@@ -633,11 +751,22 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             self.performed_experiments_cbox.setCurrentIndex(0)
             self.performed_experiments_cbox.blockSignals(False)
             self.performed_experiments_cbox.show()
-            self.show_experiment_action_buttons()
+            self._show_experiment_action_buttons()
         self.handle_experiment_action_buttons()
         self.create_experiment_pushbutton.setEnabled(True)
 
     def get_QFormLayout_settings(self, QFormLayoutInstance):
+        """
+        Iterates over the configuration option widgets in the
+        QFormLayoutInstance and returns the configured values.
+        Args:
+            QFormLayoutInstance (qt.QtWidgets.QFormLayout): The QFormLayout
+                instance containing the configuration option widgets
+
+        Returns: A dict where the dict keys are the names of the configuration
+            options and the dict values are the configuration option values.
+
+        """
         settings_dict = {}
         kwarg_widget_pairs = [(
             QFormLayoutInstance.itemAt(
@@ -657,19 +786,37 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         return settings_dict
 
     def get_task_list(self):
+        """
+        Creates the task list from the user's choices in the GUI.
+
+        Returns: a task list that can be passed to the __init__ method of a
+            MultiTaskingExperiment.
+        """
         task_list = []
         for task_form in self.tasks_configuration_container.findChildren(
                 TaskForm):
             task_list.append(self.get_QFormLayout_settings(task_form.layout()))
         return task_list
 
-    def get_selected_performed_experiment_index(self):
+    def _get_selected_performed_experiment_index(self):
         list_index = self.performed_experiments_cbox.currentIndex()
         list_length = self.performed_experiments_cbox.count()
         return list_length - list_index - 1
 
     def perform_experiment_action(self, action):
-        experiment_index = self.get_selected_performed_experiment_index()
+        """
+        Slot connected to signals of the buttons to run, analyse and update
+        a quantum experiment as well as to spawn the waveform viewer and
+        open the hdf5 file / analysis plots in the file browser.
+
+        In case of the run, analyse and update experiment buttons,
+        the relevant functions are executed in a separate thread, such that
+        the GUI remains responsive while the function is being  executed.
+        The other experiment actions are executed in the main thread.
+        Args:
+            action (str): Key of the experiment action to be executed.
+        """
+        experiment_index = self._get_selected_performed_experiment_index()
         experiment = self.experiments[experiment_index]
         experiment_methods = {
             "run_measurement":
@@ -689,7 +836,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             message, worker_class, signal = experiment_methods[action]
             self.run_waiting_animation.start()
             self.run_waiting_label.show()
-            self.set_enabled_buttons_experiment_methods(False)
+            self._set_enabled_buttons_experiment_methods(False)
             self.message_textedit.clear_and_set_text(
                 message
             )
@@ -716,6 +863,18 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
     @qt.QtCore.Slot(object, str)
     def handle_experiment_action_exception(self, exception, pre_error_message):
+        """
+        Slot connected to the signal that is emitted when an exception is
+        raised while executing an experiment action (running, analysing or
+        updating a quantum experiment).
+        Resets the interface and prints the error message in the message
+        box of the QuantumExperiment GUI.
+        Args:
+            exception (Exception): Exception raised while experiment was
+                being executed.
+            pre_error_message (str): Is printed in front of the error message.
+
+        """
         self.active_threads -= 1
         pre_error_message = pre_error_message
         self.handle_exception(
@@ -727,6 +886,16 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
     def handle_exception(self, exception, pre_error_message="",
                          post_error_message=""):
+        """
+        Prints the traceback of exception in the Python console and prints
+        the error message in the message box of the GUI.
+        Args:
+            exception (Exception): Traceback and error message of exception
+                are printed in Python console and message box of GUI,
+                respectively.
+            pre_error_message (str): Printed before the error message.
+            post_error_message (str): Printed after the error message.
+        """
         traceback.print_exception(
             type(exception), exception, exception.__traceback__)
         self.message_textedit.clear_and_set_text(
@@ -736,6 +905,19 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
     @qt.QtCore.Slot(str, object)
     def handle_experiment_actions(self, action, experiment):
+        """
+        Slot connected to the signal that is emitted when an experiment
+        action is successfully executed in a worker thread. Resets the
+        interface and prints a message, informing the user that the
+        experiment action was performed successfully.
+        Args:
+            action (str): Identification string of the performed experiment
+                action, either 'run_measurement', 'run_analysis' or
+                'run_update'.
+            experiment (QuantumExperiment): Quantum experiment for which the
+                experiment action was performed.
+
+        """
         self.active_threads -= 1
         message = None
         if action == "run_measurement":
@@ -756,13 +938,19 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         self.handle_experiment_action_buttons()
 
     def handle_experiment_action_buttons(self):
+        """
+        Enables and disables experiment action buttons (run, analyse and
+        update experiment buttons as well as open in explorer button) in
+        dependence of the status of the GUI and status of the selected
+        experiment.
+        """
         if self.performed_experiments_cbox.count() == 0:
             return
         # index of experiment in performed experiments dropdown list
         dropdown_experiment_index = \
             self.performed_experiments_cbox.currentIndex()
         # index of experiment in self.experiments
-        experiment_index = self.get_selected_performed_experiment_index()
+        experiment_index = self._get_selected_performed_experiment_index()
         chosen_experiment = self.experiments[experiment_index]
         # checks
         experiment_successful = self.performed_experiments_cbox.itemData(
@@ -773,7 +961,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             getattr(chosen_experiment, 'analysis', None) is not None and \
             getattr(chosen_experiment, 'run_update', None) is not None
         # disable all buttons
-        self.set_enabled_buttons_experiment_methods(False)
+        self._set_enabled_buttons_experiment_methods(False)
         self.open_in_explorer_button.setEnabled(False)
         # handle buttons associated with methods of experiment. They should
         # only be available if no thread is running
@@ -788,12 +976,15 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         if timestamp_not_none:
             self.open_in_explorer_button.setEnabled(True)
 
-    def set_enabled_buttons_experiment_methods(self, enabled=True):
+    def _set_enabled_buttons_experiment_methods(self, enabled=True):
         self.run_measurement_button.setEnabled(enabled)
         self.run_analysis_button.setEnabled(enabled)
         self.run_update_button.setEnabled(enabled)
 
     def keyPressEvent(self, event):
+        """
+        Close window when ctrl + W is pressed (cmd + W on macos).
+        """
         if event.key() == qt.QtCore.Qt.Key.Key_W \
                 and event.modifiers() == \
                 qt.QtCore.Qt.KeyboardModifier.ControlModifier:
@@ -802,8 +993,21 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
 
 
 class CreateExperimentWorker(g_utils.SimpleWorker):
+    """
+    The run method of this worker class is executed in a separate thread
+    when an instance of this class is added to the threadpool of
+    QuantumExperimentGUIMainWindow. Running tasks in a
+    separate thread prevents the GUI from freezing while the task is being
+    performed.
+    """
     @qt.QtCore.Slot()
     def run(self):
+        """
+        Creates a quantum experiment instance of type self.experiment.
+        The attributes self.task_list, self.experiment_settings_kwargs,
+        self.qubits and self.dev are passed to the __init__ method of
+        self.experiment and thus have to be configured in advance.
+        """
         argument_string = (f"Arguments:\n"
                            f"  task list:\n"
                            f"    {self.task_list}\n"
@@ -825,8 +1029,20 @@ class CreateExperimentWorker(g_utils.SimpleWorker):
 
 
 class RunMeasurementWorker(g_utils.SimpleWorker):
+    """
+    The run method of this worker class is executed in a separate thread
+    when an instance of this class is added to the threadpool of
+    QuantumExperimentGUIMainWindow. Running tasks in a
+    separate thread prevents the GUI from freezing while the task is being
+    performed.
+    """
     @qt.QtCore.Slot()
     def run(self):
+        """
+        Calls the run_measurement method of self.experiment (i.e. performs
+        the experiment).
+        The attribute self.experiment has to be configured in advance.
+        """
         try:
             self.experiment.run_measurement()
             self.signals.finished_measurement.emit(
@@ -837,8 +1053,19 @@ class RunMeasurementWorker(g_utils.SimpleWorker):
 
 
 class RunAnalysisWorker(g_utils.SimpleWorker):
+    """
+    The run method of this worker class is executed in a separate thread
+    when an instance of this class is added to the threadpool of
+    QuantumExperimentGUIMainWindow. Running tasks in a
+    separate thread prevents the GUI from freezing while the task is being
+    performed.
+    """
     @qt.QtCore.Slot()
     def run(self):
+        """
+        Performs the standard analysis of self.experiment.
+        The attribute self.experiment has to be configured in advance.
+        """
         try:
             self.experiment.run_analysis(
                 analysis_kwargs={"raise_exceptions": True})
@@ -850,8 +1077,20 @@ class RunAnalysisWorker(g_utils.SimpleWorker):
 
 
 class RunUpdateWorker(g_utils.SimpleWorker):
+    """
+    The run method of this worker class is executed in a separate thread
+    when an instance of this class is added to the threadpool of
+    QuantumExperimentGUIMainWindow. Running tasks in a
+    separate thread prevents the GUI from freezing while the task is being
+    performed.
+    """
     @qt.QtCore.Slot()
     def run(self):
+        """
+        Updates the relevant parameters of self.experiment based on the
+        outcome of the analysis.
+        The attribute self.experiment has to be configured in advance.
+        """
         try:
             self.experiment.run_update()
             self.signals.finished_update.emit("run_update", self.experiment)
@@ -867,7 +1106,24 @@ class SweepPointsValueSelectionTypes(Enum):
 
 
 class SweepPointsDialog(qt.QtWidgets.QDialog):
+    """
+    Dialog window to configure SweepPoints of a quantum experiment in the
+    QuantumExperimentGUI. Contains a variable number of SweepPointsForm
+    instances to configure multi-dimensional sweeps and/or multiple sweep
+    parameters per sweep dimension.
+    """
     def __init__(self, sweep_parameters, parent, gui=None):
+        """
+        Instantiates the Qt Widgets of the SweepPointsDialog window, sets the
+        layout and connects the relevant signals of the widgets to their slots.
+        Args:
+            sweep_parameters (dict): Determines, which sweep parameters are
+                available in the SweepPointsDialog window.
+            parent (SweepPointsWidget): SweepPointsWidget instance which
+                whose button was clicked to spawn the SweepPointsDialog window.
+            gui (QuantumExperimentGUIMainWindow): Associated main window
+                of the QuantumExperimentGUI.
+        """
         super().__init__(parent=parent)
         self.sweep_parameters = sweep_parameters
         self.parent = parent
@@ -898,6 +1154,10 @@ class SweepPointsDialog(qt.QtWidgets.QDialog):
         self.resize(self.minimumSizeHint())
 
     def add_sweep_points(self):
+        """
+        Adds a SweepPointsForms instance to the SweepPointsDialog window,
+        allowing the configuration of another sweep parameter.
+        """
         self.sweep_points_list.append(SweepPointsForm(
             self.sweep_parameters, dialog=self, gui=self.gui)
         )
@@ -913,19 +1173,36 @@ class SweepPointsDialog(qt.QtWidgets.QDialog):
         return sweep_points_configurations if sweep_points_configurations \
             else None
 
-    def reset_to_saved_choices(self):
-        [sweep_points.reset_to_saved_choices()
+    def _reset_to_saved_choices(self):
+        [sweep_points._reset_to_saved_choices()
          for sweep_points in self.sweep_points_list]
 
 
 class SweepPointsForm(qt.QtWidgets.QGroupBox):
+    """
+    Custom Qt Widget to configure the sweep points of a sweep parameter.
+    Multiple sweep parameters can be configured in a single SweepPoints
+    instance.
+    """
     def __init__(self, sweep_parameters, dialog, parent=None, gui=None):
+        """
+        Instantiates the Qt Widgets of the SweepPointsForm, sets the layout
+        and connects the relevant signals of the widgets to their slots.
+        Args:
+            sweep_parameters (dict): Determines, which sweep parameters can be
+                selected in sweep dimensions 0 and 1.
+            dialog (SweepPointsDialog): Associated SweepPointsDialog window.
+            parent (qt.QtWidgets.QWidget): Is passed to __init__ of parent
+                class.
+            gui (QuantumExperimentGUIMainWindow): Associated main window
+                of the QuantumExperimentGUI.
+        """
         super().__init__(parent=parent)
         self.previous_choice = None
         self.dialog = dialog
         self.gui = gui
         self.kw_for_sweep_points = \
-            self.gui.get_selected_experiment().kw_for_sweep_points
+            self.gui._get_selected_experiment().kw_for_sweep_points
 
         self.sweep_points_dimensions = [0, 1]
         self.sweep_parameters = {}
@@ -964,9 +1241,9 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
         self.delete_sweep_points_button.setSizePolicy(
             qt.QtWidgets.QSizePolicy.Policy.Preferred,
             qt.QtWidgets.QSizePolicy.Policy.Fixed)
-        self.setup_dialog()
+        self._setup_dialog()
 
-    def configure_layout(self):
+    def _configure_layout(self):
         self.row_layouts["row_1"].addLayout(g_utils.add_label_to_widget(
             self.dimension_combobox, "Dimension: "))
         self.row_layouts["row_1"].addLayout(g_utils.add_label_to_widget(
@@ -982,24 +1259,31 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
         self.row_layouts["row_3"].addLayout(self.values_layout)
         self.row_layouts["row_3"].addWidget(self.delete_sweep_points_button)
 
-    def connect_widgets(self):
+    def _connect_widgets(self):
         self.dimension_combobox.currentIndexChanged.connect(
-            lambda: self.set_parameter_list(set_previous_choice=False))
+            lambda: self._set_parameter_list(set_previous_choice=False))
         self.parameter_name_cbox.currentTextChanged.connect(
-            lambda: self.set_fields_dependent_on_param(set_previous_choice=False))
+            lambda: self._set_fields_dependent_on_param(
+                set_previous_choice=False))
         self.values_selection_type_cbox.currentIndexChanged.connect(
-            lambda: self.configure_values_selection_field(
+            lambda: self._configure_values_selection_field(
                 set_previous_choice=False))
         self.delete_sweep_points_button.clicked.connect(
-            self.delete_sweep_points)
+            self._delete_sweep_points)
 
-    def setup_dialog(self):
-        self.configure_layout()
-        self.configure_values_selection_field(set_previous_choice=False)
-        self.set_parameter_list(set_previous_choice=False)
-        self.connect_widgets()
+    def _setup_dialog(self):
+        self._configure_layout()
+        self._configure_values_selection_field(set_previous_choice=False)
+        self._set_parameter_list(set_previous_choice=False)
+        self._connect_widgets()
 
-    def reset_to_saved_choices(self):
+    def _reset_to_saved_choices(self):
+        """
+        Sets the values of the configuration widgets to the values saved in
+        the self.previous_choice dict. The self.previoius_choice dict is
+        updated, whenever the get_and_store_sweep_points_config method is
+        called.
+        """
         if self.previous_choice is not None:
             self.dimension_combobox.blockSignals(True)
             self.dimension_combobox.setCurrentText(
@@ -1012,10 +1296,10 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
                 # if label is not in the saved kwargs, it must have been empty 
                 # when the configuration was saved
                 self.label_lineedit.setText('')
-            self.configure_values_selection_field(set_previous_choice=True)
-            self.set_parameter_list(set_previous_choice=True)
+            self._configure_values_selection_field(set_previous_choice=True)
+            self._set_parameter_list(set_previous_choice=True)
 
-    def set_parameter_list(self, set_previous_choice=False):
+    def _set_parameter_list(self, set_previous_choice=False):
         self.parameter_name_cbox.blockSignals(True)
         dimension = int(self.dimension_combobox.currentText())
         self.parameter_name_cbox.clear()
@@ -1027,10 +1311,11 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
         else:
             self.parameter_name_cbox.setCurrentIndex(0)
         self.parameter_name_cbox.blockSignals(False)
-        self.set_fields_dependent_on_param(set_previous_choice=set_previous_choice)
+        self._set_fields_dependent_on_param(
+            set_previous_choice=set_previous_choice)
 
-    def set_fields_dependent_on_param(self, set_previous_choice=False):
-        self.set_standard_unit(set_previous_choice=set_previous_choice)
+    def _set_fields_dependent_on_param(self, set_previous_choice=False):
+        self._set_standard_unit(set_previous_choice=set_previous_choice)
         if not set_previous_choice:
             lookup = {v['param_name']: v['label']
                     for v in self.kw_for_sweep_points.values()}
@@ -1040,7 +1325,7 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
             else:
                 self.label_lineedit.setText("")
 
-    def set_standard_unit(self, set_previous_choice=False):
+    def _set_standard_unit(self, set_previous_choice=False):
         if self.previous_choice is not None and set_previous_choice:
             self.unit_lineedit.setText(self.previous_choice["kwargs"]["unit"])
         else:
@@ -1052,7 +1337,14 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
                 self.unit_lineedit.setText(
                     self.sweep_parameters[current_dimension][selected_sweep_parameter])
 
-    def configure_values_selection_field(self, set_previous_choice=False):
+    def _configure_values_selection_field(self, set_previous_choice=False):
+        """
+        Prepares the widgets to choose sweep point values depending on the
+        chosen values_selection_type.
+        Args:
+            set_previous_choice (bool): Determines, if the sweep point
+                values stored in self.previous_choice are loaded.
+        """
         g_utils.clear_layout(self.values_layout)
         if not set_previous_choice:
             values_selection_type = self.values_selection_type_cbox.currentText()
@@ -1122,6 +1414,13 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
          for widget, label in fields]
 
     def get_and_store_sweep_points_config(self):
+        """
+        Stores the sweep parameter configuration currently set in the
+        SweepPointsForm to self.previous_choice and returns the configured
+        values in a dict.
+        Returns: Dict of the values currently chosen in the SweepPointsForm.
+
+        """
         sweep_points_config = {
             "kwargs": {
                 "param_name": self.parameter_name_cbox.currentText(),
@@ -1192,14 +1491,27 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
         self.previous_choice = sweep_points_config
         return sweep_points_config
 
-    def delete_sweep_points(self):
+    def _delete_sweep_points(self):
         self.dialog.sweep_points_list.remove(self)
         self.deleteLater()
         self.dialog.resize(self.dialog.minimumSizeHint())
 
 
 class TaskForm(qt.QtWidgets.QWidget):
+    """
+    Custom Qt widget to configure an element of a task_list. The task_list
+    can be passed to the __init__ method of a MultiTaskingExperiment.
+    """
     def __init__(self, parent, experiment_kwargs):
+        """
+        Instantiates the Qt Widgets of the TaskForm, sets the layout
+        and connects the relevant signals of the widgets to their slots.
+        Args:
+            parent (QuantumExperimentGUIMainWindow): Associated main window
+                of the QuantumExperimentGUI.
+            experiment_kwargs (dict): Determines, which configuration
+                options are available in the TaskForm.
+        """
         super(TaskForm, self).__init__()
         self.parent = parent
         self.experiment_kwargs = experiment_kwargs
@@ -1216,21 +1528,29 @@ class TaskForm(qt.QtWidgets.QWidget):
         delete_task_button.setSizePolicy(
             qt.QtWidgets.QSizePolicy.Policy.Preferred,
             qt.QtWidgets.QSizePolicy.Policy.Fixed)
-        delete_task_button.clicked.connect(self.delete_task_form)
+        delete_task_button.clicked.connect(self._delete_task_form)
         self.layout().addRow("", delete_task_button)
 
     def add_task_widget(self, kwarg, field_information):
+        """
+        Adds a Qt widget to the TaskForm to set the value of a specific
+        task_list configuration option.
+        Args:
+            kwarg (str): Name of the task_list configuration option.
+            field_information (tuple): Contains the field type of the Qt
+                widget to be added and its default value.
+        """
         widget = self.parent.create_field_from_field_information(
             field_information)
         if widget is None:
             return
-        if kwarg in self.parent.get_selected_experiment().kw_for_task_keys:
+        if kwarg in self.parent._get_selected_experiment().kw_for_task_keys:
             global_option_widget = GlobalChoiceOptionWidget(widget)
             self.layout().addRow(kwarg, global_option_widget)
         else:
             self.layout().addRow(kwarg, widget)
 
-    def delete_task_form(self):
+    def _delete_task_form(self):
         if sum([isinstance(widget, TaskForm) for widget in
                 self.parent.tasks_configuration_container.children()]) == 1:
             self.parent.tasks_configuration_container.hide()
@@ -1238,7 +1558,22 @@ class TaskForm(qt.QtWidgets.QWidget):
 
 
 class SweepPointsWidget(qt.QtWidgets.QWidget):
+    """
+    Custom Widget that spawns a SweepPointsDialog window, when the
+    configure_sweep_points_button is clicked.
+    """
     def __init__(self, sweeping_parameters, gui=None, *args, **kwargs):
+        """
+        Instantiates the Qt Widgets of the SweepPointsWidget, sets the layout
+        and connects the relevant signals of the widgets to their slots.
+        Args:
+            sweeping_parameters (dict): Determines, which sweep parameters are
+                available in the SweepPointsDialog window.
+            gui (QuantumExperimentGUIMainWindow): Associated main window of
+                the QuantumExperimentGUI.
+            *args: Passed to __init__ of parent class.
+            **kwargs: Passed to __init__ of parent class.
+        """
         super().__init__(*args, **kwargs)
         self.display_values_maximum = 3
         self.gui = gui
@@ -1264,6 +1599,11 @@ class SweepPointsWidget(qt.QtWidgets.QWidget):
         self.sweep_points_dialog.setModal(True)
 
     def spawn_sweep_points_dialog(self):
+        """
+        Spawns the SweepPointsDialog window and stores the configured
+        values, if the SweepPointsDialog window is closed by clicking the
+        'OK' button.
+        """
         clicked_button = self.sweep_points_dialog.exec_()
         if clicked_button == 1:
             self.chosen_sweep_points_kwargs = \
@@ -1278,7 +1618,7 @@ class SweepPointsWidget(qt.QtWidgets.QWidget):
                 self.stored_sweep_parameter.setText(
                     "\n".join(
                         [f"{kw['dimension']}, {kw['param_name']}:"
-                         + self.get_string_rep_of_values(kw['values'])
+                         + self._get_string_rep_of_values(kw['values'])
                          for kw in spkw])
                 )
             else:
@@ -1288,10 +1628,9 @@ class SweepPointsWidget(qt.QtWidgets.QWidget):
         else:
             self.gui.message_textedit.clear_and_set_text(
                 "Configuration was not saved (click ok to save)")
-            self.sweep_points_dialog.reset_to_saved_choices()
+            self.sweep_points_dialog._reset_to_saved_choices()
 
-    def get_string_rep_of_values(self, values):
-
+    def _get_string_rep_of_values(self, values):
         if values is None:
             return str(values)
         else:

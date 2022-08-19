@@ -1676,6 +1676,9 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
 
     @classmethod
     def gui_kwargs(cls, device):
+        """
+        See docstring of parent class.
+        """
         d = super().gui_kwargs(device)
         d['kwargs'].update({
             SingleQubitGateCalibExperiment.__name__: odict({})
@@ -1831,6 +1834,9 @@ class Rabi(SingleQubitGateCalibExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
+        """
+        See docstring of parent class.
+        """
         d = super().gui_kwargs(device)
         d['task_list_fields'].update({
             Rabi.__name__: odict({
@@ -2058,6 +2064,9 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
+        """
+        See docstring of parent class.
+        """
         d = super().gui_kwargs(device)
         d['kwargs'].update({
             Ramsey.__name__: odict({
@@ -2391,6 +2400,9 @@ class T1(SingleQubitGateCalibExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
+        """
+        See docstring of parent class.
+        """
         d = super().gui_kwargs(device)
         d['sweeping_parameters'].update({
             T1.__name__: {
@@ -2575,6 +2587,9 @@ class QScale(SingleQubitGateCalibExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
+        """
+        See docstring of parent class.
+        """
         d = super().gui_kwargs(device)
         d['sweeping_parameters'].update({
             QScale.__name__: {
