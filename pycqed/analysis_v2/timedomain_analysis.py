@@ -2638,6 +2638,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                      list(self.cal_states_dict[qb_name])[i] + '_' + \
                                      plot_name_suffix
                 plot_names_cal += [plot_dict_name_cal]
+
                 self.plot_dicts[plot_dict_name_cal] = {
                     'fig_id': fig_name,
                     'plotfn': self.plot_line,
@@ -2651,7 +2652,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'linestyle': 'none',
                     'line_kws': {'color': self.get_cal_state_color(
                         list(self.cal_states_dict[qb_name])[i])},
-                    'yrange': yrange,
+                    'yrange': self.get_param_value("yrange", yrange),
+                    'yscale': self.get_param_value("yscale", "linear"),
+                    'xscale': self.get_param_value("xscale", "linear"),
                 }
 
                 self.plot_dicts[plot_dict_name_cal+'_line'] = {
@@ -2702,6 +2705,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'yunit': yunit,
                         'yrange': yrange,
                         'zrange': self.get_param_value('zrange', None),
+                        'logzscale': self.get_param_value("logzscale", False),
                         'title': title,
                         'clabel': data_axis_label}
                     # If kwarg 'plot_TwoD_as_curves' in the options_dict of
@@ -2766,12 +2770,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'ylabel': data_axis_label,
                 'yunit': '',
                 'yrange': yrange,
+                # "yrange": (1e-4, None),
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': linestyle,
                 'do_legend': do_legend_data and len(data_label),
                 'legend_bbox_to_anchor': (1, 0.5),
-                'legend_pos': 'center left'}
+                'legend_pos': 'center left',
+                'yscale': self.get_param_value("yscale", "linear"),
+                'xscale': self.get_param_value("xscale", "linear"),
+            }
 
         # add plot_params to each plot dict
         plot_params = self.get_param_value('plot_params', default_value={})
