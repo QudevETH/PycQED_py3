@@ -78,7 +78,6 @@ class MockDAQServer(zibase.MockDAQServer):
         return MockAwgModule(self)
 
     def connectDevice(self, device, interface):
-        print(device, interface)
         if device in self._device_types:
             self.devtype = self._device_types[device]
         elif device.lower().startswith('dev12'):
