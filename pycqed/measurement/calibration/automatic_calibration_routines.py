@@ -706,6 +706,18 @@ class Step:
         self.parameter_sublookups = None
         self.leaf = True
 
+    class NotFound:
+        """This class is used in get_param_value to identify the cases where 
+        a keyword could not be found in the configuration parameter dictionary.
+        It is necessary to distinguish between the cases when None is explicitly
+        specified for a keyword argument and when no keyword argument was found.
+        """
+        def __bool__(self):
+            """Return False by default for the truth value of an instance of
+            NotFound.
+            """
+            return False
+
     def get_param_value(self,
                         param,
                         qubit=None,
@@ -721,7 +733,15 @@ class Step:
             param (str): The name of the parameter to look up.
             sublookups (list of str): Optional subscopes to be looked up.
             default: The default value the parameters falls back to if no value
-                was found for the parameter in the whole dictionary.
+                was found for the parameter in the whole dictionary. By setting
+                it to NotFound() it is possible to detect whether the value
+                was found in the configuration parameter dictionary. Defaults to
+                None.
+                FIXME: A better solution would be to change the function and
+                return also a bool indicating whether a parameter was found.
+                This would require minimal changes in this function, but it 
+                would require to go through the code and fix all the lines 
+                containing a call to get_param_value.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
                 routine)
@@ -758,10 +778,10 @@ class Step:
                     leaf=leaf,
                     associated_component_type_hint=associated_component_type_hint
                 )
-                if val is not None:
-                    success = True
-                else:
+                if val is None or type(val) == self.NotFound:
                     success = False
+                else:
+                    success = True
             elif sublookups:
                 val, success = self.settings.get_param_value(
                     param,
@@ -887,9 +907,8 @@ class Step:
 
     def get_requested_settings(self):
         """Gets a set of keyword arguments which are needed for the
-        initialization of the current step. This is important for experiments,
-        as they have to be initialized with these keywords and cannot use the
-        get_param_value function.
+        initialization of the current step. The keywords are retrieved via the
+        gui_kwargs method that is implemented in each QuantumExperiment.
 
         Returns:
             dict: A dictionary containing names and default values of keyword
@@ -902,12 +921,6 @@ class Step:
                 for ky, vy in vx.items()}
             for k, v in gui_kwargs.items()
         }
-        requested_kwargs['kwargs'].pop('sweep_points',
-                                       None)  # pop kw that is not needed
-        requested_kwargs['kwargs'].pop('cal_states', None)
-        requested_kwargs['kwargs'].pop('n_cal_points_per_state', None)
-        requested_kwargs['kwargs'].pop('cz_pulse_name', None)
-        requested_kwargs['kwargs'].pop('compression_seg_lim', None)
         return requested_kwargs
 
     def parse_settings(self, requested_kwargs):
@@ -922,12 +935,13 @@ class Step:
         """
         kwargs = {}
         for k, v in requested_kwargs['kwargs'].items():
-            kwargs[k] = self.get_param_value(k, default=v[1])
-
-        # FIXME: It should not be necessary to remove the 'ro_qubits' keyword.
-        # There is a bug in two_qubits_gate.py's parallel_sweep function, where
-        # the default value 'None' for ro_qubits causes problems.
-        kwargs.pop('ro_qubits', None)
+            kwargs[k] = self.get_param_value(k, default=self.NotFound())
+            # If the keyword was not found in the configuration parameter
+            # dictionary, it will not be passed to the QuantumExperiment.
+            # This prevents problem when the gui_kwargs default values raise
+            # errors
+            if type(kwargs[k]) == self.NotFound:
+                kwargs.pop(k)
 
         kwargs['measure'] = False
         kwargs['analyze'] = False
