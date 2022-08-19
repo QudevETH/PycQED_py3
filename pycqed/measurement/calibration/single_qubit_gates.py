@@ -5284,21 +5284,12 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         - amps
     """
 
-    kw_for_sweep_points = {
-        'amps': dict(param_name='amplitude', unit='V',
-                     label='Pulse Amplitude', dimension=1),
-        'length': dict(param_name='pulse_length', unit='ns',
-                       label='Pulse length', dimension=0)
-    }
     default_experiment_name = 'Leakage_reduction_unit'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, length= None, **kw):
         try:
-            # Probably not needed
-            if 'n' not in kw:
-                # add default n to kw before passing to init of parent
-                kw['n'] = 1
+            # kw['df_name'] = kw.get('df_name', "int_log_det")
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amps=amps, length=length, **kw)
@@ -5320,9 +5311,16 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         # create prepended pulses
         prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
                                              **kw)
+
+        # add ef pulse if specified
+
+        ef_pulse = self.block_from_ops(f'ef_pulse',
+                                       [f'X180_ef {qb}'])
         # add modulation pulse
         flux_pulse_amplitude = kw.get('flux_pulse_amplitude', 0)
-        pulse_modifs = {0: {'amplitude': flux_pulse_amplitude}}
+        flux_pulse_length = kw.get('flux_pulse_length', 4e-8)
+        pulse_modifs = {0: {'amplitude': flux_pulse_amplitude,
+                            'pulse_length': flux_pulse_length}}
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
                                                [f'FP {qb}'],
                                                pulse_modifs=pulse_modifs
@@ -5335,8 +5333,13 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
 
-        return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                      prepend_blocks + [modulation_block])
+        if kw.get('prepare_f', False):
+            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                          prepend_blocks + [ef_pulse] + [
+                                              modulation_block])
+        else:
+            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                          prepend_blocks + [modulation_block])
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
