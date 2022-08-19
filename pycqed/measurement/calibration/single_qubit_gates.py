@@ -441,10 +441,14 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
                     if 'pulse_modifs' not in task:
                         task['pulse_modifs'] = {}
-                    for d in [task['pulse_modifs'], modifs]:
+                    params = ['freq'] * 2
+                    pre_param = task['prefix'] + params[1]
+                    if self.sweep_points.find_parameter(pre_param) is not None:
+                        params[1] = pre_param
+                    for d, sp in zip([task['pulse_modifs'], modifs], params):
                         d.update({
                             f'op_code=X180 {qb.name}, attr=mod_frequency':
-                                ParametricValue('freq', func=func)})
+                                ParametricValue(sp, func=func)})
                 self.cal_points.pulse_modifs = modifs
 
         # If applicable, configure drive amplitude adaptation based on the
