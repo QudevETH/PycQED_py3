@@ -7,6 +7,12 @@ class RTB2000FunctionGeneratorTriggerDevice(Instrument):
     """Meta instrument to control the RTB2000 function generator as trigger
     device
 
+    CAUTION: This provides a simple way of triggering AWGs in simple tests,
+    but does not provide a reliable trigger period for actual experiments
+    since the function generator is not locked to a reference clock. Also
+    note that pulse length should not be changed anymore after setting the
+    trigger period, see FIXME in _period_setter.
+
     Args:
         name (str): name of the meta instrument
         instrument (Instrument): RTB2000 oscilloscope qcodes instrument
@@ -97,6 +103,12 @@ class RTB2000FunctionGeneratorTriggerDevice(Instrument):
 class RTB2000PatternGeneratorTriggerDevice(Instrument):
     """Meta instrument to control the RTB2000 pattern generator as trigger
     device
+
+    CAUTION: This provides a simple way of triggering AWGs in simple tests,
+    but does not provide a reliable trigger period for actual experiments
+    since the function generator is not locked to a reference clock. Also
+    note that short trigger pulses (less than 1% duty cycle) are only possible
+    via the function generator, see RTB2000FunctionGeneratorTriggerDevice.
 
     Args:
         name (str): name of the meta instrument
