@@ -2219,8 +2219,10 @@ class BaseDataAnalysis(object):
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
 
-    #@staticmethod
     def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+        """
+        Returns all attributes in a path. Path could also be e.g. a particular qubit
+        """
         h5mode = 'r'
         folder = a_tools.get_folder(self.timestamps[hdf_file_index])
         h5filepath = a_tools.measurement_filename(folder)
@@ -2234,8 +2236,10 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    #@staticmethod
     def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+        """
+        Returns all instruments of a given class
+        """
         instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
         dev_names = []
         for instrument in instruments:

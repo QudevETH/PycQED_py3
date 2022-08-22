@@ -11359,20 +11359,27 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         def calculate_voltage_from_flux(vfc, flux):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
-        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc, freq_ss,
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc,
                                       model='transmon_res', bias = None):
             # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
             #  can be called both from the measurement and analysis side, to avoid code dupplication
             if flux_amplitude_bias_ratio is None:
-                if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
-                        (model == ['approx'] and bias is not None and bias != 0)):
-                    raise ValueError('flux_amplitude_bias_ratio is None, but is '
-                                     'required for this calculation.')
+                if len(amplitude) > 1:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+                else:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+
 
             if model == 'approx':
                 ge_freq = fit_mods.Qubit_dac_to_freq(
                     amplitude + (0 if bias is None or np.all(bias == 0) else
-                                 bias * flux_amplitude_bias_ratio), f_max=freq_ss, **vfc)
+                                 bias * flux_amplitude_bias_ratio), **vfc)
             elif model == 'transmon':
                 kw = deepcopy(vfc)
                 kw.pop('coupling', None)
@@ -11452,18 +11459,20 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
-            device_name = self.get_instruments_by_class('pycqed.instrument_drivers.meta_instrument.device.Device',
-                                                                    hdf_file_index)[0]
+            device_name = self.get_param_value('dev_name', None)
+            if device_name == None:
+                self.get_instruments_by_class(
+                    'pycqed.instrument_drivers.meta_instrument.device.Device', hdf_file_index)[0]
 
             amp = self.get_hdf_param_value("Instrument settings/" + device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
 
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
-                vfc=qbL_vfc, model= model, bias=qbL_bias, freq_ss=qbL_ss_freq) / 1e9 # Normalize to GHz
+                vfc=qbL_vfc, model= model, bias=qbL_bias) / 1e9 # Normalize to GHz
             qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
-                vfc=qbH_vfc, model= model, bias=qbH_bias, freq_ss=qbH_ss_freq)/ 1e9 \
+                vfc=qbH_vfc, model= model, bias=qbH_bias)/ 1e9 \
                                 + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
 
             Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
