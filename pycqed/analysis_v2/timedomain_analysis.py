@@ -11337,7 +11337,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['Delta'] = OrderedDict()
 
         def pe_function(t, Delta, J=2 * np.pi * 10e-3, offset_freq=0):
-            # From Nathan's master's thesis- fitting function
+            # From Nathan's master's thesis Eq. 2.6 - fitting function
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
@@ -11601,8 +11601,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The mathemtical description of this function can be found in Nathan's master thesis for example.
         Parameters
         ----------
-        J: coupling of the qubits
-        Delta: Detuning of the qubits during the interaction
+        J: coupling of the 20 and 11 transition in rad/s
+        Delta: Detuning of the qubits during the interaction in rad/s
         n: Number of oscillation for which the interaction time should be calculated (usually you want the shortest
         (n=1)). This is mainly used to allow to plot the different traces in Delta-t-plane
 
