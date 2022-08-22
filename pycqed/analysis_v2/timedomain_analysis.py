@@ -11508,20 +11508,23 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'guess_pars': guess_pars}
 
         for task in self.get_param_value('task_list'):
-            qbH_name = task['qbc']
-            qbL_name = task['qbt']
-            if qbH_name in self.qb_names or qbL_name in self.qb_names:
-
-                # Safety check on whether the above qbH/L assignment is correct
-                if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[f'ge_freq_{qbL_name}']:
-                    qb_temp_name = qbH_name
-                    qbH_name = qbL_name
-                    qbL_name = qb_temp_name
-
+            qbH_name, qbL_name = self._get_qbH_qbL(task)
+            if qbH_name is not None:
                 data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
-
                 add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data, key= f'chevron_fit_{qbH_name}_{qbL_name}')
 
+    def _get_qbH_qbL(self, task):
+        qbH_name, qbL_name = task['qbc'], task['qbt']
+
+        if qbH_name not in self.qb_names or qbL_name not in self.qb_names:
+            return None, None
+
+        # Safety check on whether the above qbH/L assignment is correct
+        if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[
+                f'ge_freq_{qbL_name}']:
+            qbH_name, qbL_name = qbL_name, qbH_name
+
+        return qbH_name, qbL_name
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
@@ -11545,9 +11548,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
         if self.do_fitting:
             for task in self.get_param_value('task_list'):
-                qbH = task['qbc']
-                qbL = task['qbt']
-                if qbH in self.qb_names or qbL in self.qb_names:
+                qbH, qbL = self._get_qbH_qbL(task)
+                if qbH is not None:
                     base_plot_name = f'Chevron_{qbH}_{qbL}_pe'
                     xlabel, xunit = self.get_xaxis_label_unit(qbH)
                     # Find name of 1st sweep point in sweep dimension 1
