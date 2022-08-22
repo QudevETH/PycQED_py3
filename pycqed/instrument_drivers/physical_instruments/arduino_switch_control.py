@@ -1202,6 +1202,18 @@ class ArduinoSwitchControl(Instrument):
 
 
 class VirtualArduinoSwitchControl(ArduinoSwitchControl):
+    """
+    Virtual version of the ArduinoSwitchControl
+
+    Overrides the methods responsible for communicating with the low-level
+    serial communication drivers, and keeps instead a list of virtual switch
+    states to maintain consistent get/set methods.
+
+    Attributes:
+        virtual_switch_states: list of emulated switch states. Initialised to
+            '01', corresponding to state 0, see the docstring of
+            super()._get_switch
+    """
 
     def __init__(self, name, port, config, start_serial=True):
 
@@ -1210,13 +1222,13 @@ class VirtualArduinoSwitchControl(ArduinoSwitchControl):
         self.virtual_switch_states = {s: '10' for s in self.switches}
 
     def start_serial(self, override=True):
-        pass
+        pass  # Not needed for this virtual instrument
 
     def end_serial(self):
-        pass
+        pass  # Not needed for this virtual instrument
 
     def assure_serial(self):
-        pass
+        pass  # Not needed for this virtual instrument
 
     def _get_switch(self, switch):
         return self.virtual_switch_states[switch]
