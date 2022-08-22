@@ -1201,6 +1201,30 @@ class ArduinoSwitchControl(Instrument):
                 raise ValueError(f"Config must contain key '{key}")
 
 
+class VirtualArduinoSwitchControl(ArduinoSwitchControl):
+
+    def __init__(self, name, port, config, start_serial=True):
+
+        super().__init__(name, port, config, start_serial)
+
+        self.virtual_switch_states = {s: '10' for s in self.switches}
+
+    def start_serial(self, override=True):
+        pass
+
+    def end_serial(self):
+        pass
+
+    def assure_serial(self):
+        pass
+
+    def _get_switch(self, switch):
+        return self.virtual_switch_states[switch]
+
+    def _set_switch(self, switch, state):
+        self.virtual_switch_states[switch] = state
+
+
 # Classes for the components of the switch box
 # --------------------------------------------
 
