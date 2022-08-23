@@ -2454,7 +2454,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
         # This can be used to determine which dip corresponds to the resonator
         # and which to the Purcell filter
         dips_widths = peak_widths(-magnitude_data, dips_indices,
-                        rel_height=self.dip_finder_kwargs['rel_height'])[0]
+                        rel_height=kw['rel_height'])[0]
 
         return dips_indices, dips_widths
 
