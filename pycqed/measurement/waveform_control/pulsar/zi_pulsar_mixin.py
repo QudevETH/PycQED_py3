@@ -105,6 +105,30 @@ class ZIPulsarMixin:
 
     @staticmethod
     def _zi_playback_string_loop_start(metadata, channels):
+        """Creates playback string that starts a loop depending on the metadata.
+
+        The method also takes care of oscillator sweeps.
+        Args:
+            metadata (dict): Dictionary containing the information if a loop
+                should be started and which variables to sweep inside the loop.
+                Relevant keys are:
+                    loop (int): Length of the loop. If not specified, no loop
+                        will be started and the returned playback_string will be
+                        an empty list.
+                    sweep_params (dict): Dictionary of sweeps. Depending on the
+                        key, different sweeps will be performed. Only those
+                        items will be implemented, whose keys starts with a
+                        channel name contained in channels.
+                        Special keys (after "{ch_name}_") are:
+                            "osc_sweep"
+                        The default behaviour will assume a key describing the
+                        path of a node of the channel with "/" replaced by "_".
+                        The value should be a list of doubles in this case.
+            channels (list): list of channel names to be considered
+
+        Returns:
+            str: playback_string
+        """
         loop_len = metadata.get("loop", False)
         if not loop_len:
             return []
@@ -112,14 +136,28 @@ class ZIPulsarMixin:
         sweep_params = metadata.get("sweep_params", {})
         for k, v in sweep_params.items():
             for ch in channels:
-                if k.startswith(f"{ch}_"):
+                if not k.startswith(f"{ch}_"):
+                    continue
+                if k == f"{ch}_osc_sweep":
+                    playback_string.append('//set up frequency sweep')
+                    start_freq = v[0]
+                    freq_inc = 0 if len(v) <= 1 else v[1] - v[0]
+                    playback_string.append(
+                        f'configFreqSweep(SWEEP_OSC,{start_freq},{freq_inc});')
+                else:
                     playback_string.append(
                         f'wave {k} = vect({",".join([f"{a}" for a in v])})')
         playback_string.append(
             f"for (cvar i_sweep = 0; i_sweep < {loop_len}; i_sweep += 1) {{")
         for k, v in sweep_params.items():
             for ch in channels:
-                if k.startswith(f"{ch}_"):
+                if not k.startswith(f"{ch}_"):
+                    continue
+                if k == f"{ch}_osc_sweep":
+                    playback_string.append('  waitWave();\n')
+                    playback_string.append('  setSweepStep(SWEEP_OSC,'
+                                           ' i_sweep);\n')
+                else:
                     node = k[len(f"{ch}_"):].replace("_", "/")
                     playback_string.append(
                         f'setDouble("{node}", {k}[i_sweep]);')
@@ -168,7 +206,7 @@ class ZIPulsarMixin:
 
     def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                             prepend_zeros=0, placeholder_wave=False,
-                            allow_filter=False):
+                            allow_filter=False, negate_q=False):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -176,15 +214,10 @@ class ZIPulsarMixin:
         if prepend_zeros:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self._zi_waves_to_wavenames(wave)
+        if w2 is not None and negate_q:
+            w2 = f"(-({w2}))"
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
-        if trig_source == "Dig1":
-            playback_string.append(
-                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
-        elif trig_source == "Dig2":
-            playback_string.append("waitDigTrigger(2,1);")
-        else:
-            playback_string.append(f"wait{trig_source}Trigger();")
+        playback_string += self._zi_wait_trigger(name, device)
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
@@ -197,10 +230,14 @@ class ZIPulsarMixin:
                 # This hack is needed due to a bug on the HDAWG.
                 # Remove this if case once the bug is fixed.
                 playback_string.append(f"playWave({w2}_but_zero, {w2});")
-            elif w1 is not None and w2 is None and use_hack and not placeholder_wave:
-                # This hack is needed due to a bug on the HDAWG.
-                # Remove this if case once the bug is fixed.
-                playback_string.append(f"playWave({w1}, marker(1,0)*0*{w1});")
+            elif w1 is not None and w2 is None and not placeholder_wave:
+                if device == 'shfsg':
+                    # Generate real valued output on SG channel
+                    playback_string.append(f"playWave(1, 2, {w1});")
+                elif use_hack:
+                    # This hack is needed due to a bug on the HDAWG.
+                    # Remove this if case once the bug is fixed.
+                    playback_string.append(f"playWave({w1}, marker(1,0)*0*{w1});")
             elif w1 is not None or w2 is not None:
                 playback_string.append("playWave({});".format(
                     self._zi_wavename_pair_to_argument(w1, w2)))
@@ -226,14 +263,7 @@ class ZIPulsarMixin:
             if not acq:
                 playback_string.append(f"prefetch({wname},{wname});")
 
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
-        if trig_source == "Dig1":
-            playback_string.append(
-                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
-        elif trig_source == "Dig2":
-            playback_string.append("waitDigTrigger(2,1);")
-        else:
-            playback_string.append(f"wait{trig_source}Trigger();")
+        playback_string += self._zi_wait_trigger(name, device)
 
         if codeword:
             # playback_string.append("playWaveDIO();")
@@ -245,3 +275,15 @@ class ZIPulsarMixin:
             playback_string.append("setTrigger(RO_TRIG);")
             playback_string.append("setTrigger(WINT_EN);")
         return playback_string, interleaves
+
+    def _zi_wait_trigger(self, name, device):
+        playback_string = []
+        trig_source = self.pulsar.get("{}_trigger_source".format(name))
+        if trig_source == "Dig1":
+            playback_string.append(
+                "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
+        elif trig_source == "Dig2":
+            playback_string.append("waitDigTrigger(2,1);")
+        else:
+            playback_string.append(f"wait{trig_source}Trigger();")
+        return playback_string

@@ -2,7 +2,7 @@ import time
 import pyqtgraph as pg
 import pyqtgraph.multiprocess as pgmp
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 

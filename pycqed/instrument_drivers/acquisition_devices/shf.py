@@ -6,37 +6,18 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from zhinst.qcodes import SHFQA as SHFQA_core
+from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
 from pycqed.utilities.timer import Timer
 import logging
 log = logging.getLogger(__name__)
 
 
-class SHFQASpectroscopyHardSweep(swf.Hard_Sweep):
-    """Defines a hard sweep function specific to the SHFQA hard spectroscopy.
+class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHF instrument series
 
-    The frequency range over which this sweep function should sweep is not
-    set in the sweep function itself, but in the acquisition_mode attribute
-    of the segment used by the sweep function. This gives Pulsar access to the
-    frequency range, allowing Pulsar to program the corresponding frequency
-    parameters in the seqc code.
-    """
-    def __init__(self, acq_dev, acq_unit, parameter_name='None'):
-        super().__init__()
-        self.parameter_name = parameter_name
-        self.unit = 'Hz'
-        self.acq_dev = acq_dev
-        self.acq_unit = acq_unit
-
-    def set_parameter(self, value):
-        pass  # Set in the Segment, see docstring
-
-
-class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
-    """QuDev-specific PycQED driver for the ZI SHFQA
-
-    This is the QuDev-specific PycQED driver for the 2 GSa/s SHFQA instrument
-    from Zurich Instruments AG.
+    This is not meant to be instantiated directly, but should be inherited
+    from by the actual instrument classes
 
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
@@ -64,13 +45,13 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
-                     'int_avg': ['raw', 'digitized'], #FIXME data types unused
+                     'int_avg': ['raw', 'digitized'],  # FIXME data types unused
                      # Scope is distinct from avg in the UHF, not here. For
                      # compatibility, we allow this mode here.
                      'scope': ['timedomain', 'fft_power', ],
                      }
     # private lookup dict to translate a data_type to an index understood by
-    # the SHFQA
+    # the SHF
     res_logging_indices = {'raw': 1,  # raw integrated+averaged results
                            'digitized': 3,  # thresholded results (0 or 1)
                            }
@@ -88,6 +69,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # This is different from self._acq_mode (allowed_modes)
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
+        self._awg_source_strings = {}
         self.seqtrigger = None
         self.timer = None
 
@@ -103,6 +85,9 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
+        # FIXME: This parameter should be removed and existing code should be
+        #  refactored to use the parameter "{awg_name}_use_hardware_sweeper" in
+        #  pulsar.
         self.add_parameter(
             'use_hardware_sweeper',
             initial_value=False,
@@ -202,21 +187,29 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
-        diff_f = np.diff(requested_freqs)
-        if not all(diff_f-diff_f[0] < 1e-3):
-            # not equally spaced (arbitrary 1 mHz)
-            log.warning(f'Unequal frequency spacing not supported, '
-                        f'the measurement will return equally spaced values.')
-        # Find closest allowed center frequency
-        approx_center_freq = np.mean(requested_freqs)
-        id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
-                             approx_center_freq)).argmin()
+        if len(requested_freqs) == 1:
+            id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+                                requested_freqs[0])).argmin()
+            if self.awg.allowed_lo_freqs()[id_closest] - requested_freqs[0] < 10e6:
+                # resulting mod_freq would be smaller than 10 MHz
+                # TODO: arbitrarily chosen limit of 10 MHz
+                id_closest = id_closest + (-1 if id_closest != 0 else +1)
+        else:
+            diff_f = np.diff(requested_freqs)
+            if not all(diff_f-diff_f[0] < 1e-3):
+                # not equally spaced (arbitrary 1 mHz)
+                log.warning(f'Unequal frequency spacing not supported, '
+                            f'the measurement will return equally spaced values.')
+            # Find closest allowed center frequency
+            approx_center_freq = np.mean(requested_freqs)
+            id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+                                approx_center_freq)).argmin()
         center_freq = self.allowed_lo_freqs()[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
         if min_bandwidth > self.acq_sampling_rate:
             raise NotImplementedError('Spectrum wider than the bandwidth of '
-                                      'the SHFQA is not yet implemented!')
+                                      'the SHF is not yet implemented!')
         # Compute needed acq length
         delta_f = np.mean(diff_f)
         # Note that this might underestimate the necessary acq_length to get
@@ -306,7 +299,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 )
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
-                # Fit as many traces as possible in a single SHFQA call
+                # Fit as many traces as possible in a single SHF call
                 # FIXME this should be disabled when measuring a synchronous
                 #  signal instead of noise
                 num_points_per_trace = self.convert_time_to_n_samples(
@@ -357,7 +350,6 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         with self.set_transaction():
             for ch in self.qachannels:
                 ch.oscs[0].gain(0)
-        self._awg_program = [None] * self.n_acq_units
 
     def acquisition_progress(self):
         n_acq = {}
@@ -376,7 +368,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 n_acq[i] = 0
             else:
                 raise NotImplementedError("Mode not recognised!")
-        return np.mean(n_acq.values())
+        return np.mean(list(n_acq.values()))
 
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
@@ -384,10 +376,28 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         """
         qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
+        self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def store_awg_source_string(self, channel, awg_str):
+        """
+        Store AWG source strings to a private property for debugging.
+
+        This function is called automatically when programming a QA
+        channel via set_awg_program and currently still needs to be called
+        manually after programming an SG channel. The source strings get
+        stored in the dict self._awg_source_strings.
+
+        Args:
+             channel: the QA or SG channel object for which the AWG was
+                programmed
+            awg_str: the source string that was programmed to the AWG
+        """
+        key = channel.short_name[:2] + channel.short_name[-1:]
+        self._awg_source_strings[key] = awg_str
 
     def _arm_scope(self):
         self.scopes[0].stop()
@@ -399,7 +409,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
         # at each run, and then returns only the newer data to match the
         # normal behaviour of poll. One could implement an actual poll after
         # ZI has improved the drivers, if that turns out to be a bottleneck.
-        # sqrt(2) are because the SHFQA seems to return integrated RMS voltages.
+        # sqrt(2) are because the SHF seems to return integrated RMS voltages.
 
         # TODO (from ZI) poll is availabe on the new zhinst-qcodes driver,
         # might be worthwhile considering since it is much faster.
@@ -439,7 +449,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                     res.append(self.qachannels[i].readout.result.data[
                                    channel].wave())
 
-                # In readout mode the data isn't rescaled yet in the SHFQA
+                # In readout mode the data isn't rescaled yet in the SHF
                 # by the number of points
                 scaling_factor = np.sqrt(2) \
                                  / (self.acq_sampling_rate * self._acq_length)
@@ -466,7 +476,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                         "Currently the scope only works with two data "
                         "channels. This will be cleaned up after integrating "
                         "measurements on TWPA objects.")
-                # The SHFQA acquires at full memory, then we get as many traces
+                # The SHF acquires at full memory, then we get as many traces
                 # as possible from that (this could be avoided e.g. if a few
                 # points only are needed, in case this slows down measuring)
                 num_points_per_trace = self.convert_time_to_n_samples(
@@ -509,9 +519,11 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
                 if self.scopes[0].enable() == 0:
                     timetrace = self.scopes[0].channels[i].wave()
                     dataset.update({(i, 0): [np.real(timetrace)]})
-                    # use sign convention as is used by UHFQA to ensure
-                    # compatibility with existing  analysis classes
-                    dataset.update({(i, 1): [-np.imag(timetrace)]})
+                    # use sign convention as is used by UHFQA in avg mode
+                    # to ensure compatibility with existing analysis classes
+                    # use natural sign in averaged mode
+                    sign = {'avg': -1, 'scope': 1}[self._acq_mode]
+                    dataset.update({(i, 1): [sign*np.imag(timetrace)]})
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
@@ -519,8 +531,7 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
     def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return SHFQASpectroscopyHardSweep(acq_dev=self, acq_unit=acq_unit,
-                                              parameter_name=name)
+            return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Readout frequency with offset'
         return swf.Offset_Sweep(
             swf.MajorMinorSweep(
@@ -566,3 +577,40 @@ class SHFQA(SHFQA_core, ZI_AcquisitionDevice):
             data_type=data_type, acquisition_length=acquisition_length)
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
+
+    def _check_server(self, kwargs):
+        # Note: kwargs are passed without ** in order to allow modifying them.
+        if kwargs.pop('server', None) == 'emulator':
+            from pycqed.instrument_drivers.physical_instruments \
+                .ZurichInstruments import ZI_base_qudev as zibase
+            from zhinst.qcodes import session as ziqcsess
+            daq = zibase.MockDAQServer.get_instance(
+                kwargs.get('host', 'localhost'),
+                port=kwargs.get('port', 8004))
+            self._session = ziqcsess.ZISession(
+                server_host=kwargs.get('host', 'localhost'),
+                connection=daq, new_session=False)
+            return daq
+
+
+class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQA
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._check_server(kwargs)
+        super().__init__(*args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+
+
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+    """QuDev-specific PycQED driver for the ZI SHFQC
+    """
+
+    def __init__(self, serial, *args, **kwargs):
+        daq = self._check_server(kwargs)
+        if daq is not None:
+            daq.set_device_type(serial, 'SHFQC')
+        super().__init__(serial, *args, **kwargs)
+        SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
+        self._awg_program += [None] * len(self.sgchannels)

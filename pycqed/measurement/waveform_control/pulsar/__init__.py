@@ -7,4 +7,6 @@ from .pulsar import Pulsar, PulsarAWGInterface
 from .awg5014_pulsar import AWG5014Pulsar
 from .hdwag8_pulsar import HDAWG8Pulsar
 from .shfqa_pulsar import SHFQAPulsar
+from .shfsg_pulsar import SHFSGPulsar
+from .shfqc_pulsar import SHFQCPulsar
 from .uhfqc_pulsar import UHFQCPulsar

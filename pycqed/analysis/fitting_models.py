@@ -234,7 +234,8 @@ def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
 def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                           dac_sweet_spot=0.0, V_per_phi0=None,
                           dac_flux_coefficient=None, phi_park=None,
-                          branch='smallest', n_periods=(-1, 2)):
+                          branch='smallest', n_periods=(-1, 2),
+                          single_branch=False):
     """
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
     This function implements the inverse of "Qubit_dac_to_freq_res"
@@ -255,7 +256,10 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         if "smallest": equivalent to branch = 0.
         if volt_guess (integer):
             returns voltages in the period closest to volt_guess
-
+    n_periods (int, int): range of periods in which to look for voltages
+        close to volt_guess
+    single_branch (bool): forces all voltages to lie in a single branch (e.g. to
+        avoid jumps in a frequency sweep)
     """
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
@@ -307,6 +311,8 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
             *n_periods)] + [dac_voltage_neg + n * V_per_phi0 for n in range(
             *n_periods)])
         idxs0 = np.argmin(np.abs(dac_voltage - branch), 0)
+        if single_branch:
+            idxs0 = [idxs0[0]]*len(idxs0)
         idxs1 = np.arange(len(dac_voltage_pos))
         dac_voltage = dac_voltage[idxs0, idxs1]
 

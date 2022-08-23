@@ -382,7 +382,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                                         cw, wave, use_placeholder_waves)
                                 codeword_table[cw] = (w1, w2)
                             elif codeword_table[cw] != (w1, w2) \
-                                    and self.reuse_waveforms():
+                                    and self.pulsar.reuse_waveforms():
                                 log.warning('Same codeword used for different '
                                             'waveforms. Using first waveform. '
                                             f'Ignoring element {element}.')
@@ -548,10 +548,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 log.debug(
                     f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
                 return
-            log.debug(
-                f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
             self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
+        log.debug(
+            f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
         if m1 is not None and a1 is None:
