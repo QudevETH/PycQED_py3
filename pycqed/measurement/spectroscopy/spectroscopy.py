@@ -751,21 +751,22 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
     Performs a 1D resonator spectroscopy for a given feedline.
 
     The analysis looks for dips in the magnitude result. Two dips are searched
-    for each qubit in the feedline.
+    for each qubit passed in 'feedline'. Each pair of dips is assigned to a
+    qubit following the order of the current ro_freq. The two dips at the lowest
+    frequency will be assigned to the qubit with the lowest ro_freq and so on.
+
     The sharpest dip of each pair is chosen to update the readout frequency
     of the corresponding qubit.
 
     Compatible task_dict keys:
-    feedline: list of QuDev_transmons belonging to the same feedline. The first
-         qubit of the list will be used to label the task.
-        FIXME: should be refactored in future to be meas_obj (see parent class)
-    freqs: List or np.array containing the drive frequencies of the
-        spectroscopy measurement. (1. dim. sweep points)
-
-    Important: The number of frequency sweep points in the
-        first dimension needs to be the same among all tasks. The step size in
-        the frequency sweep points needs to be the same among tasks with qubits
-        that share an RO LO MWG (if applicable) [copied from parent class]
+        feedline: list of QuDev_transmons belonging to the same feedline. The
+            first qubit of the list will be used to label the task. The qubits
+            passed here will be used in the analysis to assign the found dips
+            to each qubit.
+            FIXME: should be refactored in future to be meas_obj (see parent
+            class).
+        freqs: List or np.array containing the drive frequencies of the
+            spectroscopy measurement. (1. dim. sweep points)
     """
 
     kw_for_sweep_points = {
@@ -827,9 +828,11 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
         of qubits belonging to the feedline.
 
         Args:
-            analysis_kwargs: keyword arguments passed to the analysis class
+            analysis_kwargs (dict): keyword arguments passed to the analysis
+                class
 
-        Returns: analysis object
+        Returns:
+            (ResonatorSpectroscopyAnalysis): the analysis object
 
         """
         if analysis_kwargs is None:
