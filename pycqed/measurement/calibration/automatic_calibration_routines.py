@@ -101,8 +101,10 @@ class SettingsDictionary(dict):
                                      groups=None,
                                      leaf=True,
                                      associated_component_type_hint=None):
-        """A helper function for get_param_value. It does not include the
-        postprocessing of the fetched value by get_param_value.
+        """Looks for the requested parameter recursively in the configuration
+        parameter dictionary. It is used as a helper function for
+        get_param_value, but the actual search in the nested dictionary is
+        done here.
 
         Args:
             param (str): The name of the parameter to look up.
@@ -129,10 +131,13 @@ class SettingsDictionary(dict):
                 continue
             if lookup in self:
                 if sublookups:
+                    # If a scope in lookups is found and there are sublookups,
+                    # search again for the parameter in self[lookup] using
+                    # the previous sublookups as lookups.
                     val, success = SettingsDictionary.get_param_value(
                         self[lookup],
                         param,
-                        sublookups,
+                        lookups=sublookups,
                         qubit=qubit,
                         groups=groups,
                         leaf=leaf,
@@ -141,9 +146,14 @@ class SettingsDictionary(dict):
                     if success:
                         return val, success
                 elif not leaf and lookup != 'General':
+                    # If there are no sublookups, use 'General' as a sublookup
+                    # scope and the lookup node is not a leaf node (e.g., not
+                    # a QuantumExperiment step)
                     val, success = SettingsDictionary.get_param_value(
                         self,
-                        param, [lookup], ['General'],
+                        param,
+                        lookups=[lookup],
+                        sublookups=['General'],
                         qubit=qubit,
                         groups=groups,
                         associated_component_type_hint=
@@ -151,12 +161,14 @@ class SettingsDictionary(dict):
                     if success:
                         return val, success
                 else:
-                    # Look if param is defined for a group
+                    # Look if param is defined for a specific qubit or a group
+                    # of qubits
                     if qubit and 'qubits' in self[lookup]:
                         for group, v in self[lookup]['qubits'].items():
                             if group == qubit or group in groups:
                                 if param in v:
                                     return v[param], True
+                    # Return the parameter if it is found in self[lookup]
                     if param in self[lookup]:
                         return self[lookup][param], True
 
@@ -726,12 +738,26 @@ class Step:
                         leaf=None,
                         associated_component_type_hint=None):
         """Looks up the requested parameter in the own configuration parameter
-        dictionary. If no value was found, the parent's function is called
-        recursively up to the root routine.
+        dictionary. If no value was found, the parent routine's function is
+        called recursively up to the root routine.
+
+        This effectively implements the priority hierarchy for the settings: the
+        settings specified for the most specific step will have priority over
+        those specified for the more general ones. For instance, the settings
+        of a QuantumExperiment step specified within the settings of an
+        AutomaticRoutine step will have priority over the generic settings of
+        the same QuantumExperiment Step specified in the root node of the
+        dictionary.
+
+        The lookups used for the search are those defined in
+        self.parameters_lookups, i.e., ['step_label', 'StepClass', 'General']
+        (sorted by priority).
 
         Args:
             param (str): The name of the parameter to look up.
-            sublookups (list of str): Optional subscopes to be looked up.
+            sublookups (list of str): Optional subscopes to be looked up. The
+                sublookups will be assumed to be sorted by priority (highest
+                priority first).
             default: The default value the parameters falls back to if no value
                 was found for the parameter in the whole dictionary. By setting
                 it to NotFound() it is possible to detect whether the value
@@ -752,28 +778,35 @@ class Step:
             The value found in the dictionary. If no value was found, either the
             default value is returned if specified or otherwhise None.
         """
+        # Get the groups the specified qubit belongs to. This allows searching
+        # for qubit-specific settings
         groups = None
         if qubit is not None:
             groups = self.get_qubit_groups(qubit)
-
+        # Look for the parameter in  self.settings with the initial default
+        # lookups. Note that self.settings is different for different steps.
         lookups = self.parameter_lookups
         if leaf is None:
             leaf = self.leaf
         val, success = self.settings.get_param_value(
             param,
-            lookups,
-            sublookups,
-            qubit,
-            groups,
+            lookups=lookups,
+            sublookups=sublookups,
+            qubit=qubit,
+            groups=groups,
             leaf=leaf,
             associated_component_type_hint=associated_component_type_hint)
 
         if not success:
+            # If the initial search failed, repeat it by calling the
+            # parent routine's function (if there is a parent routine). Keep the
+            # sublookups if they were specified, otherwise use the initial
+            # lookups as sublookups.
             if self.routine is not None:
                 sublookups = sublookups if sublookups else lookups
                 val = self.routine.get_param_value(
                     param,
-                    qubit,
+                    qubit=qubit,
                     sublookups=sublookups,
                     leaf=leaf,
                     associated_component_type_hint=associated_component_type_hint
@@ -782,13 +815,17 @@ class Step:
                     success = False
                 else:
                     success = True
+            # If the initial search failed and there is no parent routine,
+            # look for the parameter in the settings using the sublookups as
+            # lookups. Basically, search for the given parameter within the
+            # given sublookups in the root node of the settings.
             elif sublookups:
                 val, success = self.settings.get_param_value(
                     param,
-                    sublookups,
-                    None,
-                    qubit,
-                    groups,
+                    lookups=sublookups,
+                    sublookups=None,
+                    qubit=qubit,
+                    groups=groups,
                     leaf=leaf,
                     associated_component_type_hint=associated_component_type_hint
                 )
