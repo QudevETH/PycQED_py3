@@ -10268,14 +10268,14 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     For this function a model for the Hamiltonian of the qubits is required. The function will use the fit_ge_from_...
     parameters to calculate the frequencies for the given amplitudes.
     Saves the fit parameters and the optimal CZ time in self.proc_data_dict['analysis_params_dict']:
-        J: qubit coupling
-        offset_freq: frequency by which the two energy levels were off from the calculation
+        J: coupling between |20> and |11> in Hz
+        offset_freq: frequency by which the two energy levels were off from the calculation in Hz
     Options_dict options:
         'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
         'model': model used to calculate voltage to qubit frequency
         'J_guess_boundary_scale': the limits for the fit of J are: (default: 2)
             [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by a FFT (see below)
-        'offset_guess_boundary': boundaries for the offset_freq fit in GHz (default: 0.5)
+        'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 0.5)
     """
     def extract_data(self):
         super().extract_data()
@@ -10293,8 +10293,12 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.fit_dicts = OrderedDict()
         self.proc_data_dict['Delta'] = OrderedDict()
 
-        def pe_function(t, Delta, J=2 * np.pi * 10e-3, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
+            t = t*1e9
+            J = 2*np.pi*J/1e9
+            offset_freq = offset_freq/1e9
+            Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
@@ -10308,7 +10312,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 S = sp.fft.fft(data[Delta_index])
                 S[0] = 0 # Ignore DC component
                 xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
-                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]*np.pi # 2J = 2pi/T (see thesis)
+                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
                 if J_min == None or J_min > J_fft:
                     J_min = J_fft
             return J_min
@@ -10379,15 +10383,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             """
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
-            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 0.5) # in GHz
+            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
             qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
             qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
             qbL_flux = self.raw_data_dict[f'flux_parking_{qbL_name}']
-            qbH_ss_freq = self.raw_data_dict[f'ge_freq_{qbH_name}']
-            qbL_ss_freq = self.raw_data_dict[f'ge_freq_{qbL_name}']
 
             if model in ['transmon', 'transmon_res']:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
@@ -10400,12 +10402,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 qbH_bias = None
                 qbL_bias = None
 
-
             if self.num_cal_points != 0:
                 data = np.array([element[:-self.num_cal_points] for element in data])
 
-            # Normalize the time to ns for fitting
-            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points'] * 1e9
+            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points']
 
             # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
             sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
@@ -10426,11 +10426,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
-                vfc=qbL_vfc, model= model, bias=qbL_bias) / 1e9 # Normalize to GHz
+                vfc=qbL_vfc, model= model, bias=qbL_bias)
             qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
-                vfc=qbH_vfc, model= model, bias=qbH_bias)/ 1e9 \
-                                + self.raw_data_dict[f'anharmonicity_{qbH_name}'] / 1e9
+                vfc=qbH_vfc, model= model, bias=qbH_bias) + self.raw_data_dict[f'anharmonicity_{qbH_name}']
 
             Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
 
@@ -10450,7 +10449,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             J_guess = J_fft(t_mod, Delta_mod, pe)
             pe_model.set_param_hint('J', value=J_guess, min=J_guess/J_guess_boundary_scale,
                                     max=J_guess_boundary_scale*J_guess)
-            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary, max=offset_guess_boundary)
+            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
+                                    max=offset_guess_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -10517,7 +10517,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     param_name = [p for p in self.mospm[qbH]
                                   if self.sp.find_parameter(p)][0]
                     ylabel = r'Detuning $\Delta$'
-                    yunit = 'GHz'
+                    yunit = 'Hz'
+                    # ylabel = self.get_yaxis_label(qbH)
                     xvals = self.proc_data_dict['sweep_points_dict'][qbH][
                         'msmt_sweep_points']
                     Delta = self.proc_data_dict['Delta'][qbH]
@@ -10538,9 +10539,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                   self.measurement_strings[qbH]),
                         'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e')}
                     for n in range(num_curves+1):
-                        fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}' #hardcoded
+                        fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}'
                         J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
-                        xvals_fit = self.t_CARB(J, Delta_fine_corrected, n) * 1e-9
+                        xvals_fit = self.t_CARB(J, Delta_fine_corrected, n)
                         self.plot_dicts[f'{fit_plot_name}_main'] = {
                             'plotfn': self.plot_line,
                             'fig_id': base_plot_name,
@@ -10558,13 +10559,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The mathemtical description of this function can be found in Nathan's master thesis for example.
         Parameters
         ----------
-        J: coupling of the 20 and 11 transition in rad/s
-        Delta: Detuning of the qubits during the interaction in rad/s
+        J: coupling of the 20 and 11 transition in Hz
+        Delta: Detuning of the qubits during the interaction in Hz
         n: Number of oscillation for which the interaction time should be calculated (usually you want the shortest
         (n=1)). This is mainly used to allow to plot the different traces in Delta-t-plane
 
         Returns
         -------
-        The interaction time required for an arbitrary C-Phase gate for a given detunin and qubit coupling.
+        The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
-        return n * 2 * np.pi / np.sqrt(4 * (J) ** 2 + (2 * np.pi * Delta) ** 2)
+        return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
