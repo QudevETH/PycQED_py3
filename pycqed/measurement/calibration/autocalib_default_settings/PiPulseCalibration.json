@@ -2,5 +2,12 @@
     "General":{
         "transition_name": "ge"
 
+    },
+
+    "Ramsey": {
+        "delta_t": 200.0e-9,
+        "t0": 60e-9,
+        "n_periods": 5,
+        "pts_per_period": 6
     }
 }

@@ -50,5 +50,17 @@
     },
     "echo_large_AD":{
         "echo":true
+    },
+    "ramsey_small_AD":{
+        "delta_t": 220.0e-9,
+        "t0": 60e-9,
+        "n_periods": 6,
+        "pts_per_period": 15
+    },
+    "ramsey_small_AD_ef":{
+        "delta_t": 209.0e-9,
+        "t0": 60e-9,
+        "n_periods": 6,
+        "pts_per_period": 15
     }
 }
