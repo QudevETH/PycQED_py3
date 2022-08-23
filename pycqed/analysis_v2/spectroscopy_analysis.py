@@ -2159,7 +2159,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
                 It is also possible
             prominence_factor (float, optional): required prominence for the
                 dips used in the dip-finding algorithm, as a fraction of the
-                average of the data.
+                median of the magnitude data.
             max_iterations (int, optional): maximum number of iterations before
                 stopping the algorithm. Defaults to 15.
             iteration_prominence_factor (float, optional): factor that
@@ -2407,9 +2407,9 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             dips_widths (list[float]): width of the dips (in units of
                 samples)
         """
-        # Calculate the average of the magnitude data. The prominence will be
-        # calculated as prominence_factor * average_magn
-        average_magn = np.average(magnitude_data)
+        # Calculate the median of the magnitude data. The prominence will be
+        # calculated as prominence_factor * median_magn
+        median_magn = np.average(magnitude_data)
 
         # Find dips by adjusting the parameters until two peaks are found
         # or the maximum number of iterations is reached
@@ -2420,7 +2420,7 @@ class ResonatorSpectroscopyAnalysis(MultiQubit_Spectroscopy_Analysis):
             # of the data so that dips become peaks
             dips_indices, dips_properties = find_peaks(
                 -magnitude_data,
-                prominence=prominence_factor * average_magn,
+                prominence=prominence_factor * median_magn,
                 **kw)
 
             if len(dips_indices) > ndips:
