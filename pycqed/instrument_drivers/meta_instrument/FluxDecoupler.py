@@ -1,5 +1,5 @@
 import numpy as np
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 from pycqed.instrument_drivers.pq_parameters import InstrumentParameter
 
