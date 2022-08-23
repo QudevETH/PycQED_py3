@@ -8,7 +8,7 @@ from copy import deepcopy
 import time
 from string import ascii_uppercase
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.timer import Timer
+from pycqed.utilities.timer import Timer, TimedMetaClass
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
@@ -85,6 +85,15 @@ class Detector_Function(object):
                             {f'{d["acq_devs"][0]} {d["name"]}': d})
                     else:
                         detectors_dict.update({f'{d["name"]}': d})
+                elif isinstance(d, str):
+                    # In a single detector we only have 'detectors': [self.name]
+                    # This line ensures that each single detector has an item
+                    # 'detector': self.name in its saved metadata, whether or
+                    # not it is contained in a MultiPollDetector.
+                    # This should probably be cleaned up once we start using
+                    # the detector metadata more in the analysis.
+                    detectors_dict = [d]
+                    break
             if len(detectors_dict):
                 det_metadata['detectors'] = detectors_dict
 
@@ -562,11 +571,12 @@ class Function_Detector(Soft_Detector):
 # pycqed.instrument_drivers.acquisition_devices
 # --------------------------------------------
 
-class PollDetector(Hard_Detector):
+class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     """
     Base Class for all polling detectors. A polling detector is one that calls
     the poll method of an acquisition device.
     """
+    TIMED_METHODS = ["prepare"]
 
     def __init__(self, acq_dev=None, detectors=None, **kw):
         """
@@ -604,6 +614,10 @@ class PollDetector(Hard_Detector):
         self.det_from_acq_dev = {k.name: v for k, v in zip(self.acq_devs,
                                                            self.detectors)}
         self.progress_scaling = None
+
+    def prepare(self, sweep_points=None):
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
 
     @Timer()
     def poll_data(self):
@@ -755,28 +769,58 @@ class MultiPollDetector(PollDetector):
     """
     Combines several polling detectors into a single detector.
     """
-    def __init__(self, detectors, **kw):
+    class MultiAWGWrapper:
         """
-        Init of the PollDetector base class.
+        Wrapper to flexibly define the master AWG to be restarted by the
+        detector function.
+
+        This allows for instance to only restart the acquisition device (and
+        not the whole Pulsar) for measurements with only one segment.
+        """
+        def __init__(self, master_awg, awgs=()):
+            self.master_awg = master_awg
+            self.awgs = list(set(awgs))
+
+        def start(self, **kw):
+            for awg in self.awgs:
+                awg.start(**kw)
+            self.master_awg.start(**kw)
+
+        def stop(self):
+            for awg in self.awgs:
+                awg.stop()
+            self.master_awg.stop()
+
+    def __init__(self, detectors, AWG=None, **kw):
+        """
+        Init of the MultiPollDetector base class.
 
         Args
-            detectors (list): poling detectors from this module to be used for
+            detectors (list): polling detectors from this module to be used for
                 acquisition
+            AWG (qcodes instrument): AWG that will be treated as a master AWG
+                by wrapping it in a MultiAWGWrapper together with the AWGs of
+                the individual detectors
 
         Keyword args: passed to parent class
         """
         super().__init__(detectors=detectors, **kw)
-        self.AWG = None
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
 
+        if AWG is not None:  # treat as master AWG
+            self.AWG = self.MultiAWGWrapper(AWG,
+                                            [d.AWG for d in self.detectors])
+        else:
+            self.AWG = None
         for d in self.detectors:
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
             self.live_plot_allowed += [d.live_plot_allowed]
-            if d.AWG is not None:
+            if d.AWG is not None\
+                    and not isinstance(self.AWG, self.MultiAWGWrapper):
                 if self.AWG is None:
                     self.AWG = d.AWG
                 elif self.AWG != d.AWG:
@@ -814,7 +858,6 @@ class MultiPollDetector(PollDetector):
             self.value_names += ['correlation']
             self.value_units += ['']
 
-    @Timer()
     def prepare(self, sweep_points=None):
         """
         Calls the prepare method of each polling detector in self.detectors
@@ -825,6 +868,7 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.detector_control == 'hard' and sweep_points is None:
             raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
@@ -995,7 +1039,6 @@ class AveragingPollDetector(PollDetector):
         self.nr_averages = nr_averages
         self.progress_scaling = nr_averages
 
-    @Timer()
     def prepare(self, sweep_points):
         """
         Prepares instruments for acquisition by calling
@@ -1005,6 +1048,7 @@ class AveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = len(sweep_points)
@@ -1117,7 +1161,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
-        self._set_real_imag(real_imag)
+        self.set_real_imag(real_imag)
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
@@ -1140,7 +1184,7 @@ class IntegratingAveragingPollDetector(PollDetector):
                     new_value_units.append(vu)
             return new_value_names, new_value_units
 
-    def _set_real_imag(self, real_imag=False):
+    def set_real_imag(self, real_imag=False):
         """
         Function so that real_imag can be changed after initialization.
         """
@@ -1215,6 +1259,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         """
         return self.get_values()
 
+    @Timer()
     def prepare(self, sweep_points=None):
         """
         Prepares instruments for acquisition:
@@ -1229,6 +1274,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
+        super().prepare()
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
@@ -1274,6 +1320,85 @@ class IntegratingAveragingPollDetector(PollDetector):
             loop_cnt=int(self.nr_shots * self.nr_averages),
             mode='int_avg', data_type=self.data_type,
         )
+
+
+class ScopePollDetector(PollDetector):
+    """
+    Detector for scope measurements.
+
+    Attributes:
+        data_type (str) :  options are
+            - timedomain: Returns time traces (possibly averaged and/or
+              single-shot)
+            - fft: Returns the absolute value of the Fourier' transform
+                       of the data.
+            - fft_power: Squares the data before averaging and taking the
+                             Fourier' transform.
+    """
+
+    def __init__(self,
+                 acq_dev,
+                 AWG,
+                 channels,
+                 nr_shots,
+                 acquisition_length,
+                 nr_averages,
+                 data_type,
+                 **kw):
+        super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        self.name = f'{data_type}_scope'
+        self.channels = channels
+        self.acquisition_length = acquisition_length
+        self.nr_averages = nr_averages
+        self.data_type = data_type
+        self.AWG = AWG
+        self.nr_sweep_points = None
+        self.values_per_point = 1
+        self.nr_shots = nr_shots
+        if self.data_type == 'timedomain':
+            # Normal number of shots (MC will expect that many timetraces)
+            self.acq_data_len_scaling = self.nr_shots
+        elif self.data_type == 'fft':
+            raise NotImplementedError("Amplitude FFT mode not implemented!")
+        elif self.data_type == 'fft_power':
+            # Multiple shots aren't implemented for power spectrum measurements
+            self.acq_data_len_scaling = 1
+
+    def prepare(self, sweep_points=None):
+
+        super().prepare()
+        if sweep_points is None:
+            sweep_points = self.get_sweep_vals()
+        self.nr_sweep_points = len(sweep_points)
+        if self.data_type == 'fft_power':
+            # Number of points of the spectrum to be returned
+            n_results = self.nr_sweep_points
+        elif self.data_type == 'timedomain':
+            # Meaning 1 timetrace. Could be extended e.g. if hardware allows
+            # TV-mode avg of timetraces
+            n_results = 1
+        else:
+            raise ValueError
+
+        self.acq_dev.acquisition_initialize(
+            channels=self.channels,
+            n_results=n_results,
+            acquisition_length=self.acquisition_length,
+            averages=self.nr_averages,
+            loop_cnt=self.nr_shots * self.nr_averages,
+            mode='scope', data_type=self.data_type,
+        )
+
+    def get_sweep_vals(self):
+        if self.data_type == 'timedomain':
+            return np.arange(0, self.acquisition_length,
+                             1 / self.acq_dev.acq_sampling_rate)
+        elif self.data_type in ('fft', 'fft_power'):
+            return self.acq_dev.get_sweep_points_spectrum(
+                acquisition_length=self.acquisition_length, lo_freq=0)
+        else:
+            raise NotImplementedError(f'ScopePollDetector: data_type'
+                                      f' {self.data_type} not implemented.')
 
 
 class UHFQC_correlation_detector(IntegratingAveragingPollDetector):

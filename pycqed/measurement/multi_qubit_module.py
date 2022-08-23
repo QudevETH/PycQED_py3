@@ -250,6 +250,13 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             raise Exception('Multi qubit detector can not be created with '
                             'multiple pulsar instances')
         AWG = qbAWG
+    trigger_dev = None
+    for qb in qubits:
+        qb_trigger = qb.instr_trigger.get_instr()
+        if trigger_dev is not None and qb_trigger is not trigger_dev:
+            raise Exception('Multi qubit detector can not be created with '
+                            'multiple trigger device instances')
+        trigger_dev = qb_trigger
 
     if df_name == 'int_log_det':
         return det.MultiPollDetector([
@@ -276,15 +283,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
-        # FIXME AWG=AWG unnecessarily slow, should find a way to only
-        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        # Can be used to force a hard sweep by explicitly setting to False
+        kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG,
+                acq_dev=uhf_instances[uhf], AWG=uhf_instances[uhf],
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                real_imag=False, single_int_avg=True, **kw)
-            for uhf in uhfs])
+                real_imag=False, **kw)
+            for uhf in uhfs], AWG=trigger_dev if len(uhfs) > 1 else None)
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
@@ -327,6 +334,24 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], data_type='digitized_corr',
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'timetrace_avg_ss_det':  # ss: single-shot
+        return det.MultiPollDetector([
+            det.ScopePollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
+                nr_shots=nr_shots,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
+                data_type='timedomain',
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'psd_avg_det':
+        return det.MultiPollDetector([
+            det.ScopePollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
+                nr_shots=nr_shots,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
+                data_type='fft_power',
                 **kw)
             for uhf in uhfs])
 
@@ -529,7 +554,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
-                         "data_to_fit": {}
+                         "data_to_fit": {},
+                         "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
             'int_log_det', qubits, nr_shots=n_shots)

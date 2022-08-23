@@ -45,9 +45,9 @@ class Segment:
             name: Name of segment
             pulse_pars_list: list of pulse parameters in the form
                 of dictionaries
-            acquisition_mode (str): This will be copied into the acq key of
-                the element metadata of acquisition elements to inform Pulsar
-                that waveforms need to be programmed in a way that is
+            acquisition_mode (dict or string): This will be copied into the acq
+                key of the element metadata of acquisition elements to inform
+                Pulsar that waveforms need to be programmed in a way that is
                 compatible with the given acquisition mode. Note:
                 - Pulsar may fall back to the default acquisition mode if
                   the given mode is not available or not needed on the used
@@ -56,10 +56,20 @@ class Segment:
                   special acquisition mode need to ensure that other parts of
                   pycqed (e.g., sweep_function) get configured in a
                   compatible manner.
-                Allowed modes currently include:
+                If acquisition_mode is a dict, allowed items currently include:
                 - 'sweeper': use sweeper mode if available (for RO frequency
-                  sweeps, e.g., resonator spectroscopy)
-                - 'default' (default value): normal acquisition elements
+                  sweeps, e.g., resonator spectroscopy).
+                - 'f_start', 'f_step' and 'n_step': Sweep parameters, in the
+                  case of a hardware sweep on the SHFQA.
+                - 'seqtrigger': if True, let the sequencer output an auxiliary
+                  trigger when starting the acquisition
+                - 'default' (default value): if this key is present in
+                  acquisition_mode, indicates a normal acquisition element
+                It can also be a string in older code (note that conditions
+                such as "'sweeper' in acquisition_mode" work in both cases)
+                See
+                :class:`pycqed.measurement.waveform_control.pulsar.SHFQAPulsar`
+                for allowed values.
             fast_mode (bool):  If True, copying pulses is avoided. In this
                 case, the pulse_pars_list passed to Segment will be modified
                 (default: False).
@@ -73,6 +83,7 @@ class Segment:
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
         self.resolved_pulses = []
+        self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self.elements = odict()
         self.element_start_end = {}
@@ -100,6 +111,8 @@ class Segment:
         self._pulse_names = set()
         self.acquisition_elements = set()
         self.acquisition_mode = acquisition_mode
+        self.mod_config = kw.pop('mod_config', dict())
+        self.sine_config = kw.pop('sine_config', dict())
         self.timer = Timer(self.name)
         self.pulse_pars = []
         self.is_first_segment = False
@@ -208,6 +221,7 @@ class Segment:
         self.add_flux_crosstalk_cancellation_channels()
         if self.resolve_overlapping_elements:
             self.resolve_overlap()
+        self.extra_pulses = []
         self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
@@ -225,6 +239,7 @@ class Segment:
 
     def enforce_single_element(self):
         self.resolved_pulses = []
+        default_ese_element = f'default_ese_{self.name}'
         for p in self.unresolved_pulses:
             channels = p.pulse_obj.masked_channels()
             chs_ese = set()
@@ -234,20 +249,21 @@ class Segment:
                     chs_ese.add(ch)
             if len(channels - chs_ese) == 0 and len(chs_ese) != 0:
                 p = deepcopy(p)
-                p.pulse_obj.element_name = f'default_ese_{self.name}'
+                p.pulse_obj.element_name = default_ese_element
                 if p.pulse_obj.codeword == "no_codeword":
                     self.resolved_pulses.append(p)
                 else:
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
+
             elif len(chs_ese) != 0:
                 p0 = deepcopy(p)
                 p0.pulse_obj.channel_mask |= chs_ese
                 self.resolved_pulses.append(p0)
 
                 p1 = deepcopy(p)
-                p1.pulse_obj.element_name = f'default_ese_{self.name}'
+                p1.pulse_obj.element_name = default_ese_element
                 p1.pulse_obj.channel_mask |= channels - chs_ese
                 p1.ref_pulse = p.pulse_obj.name
                 p1.ref_point = 0
@@ -518,6 +534,17 @@ class Segment:
             if last_element in self.acquisition_elements:
                 RO_awg = self.pulsar.get('{}_awg'.format(c))
                 if RO_awg not in comp_dict:
+                    # FIXME We create a segment here, but it will never get
+                    #  triggered because trigger pulses are generated before
+                    #  calling add_charge_compensation. This bug causes
+                    #  hard-to-debug behavior, e.g., when using FP-assisted
+                    #  RO without enabling enforce_single_element for the
+                    #  flux AWG.
+                    log.warning(
+                        'Segment: Creating a separate element for charge '
+                        'compensation. This might let your experiment fail. '
+                        'Have you forgotten to enable enforce_single_element '
+                        'for the flux AWG?')
                     last_element = 'compensation_el{}_{}'.format(
                         comp_i, self.name)
                     comp_dict[RO_awg] = last_element
@@ -538,6 +565,7 @@ class Segment:
             }
             pulse = pl.BufferedSquarePulse(
                 last_element, c, name='compensation_pulse_{}'.format(i), **kw)
+            self.extra_pulses.append(pulse)
             i += 1
 
             # Set the pulse to start after the last pulse of the sequence
@@ -711,6 +739,7 @@ class Segment:
                     channel=ch,
                     name='trigger_pulse_{}'.format(i),
                     **kw)
+                self.extra_pulses.append(trig_pulse)
                 i += 1
                 trig_pulse.algorithm_time(trigger_pulse_time
                                           + kw.get('pulse_delay', 0)
@@ -1297,11 +1326,11 @@ class Segment:
                         # normalize the waveforms
                         amp = self.pulsar.get('{}_amp'.format(c))
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
-                            if np.max(wfs[codeword][c]) > amp:
+                            if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
                                     'Clipping waveform {} > {}'.format(
                                         np.max(wfs[codeword][c]), amp))
-                            if np.min(wfs[codeword][c]) < -amp:
+                            if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
                                     'Clipping waveform {} < {}'.format(
                                         np.min(wfs[codeword][c]), -amp))
@@ -1469,7 +1498,7 @@ class Segment:
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
              show_and_close=True, col_ind=0, normalized_amplitudes=True,
-             save_kwargs=None):
+             save_kwargs=None, figtitle_kwargs=None, sharex=True):
         """
         Plots a segment. Can only be done if the segment can be resolved.
         :param instruments (list): instruments for which pulses have to be
@@ -1500,6 +1529,9 @@ class Segment:
             (default: True)
         :param save_kwargs (dict): save kwargs passed on to fig.savefig if
         "savefig" is True.
+        :param figtitle_kwargs (dict): figure.title kwargs passed on to fig.suptitle if
+        not None
+        :param sharex (bool): whether the xaxis is shared between the subfigures or not
         :return: The figure and axes objects if show_and_close is False,
             otherwise no return value.
         """
@@ -1528,7 +1560,7 @@ class Segment:
                 fig = axes[0,0].get_figure()
                 ax = axes
             else:
-                fig, ax = plt.subplots(nrows=n_instruments, sharex=True,
+                fig, ax = plt.subplots(nrows=n_instruments, sharex=sharex,
                                        squeeze=False,
                                        figsize=(16, n_instruments * 3))
             if prop_cycle is not None:
@@ -1557,10 +1589,16 @@ class Segment:
                                 if channel_map is None:
                                     # plot per device
                                     ax[i, col_ind].set_title(instr)
-                                    ax[i, col_ind].plot(
+                                    artists = ax[i, col_ind].plot(
                                         tvals * 1e6, wf,
                                         label=f"{elem_name[1]}_{k}_{ch}",
                                         **plot_kwargs)
+                                    for artist in artists:
+                                        artist.pycqed_metadata = {'channel': ch,
+                                                                  'element_name': elem_name[1],
+                                                                  'codeword': k,
+                                                                  'instrument': instr,
+                                                                  }
                                 else:
                                     # plot on each qubit subplot which includes
                                     # this channel in the channel map
@@ -1570,11 +1608,17 @@ class Segment:
                                              if f"{instr}_{ch}" in qb_chs}
                                     for qbi, qb_name in match.items():
                                         ax[qbi, col_ind].set_title(qb_name)
-                                        ax[qbi, col_ind].plot(
+                                        artists = ax[qbi, col_ind].plot(
                                             tvals * 1e6, wf,
                                             label=f"{elem_name[1]}"
                                                   f"_{k}_{instr}_{ch}",
                                             **plot_kwargs)
+                                        for artist in artists:
+                                            artist.pycqed_metadata = {'channel': ch,
+                                                                      'element_name': elem_name[1],
+                                                                      'codeword': k,
+                                                                      'instrument': instr,
+                                                                      }
                                         if demodulate: # filling
                                             ax[qbi, col_ind].fill_between(
                                                 tvals * 1e6, wf,
@@ -1599,7 +1643,10 @@ class Segment:
                 else:
                     a.set_ylabel('Voltage (V)')
             ax[-1, col_ind].set_xlabel('time ($\mu$s)')
-            fig.suptitle(f'{self.name}', y=1.01)
+            if figtitle_kwargs:
+                fig.suptitle(f'{self.name}', **figtitle_kwargs)
+            else:
+                fig.suptitle(f'{self.name}', y=1.01)
             try:
                 fig.align_ylabels()
             except AttributeError as e:

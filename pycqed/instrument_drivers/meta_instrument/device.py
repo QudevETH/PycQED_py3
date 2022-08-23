@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -544,7 +544,7 @@ class Device(Instrument):
         # configure channel delays
         channel_delays = self.get_channel_delays()
         for ch, v in channel_delays.items():
-            awg = pulsar.AWG_obj(channel=ch)
+            awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
 
