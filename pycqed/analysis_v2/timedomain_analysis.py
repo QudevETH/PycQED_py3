@@ -10514,45 +10514,73 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             for task in self.get_param_value('task_list'):
                 qbH, qbL = self._get_qbH_qbL(task)
                 if qbH is not None:
-                    base_plot_name = f'Chevron_{qbH}_{qbL}_pe'
-                    xlabel, xunit = self.get_xaxis_label_unit(qbH)
-                    # Find name of 1st sweep point in sweep dimension 1
-                    param_name = [p for p in self.mospm[qbH]
-                                  if self.sp.find_parameter(p)][0]
-                    ylabel = r'Detuning $\Delta$'
-                    yunit = 'Hz'
-                    # ylabel = self.get_yaxis_label(qbH)
-                    xvals = self.proc_data_dict['sweep_points_dict'][qbH][
-                        'msmt_sweep_points']
-                    Delta = self.proc_data_dict['Delta'][qbH]
-                    offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
-                    Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
-                    Delta_fine_corrected = Delta_fine + offset_freq
-                    self.plot_dicts[f'{base_plot_name}_main'] = {
-                        'plotfn': self.plot_colorxy,
-                        'fig_id': base_plot_name,
-                        'xvals': xvals,
-                        'yvals': Delta,
-                        'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'ylabel': ylabel,
-                        'yunit': yunit,
-                        'title': (self.raw_data_dict['timestamp'] + ' ' +
-                                  self.measurement_strings[qbH]),
-                        'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e')}
-                    for n in range(num_curves+1):
-                        fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}'
-                        J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
-                        xvals_fit = self.t_CARB(J, Delta_fine_corrected, n)
-                        self.plot_dicts[f'{fit_plot_name}_main'] = {
-                            'plotfn': self.plot_line,
+                    for actual_detuning in [True, False]:
+                        base_plot_name = f'Chevron_{qbH}_{qbL}_pe_actual' if actual_detuning else \
+                            f'Chevron_{qbH}_{qbL}_pe_expected'
+                        xlabel, xunit = self.get_xaxis_label_unit(qbH)
+                        ylabel = r'Detuning $\Delta$' if actual_detuning else r'Expected detuning $\Delta_{exp}$'
+                        yunit = 'Hz'
+                        # ylabel = self.get_yaxis_label(qbH)
+                        xvals = self.proc_data_dict['sweep_points_dict'][qbH][
+                            'msmt_sweep_points']
+                        Delta = self.proc_data_dict['Delta'][qbH]
+                        offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
+                        Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
+                        J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
+                        offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
+                        t_CZ = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['t_CZ_Chevron']
+                        textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
+                        textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
+                        textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
+                        self.plot_dicts[f'{base_plot_name}_main'] = {
+                            'plotfn': self.plot_colorxy,
                             'fig_id': base_plot_name,
-                            'xvals': xvals_fit,
-                            'yvals': Delta_fine,
-                            'color': 'red',
-                            'marker': 'None',
-                                     }
+                            'xvals': xvals,
+                            'yvals': Delta+offset_freq if actual_detuning else Delta,
+                            'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': ylabel,
+                            'yunit': yunit,
+                            'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                      self.measurement_strings[qbH]),
+                            'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e'),}
+                        for n in range(num_curves+1):
+                            fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
+                                f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
+                            J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
+                            xvals_fit = self.t_CARB(J, Delta_fine, n)  if actual_detuning else \
+                                self.t_CARB(J, Delta_fine + offset_freq, n)
+                            self.plot_dicts[f'{fit_plot_name}_main'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': xvals_fit,
+                                'yvals': Delta_fine,
+                                'color': 'red',
+                                'marker': 'None',
+                                # 'datalabel': None,
+                                         }
+                        self.plot_dicts[f'text_msg_Chevron_{base_plot_name}]'] = {
+                            'fig_id': base_plot_name,
+                            'ypos': -0.2,
+                            'xpos': -0.025,
+                            'horizontalalignment': 'left',
+                            'verticalalignment': 'top',
+                            'color': 'k',
+                            'plotfn': self.plot_text,
+                            'text_string': textstr}
+
+                        for negative_J in [True, False]:
+                            self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': xvals,
+                                'yvals': J*np.ones(len(xvals)) * (-1) ** negative_J - offset_freq * (1-actual_detuning),
+                                'color': 'white',
+                                'marker': 'None',
+                                # 'setlabel': 'J',
+                                # 'do_legend': True, #FIXME: this also makes a legend for the fit lines
+                            }
 
     @staticmethod
     def t_CARB(J, Delta, n):
