@@ -1127,15 +1127,14 @@ class fd_combine(CombiningNode):
 
 class fd_elementwise_norm(CombiningNode):
     empty_output = ((), ())
-    def __init__(self, data_dict, keys_in, keys_out, **params):
-        super().__init__(data_dict, keys_in=keys_in, keys_out=keys_out,
-                         **params)
 
     @staticmethod
     def node_action(data_in):
-        print([d for d in data_in])
         if np.array(data_in[0]).ndim == 2:
-            # FIXME: check that time vals are the same in all inputs
+            for i in range(1, len(data_in)):
+                if not all(data_in[0][0] == data_in[i][0]):
+                    raise ValueError('The time values should be the same for '
+                                     'all traces.')
             data = [data_in[0][0],
                     np.linalg.norm([d[1] for d in data_in], axis=0)]
         else:
