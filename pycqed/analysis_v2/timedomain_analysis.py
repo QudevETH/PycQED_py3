@@ -10418,9 +10418,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
             device_name = self.get_param_value('device_name')
             if device_name is None:
-                device_name = self.get_instruments_by_class(
-                    'pycqed.instrument_drivers.meta_instrument.device.Device',
-                    hdf_file_index)[0]
+                try:
+                    device_name = self.get_instruments_by_class(
+                        'pycqed.instrument_drivers.meta_instrument.device.Device',
+                        hdf_file_index)[0]
+                except KeyError:
+                    print('For old data, the device name has to be given as an input "device_name" ')
+                    raise
 
             amp = self.get_hdf_param_value("Instrument settings/" + device_name,
                                            f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
