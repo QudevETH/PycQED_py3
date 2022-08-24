@@ -10274,8 +10274,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
         'model': model used to calculate voltage to qubit frequency
         'J_guess_boundary_scale': the limits for the fit of J are: (default: 2)
-            [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by a FFT (see below)
-        'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 0.5)
+            [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by the function J_fft
+        'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 2e8)
+        'steps': number of evaulations used for the fitting, default 1e8, dual_annealing default 1e7
     """
     def extract_data(self):
         super().extract_data()
@@ -10473,7 +10474,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
                 'fit_yvals': {'data': pe_flat},
                 'method': 'dual_annealing',
-                'guess_pars': guess_pars}
+                'guess_pars': guess_pars,
+                'steps': self.get_param_value('steps', 1e8), # default for dual annealing is 1e7
+            }
 
         for task in self.get_param_value('task_list'):
             qbH_name, qbL_name = self._get_qbH_qbL(task)
