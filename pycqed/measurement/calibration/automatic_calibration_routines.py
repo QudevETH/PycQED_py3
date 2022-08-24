@@ -4048,8 +4048,9 @@ class MixerCalibrationCarrier(IntermediateStep):
 
 
 class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
-    """Intermediate step that sets ro-temporary values for a step of the
-    routine.
+    """Intermediate step that sets the temporary values for flux-pulse-assisted
+    readout for a step of the routine. The step will modify the temporary
+    values of the step at the specified index.
     """
     def __init__(
         self,
@@ -4059,15 +4060,22 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
         """Initialize the SetTemporaryValuesFluxPulseReadOut step.
 
         Args:
-            routine (Step): Routine object.
+            routine (Step): Routine object. The routine should be the parent of
+                the step that requires temporary values for flux-pulse-assisted
+                readout.
             index (int): Index of the step in the routine that requires
-                temporary values for flux-pulse assisted read-out.
+                temporary values for flux-pulse-assisted readout.
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
-            flux_park (float): Flux to calculate the the ro-temporary value to
-                set.
-            voltage_park (float): Value of the ro-temporary value to set.
+            flux_park (float): Flux at which the qubit should be parked for
+                flux-pulse-assisted readout. The voltage will be calculated
+                using calculate_voltage_from_flux. If None, voltage_park will be
+                used.
+            voltage_park (float): Voltage at which the qubit should be parked
+                for flux-pulse-assisted readout. If flux_park is not None,
+                voltage_park will not be considered. If voltage_park is also
+                None, a ValueError will be raised.
         """
         super().__init__(
             index=index,
