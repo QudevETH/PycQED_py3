@@ -28,7 +28,7 @@ try:
     from pycqed.utilities import devicedb
     from pycqed.utilities.devicedb import utils as db_utils
 except ModuleNotFoundError:
-    log.warning("The module 'device-db-client' was not successfully imported. "
+    log.info("The module 'device-db-client' was not successfully imported. "
         "The device database features will not be available.")
     _device_db_client_module_missing = True
 else:
