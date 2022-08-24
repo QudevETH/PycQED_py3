@@ -206,7 +206,7 @@ class ZIPulsarMixin:
 
     def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                             prepend_zeros=0, placeholder_wave=False,
-                            allow_filter=False, negate_q=False):
+                            allow_filter=False):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -214,8 +214,6 @@ class ZIPulsarMixin:
         if prepend_zeros:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self._zi_waves_to_wavenames(wave)
-        if w2 is not None and negate_q:
-            w2 = f"(-({w2}))"
         use_hack = True # set this to false once the bugs with HDAWG are fixed
         playback_string += self._zi_wait_trigger(name, device)
 
