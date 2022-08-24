@@ -76,12 +76,12 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
 
 def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
                                qbc_name, qbt_name, save_fig=True, show=True,
-                               plot_guess=False, timestamp=None):
+                               plot_guess=False, timestamp=None, phi=180):
 
     sweep_param_name = list(soft_sweep_params_dict)[0]
     sweep_points = soft_sweep_params_dict[sweep_param_name]['values']
     unit = soft_sweep_params_dict[sweep_param_name]['unit']
-    best_val = fit_res.model.func(np.pi, **fit_res.best_values)
+    best_val = fit_res.model.func(phi*np.pi/180, **fit_res.best_values)
     fit_points_init = fit_res.model.func(cphases, **fit_res.init_values)
     fit_points = fit_res.model.func(cphases, **fit_res.best_values)
 
@@ -91,7 +91,7 @@ def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
     if plot_guess:
         ax.plot(cphases*180/np.pi, fit_points_init, '--k')
     ax.hlines(best_val, cphases[0]*180/np.pi, cphases[-1]*180/np.pi)
-    ax.vlines(180, sweep_points.min(), sweep_points.max())
+    ax.vlines(phi, sweep_points.min(), sweep_points.max())
     ax.set_ylabel('Flux pulse {} ({})'.format(sweep_param_name, unit))
     ax.set_xlabel('Conditional phase (deg)')
     ax.set_title('CZ {}-{}'.format(qbc_name, qbt_name))
