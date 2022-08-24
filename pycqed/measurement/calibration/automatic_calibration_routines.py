@@ -1082,6 +1082,7 @@ class AutomaticCalibrationRoutine(Step):
         dev,
         routine=None,
         autorun=True,
+        virtual_setup=False,
         **kw,
     ):
         """Initializes the routine.
@@ -1091,6 +1092,12 @@ class AutomaticCalibrationRoutine(Step):
             autorun (bool): If True, the routine will be run immediately after
                 initialization.
             routine (Step): The parent routine of the routine.
+            virtual_setup (bool): Whether the routine is going to be run on a
+                virtual setup. Defaults to False.
+                When 'update' is False, the original settings are reloaded via
+                reload_settings. For a virtual setup, this might cause errors
+                when calling configure_pulsar. If virtual_setup=True,
+                reload_settings will not raise these errors.
 
         Keyword Arguments:
             qubits (list): List of qubits to be used in the routine
@@ -1107,6 +1114,7 @@ class AutomaticCalibrationRoutine(Step):
 
         self.kw = kw
         self.autorun = autorun
+        self.virtual_setup = virtual_setup
         # Call Step constructor
         super().__init__(dev, routine, **kw)
 
@@ -1548,6 +1556,7 @@ class AutomaticCalibrationRoutine(Step):
                 qubits=self.qubits,
                 dev=self.dev,
                 DCSources=self.DCSources,
+                virtual_setup=self.virtual_setup
             )
 
     def create_initial_parameters(self):
