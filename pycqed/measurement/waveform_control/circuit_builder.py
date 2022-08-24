@@ -239,7 +239,7 @@ class CircuitBuilder:
             factor = -1 if op_name[0] == 'm' else 1
             if factor == -1:
                 op_name = op_name[1:]
-            if len(op_name.split(':'))>1:  # format 'CZ_name:function
+            if len(op_name.split(':'))>1:  # format 'Name:Function
                 # print("parameterised pulse")
                 pulse_name, angle = op_name.split(':')
                 # Parse param
@@ -260,7 +260,7 @@ class CircuitBuilder:
                 # print(f"angle = {angle}")
                 cphase = ParametricValue(
                     param, func=func, op_split=(op_name, op_info[1]))
-            elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'name:val
+            elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'NameVal
                 pulse_name = op_name.rstrip('0123456789.')
                 angle = float(op_name[len(pulse_name):])
                 cphase = angle
