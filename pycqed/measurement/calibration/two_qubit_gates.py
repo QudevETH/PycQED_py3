@@ -231,7 +231,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # task-specific sweep_points.
         self.sweep_points = SweepPoints(given_sweep_points)
         # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-        while len(self.sweep_points) < 2:
+        while len(self.sweep_points) < (2 if self.force_2D_sweep else 1):
             self.sweep_points.add_sweep_dimension()
         preprocessed_task_list = []
         for task in self.task_list:
@@ -420,7 +420,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             # Create a single segement if no hard sweep points are provided.
             self.sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
                                                   dimension=0)
-        if len(self.sweep_points[1]) == 0:
+        if self.force_2D_sweep and len(self.sweep_points[1]) == 0:
             # Internally, 1D and 2D sweeps are handled as 2D sweeps.
             # With this dummy soft sweep, exactly one sequence will be created
             # and the data format will be the same as for a true soft sweep.
@@ -1625,7 +1625,8 @@ class Chevron(CalibBuilder):
         if 'options_dict' not in analysis_kwargs:
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
-            analysis_kwargs['options_dict']['TwoD'] = True
+            if len(self.sweep_points) == 2:
+                analysis_kwargs['options_dict']['TwoD'] = True
         self.analysis = tda.MultiQubit_TimeDomain_Analysis(
             qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)
