@@ -838,7 +838,7 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
         if analysis_kwargs is None:
             analysis_kwargs = {}
         analysis_kwargs['feedlines_qubits'] = self.feedlines
-        self.analysis = spa.ResonatorSpectroscopyAnalysis(**analysis_kwargs)
+        self.analysis = spa.FeedlineSpectroscopyAnalysis(**analysis_kwargs)
         return self.analysis
 
 
@@ -940,12 +940,8 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         if analysis_kwargs is None:
             analysis_kwargs = {}
 
-        # Separate qubits in different feedlines
-        # FIXME: to be modified if a flux sweep for the whole feedline is
-        # implemented. Here it is assumed that there is one qubit per feedline
-        feedlines_qubits = [[qb] for qb in self.qubits]
         self.analysis = spa.ResonatorSpectroscopyFluxSweepAnalysis(
-            feedlines_qubits=feedlines_qubits, **analysis_kwargs)
+            **analysis_kwargs)
         return self.analysis
 
 
