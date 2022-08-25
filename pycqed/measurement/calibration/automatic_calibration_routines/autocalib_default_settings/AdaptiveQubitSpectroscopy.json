@@ -1,0 +1,50 @@
+{
+    "General":{
+        "n_spectroscopies": 3,
+        "max_iterations": 2,
+        "auto_repetition_settings": true,
+        "max_waiting_seconds": 60
+    },
+
+    "QubitSpectroscopy1D":{
+        "pts": 200
+    },
+
+    "qubit_spectroscopy_1": {
+        "spec_power": 15,
+        "qubits": {
+            "qb2": {
+                "spec_power": 19,
+                "freq_range": 220e6
+            }
+        }
+    },
+
+    "qubit_spectroscopy_1_repetition_2": {
+        "spec_power": 20,
+        "qubits": {
+            "qb2": {
+                "spec_power": 19,
+                "freq_range": 220e6
+            }
+        }
+    },
+
+    "qubit_spectroscopy_2": {
+        "spec_power": -10,
+        "qubits": {
+            "qb2": {
+                "spec_power": 9
+            }
+        }
+    },
+
+    "qubit_spectroscopy_3": {
+        "spec_power": -15,
+        "qubits": {
+            "qb2": {
+                "spec_power": -16
+            }
+        }
+    }
+}

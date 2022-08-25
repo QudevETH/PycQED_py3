@@ -1,0 +1,16 @@
+{
+    "freq_range": 100e6,
+    "spec_power": -15,
+    "pts": 50,
+    "qubits": {
+        "qb1": {
+            "freq_range": 150e6,
+            "spec_power": -18,
+            "freq_center": 6.1e9
+        },
+        "qb2": {
+            "freq_range": 300e6,
+            "spec_power": -16
+        }
+    }
+}

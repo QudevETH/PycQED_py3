@@ -21,6 +21,8 @@
         "df_name": "int_avg_det",
         "configure_mux_readout": true,
         "configure_mux_drive": true
+
+
     },
     "Rabi":{
         "clip_drive_amp": true,
@@ -29,36 +31,24 @@
     },
     "SQCPreparation":{
         "trigger_pulse_period": 300e-6,
-        "reset_to_defaults": false,
+        "reset_to_defaults": true,
         "preparation_type": "wait",
         "acq_weights_type":"SSB"
     },
     "ramsey_large_AD":{
-        "delta_t": 150.0e-9,
+        "delta_t": 210.0e-9,
         "t0": 60e-9,
         "n_periods": 6,
-        "pts_per_period": 5
+        "pts_per_period": 15
     },
     "echo_small_AD":{
         "delta_t": 40e-6,
         "t0": 60e-9,
-        "n_periods": 20,
+        "n_periods": 6,
         "pts_per_period": 5,
         "echo":true
     },
     "echo_large_AD":{
         "echo":true
-    },
-    "ramsey_small_AD":{
-        "delta_t": 30e-6,
-        "t0": 60e-9,
-        "n_periods": 15,
-        "pts_per_period": 5
-    },
-    "ramsey_small_AD_ef":{
-        "delta_t": 15e-6,
-        "t0": 60e-9,
-        "n_periods": 10,
-        "pts_per_period": 5
     }
 }

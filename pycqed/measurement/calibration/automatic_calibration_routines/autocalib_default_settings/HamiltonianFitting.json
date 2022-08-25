@@ -7,7 +7,7 @@
         "autorun": false,
         "delegate_plotting": false,
         "anharmonicity": -175e6,
-        "Ej_max": 30e9,
+        "Ej_max": 20e9,
         "E_c": 175e6,
         "asymmetry": 0.5,
         "coupling": 250e6,
@@ -25,17 +25,19 @@
     },
     "FindFrequency": {
         "General":{
-            "allowed_delta_f": 0.5e6,
+            "allowed_delta_f": 0.05e6,
             "max_iterations": 2
         }
     },
     "DetermineModel": {
         "method": "Nelder-Mead",
+
         "include_reparkings": true,
         "include_resonator": false,
         "use_prior_model": false
     },
     "determine_model_final":{
+
         "include_reparkings": false,
         "include_resonator": true,
         "use_prior_model": true
@@ -45,7 +47,12 @@
         "flux": null,
         "voltage": null
     },
+
     "UpdateFluxToVoltage": {
         "flux": null
+    },
+    "SetTemporaryValuesFluxPulseReadOut": {
+        "flux_park":1,
+        "voltage_park":1
     }
 }

@@ -48,21 +48,15 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS).
-    For the remaining fluxes and transitions specified in "measurements" the
-    following step will be run:
-        6) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
-            midpoint.
-        7) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
-            the qubit at the midpoint by using the preliminary Hamiltonian
-            model.
-        8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
-            sets temporary bias voltage for flux-pulse-assisted readout.
-        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine
-        ...
-    Afterwards, the final model is determined:
+    6) SetBiasVoltage (set_bias_voltage_3): sets the bias voltage at the
+        midpoint.
+    7) UpdateFrequency (update_frequency_ge_3): updates the frequency of the
+        qubit at the midpoint by using the preliminary Hamiltonian model.
+    8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
+        sets temporary bias voltage for flux-pulse-assisted readout.
+    9) FindFrequency (find_frequency_ge_3): see corresponding routine
     10) DetermineModel (determine_model_final): fits a Hamiltonian model based
-        on the transition frequencies at the fluxes specified in "measurements".
-        By default they are:
+        on four transition frequencies:
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS)
@@ -304,16 +298,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                   step_settings)
 
                     # Finding the ge-transition frequency at this voltage
-                    step_label = 'find_frequency_' + transition + '_' + str(i)
                     find_freq_settings = {
-                        'settings':{
-                            step_label: {
-                                "General":{
-                                    "transition_name": transition,
-                                }
-                            }
-                        }
+                        "transition_name": transition,
                     }
+                    step_label = 'find_frequency_' + transition + '_' + str(i)
                     self.add_step(
                         FindFrequency,
                         step_label,
@@ -367,17 +355,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     self.add_step(self.UpdateFrequency, step_label,
                                   step_settings)
 
+                    find_freq_settings = {
+                        "transition_name": transition,
+                    }
                     # Finding the ef-frequency
                     step_label = "find_frequency_" + transition
-                    find_freq_settings = {
-                        'settings':{
-                            step_label: {
-                                "General":{
-                                    "transition_name": transition,
-                                }
-                            }
-                        }
-                    }
                     self.add_step(
                         FindFrequency,
                         step_label,
@@ -452,7 +434,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         step_label: {
                             'transition_name': transition
                         }
-                    }}
+                    }},
+                    step_tmp_vals=ro_flux_tmp_vals(qubit,
+                                                   v_park=voltage_guess,
+                                                   use_ro_flux=True),
                 )
 
         # Determining final model based on all data
@@ -1154,16 +1139,14 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
-            flux_park (float): Flux at which the qubit is going to be parked
-                at the moment the readout happens. The corresponding voltage
-                will be calculated using qb.calculate_voltage_from_flux.
-                The voltage value will be used to calculate the temporary value
-                for flux-pulse-assisted readout using ro_flux_tmp_vals.
-                If None, voltage_park will be used.
-            voltage_park (float): Voltage at which the qubit will be parked
-                at the moment the readout happens. This is only used if
-                flux_park is None. If voltage_park is also None, a
-                ValueError will be raised.
+            flux_park (float): Flux at which the qubit should be parked for
+                flux-pulse-assisted readout. The voltage will be calculated
+                using calculate_voltage_from_flux. If None, voltage_park will be
+                used.
+            voltage_park (float): Voltage at which the qubit should be parked
+                for flux-pulse-assisted readout. If flux_park is not None,
+                voltage_park will not be considered. If voltage_park is also
+                None, a ValueError will be raised.
         """
         super().__init__(
             index=index,

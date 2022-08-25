@@ -3,6 +3,5 @@
     "v_high": 1,
     "pts": 31,
     "n": 1,
-    "clip_drive_amp": false,
-    "max_drive_amp": 0.5
+    "clip_drive_amp": false
 }

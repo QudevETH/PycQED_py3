@@ -7,7 +7,5 @@
 "default_ef_sigma": 10e-9,
 "acq_averages":4096,
 "verbose": true,
-"save_instrument_settings":false,
-"drive_lo_freqs": {},
-"ro_lo_freqs": {}
+"save_instrument_settings":false
 }
