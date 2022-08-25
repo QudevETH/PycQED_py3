@@ -661,6 +661,22 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 sgchannel.sines[0].q.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
+        """upload waveforms with Zurich Instrument API
+
+        Arguments:
+            awg_nr (int): output channel number to upload the waveform
+            wave_idx (int): index assigned to the current wave
+            wave_hashes (tuple): tuple in groups of four. Each element
+                corresponds to an analog or marker channel. The elements are
+                organized in order (analog_i, marker1, analog_q, marker2).
+            waveforms (dict): an overall dictionary of waveforms, specified
+                bit-wise and indexed by their hash values.
+
+        Returns:
+            None
+        """
+
+        # check if the waveform has been uploaded
         if self.pulsar.use_sequence_cache():
             if wave_hashes == self._shfsg_waveform_cache[
                 f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
@@ -671,8 +687,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 wave_idx] = wave_hashes
         log.debug(
             f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+
+        # take the waves specified for this channel from the overall wave dict
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
+
+        # harmonize the wave lengths to the longest waveform
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
+
         if m1 is not None and a1 is None:
             a1 = np.zeros(n)
         if m1 is None and a1 is None and (m2 is not None or a2 is not None):
