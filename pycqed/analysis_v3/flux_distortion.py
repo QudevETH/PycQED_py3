@@ -1125,6 +1125,23 @@ class fd_combine(CombiningNode):
         return data
 
 
+class fd_elementwise_norm(CombiningNode):
+    empty_output = ((), ())
+
+    @staticmethod
+    def node_action(data_in):
+        if np.array(data_in[0]).ndim == 2:
+            for i in range(1, len(data_in)):
+                if not all(data_in[0][0] == data_in[i][0]):
+                    raise ValueError('The time values should be the same for '
+                                     'all traces.')
+            data = [data_in[0][0],
+                    np.linalg.norm([d[1] for d in data_in], axis=0)]
+        else:
+            data = np.linalg.norm([d for d in data_in], axis=0)
+        return data
+
+
 def export_IIR_coeffs(IIR_filter_coeffs_dict, fluxline='FL_XY',
                       awg_channel=None, step_resp_filename=None, folder=None):
     '''
