@@ -23,10 +23,10 @@ class VC707(VC707_core, AcquisitionDevice):
                      # 'scope': [],
                      }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, verbose=False, **kwargs):
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
-        self.initialize()
+        self.initialize(verbose=True if verbose else False)
         self._acq_integration_weights = {}
         self._last_traces = []
 
