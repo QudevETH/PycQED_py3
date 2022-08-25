@@ -67,7 +67,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                          df_kwargs=df_kwargs, **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
-        self.sweep_points_pulses = SweepPoints(min_length=2, )
+        self.sweep_points_pulses = SweepPoints(
+            min_length=2 if self.force_2D_sweep else 1)
         """sweep points that are passed to sweep_n_dim and used to generate
         segments. This reduced set is introduce to prevent that a segment
         is generated for every frequency sweep point.
@@ -89,7 +90,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             # Create a single segement if no hard sweep points are provided.
             self.sweep_points_pulses.add_sweep_parameter('dummy_hard_sweep',
                                                          [0], dimension=0)
-        if len(self.sweep_points_pulses[1]) == 0:
+        if self.force_2D_sweep and len(self.sweep_points_pulses[1]) == 0:
             # Internally, 1D and 2D sweeps are handled as 2D sweeps.
             # With this dummy soft sweep, exactly one sequence will be created
             # and the data format will be the same as for a true soft sweep.
