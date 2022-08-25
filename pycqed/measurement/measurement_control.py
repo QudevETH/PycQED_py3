@@ -103,6 +103,12 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Bool(),
                            initial_value=live_plot_enabled)
+        self.add_parameter(
+            'live_plot_2D_update', parameter_class=ManualParameter,
+            vals=vals.Enum('on', 'row', 'off'), initial_value='on',
+            docstring='Whether the 2D plotmon should be updated whenever new '
+                      'data is available ("on"), only once per row ("row"), '
+                      'or not at all ("off").')
         self.add_parameter('plotting_interval',
                            unit='s',
                            vals=vals.Numbers(min_value=0.001),
@@ -1285,7 +1291,7 @@ class MeasurementControl(Instrument):
         Made to work with at most 2 2D arrays (as this is how the labview code
         works). It should be easy to extend this function for more vals.
         '''
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
             try:
                 self.time_last_2Dplot_update = time.time()
                 self._plotmon_axes_info = self._get_plotmon_axes_info()
@@ -1316,7 +1322,7 @@ class MeasurementControl(Instrument):
         Adds latest measured value to the TwoD_array and sends it
         to the QC_QtPlot.
         '''
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
             try:
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
@@ -1330,7 +1336,9 @@ class MeasurementControl(Instrument):
                 if (time.time() - self.time_last_2Dplot_update >
                         self.plotting_interval()
                         or self.iteration == len(self.sweep_points) or
-                        force_update):
+                        force_update) and (
+                        self.live_plot_2D_update() != 'row'
+                        or (not (self.iteration + 1) % self.xlen)):
                     self.time_last_2Dplot_update = time.time()
                     self.secondary_QtPlot.update_plot()
             except Exception as e:
@@ -1582,7 +1590,7 @@ class MeasurementControl(Instrument):
         Note that the plotmon only supports evenly spaced lattices.
         '''
         try:
-            if self._live_plot_enabled():
+            if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
