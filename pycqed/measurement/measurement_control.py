@@ -1329,6 +1329,7 @@ class MeasurementControl(Instrument):
             except Exception as e:
                 log.warning(traceback.format_exc())
 
+    @Timer()
     def update_plotmon_2D(self, force_update=False):
         '''
         Adds latest measured value to the TwoD_array and sends it
@@ -1595,6 +1596,7 @@ class MeasurementControl(Instrument):
             except Exception as e:
                 log.warning(traceback.format_exc())
 
+    @Timer()
     def update_plotmon_2D_hard(self):
         '''
         Adds latest datarow to the TwoD_array and send it
