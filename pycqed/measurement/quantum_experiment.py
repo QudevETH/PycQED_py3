@@ -95,7 +95,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 be measured (typical use case: calibration points, i.e.,
                 let n_0 be the number of sweep pooints without calibration
                 points).
-                The lower-level implementation in FilteredSweep and Pulsar
+                In case of a hard sweep in dimension 0, the lower-level
+                implementation in FilteredSegmentSweep and Pulsar
                 currently only supports a single consecutive range of
                 segments to be measured in each row of this array (plus the
                 segments with index >n_0, which are always measured). To
@@ -631,7 +632,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 log.warning("Combining compression_seg_lim and "
                             "filter_segments_mask is not supported. Ignoring "
                             "filter_segments_mask.")
-            elif self.filter_segments_mask is not None:
+            elif (self.filter_segments_mask is not None and
+                  sweep_func_1st_dim.sweep_control == 'hard'):
                 mask = np.array(self.filter_segments_mask)
                 # Only segments with indices included in the mask can be
                 # filtered out. The others will always be measured.
@@ -660,8 +662,15 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     else:
                         # measure nothing (by setting last < first)
                         filter_lookup[sp] = (1, 0)
-                sweep_func_2nd_dim = swf.FilteredSweep(
+                sweep_func_2nd_dim = swf.FilteredSegmentSweep(
                         self.sequences[0], filter_lookup, [sweep_func_2nd_dim])
+            elif self.filter_segments_mask is not None:
+                mask = np.array(self.filter_segments_mask)
+                filter_lookup = {
+                    mcp: mask[:, i] if i < mask.shape[1] else []
+                    for i, mcp in enumerate(self.mc_points[1])}
+                sweep_func_2nd_dim = swf.FilteredSoftSweep(
+                    filter_lookup, [sweep_func_2nd_dim])
 
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])

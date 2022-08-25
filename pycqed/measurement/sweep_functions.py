@@ -580,7 +580,7 @@ class MajorMinorSweep(Soft_Sweep):
         return True
 
 
-class FilteredSweep(multi_sweep_function):
+class FilteredSegmentSweep(FilteredSweep):
     """
     Records only a specified consecutive subset of segments of a
     SegmentHardSweep for each soft sweep point while performing the soft
@@ -627,6 +627,27 @@ class FilteredSweep(multi_sweep_function):
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
                                range(a)]
+
+
+class FilteredSoftSweep(multi_sweep_function):
+    """For each dim-1 sweep point, record only a subset of dim-0 soft sweep
+    points while performing the dim-1 soft sweep defined in sweep_functions.
+
+    (further parameters as in multi_sweep_function)
+    :param filter_lookup: (dict) A dictionary where each key is a dimension 1
+        sweep point and the corresponding value is a mask (list of bool)
+        indicating which dimension 0 sweep points should be recorded.
+    """
+    def __init__(self, filter_lookup, sweep_functions: list, **kw):
+        self.filter_lookup = filter_lookup
+        self.filtered_sweep = None
+        super().__init__(sweep_functions, **kw)
+
+    def set_parameter(self, val):
+        super().set_parameter(val)
+        # The filtered_sweep property stores a mask indicating which
+        # sweep points of dimension 0 MC should record.
+        self.filtered_sweep = self.filter_lookup.get(val, [])
 
 
 class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):

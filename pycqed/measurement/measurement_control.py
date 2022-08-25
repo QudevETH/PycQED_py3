@@ -465,7 +465,7 @@ class MeasurementControl(Instrument):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
             for i, sweep_point in enumerate(self.sweep_points):
-                self.measurement_function(sweep_point)
+                self.measurement_function(sweep_point, index=i)
 
     def measure_soft_adaptive(self, method=None):
         '''
@@ -604,7 +604,7 @@ class MeasurementControl(Instrument):
         self.print_progress()
         return new_data
 
-    def measurement_function(self, x):
+    def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
         '''
@@ -613,6 +613,7 @@ class MeasurementControl(Instrument):
         if np.size(x) != len(self.sweep_functions):
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
+        filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
@@ -634,7 +635,7 @@ class MeasurementControl(Instrument):
             else:
                 # start_idx -1 refers to the last written value
                 prev_swp_pt = self.last_sweep_pts[::-1][i]
-                if swp_pt != prev_swp_pt:
+                if swp_pt != prev_swp_pt and not filter_out:
                     # only set if not equal to previous point
                     try:
                         set_val = sweep_function.set_parameter(swp_pt)
@@ -652,13 +653,24 @@ class MeasurementControl(Instrument):
                     # intended. This does require custom support from
                     # a sweep function.
                     x[-i] = set_val
+            if index is not None and i == len(self.sweep_functions) - 2:
+                fsw = getattr(sweep_function, 'filtered_sweep', None)
+                if fsw is not None:
+                    xindex = index % self.xlen
+                    filter_out = (xindex < len(fsw) and not fsw[xindex])
         
         # used for next iteration
-        self.last_sweep_pts = x
+        if filter_out and self.iteration > 0:
+            self.last_sweep_pts[:-1] = x[:-1]
+        else:
+            self.last_sweep_pts = x
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
-        vals = self.detector_function.acquire_data_point()
+        if filter_out:
+            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+        else:
+            vals = self.detector_function.acquire_data_point()
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
