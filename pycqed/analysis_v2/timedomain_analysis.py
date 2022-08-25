@@ -8842,8 +8842,10 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            det = list(det_metadata.get('detectors', {}).values())[0]
-            nr_averages = det.get('nr_averages', det.get('nr_shots', None))
+            nr_averages = det_metadata.get('nr_averages', det_metadata.get('nr_shots', None))
+            if nr_averages is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
         if nr_averages is None:
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
