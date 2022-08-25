@@ -169,7 +169,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         use_placeholder_waves = self.pulsar\
             .get(f"{self.awg.name}_use_placeholder_waves")
         if not use_placeholder_waves:
-            if not self.zi_waves_cleared:
+            if not self.zi_waves_clean():
                 self._zi_clear_waves()
 
         def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
