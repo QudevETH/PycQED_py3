@@ -1548,6 +1548,7 @@ class AutomaticCalibrationRoutine(Step):
                 qubits=self.qubits,
                 dev=self.dev,
                 DCSources=self.DCSources,
+                fluxlines_dict=self.kw.get("fluxlines_dict")
             )
 
     def create_initial_parameters(self):
@@ -3115,6 +3116,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
         # Routine attributes
         self.fluxlines_dict = fluxlines_dict
+        # Retrieve the DCSources from the fluxlines_dict. These are necessary
+        # to reload the pre-routine settings when update=False
+        self.DCSources = []
+        for qb in self.dev.qubits:
+            dc_source = self.fluxlines_dict[qb.name].instrument
+            if dc_source not in self.DCSources:
+                self.DCSources.append(dc_source)
 
         self.measurements = {
             float(k): tuple(transition_to_str(t) for t in v)
