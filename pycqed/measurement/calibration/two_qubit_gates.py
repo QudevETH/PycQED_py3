@@ -424,8 +424,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
-        kw['ro_qubits'] = [m for m in self.meas_obj_names if f'RO {m}'
-                           not in op_codes]
+        kw['ro_qubits'] = [m for m in self.meas_obj_names
+                           if f'RO {m}' not in op_codes
+                           and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(self.sweep_points,
                                 body_block=self.all_main_blocks,
