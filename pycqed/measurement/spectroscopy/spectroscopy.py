@@ -785,7 +785,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 pulsar = qb.instr_pulsar.get_instr()
                 id = pulsar.get(f"{qb.ge_I_channel()}_id")
                 awg = pulsar.get(f"{qb.ge_I_channel()}_awg")
-                sg_channel = pulsar.awg_intefaces[awg].awg.sgchannels[int(id[2]) - 1]
+                sg_channel = \
+                    pulsar.awg_interfaces[awg].awg.sgchannels[int(id[2]) - 1]
                 qb_awg_synth = f"{awg}_synth{sg_channel.synthesizer()}"
                 if qb_awg_synth not in self.grouped_tasks:
                     self.grouped_tasks[qb_awg_synth] = [task]
