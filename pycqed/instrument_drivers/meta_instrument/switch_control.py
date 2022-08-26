@@ -2,7 +2,7 @@ import time
 import numpy as np
 import qcodes as qc
 from qcodes import validators as vals
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from copy import copy, deepcopy
 
 # driver for NationalInstruments USB6501
