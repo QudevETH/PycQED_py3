@@ -2125,7 +2125,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
     Finds a specified number of dips in a 1D resonator spectroscopy and their
     widths. The most prominent dips are selected.
-    The dip-finding algorithm is based on SciPy's find_peaks(). 
+    The dip-finding algorithm is based on SciPy's find_peaks().
     """
 
     def __init__(self,
@@ -2149,7 +2149,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 in a MultiTaskingExperiment. In this case, each entry will be
                 used to analyze one experiment.
             expected_dips_width (float): expected width (in Hz) of the dips.
-                This parameter is used to calculate wlen, i.e., the window 
+                This parameter is used to calculate wlen, i.e., the window
                 length to calculate the prominence of each dip.
                 NOTE: In order to select the dips based on their widths,
                 the parameter 'width' should be used instead.
@@ -2293,9 +2293,9 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
         """
         Finds the 'ndips' most prominent dips in a 1D resonator spectroscopy,
         using 'expected_dips_width' to compute the window length for the
-        calculation of dips prominence.
+        calculation of the dips prominence.
         See SciPy's find_peaks() documentation for more information about
-        prominence calculation. 
+        prominence calculation.
 
         Args:
             frequency_data (np.array, 1D): frequency sweep points.
@@ -2303,7 +2303,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 as a function of frequency.
             ndips (int): number of dips that will be searched.
             expected_dips_width (float): expected width (in Hz) of the dips.
-                This parameter is used to calculate wlen, i.e., the window 
+                This parameter is used to calculate wlen, i.e., the window
                 length to calculate the prominence of each dip.
                 NOTE: In order to select the dips based on their widths,
                 the parameter 'width' should be used instead.
