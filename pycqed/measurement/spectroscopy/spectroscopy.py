@@ -281,7 +281,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             for task in tasks:
                 qb = self.get_qubit(task)
                 qubits.append(qb)
-                mod_freqs = task['freqs'] - lo_freqs
+                freqs = task['sweep_points'].get_sweep_params_property(
+                        'values', param_names='freq')
+                mod_freqs = freqs - lo_freqs
                 if all(mod_freqs - mod_freqs[0] == 0):
                     # mod freq is the same for all acquisitions
                     self.temporary_values.append(
