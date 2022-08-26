@@ -286,10 +286,17 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 mod_freqs = freqs - lo_freqs
                 if all(mod_freqs - mod_freqs[0] == 0):
                     # mod freq is the same for all acquisitions
+                    # As we require the step size between frequencies to be
+                    # equal between all tasks sharing an LO, the modulation
+                    # frequency is the same for every sweep point
                     self.temporary_values.append(
                         (self.get_mod_from_qb(qb), mod_freqs[0]))
                     task['mod_freq'] = mod_freqs[0]
                 else:
+                    # adds compatibility for different modulation frequencies
+                    # in each sweep point. This will be used as soon as we add
+                    # an allowed_lo_freqs feature to this method and support
+                    # e.g. several qa or sg soft sweeps in one experiment.
                     self.sweep_points.add_sweep_parameter(
                         param_name=task['prefix'] + 'mod_frequency',
                         label=task['prefix'] + 'mod_frequency',
