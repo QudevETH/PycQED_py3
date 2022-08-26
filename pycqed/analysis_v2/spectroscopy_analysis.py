@@ -24,7 +24,7 @@ import pycqed.analysis.fit_toolbox.geometry as geo
 from collections import OrderedDict
 from scipy import integrate
 from scipy import interpolate
-from scipy.signal import find_peaks, peak_widths
+from scipy.signal import find_peaks, peak_widths, peak_prominences
 from scipy.signal import savgol_filter
 
 log = logging.getLogger(__name__)
@@ -2123,22 +2123,14 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
 class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
-    Find the dips of a 1D resonator spectroscopy and their widths. The
-    dip-finding algorithm is based on SciPy's find_peaks(). The algorithm tries
-    to find 'ndips' dips iteratively.
-    If more or less than 'ndips' dips are found, the dip-finding parameters
-    are adjusted accordingly and 'ndips' dips are searched again. The
-    algorithm stops when only 'ndips' dips are found or when the maximum
-    number of iterations is reached. If more than 'ndips' dips are found
-    after the maximum number of iterations is reached, the 'ndips' most
-    prominent dips are selected.
+    Finds a specified number of dips in a 1D resonator spectroscopy and their
+    widths. The most prominent dips are selected.
+    The dip-finding algorithm is based on SciPy's find_peaks(). 
     """
 
     def __init__(self,
                  ndips: Union[int,list[int]] = 1,
-                 prominence_factor: float = 0.1,
-                 max_iterations: int = 15,
-                 iteration_prominence_factor: float = 0.9,
+                 expected_dips_width: float = 25e6,
                  height: float = None,
                  threshold: float = None,
                  distance: int = None,
@@ -2156,18 +2148,11 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 A list can be specified instead when multiple qubits are measured
                 in a MultiTaskingExperiment. In this case, each entry will be
                 used to analyze one experiment.
-            prominence_factor (float, optional): required prominence for the
-                dips used in the dip-finding algorithm, as a fraction of the
-                median of the magnitude data.
-            max_iterations (int, optional): maximum number of iterations before
-                stopping the algorithm. Defaults to 15.
-            iteration_prominence_factor (float, optional): factor that
-                multiplies or divides the previous required prominence after
-                each iteration, in case two dips are not found at the first
-                iteration. Should be less than 1 for the expected behavior, i.e.
-                increasing required prominence if more than two dips are found
-                and decreasing required prominence if less than two dips are
-                found. Defaults to 0.9.
+            expected_dips_width (float): expected width (in Hz) of the dips.
+                This parameter is used to calculate wlen, i.e., the window 
+                length to calculate the prominence of each dip.
+                NOTE: In order to select the dips based on their widths,
+                the parameter 'width' should be used instead.
 
             The following parameters are passed directly to SciPy's find
             peaks function. Their documentation is taken from the official
@@ -2193,10 +2178,8 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             plateau_size (int, optional): Required size of the flat top of the
                 dips in samples. Defaults to None.
         """
-        self.prominence_factor = prominence_factor
-        self.max_iterations = max_iterations
-        self.iteration_prominence_factor = iteration_prominence_factor
         self.ndips = ndips
+        self.expected_dips_width = expected_dips_width
         self.dip_finder_kwargs = {
             'height': height,
             'threshold': threshold,
@@ -2274,11 +2257,10 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
             # Find the indices of the dips and their widths
             dips_indices, dips_widths = self.find_dips(
+                frequency_data=self.analysis_data[qb_name]['freqs'],
                 magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
                 ndips=ndips,
-                prominence_factor=self.prominence_factor,
-                max_iterations=self.max_iterations,
-                iteration_prominence_factor=self.iteration_prominence_factor,
+                expected_dips_width=self.expected_dips_width
                 **self.dip_finder_kwargs)
 
             # Find the frequency and magnitude corresponding to these indices
@@ -2305,83 +2287,52 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                                f"of {self.ndips} for {qb_name}.")
                 log.warning(warning_msg)
 
-    def find_dips(self,
-                  magnitude_data: np.array,
-                  ndips: Union[int, list[int]],
-                  prominence_factor: float = 0.1,
-                  max_iterations: int = 15,
-                  iteration_prominence_factor: float = 0.9,
-                  **kw: dict) -> tuple[list[int], list[int], float, float]:
+    def find_dips(self, frequency_data: np.array, magnitude_data: np.array,
+                  ndips: Union[int, list[int]], expected_dips_width: float,
+                  **kw: dict) -> tuple[list[int], list[float]]:
         """
-        Finds the dips in a 1D resonator spectroscopy. The algorithm tries to
-        find 'ndips' dips iteratively.
-        If more or less than 'ndips' dips are found, the dip-finding parameters
-        are adjusted accordingly and 'ndips' dips are searched again. The
-        algorithm stops when only 'ndips' dips are found or when the maximum
-        number of iterations is reached. If more than 'ndips' dips are found
-        after the maximum number of iterations is reached, the 'ndips' most
-        prominent dips are selected.
+        Finds the 'ndips' most prominent dips in a 1D resonator spectroscopy,
+        using 'expected_dips_width' to compute the window length for the
+        calculation of dips prominence.
+        See SciPy's find_peaks() documentation for more information about
+        prominence calculation. 
 
         Args:
+            frequency_data (np.array, 1D): frequency sweep points.
             magnitude_data (np.array, 1D): projection of the raw data, magnitude
                 as a function of frequency.
-            ndips (int or list[int]): number of dips that will be searched.
-                A list can be specified instead when multiple qubits are measured
-                in a MultiTaskingExperiment. In this case, each entry will be
-                used to analyze one experiment.
-            prominence_factor (float, optional): required prominence for the
-                dips used in the dip-finding algorithm, as a fraction of the
-                average of the data.
-            max_iterations (int, optional): maximum number of iterations before
-                stopping the algorithm. Defaults to 15.
-            iteration_prominence_factor (float, optional): factor that
-                multiplies or divides the previous required prominence after
-                each iteration, in case two dips are not found at the first
-                iteration. Should be less than 1 for the expected behavior, i.e.
-                increasing required prominence if more than two dips are found
-                and decreasing required prominence if less than two dips are
-                found. Defaults to 0.9.
+            ndips (int): number of dips that will be searched.
+            expected_dips_width (float): expected width (in Hz) of the dips.
+                This parameter is used to calculate wlen, i.e., the window 
+                length to calculate the prominence of each dip.
+                NOTE: In order to select the dips based on their widths,
+                the parameter 'width' should be used instead.
             kw: additional parametrs for the dip-finding algorithm. See SciPy
                 documentation of find_peaks or this class __init__ for more
                 details.
+
         Returns:
             dips_indices (list[int]): list of frequency indices for the
                 left dips.
-            dips_widths (list[float]): width of the dips (in units of
-                samples)
+            dips_widths (list[float]): width of the dips (in Hz).
         """
-        # Calculate the median of the magnitude data. The prominence will be
-        # calculated as prominence_factor * median_magn
-        median_magn = np.average(magnitude_data)
+        wlen = kw.get("wlen")
+        if wlen is None and expected_dips_width is not None:
+            # Frequency width of one sweep point
+            df = frequency_data[1] - frequency_data[0]
+            wlen = round(expected_dips_width / df)
+            kw["wlen"] = wlen
 
-        # Find dips by adjusting the parameters until two peaks are found
-        # or the maximum number of iterations is reached
-        iteration_index = 0
-        dips_indices = []
-        while len(dips_indices) != ndips and iteration_index < max_iterations:
-            # To find dips, we use scipy's peak finder and change the sign
-            # of the data so that dips become peaks
-            dips_indices, dips_properties = find_peaks(
-                -magnitude_data,
-                prominence=prominence_factor * median_magn,
-                **kw)
+        # To find dips, we use scipy's peak finder and change the sign
+        # of the data so that dips become peaks
+        dips_indices = find_peaks(-magnitude_data, **kw)[0]
 
-            if len(dips_indices) > ndips:
-                # If more than ndips dips are found, repeat using a larger
-                # prominence
-                prominence_factor = prominence_factor / iteration_prominence_factor
-            if len(dips_indices) < ndips:
-                # If less than ndips dips are found, repeat using a smaller
-                # prominence
-                prominence_factor = prominence_factor * iteration_prominence_factor
-
-            iteration_index = iteration_index + 1
-
-        # When the loop ends, check how many dips were found
+        # Check how many dips were found
         if len(dips_indices) > ndips:
             # If more than 'ndips' dips are found, choose the 'ndips' ones with
             # the highest prominence
-            prominences_dips = dips_properties['prominences']
+            prominences_dips = peak_prominences(-magnitude_data, dips_indices,
+                                                kw.get("wlen"))[0]
             indices_max_dip = np.argpartition(prominences_dips, -ndips)[-ndips:]
             dips_indices = np.array(dips_indices)[indices_max_dip]
             # Sort the indices again since their order after argpartition is
@@ -2389,17 +2340,16 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             dips_indices = np.sort(dips_indices)
         elif len(dips_indices) < ndips:
             # If less than 'ndips' dips are found, just print a warning.
+            # This case is very unlikely.
             log.warning(f"Found {len(dips_indices)} peaks instead of ndips")
 
-        # Calculate the width of the dips in units of number of samples, at
-        # a relative height of 0.25 by default (0 corresponds to the bottom of
-        # the dip, 1 corresponds to its base).
-        # This can be used to determine which dip corresponds to the resonator
-        # and which to the Purcell filter
+        # Calculate the width of the dips. This can be used to determine which
+        # dip corresponds to the resonator and which to the Purcell filter
         dips_widths = peak_widths(-magnitude_data,
                                   dips_indices,
-                                  rel_height=kw['rel_height'])[0]
-
+                                  rel_height=kw.get("rel_height"),
+                                  wlen=kw.get("wlen"))[0]
+        dips_widths = dips_widths * df
         return dips_indices, dips_widths
 
     def prepare_plots(self):
@@ -2413,11 +2363,6 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             # non-analyzed plots
             fig_id_original = f"projected_plot_{qb_name}_Magnitude"
             fig_id_analyzed = f"ResonatorSpectroscopy_{fig_id_original}"
-
-            # If self contains some Qudev_transmon object it is not possible
-            # to deep copy a plot_dict. Need to temporarily empty self.feedlines
-            # and self.sorted_feedlines
-
             self.plot_dicts[fig_id_analyzed] = deepcopy(
                 self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude"]
             )
@@ -2515,11 +2460,10 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
         for qb_name,feedline,ndips in zip(self.qb_names,self.sorted_feedlines,self.ndips):
             # Find the indices of the dips and their widths
             dips_indices, dips_widths = self.find_dips(
+                frequency_data=self.analysis_data[qb_name]['freqs'],
                 magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
                 ndips=ndips,
-                prominence_factor=self.prominence_factor,
-                max_iterations=self.max_iterations,
-                iteration_prominence_factor=self.iteration_prominence_factor,
+                expected_dips_width=self.expected_dips_width,
                 **self.dip_finder_kwargs)
 
             # Find the frequency and magnitude corresponding to these indices
@@ -2773,12 +2717,10 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
             # Find the indices of the dips at each voltage bias and their width
             for linecut_magnitude in self.analysis_data[qb_name]['magnitude'][:,]:
                 dips_indices, dips_widths = self.find_dips(
+                    frequency_data=self.analysis_data[qb_name]['freqs'],
                     magnitude_data=linecut_magnitude,
                     ndips=self.ndips,
-                    prominence_factor=self.prominence_factor,
-                    max_iterations=self.max_iterations,
-                    iteration_prominence_factor=self.
-                    iteration_prominence_factor,
+                    expected_dips_width=self.expected_dips_width,
                     **self.dip_finder_kwargs)
 
                 # Pick the first dip as the left one and the last one as the
