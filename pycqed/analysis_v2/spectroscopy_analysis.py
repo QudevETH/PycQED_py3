@@ -2317,9 +2317,9 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             dips_widths (list[float]): width of the dips (in Hz).
         """
         wlen = kw.get("wlen")
+        # Frequency width of one sweep point
+        df = frequency_data[1] - frequency_data[0]
         if wlen is None and expected_dips_width is not None:
-            # Frequency width of one sweep point
-            df = frequency_data[1] - frequency_data[0]
             wlen = round(expected_dips_width / df)
             kw["wlen"] = wlen
 
