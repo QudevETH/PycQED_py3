@@ -514,7 +514,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'ro_amp':  dict(param_name='amplitude', unit='V',
                       label=r'RO pulse amplitude',
                       dimension=1),
-        'ro_length':  dict(param_name='length', unit='s',
+        'ro_length':  dict(param_name='pulse_length', unit='s',
                       label=r'RO pulse length',
                       dimension=1),
     }
