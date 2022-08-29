@@ -1,25 +1,8 @@
 {
-    "parallel_groups": [
-        "parallel_feedlines1",
-        "parallel_feedlines2",
-        "parallel_feedlines3",
-        "parallel_feedlines4",
-        "parallel_feedlines5"
-    ],
     "freq_range": 200e6,
     "freq_pts": 400,
     "freq_center": "{current}",
     "volt_range": 7,
     "volt_pts": 15,
-    "volt_center": 0,
-    "qubits": {
-        "qb1": {
-            "freq_range": 200e6,
-            "freq_pts": 400,
-            "freq_center": 6.2e9,
-            "volt_range": 4,
-            "volt_pts": 15,
-            "volt_center": 0
-        }
-    }
+    "volt_center": 0
 }
