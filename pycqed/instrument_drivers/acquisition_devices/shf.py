@@ -614,5 +614,3 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
         super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)
-
-        self._snapshot_whitelist = {'IDN', 'clockbase'}
