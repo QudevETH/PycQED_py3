@@ -915,28 +915,20 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         freq_range (float): Range of the frequency sweep points. The center of
             the sweep points is the RO frequency of the qubit.
         freq_pts (int): Number of points for the frequency sweep.
+        freq_center (float): Center of the frequency sweep points. The sweep
+            points will extend from freq_center - freq_range/2 to
+            freq_center + freq_range/2. It is possible to specify "{current}" to
+            use the current RO frequency as the center value.
         volt_range (float): Range of the bias voltage sweep points. The center
             of the sweep points is 0 V.
         volt_pts (int): Number of points for the bias voltage sweep.
-        qubit_specific_settings (list[dict]): list of qubit-specific settings
-            that would have priority over the default ones specified by the
-            configuration parameters above.
-            Example:
-            "qubit_specific_settings": [
-                {
-                    "qb": "qb16",
-                    "freqs": {
-                        "freq_start": 6e9,
-                        "freq_stop": 6.2e9,
-                        "pts": 400
-                    },
-                    "volts": {
-                        "volt_start": -3.5,
-                        "volt_stop": 3.5,
-                        "pts": 11
-                    }
-                }
-            ]
+        volt_center (float): Center of the voltage sweep points. The sweep
+            points will extend from volt_center - volt_range/2 to
+            volt_center + volt_range/2. It is possible to specify "{current}" to
+            use the current voltage bias as the center value.
+        expected_dips_width (float): Expected width of the dips (in Hz). This 
+            value is used for the calculation of prominence (for more information 
+            see analysis_v2.spectroscopy_analysis.ResonatorSpectroscopy1DAnalysis).
     """
 
     def __init__(self, routine, **kwargs):
@@ -948,25 +940,6 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         spec.ResonatorSpectroscopyFluxSweep.__init__(self,
                                                      dev=self.dev,
                                                      **self.experiment_settings)
-
-    def get_requested_settings(self):
-        """Add additional keywords and default values to be passed to the
-        ResonatorSpectroscopyFluxSweep class. These are the keywords that are
-        going to be looked up in the configuration parameter dictionary.
-
-        Returns:
-            dict: Dictionary containing names and default values
-                of the keyword arguments needed for the
-                ResonatorSpectroscopyFluxSweep class
-        """
-        settings = super().get_requested_settings()
-        # Here it is possible to add additional keywords, e.g.
-        settings['kwargs']['freq_range'] = (float, 200e6)
-        settings['kwargs']['freq_pts'] = (int, 400)
-        settings['kwargs']['volt_range'] = (float, 7)
-        settings['kwargs']['volt_pts'] = (int, 11)
-        settings['kwargs']['qubit_specific_settings'] = (list, [])
-        return settings
 
     def parse_settings(self, requested_kwargs):
         """
@@ -983,50 +956,55 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                 the ResonatorSpectroscopyFluxSweep class.
         """
         kwargs = super().parse_settings(requested_kwargs)
-
         kwargs['task_list'] = []
-        # Build the tasks for the qubits with qubit-specific settings (if they
-        # were passed as qubits to be measured)
-        for qb_setting in kwargs['qubit_specific_settings']:
-            qb_name = qb_setting['qb']
-            if any(qb_name == qb.name for qb in self.qubits):
-                freq_start = qb_setting['freqs']['freq_start']
-                freq_stop = qb_setting['freqs']['freq_stop']
-                freq_pts = qb_setting['freqs']['pts']
-
-                volt_start = qb_setting['volts']['volt_start']
-                volt_stop = qb_setting['volts']['volt_stop']
-                volt_pts = qb_setting['volts']['pts']
-
-                kwargs['task_list'].append({
-                    'qb': qb_name,
-                    'freqs': np.linspace(freq_start, freq_stop, freq_pts),
-                    'volts': np.linspace(volt_start, volt_stop, volt_pts)
-                })
-
         # Build the tasks for the remaining qubits to be measured using the
         # default settings
         for qb in self.qubits:
-            if not any(task['qb'] == qb.name
-                       for task in kwargs['qubit_specific_settings']):
-                central_freq = qb.ro_freq()
-                freq_range = kwargs['freq_range']
-                freq_pts = kwargs['freq_pts']
-                freqs = np.linspace(central_freq - freq_range / 2,
-                                    central_freq + freq_range / 2, freq_pts)
+            # Build frequency sweep points
+            current_ro_freq = qb.ro_freq()
+            freq_range = self.get_param_value('freq_range', qubit=qb.name)
+            freq_pts = self.get_param_value('freq_pts', qubit=qb.name)
+            freq_center = self.get_param_value('freq_center', qubit=qb.name)
+            if isinstance(freq_center, str):
+                freq_center = eval(
+                    freq_center.format(current=current_ro_freq))
+            freqs = np.linspace(freq_center - freq_range / 2,
+                                freq_center + freq_range / 2, freq_pts)
 
-                central_volt = 0
-                volt_range = kwargs['volt_range']
-                volt_pts = kwargs['volt_pts']
-                volts = np.linspace(central_volt - volt_range / 2,
-                                    central_volt + volt_range / 2, volt_pts)
+            # Build voltage sweep points
+            current_voltage = self.routine.fluxlines_dict[qb.name]
+            volt_range = self.get_param_value('volt_range', qubit=qb.name)
+            volt_pts = self.get_param_value('volt_pts', qubit=qb.name)
+            volt_center = self.get_param_value('volt_center', qubit=qb.name)
+            if isinstance(freq_center, str):
+                volt_center = eval(
+                    volt_center.format(current=current_voltage))
+            volts = np.linspace(volt_center - volt_range / 2,
+                                volt_center + volt_range / 2, volt_pts)
 
-                kwargs['task_list'].append({
-                    'qb': qb.name,
-                    'freqs': freqs,
-                    'volts': volts
-                })
+            kwargs['task_list'].append({
+                'qb': qb.name,
+                'freqs': freqs,
+                'volts': volts
+            })
         kwargs['fluxlines_dict'] = self.routine.fluxlines_dict
+
+        # If the parameter expected_dips_width was specified, add it to 
+        # the analysis_kwargs dictionary
+        expected_dips_width = self.get_param_value(
+            'expected_dips_width', default=self.routine.NotFound())
+        if type(expected_dips_width) != self.routine.NotFound:
+            try:
+                # Add expected_dips_width to analysis_kwargs if it already
+                # exists
+                kwargs['analysis_kwargs'][
+                    'expected_dips_width'] = expected_dips_width
+            except KeyError:
+                # Otherwise create the analysis_kwargs dictionary
+                kwargs['analysis_kwargs'] = {
+                    "expected_dips_width": expected_dips_width
+                }
+
         return kwargs
 
     def run(self):
