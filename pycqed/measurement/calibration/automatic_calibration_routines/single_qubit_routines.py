@@ -1493,7 +1493,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
 
         # If requested, retrieve the previous measurement settings and adapt
         # them before trying again (increase both range and points density)
-        if self.get_param_value("auto_repetition_settings", default=True):
+        if self.get_param_value("auto_repetition_settings", default=False):
             previous_qb_spec = self.routine_steps[-1]
             for qb in qubits:
                 settings['QubitSpectroscopy1D']['qubits'][qb.name] = {
