@@ -1590,37 +1590,39 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             return
 
         cal_states_rotations = {}
+        # add cal state rotations which are task-specific
         for task in self.preprocessed_task_list:
             qb_name = task['qb']
             if 'cal_states_rotations' in task:
                 # specified by user
                 cal_states_rotations.update(task['cal_states_rotations'])
-            else:
-                if len(self.cal_states) > 3:
-                    # Analysis can handle at most 3-state rotations
-                    # If we've got more than 3 cal states, we choose a subset of
-                    # 3: the states of the transition to be tuned up + the state
-                    # below the lowest state of the transition.
-                    # Ex: transition name = fh --> ['e', 'f', 'h']
-                    transition_name = task['transition_name_input']
-                    if transition_name == 'ge':
-                        # Exception: there no state below g, so here we
-                        # include f
-                        states = ['g', 'e', 'f']
-                    else:
-                        indices = [self.state_order.index(s)
-                                   for s in transition_name]
-                        states = self.state_order[
-                                 min(indices)-1:max(indices)+1]
-                    rots = [(s, self.cal_states.index(s)) for s in states]
-                    # sort by index of cal_state
-                    rots.sort(key=lambda t: t[1])
-                    cal_states_rotations[qb_name] = {t[0]: i for i, t in
-                                                     enumerate(rots)}
+            elif len(self.cal_states) > 3:
+                # Analysis can handle at most 3-state rotations
+                # If we've got more than 3 cal states, we choose a subset of
+                # 3: the states of the transition to be tuned up + the state
+                # below the lowest state of the transition.
+                # Ex: transition name = fh --> ['e', 'f', 'h']
+                transition_name = task['transition_name_input']
+                if transition_name == 'ge':
+                    # Exception: there no state below g, so here we
+                    # include f
+                    states = ['g', 'e', 'f']
                 else:
-                    # Use all the cal states for rotation
-                    cal_states_rotations[qb_name] = \
-                        {s: self.state_order.index(s) for s in self.cal_states}
+                    indices = [self.state_order.index(s)
+                               for s in transition_name]
+                    states = self.state_order[
+                             min(indices)-1:max(indices)+1]
+                rots = [(s, self.cal_states.index(s)) for s in states]
+                # sort by index of cal_state
+                rots.sort(key=lambda t: t[1])
+                cal_states_rotations[qb_name] = {t[0]: i for i, t in
+                                                 enumerate(rots)}
+
+        # Add task-independent cal states rotations
+        for qb_name in self.meas_obj_names:
+            if qb_name not in cal_states_rotations:
+                cal_states_rotations[qb_name] = \
+                    {s: self.state_order.index(s) for s in self.cal_states}
 
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
 
