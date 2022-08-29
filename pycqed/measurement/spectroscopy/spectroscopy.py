@@ -262,11 +262,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             # minimizing the maximum absolut modulation frequency.
             freqs_all = np.array([
                 task['sweep_points'].get_sweep_params_property(
-                    'values', param_names='freq')for task in tasks])
+                    'values', param_names='freq') for task in tasks])
             # optimize the mod freq to lie in the middle of the overall
             # frequency range of this LO
             lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
                                             + np.min(freqs_all, axis=0))
+            print(lo)
             lo_freq_key = lo + '_freq'
             self.sweep_points.add_sweep_parameter(param_name=lo_freq_key,
                                                   values=lo_freqs,
@@ -628,7 +629,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
                 for pulse_dict in ro.pulses:
+                    print(param_name)
                     if param_name in pulse_dict:
+                        print(param_name)
                         pulse_dict[param_name] = ParametricValue(param_name)
 
         # return all generated blocks (parallel_sweep will arrange them)
