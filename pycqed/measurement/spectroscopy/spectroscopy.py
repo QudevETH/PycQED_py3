@@ -788,11 +788,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # Convenience feature to automatically use the LO power parameter to
         # sweep the spec_power in a soft_sweep spectroscopy
         prefix = preprocessed_task['prefix']
-        if 'spec_power' in preprocessed_task \
-           and not preprocessed_task['hard_sweep'] \
-           and prefix + 'spec_power' not in self.sweep_functions_dict.keys():
-            self.sweep_functions_dict[prefix + 'spec_power'] = \
-                qb.instr_ge_lo.get_instr().power()
+        if (preprocessed_task['sweep_points'].find_parameter('spec_power')
+                    is not None
+                and not preprocessed_task['hard_sweep']
+                and prefix + 'spec_power' not in self.sweep_functions_dict):
+            sf = self._get_power_param(qb, get_swf=True)
+            if sf is not None:
+                self.sweep_functions_dict[prefix + 'spec_power'] = sf
+
         return preprocessed_task
 
     def check_hard_sweep_compatibility(self, **kw):
@@ -811,17 +814,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         """
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            pulsar = qb.instr_pulsar.get_instr()
             ch = qb.ge_I_channel()
-            amp_range = pulsar.get(f'{ch}_amp')
-            amp = 10 ** (qb.spec_power() / 20 - 0.5)
-            gain = amp / amp_range
+            _, amp_from_power = self._get_power_param(qb)
             self.segment_kwargs['mod_config'][ch] = \
                 dict(internal_mod=self.pulsed)
             self.segment_kwargs['sine_config'][ch] = \
                 dict(continous=not self.pulsed,
                      ignore_waveforms=not self.pulsed,
-                     gains=tuple(gain * x for x in (0.0, 1.0, 1.0, 0.0)))
+                     gains=tuple(amp_from_power(qb.spec_power()) * x
+                                 for x in (0.0, 1.0, 1.0, 0.0)))
             if task['hard_sweep']:
                 pulsar = qb.instr_pulsar.get_instr()
                 freqs = task['sweep_points']['freq']
@@ -868,10 +869,13 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         if self.pulsed:
             qubit = self.get_qubit(task)
             pulse_modifs = {'op_code=Spec': {'element_name': 'spec_el',}}
-            if self.get_lo_from_qb(qubit)() is None:
+            if self._get_power_param(qubit)[0] is None:
                 # No external LO, use pulse to set the spec power
-                pulse_modifs['op_code=Spec']['amplitude'] = \
-                    dbm_to_vp(qubit.spec_power())
+                if sweep_points.find_parameter('spec_power') is not None:
+                    amp = ParametricValue('spec_power', func=dbm_to_vp)
+                else:
+                    amp = dbm_to_vp(qubit.spec_power())
+                pulse_modifs['op_code=Spec']['amplitude'] = amp
             spec = self.block_from_ops('spec', [f"Z0 {qb}", f"Spec {qb}"],
                                     pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
@@ -906,23 +910,40 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         else:
             return qb.swf_drive_lo_freq()
 
+    def _get_power_param(self, qb, get_swf=False):
+        if qb.instr_ge_lo() is not None:
+            param = qb.instr_ge_lo.get_instr().power
+            func = lambda p: p
+            sf = param
+        elif self.pulsed:
+            # For pulsed spec without external LO, we currently implement a
+            # pulse parameter sweep instead.
+            param, sf = None, None
+            func = lambda p: 1.0  # no scaling
+        else:
+            pulsar = qb.instr_pulsar.get_instr()
+            ch = qb.ge_I_channel()
+            param = pulsar.parameters[f'{ch}_direct_output_amp']
+            amp_range = pulsar.get(f'{ch}_amp')
+            func = lambda power, a=amp_range: dbm_to_vp(power) / a
+            sf = swf.Transformed_Sweep(
+                param, func, 'Spectrocopy power', unit='dBm')
+        if get_swf:
+            return sf
+        else:
+            return param, func
+
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
             if qb.instr_ge_lo() is None and not task['hard_sweep']:
                 # SHFSG Soft Sweep settings:
+                param, func = self._get_power_param(qb)
+                if param is not None:
+                    self.temporary_values.append(
+                        (param, func(qb.spec_power())))
                 pulsar = qb.instr_pulsar.get_instr()
-                # FIXME: move conversion from amp to gain to SHFSG pulsar method
-                # `_direct_mod_amplitude_setter`. Afterwards the if and elif
-                # branches can be combined into one
-                amp_range = pulsar.get(f'{qb.ge_I_channel()}_amp')
-                amp = dbm_to_vp(qb.spec_power())
-                gain = amp / amp_range
-                amp = qb.instr_pulsar.get_instr().parameters[
-                    f'{qb.ge_I_channel()}_direct_output_amp'
-                ]
-                self.temporary_values.append((amp, gain))
                 mod_freq = pulsar.parameters[
                     f'{qb.ge_I_channel()}_direct_mod_freq']
                 self.temporary_values.append(
