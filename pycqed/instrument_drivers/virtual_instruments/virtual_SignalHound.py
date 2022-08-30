@@ -3,7 +3,8 @@ import numpy as np
 import ctypes as ct
 import logging
 
-from qcodes import Instrument, validators as vals
+from pycqed.instrument_drivers.instrument import Instrument
+from qcodes import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
 

@@ -132,6 +132,13 @@ class Sequence:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \
                         seg.allow_filter
+                    # Write modulation and sine configuration to element
+                    if seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] = \
+                                seg.mod_config
+                    if seg.sine_config:
+                        sequences[awg][elname]['metadata']['sine_config'] = \
+                                seg.sine_config
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
