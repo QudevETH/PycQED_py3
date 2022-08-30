@@ -50,9 +50,5 @@
 
     "UpdateFluxToVoltage": {
         "flux": null
-    },
-    "SetTemporaryValuesFluxPulseReadOut": {
-        "flux_park":1,
-        "voltage_park":1
     }
 }
