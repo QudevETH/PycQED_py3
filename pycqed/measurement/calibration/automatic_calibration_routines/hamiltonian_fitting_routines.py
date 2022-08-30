@@ -142,6 +142,14 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 "flux": 0.25
             }
         }
+
+        TODO: The purpose of this class is similar to SetBiasVoltage (of
+        HamiltonianFitting) and SetTemporaryValuesFluxPulseReadOut. However,
+        this intermediate step has some additional features (e.g., possibility
+        of specifying strings as settings and the fact that it saves the fluxes
+        and voltages in a dictionary). It could be worth writing a generic
+        intermediate step that sets a bias voltage and the temporary values for
+        FP-assisted RO.
         """
         def run(self):
             for qb in self.qubits:
