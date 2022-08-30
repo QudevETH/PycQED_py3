@@ -604,6 +604,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
                 sweep_func_2nd_dim = awg_swf.SegmentSoftSweep(
                     self.sequences, sweep_param_name, unit)
+                # Ensure that all AWGs get restarted synchronously after
+                # reprogramming (some of) them.
                 self.df_kwargs['enforce_pulsar_restart'] = True
             else:
                 # Check whether it is a nested sweep function whose first
@@ -619,6 +621,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     swfs[0] = awg_swf.SegmentSoftSweep(
                         self.sequences,
                         sweep_param_name, unit)
+                    # Ensure that all AWGs get restarted synchronously after
+                    # reprogramming (some of) them.
                     self.df_kwargs['enforce_pulsar_restart'] = True
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
