@@ -367,13 +367,11 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         """
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            lo_name = lo_instr()
-            if lo_name is not None:
-                if lo_name not in self.grouped_tasks:
-                    self.grouped_tasks[lo_name] = [task]
-                else:
-                    self.grouped_tasks[lo_name] += [task]
+            lo_name = self.get_lo_identifier(qb)
+            if lo_name not in self.grouped_tasks:
+                self.grouped_tasks[lo_name] = [task]
+            else:
+                self.grouped_tasks[lo_name] += [task]
 
     def check_all_freqs_per_lo(self, **kw):
         """Checks if all frequency sweeps assigned to one LO have the same
@@ -406,27 +404,27 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     def sweep_block(self, **kw):
         raise NotImplementedError('Child class has to implement sweep_block.')
 
-    def get_lo_from_qb(self, qb, **kw):
-        """Get the InstrumentRefParameter of the qubits LO that is corresponding
-        to the frequency that is swept in the first dimension, e.g. drive LO in
-        qb spec and RO LO in feedline spec.
+    def get_lo_identifier(self, qb, **kw):
+        """Get the LO identifier from the qubit
+
+        Returns the LO identifier corresponding to the frequency that is
+        swept, e.g. drive LO in qb spec and RO LO in resonator spec.
 
         Child classes have to implement this method and should not call this
         super method.
 
         Args:
-            qb (QuDev_transmon): Qubit of which the LO InstrumentRefParameter is
-                returned.
+            qb (QuDev_transmon): the qubit object
 
         Returns:
-            InstrumentRefParameter: The LO of the qubit.
+            str or tuple: the LO identifier
 
         Raises:
             NotImplementedError: In case the child class did not implement the
                 method.
         """
         raise NotImplementedError('Child class has to implement'
-                                  ' get_lo_from_qb.')
+                                  ' get_lo_identifier.')
 
     def get_mod_freq_param(self, qb, **kw):
         """Returns the QCodes parameter for the modulation frequency of the
@@ -597,26 +595,6 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                            acq_instr.use_hardware_sweeper())
         return preprocessed_task
 
-    def group_tasks(self, **kw):
-        """Groups tasks that share an LO ar an acq. device & unit.
-        """
-        for task in self.preprocessed_task_list:
-            qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            qb_ro_mwg = lo_instr()
-            if qb_ro_mwg is not None:
-                if qb_ro_mwg not in self.grouped_tasks:
-                    self.grouped_tasks[qb_ro_mwg] = [task]
-                else:
-                    self.grouped_tasks[qb_ro_mwg] += [task]
-            else:
-                # no external LO, use acq device instead
-                qb_acq_dev_unit = (qb.instr_acq(), qb.acq_unit())
-                if qb_acq_dev_unit not in self.grouped_tasks:
-                    self.grouped_tasks[qb_acq_dev_unit] = [task]
-                else:
-                    self.grouped_tasks[qb_acq_dev_unit] += [task]
-
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
         for acq_unit, tasks in self.grouped_tasks.items():
@@ -685,8 +663,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ro]
 
-    def get_lo_from_qb(self, qb, **kw):
-        return qb.instr_ro_lo
+    def get_lo_identifier(self, qb, **kw):
+        return qb.get_ro_lo_identifier()
 
     def get_mod_freq_param(self, qb, **kw):
         return qb.ro_mod_freq
@@ -817,40 +795,12 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 qb.instr_ge_lo.get_instr().power()
         return preprocessed_task
 
-    def group_tasks(self, **kw):
-        """Fills the grouped_tasks dict with a list of tasks from
-        preprocessed_task_list per LO found in the preprocessed_task_list.
-        """
-        for task in self.preprocessed_task_list:
-            qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            lo_name = lo_instr()
-            if lo_name is not None:
-                if lo_name not in self.grouped_tasks:
-                    self.grouped_tasks[lo_name] = [task]
-                else:
-                    self.grouped_tasks[lo_name] += [task]
-            else:
-                # no external LO, use synthesizer
-                # FIXME: SHFSG(QC) specifc
-                pulsar = qb.instr_pulsar.get_instr()
-                id = pulsar.get(f"{qb.ge_I_channel()}_id")
-                awg = pulsar.get(f"{qb.ge_I_channel()}_awg")
-                sg_channel = \
-                    pulsar.awg_interfaces[awg].awg.sgchannels[int(id[2]) - 1]
-                qb_awg_synth = f"{awg}_synth{sg_channel.synthesizer()}"
-                if qb_awg_synth not in self.grouped_tasks:
-                    self.grouped_tasks[qb_awg_synth] = [task]
-                else:
-                    self.grouped_tasks[qb_awg_synth] += [task]
-
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
         for awg_synth, tasks in self.grouped_tasks.items():
             if not any([task['hard_sweep'] for task in tasks]):
                 continue
             elif len(tasks) > 1:
-                # FIXME: SHFSG(QC) specific
                 raise ValueError(f"Currently only one task per synthesizer is "
                                  f"supported for hard sweeps. Qubits "
                                  f"{[task['qb'] for task in tasks]} share "
@@ -940,8 +890,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 return [ro, empty_trigger]
         return [ro]
 
-    def get_lo_from_qb(self, qb, **kw):
-        return qb.instr_ge_lo
+    def get_lo_identifier(self, qb, **kw):
+        return qb.get_ge_lo_identifier()
 
     def get_mod_freq_param(self, qb, **kw):
         return qb.ge_mod_freq
@@ -960,7 +910,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         super()._fill_temporary_values()
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            if self.get_lo_from_qb(qb)() is None and not task['hard_sweep']:
+            if qb.instr_ge_lo() is None and not task['hard_sweep']:
                 # SHFSG Soft Sweep settings:
                 pulsar = qb.instr_pulsar.get_instr()
                 # FIXME: move conversion from amp to gain to SHFSG pulsar method
