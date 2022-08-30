@@ -154,12 +154,6 @@ class MeasurementObject(Instrument):
                                      'integration weights',
                                      label='Acquisition IQ angle', unit='rad',
                            parameter_class=ManualParameter)
-        self.add_parameter('acq_weights_I', vals=vals.Arrays(),
-                           label='Optimized weights for I channel',
-                           parameter_class=ManualParameter)
-        self.add_parameter('acq_weights_Q', vals=vals.Arrays(),
-                           label='Optimized weights for Q channel',
-                           parameter_class=ManualParameter)
 
         # readout pulse parameters
         self.add_parameter(
@@ -355,6 +349,7 @@ class MeasurementObject(Instrument):
         self.instr_acq.get_instr().set_lo_freq(self.acq_unit(), ro_lo_freq)
 
         # other preparations
+        self.set_readout_weights()
         # set switches to the mode required for the measurement
         # See the docstring of switch_modes for an explanation of the
         # following modes.
@@ -373,6 +368,40 @@ class MeasurementObject(Instrument):
             # switch mode was explicitly provided by the caller (e.g.,
             # for mixer calib)
             self.set_switch(switch)
+
+    def set_readout_weights(self, weights_type=None, f_mod=None):
+        """Set acquisition weights for this qubit in the acquisition device.
+
+        Depending on the weights type, some of the following qcodes
+        parameters can have an influence on the programmed weigths (see the
+        docstrings of these parameters and of
+        AcquisitionDevice._acquisition_generate_weights):
+        - instr_acq, acq_unit, acq_I_channel, acq_Q_channel
+        - acq_weights_type (if not overridden with the arg weights_type)
+        - ro_mod_freq (if not overridden with the arg f_mod)
+        - acq_IQ_angle
+        - acq_weights_I, acq_weights_I2, acq_weights_Q, acq_weights_Q2
+
+        Args:
+            weights_type (str, None): a weights_type understood by
+                AcquisitionDevice._acquisition_generate_weights, or the
+                default None, in which case the qcodes parameter
+                acq_weights_type is used.
+            f_mod (float, None): The intermediate frequency of the signal to
+                be acquired, or the default None, in which case the qcodes
+                parameter ro_mod_freq is used.
+        """
+        if weights_type is None:
+            weights_type = self.acq_weights_type()
+        if f_mod is None:
+            f_mod = self.ro_mod_freq()
+        self.instr_acq.get_instr().acquisition_set_weights(
+            channels=self.get_acq_int_channels(n_channels=2),
+            weights_type=weights_type, mod_freq=f_mod,
+            acq_IQ_angle=self.acq_IQ_angle(),
+            # weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
+            # weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+        )
 
     def set_switch(self, switch_mode='modulated'):
         """
