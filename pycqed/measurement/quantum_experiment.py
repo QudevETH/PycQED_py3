@@ -149,13 +149,11 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.timer = Timer('QuantumExperiment', **timer_kwargs if timer_kwargs is
                                                                   not None else {})
         if qubits is None and dev is None and operation_dict is None:
-            raise NotImplementedError('Experiments without qubits are not '
-                                      'implemented yet. Either dev or qubits'
-                                      'or operation_dict has to be provided.')
-            # planned future behavior (but has to be tested in all aspects):
             # if no qubits/devive/operation_dict are provided, use empty
             # list to skip iterations over qubit lists
-            # qubits = []
+            qubits = []
+            if meas_objs is not None:
+                operation_dict = mqm.get_operation_dict(meas_objs)
         super().__init__(dev=dev, qubits=qubits, operation_dict=operation_dict,
                          **kw)
 
@@ -277,7 +275,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         with temporary_value(*self.temporary_values):
             # Perpare all involved qubits. If not available, prepare
             # all measure objects.
-            mos = self.qubits if self.qubits is not None else self.meas_objs
+            mos = self.qubits if self.qubits else self.meas_objs
             for m in mos:
                 m.prepare(drive=self.drive)
 
