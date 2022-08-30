@@ -392,6 +392,31 @@ class MeasurementObject(Instrument):
                         f'{self.name}.')
         switch.set_switch(mode)
 
+    def get_operation_dict(self, operation_dict=None):
+        self.configure_mod_freqs()
+        if operation_dict is None:
+            operation_dict = {}
+
+        for op_name, op in self.operations().items():
+            operation_dict[op_name + ' ' + self.name] = {}
+            for argument_name, parameter_name in op.items():
+                operation_dict[op_name + ' ' + self.name][argument_name] = \
+                    self.get(parameter_name)
+
+        operation_dict['RO ' + self.name]['operation_type'] = 'RO'
+        operation_dict['Acq ' + self.name] = deepcopy(
+            operation_dict['RO ' + self.name])
+        operation_dict['Acq ' + self.name]['amplitude'] = 0
+
+        if np.ndim(self.ro_freq()) != 0:
+            delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
+            mods = [self.ro_mod_freq() + d for d in delta_freqs]
+            operation_dict['RO ' + self.name]['mod_frequency'] = mods
+
+        for code, op in operation_dict.items():
+            op['op_code'] = code
+        return operation_dict
+
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
 
