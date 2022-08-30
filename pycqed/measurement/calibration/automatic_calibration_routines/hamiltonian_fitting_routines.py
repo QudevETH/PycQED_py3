@@ -1139,14 +1139,16 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
-            flux_park (float): Flux at which the qubit should be parked for
-                flux-pulse-assisted readout. The voltage will be calculated
-                using calculate_voltage_from_flux. If None, voltage_park will be
-                used.
-            voltage_park (float): Voltage at which the qubit should be parked
-                for flux-pulse-assisted readout. If flux_park is not None,
-                voltage_park will not be considered. If voltage_park is also
-                None, a ValueError will be raised.
+            flux_park (float): Flux at which the qubit is going to be parked
+                at the moment the readout happens. The corresponding voltage
+                will be calculated using qb.calculate_voltage_from_flux.
+                The voltage value will be used to calculate the temporary value
+                for flux-pulse-assisted readout using ro_flux_tmp_vals.
+                If None, voltage_park will be used.
+            voltage_park (float): Voltage at which the qubit will be parked
+                at the moment the readout happens. This is only used if
+                flux_park is None. If voltage_park is also None, a
+                ValueError will be raised.
         """
         super().__init__(
             index=index,
