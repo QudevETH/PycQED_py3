@@ -346,7 +346,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                     # equal between all tasks sharing an LO, the modulation
                     # frequency is the same for every sweep point
                     self.temporary_values.append(
-                        (self.get_mod_from_qb(qb), mod_freqs[0]))
+                        (self.get_mod_freq_param(qb), mod_freqs[0]))
                     task['mod_freq'] = mod_freqs[0]
                 else:
                     # adds compatibility for different modulation frequencies
@@ -428,7 +428,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         raise NotImplementedError('Child class has to implement'
                                   ' get_lo_from_qb.')
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         """Returns the QCodes parameter for the modulation frequency of the
         first dimension frequency sweep.
 
@@ -443,7 +443,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 method.
         """
         raise NotImplementedError('Child class has to implement'
-                                  ' get_mod_from_qb.')
+                                  ' get_mod_freq_param.')
 
     def get_lo_swf(self, qb):
         """Returns a sweep function for a frequency sweep for the qubit.
@@ -688,7 +688,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ro_lo
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         return qb.ro_mod_freq
 
     def get_lo_swf(self, qb):
@@ -943,14 +943,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_lo_from_qb(self, qb, **kw):
         return qb.instr_ge_lo
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         return qb.ge_mod_freq
 
     def get_lo_swf(self, qb):
         if getattr(self, 'modulated', True):
             return swf.Offset_Sweep(
                 sweep_function=qb.swf_drive_lo_freq(allow_IF_sweep=False),
-                offset=-self.get_mod_from_qb(qb)(),
+                offset=-self.get_mod_freq_param(qb)(),
                 name='Drive frequency',
                 parameter_name='Drive frequency')
         else:
@@ -969,15 +969,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 amp_range = pulsar.get(f'{qb.ge_I_channel()}_amp')
                 amp = dbm_to_vp(qb.spec_power())
                 gain = amp / amp_range
-                mod_freq = qb.instr_pulsar.get_instr().parameters[
-                        f'{qb.ge_I_channel()}_direct_mod_freq'
-                ]
-                self.temporary_values.append((mod_freq,
-                                                self.get_mod_from_qb(qb)()))
                 amp = qb.instr_pulsar.get_instr().parameters[
                     f'{qb.ge_I_channel()}_direct_output_amp'
                 ]
                 self.temporary_values.append((amp, gain))
+                mod_freq = pulsar.parameters[
+                    f'{qb.ge_I_channel()}_direct_mod_freq']
+                self.temporary_values.append(
+                    (mod_freq, self.get_mod_freq_param(qb)()))
             elif self.modulated:
                 # HDAWG modulated spectroscopy settings:
                 if task.get('mod_freq', False):
