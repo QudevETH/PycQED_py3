@@ -641,7 +641,7 @@ class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
     set_parameter is implemented as a pass method to prevent warning messages.
     """
     def __init__(self, parameter_name='None', upload_first=True,
-                 start_pulsar=True):
+                 start_pulsar=False):
         super().__init__(upload_first=upload_first, start_pulsar=start_pulsar)
         self.parameter_name = parameter_name
         self.unit = 'Hz'
