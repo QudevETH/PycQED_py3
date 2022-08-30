@@ -2260,7 +2260,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 frequency_data=self.analysis_data[qb_name]['freqs'],
                 magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
                 ndips=ndips,
-                expected_dips_width=self.expected_dips_width
+                expected_dips_width=self.expected_dips_width,
                 **self.dip_finder_kwargs)
 
             # Find the frequency and magnitude corresponding to these indices
