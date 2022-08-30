@@ -434,10 +434,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         step_label: {
                             'transition_name': transition
                         }
-                    }},
-                    step_tmp_vals=ro_flux_tmp_vals(qubit,
-                                                   v_park=voltage_guess,
-                                                   use_ro_flux=True),
+                    }}
                 )
 
         # Determining final model based on all data
