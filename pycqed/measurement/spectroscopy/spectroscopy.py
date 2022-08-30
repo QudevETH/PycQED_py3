@@ -72,7 +72,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         segments. This reduced set is introduce to prevent that a segment
         is generated for every frequency sweep point.
         """
-        self.analysis = {}
 
         self.trigger_separation = trigger_separation
         self.grouped_tasks = {}
@@ -575,10 +574,10 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                  **kw):
         try:
             super().__init__(task_list, sweep_points=sweep_points,
-                            trigger_separation=trigger_separation,
-                            segment_kwargs={'acquisition_mode': \
-                                            dict(sweeper='software')},
-                            **kw)
+                             trigger_separation=trigger_separation,
+                             segment_kwargs={'acquisition_mode':
+                                             dict(sweeper='software')},
+                             **kw)
             self.autorun(**kw)
         except Exception as x:
             self.exception = x
@@ -781,9 +780,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         qb = self.get_qubit(preprocessed_task)
         pulsar = qb.instr_pulsar.get_instr()
         awg_name = pulsar.get(f'{qb.ge_I_channel()}_awg')
-        preprocessed_task['hard_sweep'] = (
-            f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
-            pulsar.get(f'{awg_name}_use_hardware_sweeper'))
+        preprocessed_task['hard_sweep'] = pulsar.get(
+            f'{awg_name}_use_hardware_sweeper', False)
 
         # Convenience feature to automatically use the LO power parameter to
         # sweep the spec_power in a soft_sweep spectroscopy
@@ -952,7 +950,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 # HDAWG modulated spectroscopy settings:
                 if task.get('mod_freq', False):
                     # FIXME: HDAWG specific code, should be moved to pulsar?
-                    qb = self.get_qubit(task)
                     mod_freq = qb.instr_pulsar.get_instr().parameters[
                         f'{qb.ge_I_channel()}_direct_mod_freq'
                     ]
