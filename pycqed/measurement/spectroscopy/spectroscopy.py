@@ -394,6 +394,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.temporary_values list
         """
         # make sure that all triggers are set to the correct trigger separation
+        if self.trigger_separation is None:
+            return
         triggers = []
         for qb in self.qubits:
             trigger = qb.instr_trigger
@@ -954,17 +956,12 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     )
 
     def __init__(self, task_list, sweep_points=None,
-                 trigger_separation=150e-6,
+                 trigger_separation=None,
                  states=("g", "e"), **kw):
-        # FIXME: consider not using a temporary trigger separation for this
-        # measurement (and just use the one that is currently configured in the
-        # TriggerDevice, like for other measurements that include qb drive
-        # pulses)
         self.states = list(states)
         super().__init__(task_list, sweep_points=sweep_points,
                          trigger_separation=trigger_separation, states=states,
                          **kw)
-
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
