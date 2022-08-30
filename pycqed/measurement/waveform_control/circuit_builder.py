@@ -726,11 +726,14 @@ class CircuitBuilder:
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
-            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
-                          cal_state_block.build(
-                              sweep_dicts_list=sweep_dicts_list,
-                              sweep_index_list=sweep_index_list))
-            segments.append(seg)
+            vals_per_point = kw.get('df_values_per_point', 1)
+            for j in range(vals_per_point):
+                seg = Segment(f'{segment_prefix}_{i*vals_per_point+j}'
+                              f'_{"".join(seg_states)}',
+                              cal_state_block.build(
+                                  sweep_dicts_list=sweep_dicts_list,
+                                  sweep_index_list=sweep_index_list))
+                segments.append(seg)
 
         return segments
 
