@@ -632,7 +632,6 @@ class Segment:
                         self.elements_on_awg[group].append(element)
 
     def find_awg_hierarchy(self):
-        # TODO these need to be groups now
         masters = {group for group in self.pulsar.trigger_groups
             if len(self.pulsar.get_trigger_channels(group)) == 0}
 
@@ -975,7 +974,6 @@ class Segment:
         one another. At the end the code combines all elements of each
         list into a new element.
         """
-        # TODO: test again
         self.gen_elements_on_awg()
         overlapping_elements = self._test_overlap(track_and_ignore=True)
 
