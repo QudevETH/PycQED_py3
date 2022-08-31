@@ -792,7 +792,7 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         self.fluxlines_dict = fluxlines_dict
         # Build the task_list for the parent class
         for task in task_list:
-            task['sweep_functions'] = {'volt': self.fluxlines_dict[task['qb']]}
+            task['sweep_functions_dict'] = {'volt': self.fluxlines_dict[task['qb']]}
         super().__init__(task_list, **kw)
 
     def run_update(self, **kw):
