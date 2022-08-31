@@ -321,7 +321,10 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
 
             if el_played != 'variable' and int(el_played) != int(el_total):
-                log.error(el_played, ' is not ', el_total)
+                log.error(
+                    f'UHFQCPulsar repeat patterns: number of played elements '
+                    f'({el_played}) does not match the total number of '
+                    f'elements ({el_total}).')
                 raise ValueError('Check number of sequences in repeat pattern')
 
 

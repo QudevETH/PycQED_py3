@@ -1,6 +1,6 @@
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import VisaInstrument, validators as vals
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 
 
 class virtualRohdeSchwarz_SGS100A(Instrument):
