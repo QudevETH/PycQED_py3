@@ -124,3 +124,21 @@ class VC707(VC707_core, AcquisitionDevice):
 
     def _acquisition_set_weight(self, channel, weight):
         self._acq_integration_weights[channel] = weight
+
+    def get_value_properties(self, data_type='raw', acquisition_length=None):
+        properties = super().get_value_properties(
+            data_type=data_type, acquisition_length=acquisition_length)
+        if data_type == 'raw':
+            if acquisition_length is None:
+                raise ValueError('Please specify acquisition_length.')
+            # Units are only valid when using SSB or DSB demodulation.
+            # value corresponds to the peak voltage of a cosine with the
+            # demodulation frequency.
+            properties['value_unit'] = 'Vpeak'
+            properties['scaling_factor'] = 1 / (self.acq_sampling_rate
+                                                * acquisition_length)
+            # FIXME: do a test measurement with e.g. a sine with 1V peak
+            #  amplitude and see what pycqed measures in an integrated
+            #  measurement with varying acq_length (resulting amplitude in
+            #  Vpeak should not depend on the acq_length)
+        return properties
