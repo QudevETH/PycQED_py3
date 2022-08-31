@@ -138,7 +138,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
         prefix = preprocessed_task['prefix']
         for k, v in preprocessed_task.get('sweep_functions_dict', {}).items():
-            # add task sweep functions to the global sweep_functions dict with
+            # add task sweep functions to the global sweep_functions_dict with
             # the appropriately prefixed key
             self.sweep_functions_dict[prefix + k] = v
 
@@ -537,9 +537,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             spectroscopy measurement. (1. dim. sweep points)
         volts: List or np.array of fluxline voltages to perform a 2D qubit
             spectroscopy. This requires to also provide the proper qcodes
-            parameter to set the fluxline voltage as item `'sweep_functions'` in
-            the task, e.g.:
-            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            parameter to set the fluxline voltage as item
+            `'sweep_functions_dict'` in the task, e.g.:
+            `task['sweep_functions_dict'] = {'volt': fluxlines_dict[qb.name]}`
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
@@ -709,9 +709,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             spectroscopy measurement. (1. dim. sweep points)
         volts: List or np.array of fluxline voltages to perform a 2D qubit
             spectroscopy. This requires to also provide the proper qcodes
-            parameter to set the fluxline voltage as item `'sweep_functions'` in
-            the task, e.g.:
-            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            parameter to set the fluxline voltage as item
+            `'sweep_functions_dict'` in the task, e.g.:
+            `task['sweep_functions_dict'] = {'volt': fluxlines_dict[qb.name]}`
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
