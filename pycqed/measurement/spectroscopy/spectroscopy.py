@@ -817,7 +817,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             self.segment_kwargs['mod_config'][ch] = \
                 dict(internal_mod=self.pulsed)
             self.segment_kwargs['sine_config'][ch] = \
-                dict(continous=not self.pulsed,
+                dict(continuous=not self.pulsed,
                      ignore_waveforms=not self.pulsed,
                      gains=tuple(amp_from_power(qb.spec_power()) * x
                                  for x in (0.0, 1.0, 1.0, 0.0)))
