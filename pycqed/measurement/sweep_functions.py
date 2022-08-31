@@ -580,7 +580,7 @@ class MajorMinorSweep(Soft_Sweep):
         return True
 
 
-class FilteredSegmentSweep(FilteredSweep):
+class FilteredSegmentSweep(multi_sweep_function):
     """
     Records only a specified consecutive subset of segments of a
     SegmentHardSweep for each soft sweep point while performing the soft
