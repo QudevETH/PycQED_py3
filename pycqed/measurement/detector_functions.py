@@ -685,11 +685,14 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self.progress_scaling = None
 
     def prepare(self, sweep_points=None):
+        self.prepare_pulsar()
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
+
+    def prepare_pulsar(self):
         if self.prepare_and_finish_pulsar:
             ps.Pulsar.get_instance().start(
                 exclude=[awg.name for awg in self.get_awgs()])
-        for acq_dev in self.acq_devs:
-            acq_dev.timer = self.timer
 
     def get_awgs(self):
         return [self.AWG]

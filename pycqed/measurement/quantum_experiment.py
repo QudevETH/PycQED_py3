@@ -593,6 +593,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.MC.set_sweep_function(sweep_func_1st_dim)
         self.MC.set_sweep_points(self.mc_points[0])
 
+        swf_prep_pulsar = None
         # set second dimension sweep function
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
@@ -604,9 +605,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
                 sweep_func_2nd_dim = awg_swf.SegmentSoftSweep(
                     self.sequences, sweep_param_name, unit)
-                # Ensure that all AWGs get restarted synchronously after
-                # reprogramming (some of) them.
-                self.df_kwargs['enforce_pulsar_restart'] = True
+                # Indicate that df.prepare_pulsar needs to be configured as
+                # an upload_finished_callback for this sweep function (to
+                # let the detector function restart pulsar if needed).
+                swf_prep_pulsar = sweep_func_2nd_dim
             else:
                 # Check whether it is a nested sweep function whose first
                 # sweep function is a SegmentSoftSweep class as placeholder.
@@ -621,9 +623,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     swfs[0] = awg_swf.SegmentSoftSweep(
                         self.sequences,
                         sweep_param_name, unit)
-                    # Ensure that all AWGs get restarted synchronously after
-                    # reprogramming (some of) them.
-                    self.df_kwargs['enforce_pulsar_restart'] = True
+                    # Indicate that df.prepare_pulsar needs to be configured as
+                    # an upload_finished_callback for this sweep function (to
+                    # let the detector function restart pulsar if needed).
+                    swf_prep_pulsar = swfs[0]
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
@@ -695,6 +698,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
             self.df_name, self.meas_objs, **self.df_kwargs)
+        # Set an upload_finished_callback if the above logic determined that
+        # this is needed (i.e., for SegmentSoftSweep).
+        if swf_prep_pulsar is not None:
+            swf_prep_pulsar.upload_finished_callback = self.df.prepare_pulsar
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
