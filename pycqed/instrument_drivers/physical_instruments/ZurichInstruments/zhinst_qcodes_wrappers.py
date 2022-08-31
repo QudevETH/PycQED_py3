@@ -6,6 +6,8 @@ import numpy as np
 import logging
 log = logging.getLogger(__name__)
 
+from zhinst.qcodes import HDAWG as HDAWG_core
+from zhinst.qcodes import UHFQA as UHFQA_core
 from zhinst.qcodes import SHFSG as SHFSG_core
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
@@ -173,3 +175,20 @@ class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
         key = channel.short_name[:2] + channel.short_name[-1:]
         self._awg_source_strings[key] = awg_str
 
+
+class HDAWG8(HDAWG_core, ZHInstMixin):
+    """QuDev-specific PycQED driver for the ZI HDAWG
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._check_server(kwargs)
+        super().__init__(*args, **kwargs)
+
+
+class UHFQA(UHFQA_core, ZHInstMixin):
+    """QuDev-specific PycQED driver for the ZI UHFQA
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._check_server(kwargs)
+        super().__init__(*args, **kwargs)
