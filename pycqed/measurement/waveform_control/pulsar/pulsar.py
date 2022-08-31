@@ -389,7 +389,12 @@ class PulsarAWGInterface(ABC):
 
     @abstractmethod
     def is_awg_running(self) -> bool:
-        """Checks whether the sequencer of the AWG is running."""
+        """Checks whether the sequencer of the AWG is running.
+
+        Returns True if all required sub-AWGs are running. Note: this can
+        include the case where no sub-AWGs are running, but they are also not
+        needed.
+        """
 
     @abstractmethod
     def clock(self) -> float:

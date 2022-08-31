@@ -96,7 +96,7 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         SHFGeneratorModulePulsar.program_awg(*args, **kwargs)
 
     def is_awg_running(self):
-        return SHFAcquisitionModulePulsar.is_awg_running(self) or \
+        return SHFAcquisitionModulePulsar.is_awg_running(self) and \
                SHFGeneratorModulePulsar.is_awg_running(self)
 
     def sigout_on(self, ch, on=True):

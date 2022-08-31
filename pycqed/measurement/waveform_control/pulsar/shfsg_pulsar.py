@@ -492,9 +492,11 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def is_awg_running(self):
         is_running = []
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
-            is_running.append(sgchannel.awg.enable())
-        return any(is_running)
+            if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
+                is_running.append(sgchannel.awg.enable())
+        return all(is_running)
 
     def clock(self):
         return 2.0e9

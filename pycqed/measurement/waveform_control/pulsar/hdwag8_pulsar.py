@@ -577,8 +577,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', wf_raw_combined)
 
     def is_awg_running(self):
-        return any([self.awg.get('awgs_{}_enable'.format(awg_nr))
-                    for awg_nr in self._hdawg_active_awgs()])
+        return all([self.awg.get('awgs_{}_enable'.format(awg_nr))
+                    for awg_nr in self._hdawg_active_awgs()
+                    if self.awg._awg_program[awg_nr] is not None])
 
     def clock(self):
         return self.awg.clock_freq()
