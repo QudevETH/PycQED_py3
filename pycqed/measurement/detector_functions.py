@@ -913,7 +913,7 @@ class MultiPollDetector(PollDetector):
                 elif self.AWG != d.AWG:
                     raise Exception('Not all AWG instances in '
                                     'MultiPollDetector are the same.')
-                d.AWG = None
+            d.AWG = None
 
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
