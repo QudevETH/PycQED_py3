@@ -1493,8 +1493,9 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         # Assure that ro separation is comensurate with start granularity
         pulsar_obj = self.get_qubits(qb)[0][0].instr_pulsar.get_instr()
         acq_instr = self.get_qubits(qb)[0][0].instr_acq()
-        # FIXME: apprently the pulsar parameter _element_start_granularity is
-        #  set to 0 for acq instruments. Access parameter like this for now.
+        # Pulsar parameter _element_start_granularity is
+        # set to 0 for acq instruments. Access parameter
+        # via ELEMENT_START_GRANULARITY
         gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
         ro_separation -= ro_separation % (-gran)
         b_ro.pulses[0]['pulse_delay'] = ro_separation
