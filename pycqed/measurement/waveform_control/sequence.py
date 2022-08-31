@@ -85,8 +85,6 @@ class Sequence:
             channel name as highest-level key:
             sequences[awg][elname][cw][chid] == channel_hashes[ch][elname][cw]
         """
-        # TODO change awg to group everywhere and in get_element_codewords and in get_element_channels and in waveforms
-        # TODO keep sequences organized via awgs
         waveforms = {}
         sequences = {}
         channel_hashes = {}
