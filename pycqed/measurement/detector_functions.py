@@ -838,8 +838,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         elif self.AWG is not None:
             self.AWG.stop()
 
-        for d in self.detectors:
-            d.acq_dev.acquisition_finalize()
+        if hasattr(self, 'acq_dev'):
+            self.acq_dev.acquisition_finalize()
 
 
 class MultiPollDetector(PollDetector):
@@ -1086,10 +1086,8 @@ class MultiPollDetector(PollDetector):
         Takes care of setting instruments into a known state at the end of
         acquisition by calling the finish method of each polling detector in
         self.detectors.
-        TODO: shouldn't it call the super method?
         """
-        if self.AWG is not None:
-            self.AWG.stop()
+        super().finish()
         for d in self.detectors:
             d.finish()
 
