@@ -216,8 +216,6 @@ class Sequence:
             # mark sequence as resolved
             seq.is_resolved = True
 
-# TODO search for element/awg to check whether the rest is really all OK
-
     def n_acq_elements(self, per_segment=False):
         """
         Gets the number of acquisition elements in the sequence.
