@@ -2251,6 +2251,11 @@ class QuDev_transmon(Qubit):
             comm_freq: The readout pulse separation will be a multiple of
                        1/comm_freq
         """
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment "
+                                      "ReadoutPulseScope instead.")
 
         if delays is None:
             raise ValueError("Unspecified delays for "
@@ -2278,7 +2283,6 @@ class QuDev_transmon(Qubit):
             verbose=verbose,
             upload=upload))
         MC.set_sweep_points(delays)
-        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency),
