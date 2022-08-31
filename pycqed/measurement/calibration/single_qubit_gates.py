@@ -1518,11 +1518,20 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
             qb_names=self.meas_obj_names, **analysis_kwargs)
 
     def seg_from_cal_points(self, *args, **kw):
+        """
+        Configure super.seg_from_cal_points() for sequence with two readouts
+        per segment and hence twice the number of calibration points. Check
+        super() method for args, kw and returned values.
+        """
         n_reps = 2
         kw['df_values_per_point'] = n_reps
         return super().seg_from_cal_points(*args, **kw)
 
     def sweep_n_dim(self, *args, **kw):
+        """
+        Configure super.sweep_n_dim() for sequence with two readouts
+        per segment. Check super() method for args, kw and returned values.
+        """
         n_reps = 2
         seqs, vals = super().sweep_n_dim(*args, **kw)
         n_acqs = int(len(vals[0])/n_reps)
