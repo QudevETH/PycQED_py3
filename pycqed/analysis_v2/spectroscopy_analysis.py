@@ -2580,23 +2580,30 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
             self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
             self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
 
-            # Plot the dips
-            self.plot_dicts[f"{fig_id_analyzed}_dips"] = {
-                'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_line,
-                'xvals': self.analysis_data[qb_name]['dips_frequency'],
-                'yvals': self.analysis_data[qb_name]['dips_magnitude'],
-                'marker': 'x',
-                'line_kws': {
-                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
-                },
-                'linestyle': 'none',
-                'color': 'C1',
-                'setlabel': 'Dips',
-                'do_legend': True,
-                'legend_bbox_to_anchor': (0.5, -0.2),
-                'legend_pos': 'center'
-            }
+            for i,qb in enumerate(feedline):
+                # Plot the dips
+                dip1_freq = self.fit_res[qb_name][f'{qb.name}_RO_frequency']
+                dip2_freq = self.fit_res[qb_name][f'{qb.name}_mode2_frequency']
+                dip1_magn = self.fit_res[qb_name][f'{qb.name}_RO_magnitude']
+                dip2_magn = self.fit_res[qb_name][f'{qb.name}_mode2_magnitude']
+                                                                             
+                self.plot_dicts[f"{fig_id_analyzed}_dips_{qb.name}"] = {
+                    'fig_id': fig_id_analyzed,
+                    'plotfn': self.plot_line,
+                    'xvals': [dip1_freq,dip2_freq],
+                    'yvals': [dip1_magn,dip2_magn],
+                    'marker': 'x',
+                    'line_kws': {
+                        'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                    },
+                    'linestyle': 'none',
+                    'color': f'C{i+1}',
+                    'setlabel': f'Dips {qb.name}',
+                    'do_legend': True,
+                    'legend_bbox_to_anchor': (0.5, -0.2),
+                    'legend_pos': 'center',
+                    'legend_ncol': len(feedline),
+                }
 
             # Plot the labels of the qubits next to their assigned dip
             yvals = self.plot_dicts[
@@ -2604,9 +2611,8 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
             miny = np.min(yvals)
             maxy = np.max(yvals)
             yrange = maxy - miny
-
-            for qb in feedline:
-                self.plot_dicts[f"{fig_id_analyzed}_{qb.name}_RO"] = {
+            for i,qb in enumerate(feedline):
+                    self.plot_dicts[f"{fig_id_analyzed}_{qb.name}_RO"] = {
                     'fig_id': fig_id_analyzed,
                     'plotfn': self.plot_line,
                     'xvals': [self.fit_res[qb_name][f'{qb.name}_RO_frequency']],
@@ -2621,6 +2627,7 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                             5
                     },
                     'linestyle': 'none',
+                    'color': f'C{i+1}'
                 }
 
             # Plot textbox containing relevant information
