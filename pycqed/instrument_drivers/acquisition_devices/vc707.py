@@ -85,10 +85,8 @@ class VC707(VC707_core, AcquisitionDevice):
 
     def _prepare_poll(self):
         if self._get_current_fpga_module_name() == "averager":
-            self.averager.configure()
             self.averager.run()
         elif self._get_current_fpga_module_name() == "state_discriminator":
-            self.state_discriminator.configure()
             self.state_discriminator.upload_weights()
             self.state_discriminator.run()
 
@@ -116,6 +114,7 @@ class VC707(VC707_core, AcquisitionDevice):
                 self.averager_nb_segments.set(1)
             elif mode == "int_avg":
                 self.averager_nb_segments.set(n_results)
+            self.averager.configure()
 
         elif self._get_current_fpga_module_name() == "state_discriminator":
             self.state_discriminator_nb_samples.set(
@@ -137,6 +136,7 @@ class VC707(VC707_core, AcquisitionDevice):
             #     self.state_discriminator_units.get().append(
             #         DiscriminationUnit()
             #     )
+            self.state_discriminator.configure()
 
     def acquisition_progress(self):
         if self._get_current_fpga_module_name() == "averager":
