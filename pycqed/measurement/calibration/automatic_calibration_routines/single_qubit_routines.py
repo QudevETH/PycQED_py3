@@ -1043,9 +1043,11 @@ class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
-            freq_center (float): Frequency around which the spectroscopy shuold
-                be centered. Defaults to qb.ge_freq() (if no value
-                is found in the dictionary).
+            freq_center (float): Frequency around which the spectroscopy should
+                be centered. It is possible to specify a string value that will
+                 be parsed. It is possible to include "{current}" to use the
+                 current qb.ge_freq() value. Defaults to qb.ge_freq() (if no
+                 value is found in the dictionary).
             freq_range (float): Range of the qubit spectroscopy. The sweep
                 points will extend from freq_center-freq_range/2 to
                 freq_center+freq_range/2. Defaults to 200 MHz (if no value
@@ -1094,6 +1096,9 @@ class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
             freq_center = self.get_param_value('freq_center',
                                                qubit=qb.name,
                                                default=qb.ge_freq())
+            if isinstance(freq_center, str):
+                freq_center = eval(
+                    freq_center.format(current=qb.ge_freq()))
             freq_range = self.get_param_value('freq_range',
                                               qubit=qb.name,
                                               default=self.DEFAULT_FREQ_RANGE)
