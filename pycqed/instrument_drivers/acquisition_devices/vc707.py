@@ -144,10 +144,6 @@ class VC707(VC707_core, AcquisitionDevice):
             return 0
 
     def poll(self, poll_time=0.1) -> dict:
-
-        # Sanity check
-        super()._check_allowed_acquisition()
-
         # Return empty data if FPGA still running
         if not self._get_current_fpga_module().has_finished():
             return {}
@@ -165,13 +161,10 @@ class VC707(VC707_core, AcquisitionDevice):
 
     # TODO: Should take in list of tuple (acq_unit, quadrature)
     def set_classifier_params(self, channels, params):
-        if self._get_current_fpga_module_name == "state_discriminator":
-            if params is not None and 'means_' in params:
-                for qubit in self.state_discriminator_qubits.get():
-                    if qubit.source_adc in [c[0] for c in channels]:
-                        qubit.center_coordinates = params['means_'].ravel()
-
-                self.state_discriminator.upload_weights()
+        if params is not None and 'means_' in params:
+            for qubit in self.state_discriminator_qubits.get():
+                if qubit.source_adc in [c[0] for c in channels]:
+                    qubit.center_coordinates = params['means_'].ravel()
 
     def _adapt_averager_results(self, raw_results) -> dict:
         """Format the FPGA averager results as expected by PycQED."""
@@ -214,32 +207,26 @@ class VC707(VC707_core, AcquisitionDevice):
                 weights = self._acq_integration_weights[(acq_unit, ch)]
 
                 # Integrate each segment with weights
+                # i*2 (i*2+1) takes Re (Im) of the i-th physical
+                # input. Note that Im is useful only with DDC.
                 integration_result = \
-                    np.dot(integration_result[acq_unit * 2, :, :],
+                    np.dot(averager_results[acq_unit * 2, :, :],
                            weights[0][:averager_results.shape[-1]]) + \
-                    np.dot(integration_result[acq_unit * 2 + 1, :, :],
+                    np.dot(averager_results[acq_unit * 2 + 1, :, :],
                            weights[1][:averager_results.shape[-1]])
 
                 dataset[(acq_unit, ch)] = [np.array(integration_result)]
 
         return dataset
 
-#    def get_value_properties(self, data_type="raw", acquisition_length=None):
-#        raise NotImplementedError(
-#            "get_value_properties still needs to be implemented for using "
-#            "the VC707 in integration mode.")
-
     def _acquisition_set_weight(self, channel, weight):
-        super()._acquisition_set_weight()
-
         # Store a copy for software-emulated integration
         self._acq_integration_weights[channel] = weight
 
+        return  # FIXME: following code not compatible with current driver
         for qubit in self.state_discriminator_qubits.get():
             if qubit.source_adc == channel:
                 qubit.weights = weight
-
-        self.state_discriminator.upload_weights()
 
     def _get_current_fpga_module_name(self) -> str:
         """Helper function that checks which FPGA module must be used."""
@@ -250,7 +237,7 @@ class VC707(VC707_core, AcquisitionDevice):
         elif self._acq_mode == "int_avg" and self._acq_data_type == "digitized":
             return "state_discriminator"
         else:
-            raise ValueError(f"Unknow fpga mode for mode '{self._acq_mode}' "
+            raise ValueError(f"Unknown FPGA mode for mode '{self._acq_mode}' "
                              f"and data type '{self._acq_mode}'.")
 
     def _get_current_fpga_module(self) -> BaseModule:
