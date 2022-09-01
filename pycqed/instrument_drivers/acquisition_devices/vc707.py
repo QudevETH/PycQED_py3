@@ -46,20 +46,18 @@ class VC707(VC707_core, AcquisitionDevice):
                            #"digitized": 3,  # thresholded results (0 or 1)
                            }
 
-    def __init__(self, *args, devidx:int, clockmode:int, verbose=False,
-                 **kwargs):
+    def __init__(self, *args, devidx:int=None, clockmode:int=None,
+                 verbose=False, **kwargs):
         """
         Arguments:
             devidx, clockmode: see :class:`vc707_python_interface.fpga_interface.vc707_interface.VC707InitSettings`.
+            verbose: see :meth:`vc707_python_interface.fpga_interface.vc707_interface.VC707Interface.initialize`.
         """
 
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
 
-        # Init settings must be set before initialize() is called
-        self.init_devidx(devidx)
-        self.init_clockmode(clockmode)
-        self.initialize(verbose=True if verbose else False)
+        self.initialize(devidx=devidx, clockmode=clockmode, verbose=verbose)
         self._acq_integration_weights = {}
         self._last_traces = []
         self.add_parameter('acq_start_after_awgs', initial_value=False,
