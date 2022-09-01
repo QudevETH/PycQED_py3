@@ -1313,7 +1313,10 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         )
         self.index_iteration = 1
         self.index_spectroscopy = 1
-
+        self.previous_freqs = {}
+        # Store initial frequency of the qubits
+        for qb in qubits:
+            self.previous_freqs[qb.name] = qb.ge_freq()
         self.final_init(**kw)
 
     class Decision(IntermediateStep):
@@ -1397,16 +1400,22 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 if success:
                     if self.get_param_value('verbose'):
                         print(f"Lorentzian fit for {qb.name} was successful.")
+                    # Update the frequency in the dictionary for next steps
+                    self.routine.previous_freqs[qb.name] = qb.ge_freq()
                 elif routine.index_iteration < max_iterations:
                     if self.get_param_value('verbose'):
                         print(f"Lorentzian fit failed for {qb.name}. "
                               "Trying again.")
                     qubits_to_rerun.append(qb)
+                    # Restore the previous frequency
+                    qb.ge_freq(self.routine.previous_freqs[qb.name])
                 else:
                     if self.get_param_value('verbose'):
                         print(f"Lorentzian fit failed for {qb.name}. Maximum "
                               "number of iterations reached.")
                     qubits_failed.append(qb)
+                    # Restore the previous frequency
+                    qb.ge_freq(self.routine.previous_freqs[qb.name])
 
             # Decide how to modify the routine steps
             if len(qubits_to_rerun) > 0:
