@@ -48,15 +48,21 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS).
-    6) SetBiasVoltage (set_bias_voltage_3): sets the bias voltage at the
-        midpoint.
-    7) UpdateFrequency (update_frequency_ge_3): updates the frequency of the
-        qubit at the midpoint by using the preliminary Hamiltonian model.
-    8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
-        sets temporary bias voltage for flux-pulse-assisted readout.
-    9) FindFrequency (find_frequency_ge_3): see corresponding routine
+    For the remaining fluxes and transitions specified in "measurements" the
+    following step will be run:
+        6) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
+            midpoint.
+        7) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
+            the qubit at the midpoint by using the preliminary Hamiltonian
+            model.
+        8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
+            sets temporary bias voltage for flux-pulse-assisted readout.
+        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine
+        ...
+    Afterwards, the final model is determined:
     10) DetermineModel (determine_model_final): fits a Hamiltonian model based
-        on four transition frequencies:
+        on the transition frequencies at the fluxes specified in "measurements".
+        By default they are:
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS)
