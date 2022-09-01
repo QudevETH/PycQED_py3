@@ -11,18 +11,12 @@
         "use_T2_star": false,
         "max_waiting_seconds":1
     },
-    "Ramsey": {
-        "delta_t": 310.0e-9,
-        "t0": 60e-9,
-        "n_periods": 5,
-        "pts_per_period": 6
-    },
     "PiPulseCalibration": {
             "Ramsey": {
-                "delta_t": 300.0e-9,
+                "delta_t": 150e-9,
                 "t0": 60e-9,
-                "n_periods": 5,
-                "pts_per_period": 6
+                "n_periods": 6,
+                "pts_per_period": 5
         }
     }
 }
