@@ -2520,24 +2520,24 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                         self.fit_res[qb_name][
                             f'{qb_dip.name}_RO_frequency'] = dips_freqs[i]
                         self.fit_res[qb_name][
-                            f'{qb_dip.name}_Purcell_frequency'] = dips_freqs[i +
+                            f'{qb_dip.name}_mode2_frequency'] = dips_freqs[i +
                                                                              1]
                         self.fit_res[qb_name][
                             f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i]
                         self.fit_res[qb_name][
-                            f'{qb_dip.name}_Purcell_magnitude'] = dips_magnitude[
+                            f'{qb_dip.name}_mode2_magnitude'] = dips_magnitude[
                                 i + 1]
                     else:
                         # Pick the rightmost dip
                         self.fit_res[qb_name][
                             f'{qb_dip.name}_RO_frequency'] = dips_freqs[i + 1]
                         self.fit_res[qb_name][
-                            f'{qb_dip.name}_Purcell_frequency'] = dips_freqs[i]
+                            f'{qb_dip.name}_mode2_frequency'] = dips_freqs[i]
                         self.fit_res[qb_name][
                             f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i +
                                                                             1]
                         self.fit_res[qb_name][
-                            f'{qb_dip.name}_Purcell_magnitude'] = dips_magnitude[
+                            f'{qb_dip.name}_mode2_magnitude'] = dips_magnitude[
                                 i]
                 except IndexError:
                     # If an odd number of dip was found, consider the last one
@@ -2628,17 +2628,17 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
             for qb in feedline:
                 f_ro = self.fit_res[qb_name][f'{qb.name}_RO_frequency']
                 f_purcell = self.fit_res[qb_name][
-                    f'{qb.name}_Purcell_frequency']
+                    f'{qb.name}_mode2_frequency']
                 try:
                     textstr = textstr + f"{qb.name}: " + r"$f_{RO}$ = "  + \
                         f"{f_ro/1e9:.3f} GHz, "
                 except KeyError:
                     log.warning(f"RO frequency not found for {qb.name}")
                 try:
-                    textstr = textstr + r"$f_{Purcell}$ = " + \
+                    textstr = textstr + r"$f_{mode,2}$ = " + \
                         f"{f_purcell/1e9:.3f} GHz\n"
                 except KeyError:
-                    log.warning(f"Purcell frequency not found for {qb.name}")
+                    log.warning(f"Second mode frequency not found for {qb.name}")
             textstr = textstr.rstrip('\n')
 
             self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
