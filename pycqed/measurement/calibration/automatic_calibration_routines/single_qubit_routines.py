@@ -1095,11 +1095,11 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
     RamseyStep (ramsey_large_AD)
     RamseyStep (ramsey_small_AD)
     RabiStep (rabi_after_ramsey)
-    QScaleStep (qscale)
+    QScaleStep (qscale), only for ge transition
     RabiStep (rabi_after_qscale)
     T1Step (t1)
-    RamseyStep (echo_large_AD)
-    RamseyStep (echo_small_AD)
+    RamseyStep (echo_large_AD), only for ge transition
+    RamseyStep (echo_small_AD), only for ge transition
     InPhaseAmpCalibStep (in_phase_calib)
     """
 
