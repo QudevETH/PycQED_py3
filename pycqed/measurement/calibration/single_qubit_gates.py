@@ -5289,7 +5289,6 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, length= None, **kw):
         try:
-            # kw['df_name'] = kw.get('df_name', "int_log_det")
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amps=amps, length=length, **kw)
@@ -5319,13 +5318,14 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         # add modulation pulse
         flux_pulse_amplitude = kw.get('flux_pulse_amplitude', 0)
         flux_pulse_length = kw.get('flux_pulse_length', 4e-8)
+        flux_pulse_frequency = kw.get('flux_pulse_frequency', 0)
         pulse_modifs = {0: {'amplitude': flux_pulse_amplitude,
-                            'pulse_length': flux_pulse_length}}
+                            'pulse_length': flux_pulse_length,
+                            'frequency': flux_pulse_frequency}}
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
                                                [f'FP {qb}'],
                                                pulse_modifs=pulse_modifs
                                                )
-        print(modulation_block)
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
