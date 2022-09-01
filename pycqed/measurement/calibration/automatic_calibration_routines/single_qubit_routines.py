@@ -1342,16 +1342,19 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
 
             Configuration parameters (coming from the configuration parameter
             dictionary):
+                max_kappa_fraction_sweep_range (float): Maximum value of kappa
+                    as a fraction of the whole sweep range. If the kappa found
+                    with the fit is bigger than this value, the fit will be
+                    considered unsuccessful.
+                max_kappa_absolute (float): Maximum value of kappa in Hz. 
+                    If the kappa found with the fit is bigger than this value,
+                    the fit will be considered unsuccessful.
                 max_waiting_seconds (float): Maximum number of seconds to wait
-                before running the Decision step. This is necessary because it
-                might take some time before the analysis results are available.
+                    before running the Decision step. This is necessary because
+                    it might take some time before the analysis results are
+                    available.
             """
             super().__init__(routine=routine, **kw)
-            # FIXME: use general parameters from AdaptiveQubitSpectroscopy for
-            # now
-            self.parameter_lookups = self.routine.parameter_lookups
-            self.parameter_sublookups = self.routine.parameter_sublookups
-            self.leaf = self.routine.leaf
 
         def run(self):
             """Executes the decision step.
@@ -1402,6 +1405,26 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 # Check whether the fit was successful and store the qubits
                 # in the corresponding list for further processing.
                 success = False if red_chi_upper_bound < red_chi else True
+
+                # Check whether the width of the resonance is within the
+                # specified limits
+                max_kappa_fraction_sweep_range = self.get_param_value(
+                    "max_kappa_fraction_sweep_range", qubit=qb
+                )
+                sweep_points_freq = qb_spec.analysis.sp[f"{qb.name}_freq"]
+                sweep_range = np.max(sweep_points_freq)-np.min(sweep_points_freq)
+
+                max_kappa_absolute = self.get_param_value(
+                    "max_kappa_absolute", qubit=qb
+                )
+                kappa = qb_spec.analysis.fit_res[qb.name].values['kappa']
+                if max_kappa_absolute is not None:
+                    if kappa > max_kappa_absolute:
+                        success = False
+                if max_kappa_fraction_sweep_range is not None:
+                    if kappa > max_kappa_fraction_sweep_range*sweep_range:
+                        success = False
+
                 if success:
                     if self.get_param_value('verbose'):
                         print(f"Lorentzian fit for {qb.name} was successful.")
