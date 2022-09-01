@@ -11,6 +11,9 @@ from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
 from vc707_python_interface.modules.base_module import BaseModule
 from vc707_python_interface.settings.state_discriminator_settings \
     import DiscriminationUnit
+from qcodes.utils import validators as vals
+from qcodes.instrument.parameter import ManualParameter
+import time
 
 
 log = logging.getLogger(__name__)
@@ -26,13 +29,11 @@ class VC707(VC707_core, AcquisitionDevice):
     settings is changed for one of the channels, all settings are reuploaded.
     """
     n_acq_units = 2
-    n_acq_channels = 2  # TODO
-    # TODO: Will change with decimation!
-    acq_sampling_rate = 1.0e9
+    n_acq_int_channels = 2  # TODO
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     # to record so long traces by default.
     # TODO: In state discrimination mode this is actually 256.
-    acq_max_trace_samples = 4096
+    acq_weights_n_samples = 4096
     allowed_modes = {
         "avg": [], # averaged raw input (time trace) in V
         "int_avg": [
@@ -45,7 +46,8 @@ class VC707(VC707_core, AcquisitionDevice):
                            #"digitized": 3,  # thresholded results (0 or 1)
                            }
 
-    def __init__(self, *args, devidx:int, clockmode:int, **kwargs):
+    def __init__(self, *args, devidx:int, clockmode:int, verbose=False,
+                 **kwargs):
         """
         Arguments:
             devidx, clockmode: see :class:`vc707_python_interface.fpga_interface.vc707_interface.VC707InitSettings`.
@@ -57,14 +59,31 @@ class VC707(VC707_core, AcquisitionDevice):
         # Init settings must be set before initialize() is called
         self.init_devidx(devidx)
         self.init_clockmode(clockmode)
-        self.initialize()
-
+        self.initialize(verbose=True if verbose else False)
         self._acq_integration_weights = {}
         self._last_traces = []
+        self.add_parameter('acq_start_after_awgs', initial_value=False,
+                           vals=vals.Bool(), parameter_class=ManualParameter)
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    @property
+    def acq_sampling_rate(self):
+        return 1.0e9 / self.preprocessing_decimation()
 
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
+        if not self.acq_start_after_awgs():
+            self._prepare_poll()
+
+    def prepare_poll_after_AWG_start(self):
+        super().prepare_poll_after_AWG_start()
+        if self.acq_start_after_awgs():
+            # The following sleep is a workaround to avoid weird behavior
+            # that is potentially caused by an unstable main trigger signal
+            # right after starting the main trigger.
+            time.sleep(0.1)
+            self._prepare_poll()
+
+    def _prepare_poll(self):
         if self._get_current_fpga_module_name() == "averager":
             self.averager.configure()
             self.averager.run()
@@ -243,3 +262,22 @@ class VC707(VC707_core, AcquisitionDevice):
             return self.averager
         elif self._get_current_fpga_module_name() == "state_discriminator":
             return self.state_discriminator
+
+    def get_value_properties(self, data_type='raw', acquisition_length=None):
+        properties = super().get_value_properties(
+            data_type=data_type, acquisition_length=acquisition_length)
+        if data_type == 'raw':
+            if acquisition_length is None:
+                raise ValueError('Please specify acquisition_length.')
+            # Units are only valid when using SSB or DSB demodulation.
+            # value corresponds to the peak voltage of a cosine with the
+            # demodulation frequency.
+            properties['value_unit'] = 'Vpeak'
+            properties['scaling_factor'] = 1 / (self.acq_sampling_rate
+                                                * acquisition_length)
+            # FIXME: do a test measurement with e.g. a sine with 1V peak
+            #  amplitude and see what pycqed measures in an integrated
+            #  measurement with varying acq_length (resulting amplitude in
+            #  Vpeak should not depend on the acq_length)
+        return properties
+
