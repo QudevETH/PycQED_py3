@@ -1562,8 +1562,11 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         per segment and hence twice the number of calibration points. Check
         super() method for args, kw and returned values.
         """
-        n_reps = 2
-        kw['df_values_per_point'] = n_reps
+        # given that this routine makes use of two read out pulses
+        # per segment, also two repetitions per cal state have to
+        # be added to allow the analysis to run successfully
+        number_of_cal_repetitions = 2
+        kw['df_values_per_point'] = number_of_cal_repetitions
         return super().seg_from_cal_points(*args, **kw)
 
     def sweep_n_dim(self, *args, **kw):
