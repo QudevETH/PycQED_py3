@@ -171,10 +171,14 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
-        acq_classifier_params[uhf] += [qb.acq_classifier_params()]
+        param = 'acq_classifier_params'
+        acq_classifier_params[uhf] += [
+            qb.get(param) if param in qb.parameters else {}]
         if uhf not in acq_state_prob_mtxs:
             acq_state_prob_mtxs[uhf] = []
-        acq_state_prob_mtxs[uhf] += [qb.acq_state_prob_mtx()]
+        param = 'acq_state_prob_mtx'
+        acq_state_prob_mtxs[uhf] += [
+            qb.get(param) if param in qb.parameters else None]
 
     if add_channels is None:
         add_channels = {}
