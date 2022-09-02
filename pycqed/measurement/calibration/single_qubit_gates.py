@@ -1310,6 +1310,23 @@ class Cryoscope(CalibBuilder):
             self.exp_metadata['flux_pulse_blocks'][qb] = block.build()
 
 class FluxPulseTiming(FluxPulseScope):
+    """
+        Flux pulse timing measurement used to determine the determine the
+        timing of the flux pulse with respect to the qubit drive.
+        It is based on the flux pulse scope measurement and thus
+        features the same pulse sequnce but with the drive frequency
+        fixed at the qubit ge frequency.
+        pulse sequence:
+                      <- delay ->
+           |    -------------    |X180|  ---------------------  |RO|
+           |    ---   | ---- fluxpulse ----- |
+
+            sweep_points:
+            delay (numpy array): array of delays of the flux pulse
+
+        Returns: None
+
+        """
     default_experiment_name = 'FluxPulseTiming'
     kw_for_sweep_points = dict(
         **FluxPulseScope.kw_for_sweep_points,
