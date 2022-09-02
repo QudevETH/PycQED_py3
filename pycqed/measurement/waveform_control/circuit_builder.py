@@ -703,8 +703,10 @@ class CircuitBuilder:
         :param sweep_index_list: Passed on to Block.build for the complete
             cal_state_block. Determines for which sweep points from
             sweep_dicts_list the block should be build.
-        :param kw: keyword arguments (to allow pass through kw even if it
-            contains entries that are not needed)
+        :param kw: additional keyword arguments
+            df_values_per_point (int, default: 1): number of expected number of readouts
+                per sweep point.
+
         :return: list of Segment instances
         """
         if ro_kwargs is None:

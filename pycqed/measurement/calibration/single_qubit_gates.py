@@ -1325,8 +1325,7 @@ class FluxPulseTiming(FluxPulseScope):
             delay (numpy array): array of delays of the flux pulse
 
         Returns: None
-
-        """
+    """
     default_experiment_name = 'FluxPulseTiming'
     kw_for_sweep_points = dict(
         **FluxPulseScope.kw_for_sweep_points,
