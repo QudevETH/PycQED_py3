@@ -441,6 +441,14 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
                     if 'pulse_modifs' not in task:
                         task['pulse_modifs'] = {}
+                    # Below, we replace mod_frequency by a ParametricValue in all X180
+                    # pulses in all task-specific blocks and in all calibration point
+                    # segments. Since the cal segments are generated globally (and not
+                    # per task), we need to manually ensure that a sweep parameter with
+                    # task prefix is used if it exists. If no task-specific freq sweep
+                    # parameter is found, the global freq sweep parameter is used. For
+                    # the task-specific blocks, prefixing is automatically taken into
+                    # account by the base class.
                     params = ['freq'] * 2
                     pre_param = task['prefix'] + params[1]
                     if self.sweep_points.find_parameter(pre_param) is not None:
