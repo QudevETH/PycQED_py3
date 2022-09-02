@@ -1516,8 +1516,9 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         b = self.block_from_ops('ro_ge', [f'RO {qb}', f'X180 {qb}'])
 
         ro = b.pulses[0]
+        # here probe refers to the X180 pulse that "probes" the
+        # first readout pulse
         probe = b.pulses[1]
-
         probe['ref_point'] = 'start'
         probe['ref_point_new'] = 'end'
 
@@ -1538,7 +1539,6 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         ro_separation -= ro_separation % (-gran)
         b_ro.pulses[0]['pulse_delay'] = ro_separation
         b = self.simultaneous_blocks('final', [b, b_ro])
-
         if prepend_pulse_dicts is not None:
             pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
                                              block_name='prepend')
