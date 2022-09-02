@@ -1347,7 +1347,7 @@ class QuDev_transmon(Qubit):
             allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
                 LO and IF sweep) may be used (default: True). Note that
                 setting this to False might lead to a sweep function that is
-                only allowed to taken specific value supported by the
+                only allowed to take specific values supported by the
                 internal LO.
 
         Returns: the Sweep_function object
