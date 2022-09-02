@@ -1505,6 +1505,12 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         """
         Performs X180 pulse on top of a readout pulse.
         :param qb: (str) the name of the qubit
+        :param sweep_points: (SweepPoints object or list of dicts or None)
+        sweep points valid for all tasks.
+        :param ro_separation: (float) separation between the two readout
+        pulses as specified between the start of both pulses.
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
         :param kw:
         """
         b = self.block_from_ops('ro_ge', [f'RO {qb}', f'X180 {qb}'])
