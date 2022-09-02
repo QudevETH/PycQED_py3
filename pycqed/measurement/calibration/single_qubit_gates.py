@@ -1344,6 +1344,14 @@ class FluxPulseTiming(FluxPulseScope):
     )
 
     def get_ge_freq(self, qb):
+        """
+        Returns the ge frequency of the provided qubit name. This is used
+        to create the sweep points of length 1 of the routine.
+        :param qb: (string) name of qubit
+
+        Returns:
+            list containing as single entry the ge frequency of the qubit
+        """
         qb = self.get_qubits(qb)[0][0]
         return [qb.ge_freq()]
 
