@@ -103,6 +103,12 @@ class Device(Instrument):
                            docstring='stores all two qubit gate names',
                            get_cmd=lambda s=self: copy(s._two_qb_gates)
                            )
+        self.add_parameter(
+            'default_cz_gate_name',
+            parameter_class=ManualParameter, initial_value=None,
+            vals=vals.MultiType(vals.Strings(), vals.Enum(None)),
+            set_parser=self._valid_cz_gate,
+            docstring='Name of the CZ gate that should be used by default.')
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -511,6 +517,17 @@ class Device(Instrument):
                         raise ValueError(f'No flux pulse channel defined for {qb}!')
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
+
+        if self.default_cz_gate_name() is None:
+            # Make the newly added gate the default
+            self.default_cz_gate_name(gate_name)
+
+    def _valid_cz_gate(self, gate_name):
+        if gate_name is not None and gate_name not in self._two_qb_gates:
+            raise ValueError(
+                f'{gate_name} is not a valid two-qubit gate name. Valid '
+                f'names are: {self._two_qb_gates}')
+        return gate_name
 
     def get_channel_delays(self):
         """
