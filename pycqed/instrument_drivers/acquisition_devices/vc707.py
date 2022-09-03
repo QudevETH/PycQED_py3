@@ -142,8 +142,4 @@ class VC707(VC707_core, AcquisitionDevice):
             properties['value_unit'] = 'Vpeak'
             properties['scaling_factor'] = 1 / (self.acq_sampling_rate
                                                 * acquisition_length)
-            # FIXME: do a test measurement with e.g. a sine with 1V peak
-            #  amplitude and see what pycqed measures in an integrated
-            #  measurement with varying acq_length (resulting amplitude in
-            #  Vpeak should not depend on the acq_length)
         return properties
