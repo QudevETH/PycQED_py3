@@ -74,8 +74,8 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
         self._last_traces = []
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
             acq_unit = self.acq_units[i]
             # turn the channels on

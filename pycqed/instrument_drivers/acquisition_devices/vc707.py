@@ -2,6 +2,9 @@ import numpy as np
 from pycqed.instrument_drivers.acquisition_devices.base import AcquisitionDevice
 from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
     VC707_core
+from qcodes.utils import validators as vals
+from qcodes.instrument.parameter import ManualParameter
+import time
 import logging
 log = logging.getLogger(__name__)
 
@@ -10,8 +13,7 @@ class VC707(VC707_core, AcquisitionDevice):
     """PycQED acquisition device wrapper for the VC707 FPGA."""
 
     n_acq_units = 2
-    n_int_acq_channels = 2  # TODO
-    acq_sampling_rate = 1.0e9
+    n_acq_int_channels = 2  # TODO
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     #  to record so long traces by default
     # TODO: In state discrimination mode this is actually 256.
@@ -23,16 +25,37 @@ class VC707(VC707_core, AcquisitionDevice):
                      # 'scope': [],
                      }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, verbose=False, **kwargs):
         super().__init__(*args, **kwargs)
         AcquisitionDevice.__init__(self, *args, **kwargs)
-        self.initialize()
+        self.initialize(verbose=True if verbose else False)
         self._acq_integration_weights = {}
         self._last_traces = []
+        self.add_parameter(
+            'acq_start_after_awgs', initial_value=False,
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            docstring="Whether the acquisition should be started after the "
+                      "AWG(s), i.e., in prepare_poll_after_AWG_start, "
+                      "instead of before, i.e., "
+                      "in prepare_poll_before_AWG_start.")
 
-    def prepare_poll(self):
-        super().prepare_poll()
-        self.averager.run()
+    @property
+    def acq_sampling_rate(self):
+        return 1.0e9 / self.preprocessing_decimation()
+
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
+        if not self.acq_start_after_awgs():
+            self.averager.run()
+
+    def prepare_poll_after_AWG_start(self):
+        super().prepare_poll_after_AWG_start()
+        if self.acq_start_after_awgs():
+            # The following sleep is a workaround to avoid weird behavior
+            # that is potentially caused by an unstable main trigger signal
+            # right after starting the main trigger.
+            time.sleep(0.1)
+            self.averager.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
@@ -106,3 +129,17 @@ class VC707(VC707_core, AcquisitionDevice):
 
     def _acquisition_set_weight(self, channel, weight):
         self._acq_integration_weights[channel] = weight
+
+    def get_value_properties(self, data_type='raw', acquisition_length=None):
+        properties = super().get_value_properties(
+            data_type=data_type, acquisition_length=acquisition_length)
+        if data_type == 'raw':
+            if acquisition_length is None:
+                raise ValueError('Please specify acquisition_length.')
+            # Units are only valid when using SSB or DSB demodulation.
+            # value corresponds to the peak voltage of a cosine with the
+            # demodulation frequency.
+            properties['value_unit'] = 'Vpeak'
+            properties['scaling_factor'] = 1 / (self.acq_sampling_rate
+                                                * acquisition_length)
+        return properties

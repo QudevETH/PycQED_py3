@@ -1098,7 +1098,11 @@ class QuDev_transmon(Qubit):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
