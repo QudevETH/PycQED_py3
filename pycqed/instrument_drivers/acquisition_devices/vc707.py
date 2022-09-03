@@ -31,8 +31,13 @@ class VC707(VC707_core, AcquisitionDevice):
         self.initialize(verbose=True if verbose else False)
         self._acq_integration_weights = {}
         self._last_traces = []
-        self.add_parameter('acq_start_after_awgs', initial_value=False,
-                           vals=vals.Bool(), parameter_class=ManualParameter)
+        self.add_parameter(
+            'acq_start_after_awgs', initial_value=False,
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            docstring="Whether the acquisition should be started after the "
+                      "AWG(s), i.e., in prepare_poll_after_AWG_start, "
+                      "instead of before, i.e., "
+                      "in prepare_poll_before_AWG_start.")
 
     @property
     def acq_sampling_rate(self):
