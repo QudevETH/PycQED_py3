@@ -1,5 +1,4 @@
 import time
-import serial
 import numpy as np
 from typing import Union, Tuple, List
 from copy import copy, deepcopy
@@ -415,6 +414,7 @@ class ArduinoSwitchControl(Instrument):
             override (bool): whether an existing serial communication should be
                       closed and replaced. Recommended: True
         """
+        import serial
         ser = self.get_serial(self.port)
 
         if ser is None or override:
@@ -1199,6 +1199,42 @@ class ArduinoSwitchControl(Instrument):
         for key in keys:
             if key not in config:
                 raise ValueError(f"Config must contain key '{key}")
+
+
+class VirtualArduinoSwitchControl(ArduinoSwitchControl):
+    """
+    Virtual version of the ArduinoSwitchControl
+
+    Overrides the methods responsible for communicating with the low-level
+    serial communication drivers, and keeps instead a list of virtual switch
+    states to maintain consistent get/set methods.
+
+    Attributes:
+        virtual_switch_states: list of emulated switch states. Initialised to
+            '01', corresponding to state 0, see the docstring of
+            super()._get_switch
+    """
+
+    def __init__(self, name, port, config, start_serial=True):
+
+        super().__init__(name, port, config, start_serial)
+
+        self.virtual_switch_states = {s: '10' for s in self.switches}
+
+    def start_serial(self, override=True):
+        pass  # Not needed for this virtual instrument
+
+    def end_serial(self):
+        pass  # Not needed for this virtual instrument
+
+    def assure_serial(self):
+        pass  # Not needed for this virtual instrument
+
+    def _get_switch(self, switch):
+        return self.virtual_switch_states[switch]
+
+    def _set_switch(self, switch, state):
+        self.virtual_switch_states[switch] = state
 
 
 # Classes for the components of the switch box

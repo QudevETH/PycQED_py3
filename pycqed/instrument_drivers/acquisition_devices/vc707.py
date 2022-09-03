@@ -60,8 +60,13 @@ class VC707(VC707_core, AcquisitionDevice):
         self.initialize(devidx=devidx, clockmode=clockmode, verbose=verbose)
         self._acq_integration_weights = {}
         self._last_traces = []
-        self.add_parameter('acq_start_after_awgs', initial_value=False,
-                           vals=vals.Bool(), parameter_class=ManualParameter)
+        self.add_parameter(
+            'acq_start_after_awgs', initial_value=False,
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            docstring="Whether the acquisition should be started after the "
+                      "AWG(s), i.e., in prepare_poll_after_AWG_start, "
+                      "instead of before, i.e., "
+                      "in prepare_poll_before_AWG_start.")
 
     @property
     def acq_sampling_rate(self):
@@ -260,9 +265,5 @@ class VC707(VC707_core, AcquisitionDevice):
             properties['value_unit'] = 'Vpeak'
             properties['scaling_factor'] = 1 / (self.acq_sampling_rate
                                                 * acquisition_length)
-            # FIXME: do a test measurement with e.g. a sine with 1V peak
-            #  amplitude and see what pycqed measures in an integrated
-            #  measurement with varying acq_length (resulting amplitude in
-            #  Vpeak should not depend on the acq_length)
         return properties
 
