@@ -588,9 +588,6 @@ class MultiTaskingExperiment(QuantumExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
-        """
-        See docstring of parent class.
-        """
         d = super().gui_kwargs(device)
         d['kwargs'].update({
             MultiTaskingExperiment.__name__: odict({
@@ -747,9 +744,6 @@ class CalibBuilder(MultiTaskingExperiment):
 
     @classmethod
     def gui_kwargs(cls, device):
-        """
-        See docstring of parent class.
-        """
         d = super().gui_kwargs(device)
         d['kwargs'].update({
             CalibBuilder.__name__: odict({
@@ -1623,9 +1617,6 @@ class Chevron(CalibBuilder):
 
     @classmethod
     def gui_kwargs(cls, device):
-        """
-        See docstring of parent class.
-        """
         pulse_pars = odict({
             'pulse_length': 's',
             'amplitude': 'V',
