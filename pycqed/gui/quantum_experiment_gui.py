@@ -44,12 +44,12 @@ class QuantumExperimentGUI:
     selected quantum experiments in a graphical user interface.
     """
 
-    def __init__(self, device, **kwargs):
+    def __init__(self, dev, **kwargs):
         """
         Instantiates and spawns the main quantum experiment GUI window and
         sets up the GUI application instance.
         Args:
-            device (device.Device): Device object containing information
+            dev (device.Device): Device object containing information
                 about the currently installed superconducting device.
             **kwargs: Keyword arguments are passed to the init method of the
                 instance attribute main_window.
@@ -68,7 +68,7 @@ class QuantumExperimentGUI:
         if qt.QtWidgets.__package__ not in ['PySide2']:
             log.warning('This GUI is optimized to run with the PySide2 Qt '
                         'binding')
-        self.device = device
+        self.device = dev
         self.experiments = []
         self.experiments_failed_in_init = []
         if not qt.QtWidgets.QApplication.instance():
