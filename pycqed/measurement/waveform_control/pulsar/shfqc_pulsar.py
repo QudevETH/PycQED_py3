@@ -116,7 +116,7 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         return self._get_superclass(id) \
             .get_params_for_spectrum(self, ch, requested_freqs)
 
-    def get_frequency_sweep_function(self, ch: str):
+    def get_frequency_sweep_function(self, ch: str, **kw):
         id = self.pulsar.get(ch + '_id')
         return self._get_superclass(id) \
-            .get_frequency_sweep_function(self, ch)
+            .get_frequency_sweep_function(self, ch, **kw)

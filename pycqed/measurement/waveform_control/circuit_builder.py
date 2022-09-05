@@ -715,8 +715,10 @@ class CircuitBuilder:
         :param sweep_index_list: Passed on to Block.build for the complete
             cal_state_block. Determines for which sweep points from
             sweep_dicts_list the block should be build.
-        :param kw: keyword arguments (to allow pass through kw even if it
-            contains entries that are not needed)
+        :param kw: additional keyword arguments
+            df_values_per_point (int, default: 1): number of expected number of readouts
+                per sweep point.
+
         :return: list of Segment instances
         """
         if ro_kwargs is None:
@@ -738,11 +740,14 @@ class CircuitBuilder:
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
-            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
-                          cal_state_block.build(
-                              sweep_dicts_list=sweep_dicts_list,
-                              sweep_index_list=sweep_index_list))
-            segments.append(seg)
+            vals_per_point = kw.get('df_values_per_point', 1)
+            for j in range(vals_per_point):
+                seg = Segment(f'{segment_prefix}_{i*vals_per_point+j}'
+                              f'_{"".join(seg_states)}',
+                              cal_state_block.build(
+                                  sweep_dicts_list=sweep_dicts_list,
+                                  sweep_index_list=sweep_index_list))
+                segments.append(seg)
 
         return segments
 
