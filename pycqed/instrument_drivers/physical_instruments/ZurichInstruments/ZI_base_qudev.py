@@ -75,6 +75,8 @@ class MockDAQServer(zibase.MockDAQServer):
                 (default: False).
         """
         super().__init__(server, port, apilevel, verbose=verbose)
+        self.host = server
+        self.port = port
         self.devices = set()  # devices on the same server
         self.nodes['/zi/about/dataserver'] = {
             'type': 'String', 'value': self.__class__.__name__}
