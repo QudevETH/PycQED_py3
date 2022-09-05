@@ -22,13 +22,11 @@ presence of phase and swap errors, decomposed as a Fourier sum.
 import numpy as np
 import scipy as sp
 import scipy.optimize
-import functools
 from typing import Optional, List, Tuple
 import logging
 log = logging.getLogger(__name__)
 
 
-@functools.lru_cache()
 def transmon_charge(ng: float = 0., dim_charge: int = 31):
     """Calculate the transmon charge operator.
 
@@ -43,7 +41,6 @@ def transmon_charge(ng: float = 0., dim_charge: int = 31):
     return np.diag(np.arange(dim_charge) - np.floor(dim_charge / 2) + ng)
 
 
-@functools.lru_cache()
 def transmon_hamiltonian(ec: float, ej: float, ng: float = 0.,
                          dim_charge: int = 31):
     """Calculate the transmon Hamiltonian.
@@ -204,13 +201,31 @@ def charge_dispersion_ge_ef(fge: Optional[float] = None,
     dfreqs -= transmon_levels(ec, ej, ng + 0.5, dim_charge)
     return dfreqs[0], dfreqs[0] - dfreqs[1]
 
+def transmon_resonator_gqr(ec: float, ej: float, gb: float, i0: int = 0,
+                           i1: int = 1, ng: float = 0., dim_charge: int = 31):
+    """Calculate the general Jaynes-Cummings Hamiltonian coupling rate.
 
-@functools.lru_cache()
+    Args:
+        ec: Charging energy of the Hamiltonian.
+        ej: Josephson energy of the Hamiltonian.
+        gb: Bare transmon-resonator coupling strength.
+        i0, i1: Transmon levels coupled by the returned rate.
+        ng: Charge offset of the Hamiltonian.
+        dim_charge: Number of charge states to use in calculations.
+
+    Returns:
+        Jaynes-Cummings transmon-resonator coupling rate g_{i0,i1} according
+        to Eq. (3.3) in Koch2007.
+    """
+    ham = transmon_hamiltonian(ec, ej, ng, dim_charge)
+    v, w = np.linalg.eigh(ham)
+    w = w.T[np.argsort(v)]
+    return np.abs(gb * (w[i0] @ transmon_charge(ng, dim_charge) @ w[i1]))
+
 def resonator_destroy(dim_resonator: int = 10):
     return np.diag(np.sqrt(np.arange(1, dim_resonator)), 1)
 
 
-@functools.lru_cache()
 def resonator_hamiltonian(frb: float, dim_resonator: int = 10):
     """Calculate the resonator Hamiltonian.
 
@@ -390,7 +405,7 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frg0 = frb
-    chi0 = -gb**2 * (fge - ec) / (fge - frb) / (fge - frb - ec) / 16
+    chi0 = -gb**2 * (fge + ec) / (fge - frb) / (fge - frb - ec) / 16
     ej_anh_frg_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frg0, chi0]),
                                         args=(np.array([fge, ec, frb, gb]),
                                               ng, dim_charge, dim_resonator))
@@ -400,7 +415,8 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
 def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
                                       gb: float, ng: float = 0.,
                                       dim_charge: int = 31,
-                                      dim_resonator: int = 10):
+                                      dim_resonator: int = 10,
+                                      frmean: bool = False):
     """Calculate Josephson energy, resonator bare frequency and observable
     frequencies of a coupled transmon-resonator system from the qubit transition
     frequency, coupled resonator frequency and Hamiltonian parameters.
@@ -417,7 +433,7 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
         ng: Charge offset of the Hamiltonian.
         dim_charge: Number of charge states to use in calculations.
         dim_resonator: Number of photon number states to use in calculations.
-
+        frmean: Passed frg is the mean of fr(g) and fr(e) instead of fr(g).
     Returns:
         A tuple of 1) transmon Josephson energy, 2) qubit anharmonicity,
         3) bare resonator frequency, and 4) the dispersive shift.
@@ -426,6 +442,8 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
     def func(ej_anh_frb_chi_, fge_ec_frg_gb, ng_, dim_charge_, dim_resonator_):
         fge_, ec_, frg_, gb_ = fge_ec_frg_gb
         ej, anh, frb, chi = ej_anh_frb_chi_
+        if frmean:
+            frg_ -= chi
         calc_fge_anh_frg_chi = transmon_resonator_fge_anh_frg_chi(
             ec_, ej, frb, gb_, ng_, dim_charge_, dim_resonator_)
         return calc_fge_anh_frg_chi - np.array([fge_, anh, frg_, chi])
@@ -433,7 +451,7 @@ def transmon_resonator_ej_anh_frb_chi(fge: float, ec: float, frg: float,
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frb0 = frg
-    chi0 = -gb**2 * (fge - ec) / (fge - frg) / (fge - frg - ec) / 16
+    chi0 = -gb**2 * (fge + ec) / (fge - frg) / (fge - frg - ec) / 16
     ej_anh_frb_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frb0, chi0]),
                                         args=(np.array([fge, ec, frg, gb]),
                                               ng, dim_charge, dim_resonator))

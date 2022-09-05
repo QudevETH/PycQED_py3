@@ -248,7 +248,7 @@ def data_from_time(timestamp, folder=None, auto_fetch=None):
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
     daydirs = os.listdir(folder)
-    if len(daydirs) == 0:
+    if len(daydirs) == 0 and not auto_fetch:
         raise Exception('No data in the data directory specified')
 
     daydirs.sort()

@@ -68,8 +68,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                 'sigouts_{}_range'.format(i),})
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
         self.set('qas_0_result_enable', 1)
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,

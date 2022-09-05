@@ -139,11 +139,10 @@ class InstrumentDocumenter(ClassDocumenter):
     in the parameter ``autodoc_instrument_configs_file``.
     """
 
-    def add_content(self, more_content: Optional[StringList],
-                    no_docstring: bool = False) -> None:
+    def add_content(self, more_content: Optional[StringList]) -> None:
         """Add instrument parameters to the documentation."""
 
-        super().add_content(more_content, no_docstring)
+        super().add_content(more_content)
 
         if issubclass(self.object, Instrument):
 
