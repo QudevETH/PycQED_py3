@@ -335,6 +335,10 @@ class MultiCoreCompilerQudevZI(MultiCoreCompiler):
     def __init__(self, *awgs, **kwargs):
         super().__init__(*awgs, **kwargs)
         self._awgs_all = {}
+        # Move existing AWGs to the full AWG dict self._awgs_all. Remove AWGs
+        # in the active AWG dict self._awgs to prevent processing all AWGs in
+        # the multi-core compiler. Active AWGs will be added when running
+        # pulsar.
         self._awgs_all.update(self._awgs)
         self.reset_active_awgs()
 
