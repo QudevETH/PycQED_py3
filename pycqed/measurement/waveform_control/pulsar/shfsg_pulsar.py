@@ -784,7 +784,7 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
         Args:
             awg_nr (int): index of sg channel awg
             wave_idx (int): index of wave upload (0 or 1)
-            waveforms (array): waveforms to upload
+            waveforms (zhinst.toolkit.waveform.Waveforms): waveforms to upload
             wave_hashes: waveforms hashes
         """
         # Upload waveforms to awg
