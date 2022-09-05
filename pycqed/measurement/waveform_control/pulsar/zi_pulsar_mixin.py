@@ -221,8 +221,8 @@ class ZIPulsarMixin:
                 # Skip writing the CSV file. This happens if reuse_waveforms
                 # is True and the same hash appears on multiple sub-awgs.
                 # Note that it does not happen in cases where
-                # use_sequence_cache is True and the same has had appeared in
-                # earlier experiment (because we clear the waves dir before
+                # use_sequence_cache is True and the same hash had appeared in
+                # earlier experiments (because we clear the waves dir before
                 # starting programming the AWGs).
                 continue
             fmt = "%.18e" if wf.dtype == np.float else "%d"
