@@ -12374,144 +12374,168 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
         #                                    self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
         #                                for p in params})
 
-    # def prepare_fitting(self):
-    #     self.fit_dicts = OrderedDict()
-    #
-    #     def pf_function(t, w_p=100e6, delta_w=100e6, g_ro=10e6, kappa=10e6):
-    #         """
-    #         # Calculates the probability to be in the f state for SWAP with the
-    #         # readout resoantor
-    #         # From: 'A Fast and Universal Leakage Reduction Unit', Sebastian Krinner, (Dated: August 2, 2022)
-    #         # FIXME: divides by zero if kappa = 4g
-    #         # TODO: might want to include qubit decay in exponential decay part
-    #         :param t time:
-    #         :param w_p pump/modulation frequency in Hz:
-    #         :param delta_w modulation depth:
-    #         :param g_ro coupling between qubit and readout resonator:
-    #         :param kappa linewidth of resonator:
-    #         :return:  probability to be in f state
-    #         """
-    #
-    #         t = t*1e9
-    #         w_p =  w_p*1e-9
-    #         kappa = kappa * 1e-9
-    #         g_ro = g_ro * 1e-9
-    #         delta_w = delta_w * 1e-9
-    #
-    #         g = np.sqrt(2)*g_ro*sp.special.jv(1, delta_w/(2*w_p))
-    #         b = -1j * kappa / (4 * g)
-    #         c = np.emath.sqrt(1 - (kappa / (4 * g)) ** 2)
-    #         d = 1 / np.emath.sqrt(2 * (1 - (kappa / (4 * g)) ** 2))
-    #         lambda1 = -1j * kappa / 4 + np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
-    #         lambda2 = -1j * kappa / 4 - np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
-    #         pf = 0.5 * np.abs(
-    #             d * (b - c) * np.exp(-1j * lambda1 * t) - d * (b + c) * np.exp(
-    #                 -1j * lambda2 * t)) ** 2
-    #         # extend to scaling factors etc
-    #         return pf
-    #
-    #     def add_fit_dict(qbn, data, key):
-    #         if self.num_cal_points != 0:
-    #             data = np.array([element[:-self.num_cal_points] for element in data])
-    #         # Normalize the time to ns for fitting
-    #         t = self.proc_data_dict['sweep_points_dict'][qbn]['msmt_sweep_points']
-    #         w_p = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
-    #
-    #         # Data needs to be flat for fitting
-    #         t_flat = np.tile(t, len(w_p))
-    #         w_p_flat = np.repeat(w_p, len(t))
-    #         data_flat = data.flatten()
-    #
-    #         # pf_model = lmfit.Model(pf_function, independent_vars=['t', 'w_p'])
-    #         pf_model = lmfit.Model(pf_function, independent_vars=['t'])
-    #         pf_model.set_param_hint('w_p', value=430e6, min=10e6, max=700e6,
-    #                                 vary=False)
-    #         pf_model.set_param_hint('kappa', value= 35e6, min= 1e6, max=100e6,
-    #                                 vary=True)
-    #         pf_model.set_param_hint('g_ro', value=120e6, min=10e6, max=300e6,
-    #                                 vary=False)
-    #         pf_model.set_param_hint('delta_w', value=100e6, min=10e6, max=400e6)
-    #         guess_pars = pf_model.make_params()
-    #         self.set_user_guess_pars(guess_pars)
-    #
-    #         self.fit_dicts[key] = {
-    #             'model': pf_model,
-    #             'fit_fn': pf_model.func,
-    #             # 'fit_xvals': {'t': t_flat, 'w_p': w_p_flat},
-    #             'fit_xvals': {'t': t_flat},
-    #             'fit_yvals': {'data': data_flat},
-    #             'method': 'dual_annealing',
-    #             'guess_params': guess_pars,
-    #             'fit_guess': False}
-    #
-    #     if self.do_fitting:
-    #         for task in self.get_param_value('task_list'):
-    #             qbn = task['qb']
-    #             if qbn in self.qb_names:
-    #                 data = self.proc_data_dict['projected_data_dict'][qbn]['pf']
-    #
-    #                 add_fit_dict(qbn=qbn, data=data, key=f'leakage_reduction_unit_{qbn}')
-    #
-    # def analyze_fit_results(self):
-    #     self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-    #     for k, fit_dict in self.fit_dicts.items():
-    #         # k is of the form chevron_fit_qbH_qbL
-    #         # Replace k with qbH_qbL
-    #         k = k.replace('leakage_reduction_unit_', '')
-    #         qbn = k.split('_')[0]
-    #         fit_res = fit_dict['fit_res']
-    #         self.proc_data_dict['analysis_params_dict'][k] = \
-    #             fit_res.best_values
-    #     self.save_processed_data(key='analysis_params_dict')
-    #
-    # def prepare_plots(self):
-    #     super().prepare_plots()
-    #
-    #     if self.do_fitting:
-    #         for task in self.get_param_value('task_list'):
-    #             qbn = task['qb']
-    #             if qbn in self.qb_names:
-    #                 # 1D fit plot
-    #                 base_plot_name = f'Leakage_reduction_unit_fit_{qbn}_pf_1D'
-    #                 xlabel, xunit = self.get_xaxis_label_unit(qbn)
-    #                 # Find name of 1st sweep point in sweep dimension 1
-    #                 param_name = [p for p in self.mospm[qbn]
-    #                               if self.sp.find_parameter(p)][0]
-    #                 # ylabel = self.sp.get_sweep_params_property(
-    #                 #     'label', dimension=1, param_names=param_name)
-    #                 # yunit = self.sp.get_sweep_params_property(
-    #                 #     'unit', dimension=1, param_names=param_name)
-    #                 xvals = self.proc_data_dict['sweep_points_dict'][qbn][
-    #                     'msmt_sweep_points']
-    #                 # yvals = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
-    #                 yvals = self.proc_data_dict['data_to_fit'][qbn]
-    #                 if self.num_cal_points != 0:
-    #                     yvals = np.array(
-    #                         [element[:-self.num_cal_points] for element in yvals][0])
-    #
-    #                 self.plot_dicts[f'{base_plot_name}_main'] = {
-    #                     # 'plotfn': self.plot_colorxy,
-    #                     'plotfn': self.plot_line,
-    #                     'fig_id': base_plot_name,
-    #                     'xvals': xvals,
-    #                     'yvals': yvals,
-    #                     # 'zvals': self.proc_data_dict['projected_data_dict'][qbn]['pe'],
-    #                     'xlabel': xlabel,
-    #                     'xunit': xunit,
-    #                     # 'ylabel': ylabel,
-    #                     # 'yunit': yunit,
-    #                     'title': (self.raw_data_dict['timestamp'] + ' ' +
-    #                               self.measurement_strings[qbn]),
-    #                     # 'clabel': self.get_yaxis_label(qb_name=qbn, data_key='e')
-    #                 }
-    #                 for k, fit_dict in self.fit_dicts.items():
-    #                     fit_res = fit_dict['fit_res']
-    #                 self.plot_dicts[f'{base_plot_name}_fit'] = {
-    #                     'fig_id': base_plot_name,
-    #                     'plotfn': self.plot_fit,
-    #                     'xvals': xvals,
-    #                     'fit_res': fit_res,
-    #                     'color': 'r',}
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+
+        def pf_function(t, w_p=100e6, delta_w=100e6, g_ro=10e6, kappa=10e6, scaling=1):
+            """
+            # Calculates the probability to be in the f state for SWAP with the
+            # readout resoantor
+            # From: 'A Fast and Universal Leakage Reduction Unit', Sebastian Krinner, (Dated: August 2, 2022)
+            # FIXME: divides by zero if kappa = 4g
+            # TODO: might want to include qubit decay in exponential decay part
+            :param t time:
+            :param w_p pump/modulation frequency in Hz:
+            :param delta_w modulation depth:
+            :param g_ro coupling between qubit and readout resonator:
+            :param kappa linewidth of resonator:
+            :return:  probability to be in f state
+            """
+
+            t = t*1e9
+            w_p =  w_p*1e-9
+            kappa = kappa * 1e-9
+            g_ro = g_ro * 1e-9
+            delta_w = delta_w * 1e-9
+
+            g = np.sqrt(2)*g_ro*sp.special.jv(1, delta_w/(2*w_p))
+            b = -1j * kappa / (4 * g)
+            c = np.emath.sqrt(1 - (kappa / (4 * g)) ** 2)
+            d = 1 / np.emath.sqrt(2 * (1 - (kappa / (4 * g)) ** 2))
+            lambda1 = -1j * kappa / 4 + np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
+            lambda2 = -1j * kappa / 4 - np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
+            pf = 0.5 * scaling * np.abs(
+                d * (b - c) * np.exp(-1j * lambda1 * t) - d * (b + c) * np.exp(
+                    -1j * lambda2 * t)) ** 2
+            # extend to scaling factors etc
+            return pf
+
+        # def pf_function(t, g=6e6, kappa=20e6, scaling = 1):
+        #     b = -1j * kappa / (4 * g)
+        #     c = np.emath.sqrt(1 - (kappa / (4 * g)) ** 2)
+        #     d = 1 / np.emath.sqrt(2 * (1 - (kappa / (4 * g)) ** 2))
+        #     lambda1 = -1j * kappa / 4 + np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
+        #     lambda2 = -1j * kappa / 4 - np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
+        #     pf = 0.5 * scaling * np.abs(
+        #         d * (b - c) * np.exp(-1j * 2 * np.pi * lambda1 * t) - d * (b + c) * np.exp(
+        #             -1j * 2 * np.pi * lambda2 * t)) ** 2
+        #     return pf
+
+
+        def add_fit_dict(qbn, data, key):
+            if self.num_cal_points != 0:
+                data = np.array([element[:-self.num_cal_points] for element in data])
+
+            t = self.proc_data_dict['sweep_points_dict'][qbn]['msmt_sweep_points']
+            try:
+                if 'sweep_points_2D_dict' in self.proc_data_dict:
+                    w_p = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
+                else:
+                    w_p = self.get_param_value('task_list')[0]['flux_pulse_frequency']
+            except KeyError as e:
+                raise e
+
+            kappa = self.get_param_value('kappa', 35e6)
+            fit_kappa = self.get_param_value('fit_kappa', False)
+            g_ro = self.get_param_value('g_ro', 10e6)
+            fit_g_ro = self.get_param_value('fit_g_ro', False)
+            delta_w = self.get_param_value('delta_w', 100e6)
+            fit_delta_w = self.get_param_value('fit_delta_w', False)
+
+
+            pf_model = lmfit.Model(pf_function, independent_vars=['t'])
+            pf_model.set_param_hint('w_p', value=w_p, min=10e6, max=700e6,
+                                    vary=False)
+            pf_model.set_param_hint('kappa', value= kappa, min= 1e6, max=100e6,
+                                    vary=fit_kappa)
+            pf_model.set_param_hint('g_ro', value=g_ro, min=10e6, max=300e6,
+                                    vary=fit_g_ro)
+            # pf_model.set_param_hint('g', value=6e6, min=1e6, max=30e6,
+            #                         vary=True)
+            pf_model.set_param_hint('delta_w', value=delta_w, min=10e6, max=400e6, vary=fit_delta_w)
+            pf_model.set_param_hint('scaling', value=1, min=0, max=1.5)
+            guess_pars = pf_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            self.fit_dicts[key] = {
+                'model': pf_model,
+                'fit_fn': pf_model.func,
+                'fit_xvals': {'t': t},
+                'fit_yvals': {'data': data},
+                'method': 'dual_annealing',
+                'guess_params': guess_pars,
+                'fit_guess': False}
+
+        if self.do_fitting:
+            for task in self.get_param_value('task_list'):
+                qbn = task['qb']
+                if qbn in self.qb_names:
+                    data = self.proc_data_dict['projected_data_dict'][qbn]['pf']
+
+                    add_fit_dict(qbn=qbn, data=data, key=f'leakage_reduction_unit_{qbn}')
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form chevron_fit_qbH_qbL
+            # Replace k with qbH_qbL
+            k = k.replace('leakage_reduction_unit_', '')
+            qbn = k.split('_')[0]
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][k] = \
+                fit_res.best_values
+            g_ro, delta_w, w_p = fit_res.best_values['g_ro'], fit_res.best_values['delta_w'], fit_res.best_values['w_p']
+            self.proc_data_dict['analysis_params_dict'][k]['g_eff'] = np.sqrt(2)*g_ro*sp.special.jv(1,delta_w/(2 * w_p))
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting:
+            for task in self.get_param_value('task_list'):
+                qbn = task['qb']
+                if qbn in self.qb_names:
+                    # 1D fit plot
+                    base_plot_name = f'Leakage_reduction_unit_fit_{qbn}_pf_1D'
+                    xlabel, xunit = self.get_xaxis_label_unit(qbn)
+                    # Find name of 1st sweep point in sweep dimension 1
+                    # param_name = [p for p in self.mospm[qbn]
+                    #               if self.sp.find_parameter(p)][0]
+                    # ylabel = self.sp.get_sweep_params_property(
+                    #     'label', dimension=1, param_names=param_name)
+                    # yunit = self.sp.get_sweep_params_property(
+                    #     'unit', dimension=1, param_names=param_name)
+                    xvals = self.proc_data_dict['sweep_points_dict'][qbn][
+                        'msmt_sweep_points']
+                    # yvals = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
+                    yvals = self.proc_data_dict['data_to_fit'][qbn]
+                    if self.num_cal_points != 0:
+                        yvals = np.array(
+                            [element[:-self.num_cal_points] for element in yvals][0])
+
+                    self.plot_dicts[f'{base_plot_name}_main'] = {
+                        # 'plotfn': self.plot_colorxy,
+                        'plotfn': self.plot_line,
+                        'fig_id': base_plot_name,
+                        'xvals': xvals,
+                        'yvals': yvals,
+                        # 'zvals': self.proc_data_dict['projected_data_dict'][qbn]['pe'],
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        # 'ylabel': ylabel,
+                        # 'yunit': yunit,
+                        'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                  self.measurement_strings[qbn]),
+                        # 'clabel': self.get_yaxis_label(qb_name=qbn, data_key='e')
+                    }
+                    for k, fit_dict in self.fit_dicts.items():
+                        fit_res = fit_dict['fit_res']
+                    self.plot_dicts[f'{base_plot_name}_fit'] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_fit,
+                        'xvals': xvals,
+                        'fit_res': fit_res,
+                        'color': 'r',}
 
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
