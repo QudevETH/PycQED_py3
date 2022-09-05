@@ -23,7 +23,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 
 log = logging.getLogger(__name__)
 
-class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
+class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [ZI_HDAWG_core]

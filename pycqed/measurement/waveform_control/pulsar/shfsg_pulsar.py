@@ -25,8 +25,8 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
-                               ZIPulsarMixin):
+class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
+                               ZIMultiCoreCompilerMixin):
     """ZI SHFSG and SHFQC signal generator module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`

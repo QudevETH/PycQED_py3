@@ -16,7 +16,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
+class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA]

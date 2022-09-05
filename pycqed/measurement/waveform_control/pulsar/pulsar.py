@@ -94,8 +94,6 @@ class PulsarAWGInterface(ABC):
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
-    multi_core_compiler = None
-    """For parallel compilation and upload."""
 
     def __init__(self, pulsar:'Pulsar', awg:Instrument):
         super().__init__()
@@ -850,7 +848,7 @@ class Pulsar(Instrument):
         """
         return set([ps_int.multi_core_compiler for ps_int in
                     set(PulsarAWGInterface._pulsar_interfaces)
-                    if ps_int.multi_core_compiler is not None])
+                    if hasattr(ps_int, 'multi_core_compiler')])
 
     def reset_active_awgs_mcc(self):
         """
