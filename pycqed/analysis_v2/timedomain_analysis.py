@@ -3304,7 +3304,6 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             pdd['phase_contrast'][qb] = {}
             exp_mod = self.get_param_value('exp_fit_mod',
                                            lmfit.Model(gaussian_decay_func))
-            # exp_mod = fit_mods.ExponentialModel()
             guess_pars_dict = self.get_param_value("guess_pars_dict",
                                                    guess_pars_dict_default)[qb]
             for i in range(nr_amps):
@@ -3429,17 +3428,17 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'linestyle': "none",
                 }
 
-                label = f'freq_scatter_{qb}_{i}'
-                # self.plot_dicts[label] = {
-                #     'ax_id': f'T2_fits_{qb}',
-                #     'plotfn': self.plot_line,
-                #     'xvals': self.metadata['phases'],
-                #     'linestyle': '',
-                #     'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
-                #     'color': color,
-                #     'setlabel': f'freq={fitid:.4f}' if freqs
-                #                         else f'amp={fitid:.4f}',
-                # }
+                label = f'phases_{qb}_ampl{i}'
+                self.plot_dicts[label] = {
+                    'ax_id': f'T2_fits_{qb}_phases',
+                    'plotfn': self.plot_line,
+                    'xvals': self.metadata['phases'],
+                    'linestyle': '',
+                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
+                    'color': color,
+                    'setlabel': f'freq={fitid:.4f}' if freqs
+                                        else f'amp={fitid:.4f}',
+                }
 
 
 class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):

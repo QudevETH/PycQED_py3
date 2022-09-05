@@ -4905,10 +4905,6 @@ class QuDev_transmon(Qubit):
        and the duration of the single flux pulse is adapted according to
        the values specified in flux_lengths
 
-
-        Args:
-            freqs (numpy array):
-        Returns: None
         Args:
             flux_lengths (array):  array containing the flux pulse durations.
                 Used if n_pulses is None.

@@ -315,7 +315,7 @@ def T2_freq_sweep_seq(amplitudes,
 
     flux_pulse = deepcopy(operation_dict[cz_pulse_name])
 
-    if (flux_lengths, n_pulses) is (None, None):
+    if (flux_lengths, n_pulses) == (None, None):
         raise ValueError('Expected either flux_lengths or n_pulses but neither'
                          ' got provided.')
     elif flux_lengths is not None and n_pulses is not None:
@@ -351,9 +351,7 @@ def T2_freq_sweep_seq(amplitudes,
     ro_pulse['pulse_delay'] = 0
 
     swept_pulses = []
-    print(amplitudes, phases, n_pulses, flux_lengths)
     for a, ph, n, fl in zip(amplitudes, phases, n_pulses, flux_lengths):
-        print(fl)
         f = deepcopy(flux_pulse)
         f['amplitude'] = a
         f['pulse_length'] = fl
