@@ -772,11 +772,11 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
 
     This helper function configures the given qubits for multiplexed readout
     as follows:
-    - set the readout IF of the qubits such that the LO frequency of qubits
-      sharing an LO is compatible.
     - assign unique acquisition channels for qubits sharing an LO. This
       assumes that qubits sharing an LO also share an acquisition unit of an
       acquisition decvice.
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
 
     By passing a list with only a single qubit, the function can also be
     used to ensure that a given LO frequency is used for a qubit, even in a
@@ -794,19 +794,17 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
             is adjusted according to the Lo freq. in lo_freqs_dict or not.
             Defaults to True.
     """
-    idx = {lo: 0 for lo in lo_freqs_dict}
+    idx = {}
     for qb in qubits:
         qb_ro_mwg = qb.get_ro_lo_identifier()
-        if qb_ro_mwg not in lo_freqs_dict:
-            log.info(f'{qb.name}: {qb_ro_mwg} not'
-                     f'found in lo_freqs_dict.')
-            continue
-
-        if set_mod_freq:
-            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
+        idx[qb_ro_mwg] = idx.setdefault(qb_ro_mwg, -1) + 1
         qb.acq_I_channel(2 * idx[qb_ro_mwg])
         qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
-        idx[qb_ro_mwg] += 1
+        if qb_ro_mwg not in lo_freqs_dict:
+            log.info(f'{qb.name}: {qb_ro_mwg} not found in lo_freqs_dict.')
+            continue
+        if set_mod_freq:
+            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
 
 
 def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
