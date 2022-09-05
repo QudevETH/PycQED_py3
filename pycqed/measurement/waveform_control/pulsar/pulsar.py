@@ -1017,7 +1017,7 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        ZIPulsarMixin.zi_waves_cleared = False
+        ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
         for awg in awg_sequences.keys():

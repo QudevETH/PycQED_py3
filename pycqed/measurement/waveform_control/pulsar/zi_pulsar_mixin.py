@@ -14,9 +14,10 @@ class ZIPulsarMixin:
     Classes deriving from this mixin must have a ``pulsar`` attribute.
     """
 
-    zi_waves_cleared = False
-    """Flag set when waves are cleared."""
+    _status_ZIPulsarMixin = dict(zi_waves_clean=False)
+    """Dict keeping the status of the class
 
+    key zi_waves_clean: Flag indicating whether the waves dir is clean."""
 
     @staticmethod
     def _zi_wave_dir():
@@ -36,6 +37,23 @@ class ZIPulsarMixin:
         return wave_dir
 
     @classmethod
+    def zi_waves_clean(cls, val=None):
+        """Get or set whether the waves dir is clean
+
+        Args:
+            val (bool or None): if not None, sets the flag zi_waves_clean in
+                _status_ZIPulsarMixin to val.
+
+        Returns:
+            The current value of the flag zi_waves_clean in
+            _status_ZIPulsarMixin if val is None, and None otherwise.
+        """
+        if val is None:
+            return cls._status_ZIPulsarMixin['zi_waves_clean']
+        else:
+            cls._status_ZIPulsarMixin['zi_waves_clean'] = val
+
+    @classmethod
     def _zi_clear_waves(cls):
         wave_dir = cls._zi_wave_dir()
         for f in os.listdir(wave_dir):
@@ -43,7 +61,7 @@ class ZIPulsarMixin:
                 os.remove(os.path.join(wave_dir, f))
             elif f.endswith(".cache"):
                 shutil.rmtree(os.path.join(wave_dir, f))
-        cls.zi_waves_cleared = True
+        cls.zi_waves_clean(True)
 
     @staticmethod
     def _zi_wavename_pair_to_argument(w1, w2):
@@ -200,13 +218,19 @@ class ZIPulsarMixin:
         for h, wf in waveforms.items():
             filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
             if os.path.exists(filename):
+                # Skip writing the CSV file. This happens if reuse_waveforms
+                # is True and the same hash appears on multiple sub-awgs.
+                # Note that it does not happen in cases where
+                # use_sequence_cache is True and the same hash had appeared in
+                # earlier experiments (because we clear the waves dir before
+                # starting programming the AWGs).
                 continue
             fmt = "%.18e" if wf.dtype == np.float else "%d"
             np.savetxt(filename, wf, delimiter=",", fmt=fmt)
 
     def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                             prepend_zeros=0, placeholder_wave=False,
-                            allow_filter=False, negate_q=False):
+                            allow_filter=False):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -214,8 +238,6 @@ class ZIPulsarMixin:
         if prepend_zeros:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self._zi_waves_to_wavenames(wave)
-        if w2 is not None and negate_q:
-            w2 = f"(-({w2}))"
         use_hack = True # set this to false once the bugs with HDAWG are fixed
         playback_string += self._zi_wait_trigger(name, device)
 
