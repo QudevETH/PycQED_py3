@@ -159,7 +159,7 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
-        if not self.zi_waves_cleared:
+        if not self.zi_waves_clean():
             self._zi_clear_waves()
 
         waves_to_upload = {h: waveforms[h]
