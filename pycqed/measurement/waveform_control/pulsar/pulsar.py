@@ -867,7 +867,6 @@ class Pulsar(Instrument):
         """
 
         try:
-            self.reset_active_awgs_mcc()
             self._program_awgs(sequence, awgs)
         except Exception as e:
             if not self.use_sequence_cache():
@@ -875,13 +874,15 @@ class Pulsar(Instrument):
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
             self.reset_sequence_cache()
-            self.reset_active_awgs_mcc()
             self._program_awgs(sequence, awgs)
 
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
         self.last_sequence = sequence
+
+        # resets the parallel compilation active AWG list
+        self.reset_active_awgs_mcc()
 
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
