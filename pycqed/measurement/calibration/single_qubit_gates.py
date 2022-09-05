@@ -441,6 +441,14 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
                     if 'pulse_modifs' not in task:
                         task['pulse_modifs'] = {}
+                    # Below, we replace mod_frequency by a ParametricValue in all X180
+                    # pulses in all task-specific blocks and in all calibration point
+                    # segments. Since the cal segments are generated globally (and not
+                    # per task), we need to manually ensure that a sweep parameter with
+                    # task prefix is used if it exists. If no task-specific freq sweep
+                    # parameter is found, the global freq sweep parameter is used. For
+                    # the task-specific blocks, prefixing is automatically taken into
+                    # account by the base class.
                     params = ['freq'] * 2
                     pre_param = task['prefix'] + params[1]
                     if self.sweep_points.find_parameter(pre_param) is not None:
@@ -1310,6 +1318,22 @@ class Cryoscope(CalibBuilder):
             self.exp_metadata['flux_pulse_blocks'][qb] = block.build()
 
 class FluxPulseTiming(FluxPulseScope):
+    """
+        Flux pulse timing measurement used to determine the determine the
+        timing of the flux pulse with respect to the qubit drive.
+        It is based on the flux pulse scope measurement and thus
+        features the same pulse sequnce but with the drive frequency
+        fixed at the qubit ge frequency.
+        pulse sequence:
+                      <- delay ->
+           |    -------------    |X180|  ---------------------  |RO|
+           |    ---   | ---- fluxpulse ----- |
+
+            sweep_points:
+            delay (numpy array): array of delays of the flux pulse
+
+        Returns: None
+    """
     default_experiment_name = 'FluxPulseTiming'
     kw_for_sweep_points = dict(
         **FluxPulseScope.kw_for_sweep_points,
@@ -1320,6 +1344,14 @@ class FluxPulseTiming(FluxPulseScope):
     )
 
     def get_ge_freq(self, qb):
+        """
+        Returns the ge frequency of the provided qubit name. This is used
+        to create the sweep points of length 1 of the routine.
+        :param qb: (string) name of qubit
+
+        Returns:
+            list containing as single entry the ge frequency of the qubit
+        """
         qb = self.get_qubits(qb)[0][0]
         return [qb.ge_freq()]
 
@@ -1473,13 +1505,20 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         """
         Performs X180 pulse on top of a readout pulse.
         :param qb: (str) the name of the qubit
+        :param sweep_points: (SweepPoints object or list of dicts or None)
+        sweep points valid for all tasks.
+        :param ro_separation: (float) separation between the two readout
+        pulses as specified between the start of both pulses.
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
         :param kw:
         """
         b = self.block_from_ops('ro_ge', [f'RO {qb}', f'X180 {qb}'])
 
         ro = b.pulses[0]
+        # here probe refers to the X180 pulse that "probes" the
+        # first readout pulse
         probe = b.pulses[1]
-
         probe['ref_point'] = 'start'
         probe['ref_point_new'] = 'end'
 
@@ -1493,13 +1532,13 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         # Assure that ro separation is comensurate with start granularity
         pulsar_obj = self.get_qubits(qb)[0][0].instr_pulsar.get_instr()
         acq_instr = self.get_qubits(qb)[0][0].instr_acq()
-        # FIXME: apprently the pulsar parameter _element_start_granularity is
-        #  set to 0 for acq instruments. Access parameter like this for now.
+        # Pulsar parameter _element_start_granularity is
+        # set to 0 for acq instruments. Access parameter
+        # via ELEMENT_START_GRANULARITY
         gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
         ro_separation -= ro_separation % (-gran)
         b_ro.pulses[0]['pulse_delay'] = ro_separation
         b = self.simultaneous_blocks('final', [b, b_ro])
-
         if prepend_pulse_dicts is not None:
             pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
                                              block_name='prepend')
@@ -1518,11 +1557,23 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
             qb_names=self.meas_obj_names, **analysis_kwargs)
 
     def seg_from_cal_points(self, *args, **kw):
-        n_reps = 2
-        kw['df_values_per_point'] = n_reps
+        """
+        Configure super.seg_from_cal_points() for sequence with two readouts
+        per segment and hence twice the number of calibration points. Check
+        super() method for args, kw and returned values.
+        """
+        # given that this routine makes use of two read out pulses
+        # per segment, also two repetitions per cal state have to
+        # be added to allow the analysis to run successfully
+        number_of_cal_repetitions = 2
+        kw['df_values_per_point'] = number_of_cal_repetitions
         return super().seg_from_cal_points(*args, **kw)
 
     def sweep_n_dim(self, *args, **kw):
+        """
+        Configure super.sweep_n_dim() for sequence with two readouts
+        per segment. Check super() method for args, kw and returned values.
+        """
         n_reps = 2
         seqs, vals = super().sweep_n_dim(*args, **kw)
         n_acqs = int(len(vals[0])/n_reps)

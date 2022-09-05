@@ -170,7 +170,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         use_placeholder_waves = self.pulsar\
             .get(f"{self.awg.name}_use_placeholder_waves")
         if not use_placeholder_waves:
-            if not self.zi_waves_cleared:
+            if not self.zi_waves_clean():
                 self._zi_clear_waves()
 
         def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
@@ -350,6 +350,10 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                             wave = (None, None, None, None)
                         if wave == (None, None, None, None):
                             continue
+                        if wave[2] is not None:  # q channel
+                            # indicate in hash that it gets negated
+                            wave = (wave[0], wave[1],
+                                    tuple(list(wave[2]) + ['negate']), wave[3])
                         if nr_cw != 0:
                             w1, w2 = self._zi_waves_to_wavenames(wave)
                             if cw not in codeword_table:
@@ -405,7 +409,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                             prepend_zeros=prepend_zeros,
                             placeholder_wave=use_placeholder_waves,
                             allow_filter=metadata.get('allow_filter', False),
-                            negate_q=True,
                         )
                     elif not use_placeholder_waves:
                         pb_string, interleave_string = \
@@ -444,12 +447,20 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 continue
 
             if not use_placeholder_waves:
-                waves_to_upload = {h: waveforms[h]
-                                   for codewords in awg_sequence.values()
-                                   if codewords is not None
-                                   for cw, chids in codewords.items()
-                                   if cw != 'metadata'
-                                   for chid, h in chids.items()}
+                waves_to_upload = {}
+
+                # Q channel waveform needs to be reversed for SHFSG/QC devices
+                for codewords in awg_sequence.values():
+                    if codewords is not None:
+                        for cw, chids in codewords.items():
+                            if cw != 'metadata':
+                                for chid, h in chids.items():
+                                    if chid[-1] == 'i':
+                                        waves_to_upload[h] = waveforms[h]
+                                    else:
+                                        h_neg = tuple(list(h) + ['negate'])
+                                        waves_to_upload[h_neg] = -waveforms[h]
+
                 self._zi_write_waves(waves_to_upload)
 
             awg_str = self._shfsg_sequence_string_template.format(
@@ -677,6 +688,22 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 sgchannel.sines[0].q.enable(0)
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
+        """upload waveforms with Zurich Instrument API
+
+        Arguments:
+            awg_nr (int): output channel number to upload the waveform
+            wave_idx (int): index assigned to the current wave
+            wave_hashes (tuple): tuple in groups of four. Each element
+                corresponds to an analog or marker channel. The elements are
+                organized in order (analog_i, marker1, analog_q, marker2).
+            waveforms (dict): an overall dictionary of waveforms, specified
+                bit-wise and indexed by their hash values.
+
+        Returns:
+            None
+        """
+
+        # check if the waveform has been uploaded
         if self.pulsar.use_sequence_cache():
             if wave_hashes == self._shfsg_waveform_cache[
                 f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
@@ -687,8 +714,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 wave_idx] = wave_hashes
         log.debug(
             f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+
+        # take the waves specified for this channel from the overall wave dict
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
+
+        # harmonize the wave lengths to the longest waveform
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
+
         if m1 is not None and a1 is None:
             a1 = np.zeros(n)
         if m1 is None and a1 is None and (m2 is not None or a2 is not None):
@@ -711,9 +743,12 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         assert mc is None # marker not yet supported on SG
 
+        # Q channel sign needs to be flipped for SHFSG/QC
+        if a2 is not None:
+            a2 = -a2
+
         sgchannel = self.awg.sgchannels[awg_nr]
         waveforms = zhinst.toolkit.waveform.Waveforms()
-        # FIXME: Test whether the sign of the second channel needs to be flipped
         waveforms.assign_waveform(wave_idx, a1, a2)
         sgchannel.awg.write_to_waveform_memory(waveforms)
 

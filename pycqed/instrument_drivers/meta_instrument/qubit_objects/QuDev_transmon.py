@@ -1106,7 +1106,11 @@ class QuDev_transmon(Qubit):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -1357,7 +1361,7 @@ class QuDev_transmon(Qubit):
             allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
                 LO and IF sweep) may be used (default: True). Note that
                 setting this to False might lead to a sweep function that is
-                only allowed to taken specific value supported by the
+                only allowed to take specific values supported by the
                 internal LO.
 
         Returns: the Sweep_function object
@@ -2261,6 +2265,11 @@ class QuDev_transmon(Qubit):
             comm_freq: The readout pulse separation will be a multiple of
                        1/comm_freq
         """
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment "
+                                      "ReadoutPulseScope instead.")
 
         if delays is None:
             raise ValueError("Unspecified delays for "
@@ -2288,7 +2297,6 @@ class QuDev_transmon(Qubit):
             verbose=verbose,
             upload=upload))
         MC.set_sweep_points(delays)
-        # FIXME: how to fix this? chellings mentioned sweeper function
         MC.set_sweep_function_2D(swf.Offset_Sweep(
             mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency),
