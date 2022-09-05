@@ -66,8 +66,9 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
                                   host='localhost', interface=awg.interface,
                                   **kw)
         except ImportError as e:
-            log.warning(f'Parallel elf compilation not supported for '
-                        f'{awg.name} ({awg.devname}):\n{e}')
+            log.debug(f'Error importing zhinst-qcodes: {e}.')
+            log.debug(f'Parallel elf compilation will not be available for '
+                      f'{awg.name} ({awg.devname}).')
             self._awg_mcc = None
         # add awgs to multi_core_compiler class variable
         for awg in self.awgs_mcc:
@@ -378,6 +379,11 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self.multi_core_compiler.load_sequencer_program(
                 self.awgs_mcc[0], awg_str)
         else:
+            if self.pulsar.use_mcc():
+                log.warning(
+                    f'Parallel elf compilation not supported for '
+                    f'{self.awg.name} ({self.awg.devname}), see debug '
+                    f'log when adding the AWG to pulsar.')
             # Sequential seqc string upload
             self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,
                                                timeout=600)
