@@ -70,16 +70,11 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             log.debug(f'Parallel elf compilation will not be available for '
                       f'{awg.name} ({awg.devname}).')
             self._awg_mcc = None
-        # add awgs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
+
+        self._init_mcc()
 
     @property
     def awgs_mcc(self) -> list:
-        """
-        Returns list of the _awg_mcc cores.
-        If _awg_mcc was not defined, returns empty list.
-        """
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:

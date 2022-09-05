@@ -376,3 +376,60 @@ class ZIMultiCoreCompilerMixin:
     compilation and upload of SeqC strings.
     """
     multi_core_compiler = MultiCoreCompilerQudevZI()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.wfms_to_upload = {}
+        """Stores hashes and waveforms to be uploaded after parallel
+        compilation. This attribute is only used when self.pulsar.use_mcc() is
+        set to True.
+        """
+
+    def _init_mcc(self):
+        if not len(self.awgs_mcc):
+            return  # no sub-AWG supports MCC
+        # add sub-AWGs to multi_core_compiler class variable
+        for awg in self.awgs_mcc:
+            self.multi_core_compiler.add_awg(awg)
+        # register a finalize callback in the main pulsar
+        self.pulsar.mcc_finalize_callbacks[self.awg.name] = \
+            self.finalize_upload_after_mcc
+
+    def finalize_upload_after_mcc(self):
+        """Finalize the upload after the MCC has finished
+
+        The base method uploads waveforms stored in wfms_to_upload. Child
+        classes could implement further actions if needed.
+
+        ZI devices currently only support parallel compilation + upload
+        of SeqC strings, so we must upload waveforms separately here
+        after parallel upload is finished.
+        """
+        for k, v in self.wfms_to_upload.items():
+            awg_nr, wave_idx = k
+            waveforms, wave_hashes = v
+            # awg_interface that populate wfms_to_upload must implement the
+            # method upload_waveforms
+            self.upload_waveforms(
+                awg_nr=awg_nr, wave_idx=wave_idx,
+                waveforms=waveforms, wave_hashes=wave_hashes)
+
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+        """
+        Upload waveforms to an awg core (awg_nr).
+
+        Args:
+            awg_nr (int): index of awg core (0, 1, 2, or 3)
+            wave_idx (int): index of wave upload (0 or 1)
+            waveforms (array): waveforms to upload
+            wave_hashes: waveforms hashes
+        """
+        raise NotImplementedError('TODO')
+
+    @property
+    def awgs_mcc(self) -> list:
+        """
+        Returns list of the _awg_mcc cores.
+        If _awg_mcc was not defined, returns empty list.
+        """
+        raise NotImplementedError('TODO')

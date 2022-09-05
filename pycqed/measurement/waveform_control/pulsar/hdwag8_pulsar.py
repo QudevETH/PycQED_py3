@@ -68,19 +68,13 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             log.debug(f'Parallel elf compilation will not be available for '
                       f'{awg.name} ({awg.devname}).')
             self._awg_mcc = None
-        # add awgs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
+        self._init_mcc()
 
         # dict for storing previously-uploaded waveforms
         self._hdawg_waveform_cache = dict()
 
     @property
     def awgs_mcc(self) -> list:
-        """
-        Returns list of the _awg_mcc cores.
-        If _awg_mcc was not defined, returns empty list.
-        """
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:
@@ -317,7 +311,7 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
-        self.wfms_to_upload = {}  # store waveforms to upload and hashes
+        self.wfms_to_upload = {}  # reset waveform upload memory
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
         def with_divisor(h, ch):

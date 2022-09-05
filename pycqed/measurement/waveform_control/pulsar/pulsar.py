@@ -604,6 +604,9 @@ class Pulsar(Instrument):
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
         self.num_channel_groups = {}
+        self.mcc_finalize_callbacks = {}
+        """A list of methods which requires execution after multi-core 
+        compilation. """
 
         self._awgs_prequeried_state = False
 
@@ -1096,21 +1099,11 @@ class Pulsar(Instrument):
                     mcc.wait_compile()
                     mcc.upload()
 
-            # Upload the waveforms to the _awgs_with_waveforms that have the
-            # attribute wfms_to_upload.
-            # ZI devices currently only support parallel compilation + upload
-            # of SeqC strings, so we must upload waveforms separately here
-            # after parallel upload is finished.
-            for awg in self._awgs_with_waveforms:
-                awg_interface = self.awg_interfaces[awg]
-                if hasattr(awg_interface, 'wfms_to_upload'):
-                    for k, v in awg_interface.wfms_to_upload.items():
-                        awg_nr, wave_idx = k
-                        waveforms, wave_hashes = v
-                        # awg_interface must have the method upload_waveforms
-                        awg_interface.upload_waveforms(
-                            awg_nr=awg_nr, wave_idx=wave_idx,
-                            waveforms=waveforms, wave_hashes=wave_hashes)
+            # Finalize callbacks allow individual AWG interfaces to do final
+            # upload steps (e.g., uploading waveforms).
+            for awg, callback in self.mcc_finalize_callbacks.items():
+                if awg in self._awgs_with_waveforms:
+                    callback()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

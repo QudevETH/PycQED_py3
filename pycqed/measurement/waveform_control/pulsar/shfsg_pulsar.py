@@ -62,9 +62,7 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # add awgs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
+        self._init_mcc()
         # dict for storing previously-uploaded waveforms
         self._shfsg_waveform_cache = dict()
         self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
@@ -74,10 +72,6 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
 
     @property
     def awgs_mcc(self) -> list:
-        """
-        Returns list of the sg channel awgs to be passed to the
-        multi_core_compiler.
-        """
         return [sgc.awg for sgc in self.awg.sgchannels]
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
@@ -176,7 +170,7 @@ class SHFGeneratorModulePulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface,
     # FIXME: clean up and move func. common with HDAWG to zi_pulsar_mixin module
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
-        self.wfms_to_upload = {}  # store waveforms to upload and hashes
+        self.wfms_to_upload = {}  # reset waveform upload memory
         chids = [f'sg{i + 1}{iq}' for i in range(len(self.awg.sgchannels))
                  for iq in ['i', 'q']]
 
