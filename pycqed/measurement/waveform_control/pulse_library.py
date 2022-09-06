@@ -380,6 +380,11 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         param_vals = []
 
         cp = cphase_calib_dict['cphase']
+        # For cases where cp is split over two periods
+        # ( assuming that min(cp) < 0 < max(cp) )
+        if phi>np.max(cp):
+            phi = phi-360
+
         for param_name in params_to_interpolate:
             cal_data = cphase_calib_dict[param_name]
             if isinstance(cal_data, dict):  # for 'basis_rotation'
