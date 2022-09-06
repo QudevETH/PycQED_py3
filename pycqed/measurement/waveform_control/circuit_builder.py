@@ -18,7 +18,11 @@ class CircuitBuilder:
     :param qubits: a list of qubit objects or names if the builder should
         act only on a subset of qubits (default: all qubits of the device)
     :param kw: keyword arguments
-         cz_pulse_name: (str) the prefix of CZ gates (default: upCZ)
+         cz_pulse_name: (str) the prefix of CZ gates (default: None,
+             in which case we use the default_cz_gate_name of the device
+             object if available, or otherwise the first operation from the
+             operation_dict whose name contains 'CZ', or we fall back to
+             'CZ' if no such operation is found.)
          decompose_rotation_gates: (dict of bool) whether arbitrary
             rotation gates should be decomposed into pi rotations
             and virtual Z gates, e.g., {'X': True, 'Y': False}.
@@ -47,7 +51,15 @@ class CircuitBuilder:
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
         self.update_operation_dict(operation_dict)
-        self.cz_pulse_name = kw.get('cz_pulse_name', 'upCZ')
+        self.cz_pulse_name = kw.get('cz_pulse_name')
+        if self.cz_pulse_name is None:
+            if self.dev is not None and self.dev.default_cz_gate_name() is \
+                    not None:
+                self.cz_pulse_name = self.dev.default_cz_gate_name()
+            else:  # try to find a CZ gate in the opreation dict
+                op_types = [o.split(' ')[0] for o in self.operation_dict]
+                cz_gates = [o for o in op_types if 'CZ' in o] + ['CZ']
+                self.cz_pulse_name = cz_gates[0]
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
         self.fast_mode = kw.get('fast_mode', False)
         self.prep_params = kw.get('prep_params', None)
@@ -291,6 +303,8 @@ class CircuitBuilder:
                         # configure virtual Z gate for this angle
                         p['basis_rotation'] = {qbn: factor * float(angle)}
                 else:
+                    qb, _ = self.get_qubits(qbn)
+                    corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
@@ -298,16 +312,19 @@ class CircuitBuilder:
                             func = (
                                 lambda x, a=p['amplitude'], f=factor,
                                        fnc=eval('lambda x : ' + angle):
-                                a / 180 * ((f * fnc(x) + 180) % (-360) + 180))
+                                a * corr_func(
+                                    ((f * fnc(x) + 180) % (-360) + 180) / 180))
                         else:  # angle = parameter
                             func = lambda x, a=p['amplitude'], f=factor: \
-                                a / 180 * ((f * x + 180) % (-360) + 180)
+                                a * corr_func(
+                                    ((f * x + 180) % (-360) + 180) / 180)
                         p['amplitude'] = ParametricValue(
                             param, func=func, op_split=(op_name, op_info[1]))
                     else:  # angle is a given value
                         angle = factor * float(angle)
                         # configure drive pulse amplitude for this angle
-                        p['amplitude'] *= ((angle + 180) % (-360) + 180) / 180
+                        p['amplitude'] *= corr_func(
+                            ((angle + 180) % (-360) + 180) / 180)
         else:
             raise KeyError(f"Operation {' '.join(op_info)} not found.")
         p['op_code'] = op
@@ -493,6 +510,12 @@ class CircuitBuilder:
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
                         reset_pulses.append(self.get_pulse(op + qbn))
+                        # Reset pulses cannot include phase information at the moment
+                        # since we use the exact same waveform(s) (corresponding to
+                        # a given codeword) for every reset pulse(s) we play (no
+                        # matter where in the circuit). Therefore, remove phase_lock
+                        # that references the phase to algorithm time t=0.
+                        reset_pulses[-1]['phaselock'] = False
                         reset_pulses[-1]['codeword'] = codeword
                         if j == 0:
                             reset_pulses[-1]['ref_point'] = 'start'
@@ -692,8 +715,10 @@ class CircuitBuilder:
         :param sweep_index_list: Passed on to Block.build for the complete
             cal_state_block. Determines for which sweep points from
             sweep_dicts_list the block should be build.
-        :param kw: keyword arguments (to allow pass through kw even if it
-            contains entries that are not needed)
+        :param kw: additional keyword arguments
+            df_values_per_point (int, default: 1): number of expected number of readouts
+                per sweep point.
+
         :return: list of Segment instances
         """
         if ro_kwargs is None:
@@ -715,11 +740,14 @@ class CircuitBuilder:
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
                 f'cal_states_{i}', [prep, parallel_qb_block, ro])
-            seg = Segment(f'{segment_prefix}_{i}_{"".join(seg_states)}',
-                          cal_state_block.build(
-                              sweep_dicts_list=sweep_dicts_list,
-                              sweep_index_list=sweep_index_list))
-            segments.append(seg)
+            vals_per_point = kw.get('df_values_per_point', 1)
+            for j in range(vals_per_point):
+                seg = Segment(f'{segment_prefix}_{i*vals_per_point+j}'
+                              f'_{"".join(seg_states)}',
+                              cal_state_block.build(
+                                  sweep_dicts_list=sweep_dicts_list,
+                                  sweep_index_list=sweep_index_list))
+                segments.append(seg)
 
         return segments
 

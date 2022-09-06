@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -103,6 +103,12 @@ class Device(Instrument):
                            docstring='stores all two qubit gate names',
                            get_cmd=lambda s=self: copy(s._two_qb_gates)
                            )
+        self.add_parameter(
+            'default_cz_gate_name',
+            parameter_class=ManualParameter, initial_value=None,
+            vals=vals.MultiType(vals.Strings(), vals.Enum(None)),
+            set_parser=self._valid_cz_gate,
+            docstring='Name of the CZ gate that should be used by default.')
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -512,6 +518,17 @@ class Device(Instrument):
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
 
+        if self.default_cz_gate_name() is None:
+            # Make the newly added gate the default
+            self.default_cz_gate_name(gate_name)
+
+    def _valid_cz_gate(self, gate_name):
+        if gate_name is not None and gate_name not in self._two_qb_gates:
+            raise ValueError(
+                f'{gate_name} is not a valid two-qubit gate name. Valid '
+                f'names are: {self._two_qb_gates}')
+        return gate_name
+
     def get_channel_delays(self):
         """
         Get AWG channel delays
@@ -544,7 +561,7 @@ class Device(Instrument):
         # configure channel delays
         channel_delays = self.get_channel_delays()
         for ch, v in channel_delays.items():
-            awg = pulsar.AWG_obj(channel=ch)
+            awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
 

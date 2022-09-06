@@ -787,7 +787,7 @@ def fd_fit_iir(data_dict, keys_in, keys_out, keys_corrected=None, method='multie
             B = [fit_res.values.get(f'B{i}') for i in range(N)]
             tau = np.array(
                 [fit_res.values.get(f'tau{i}') for i in range(N)]) * t_factor
-        if method in ['integral']:
+        if method in ['integral', 'multiexp']:
             if return_expmod:
                 hlp_mod.add_param(ko, [A, B, tau], data_dict, **params)
             else:
@@ -1122,6 +1122,23 @@ class fd_combine(CombiningNode):
             data = data[:, np.argsort(data[0])]
         else:
             data = np.concatenate([d for d in data_in])
+        return data
+
+
+class fd_elementwise_norm(CombiningNode):
+    empty_output = ((), ())
+
+    @staticmethod
+    def node_action(data_in):
+        if np.array(data_in[0]).ndim == 2:
+            for i in range(1, len(data_in)):
+                if not all(data_in[0][0] == data_in[i][0]):
+                    raise ValueError('The time values should be the same for '
+                                     'all traces.')
+            data = [data_in[0][0],
+                    np.linalg.norm([d[1] for d in data_in], axis=0)]
+        else:
+            data = np.linalg.norm([d for d in data_in], axis=0)
         return data
 
 

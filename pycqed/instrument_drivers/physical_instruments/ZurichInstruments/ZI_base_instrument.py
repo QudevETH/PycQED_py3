@@ -543,6 +543,8 @@ class MockDAQServer():
             elif par['Type'].startswith('String'):
                 self.nodes[parpath.lower()] = {
                     'type': par['Type'], 'value': ''}
+        # 1 line added to Delft version: return for futher actions in child
+        return node_pars
 
 
 class MockAwgModule():
