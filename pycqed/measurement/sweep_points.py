@@ -132,13 +132,16 @@ class SweepPoints(list):
     def add_sweep_dimension(self):
         self.append(dict())
 
-    def get_sweep_dimension(self, dimension='all', pop=False):
+    def get_sweep_dimension(self, dimension='all', pop=False, **kw):
         """
         Returns the sweep dict of the sweep dimension specified by dimension.
         :param dimension: int specifying a sweep dimension or
             the string 'all'
         :param pop: bool specifying whether to pop (True) or get(False) the
             sweep dimension.
+        :param kw:
+            'default': if this key is contained in kw, its value will be
+                returned if the requested dimension does not exist.
         :return: self if dimension == 'all', else self[dimension]
         """
         if dimension == 'all':
@@ -149,9 +152,12 @@ class SweepPoints(list):
             else:
                 return self
         else:
-            if len(self) < dimension:
-                raise ValueError(f'Dimension {dimension} not found.')
-            to_return = self[dimension]
+            if len(self) < dimension + 1:
+                if 'default' not in kw:
+                    raise ValueError(f'Dimension {dimension} not found.')
+                to_return = kw['default']
+            else:
+                to_return = self[dimension]
             if pop:
                 self[dimension] = {}
             return to_return
