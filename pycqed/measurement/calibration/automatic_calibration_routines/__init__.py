@@ -3,6 +3,8 @@ from .autocalib_framework import (
     AutomaticCalibrationRoutine
 ) 
 from .single_qubit_routines import (
+    InitialQubitParking,
+    AdaptiveQubitSpectroscopy,
     PiPulseCalibration,
     FindFrequency,
     SingleQubitCalib    

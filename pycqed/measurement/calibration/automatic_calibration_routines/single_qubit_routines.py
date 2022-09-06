@@ -1149,7 +1149,7 @@ class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
 # Special Automatic calibration routines
 
 
-class ResonatorCalibration(AutomaticCalibrationRoutine):
+class InitialQubitParking(AutomaticCalibrationRoutine):
     """
     Routine to find the RO frequency of the qubits and park them at their sweet
     spot. It consists of two steps:
