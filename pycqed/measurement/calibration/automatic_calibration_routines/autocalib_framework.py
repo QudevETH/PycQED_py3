@@ -1600,7 +1600,7 @@ class AutomaticCalibrationRoutine(Step):
                 self.run()
             except:
                 log.error(
-                    "Autorun failed to fully run, concluded routine steps"
+                    "Autorun failed to fully run, concluded routine steps "
                     "are stored in the routine_steps attribute.",
                     exc_info=1,
                 )
