@@ -12,9 +12,10 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
-from copy import deepcopy
+from copy import copy, deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
+import itertools
 import logging
 from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
@@ -945,3 +946,94 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             'task_list_fields': odict({}),
             'sweeping_parameters': odict({}),
         }
+
+
+class NDimQuantumExperiment():
+    def __init__(self, cls, *args, sweep_points=None, **kwargs):
+        self.experiments = {}
+        if cls is None:
+            self.QuantumExperiment = QuantumExperiment
+        else:
+            self.QuantumExperiment = cls
+
+        self.sweep_points = SweepPoints(sweep_points)
+        self._generate_sweep_lengths()
+        self.args = args
+        self.kwargs = kwargs
+
+        for idxs in self.get_experiment_indices():
+            self.create_experiment(idxs)
+
+        if kwargs.get('measure') and kwargs.get('analyze'):
+            self.run_ndim_analysis()
+
+    def _generate_sweep_lengths(self):
+        self.sweep_lengths = self.sweep_points.length()
+
+    def get_experiment_indices(self):
+        idxs = itertools.product(
+            *[range(i) for i in self.sweep_lengths[:1:-1]])
+        return [idx[::-1] for idx in idxs]
+
+    def make_2d_sweep_points(self, sweep_points, idxs):
+        extra_sp = SweepPoints(sweep_points[2:])
+        current_sp = SweepPoints(sweep_points[:2])
+        length = self.sweep_lengths[0]
+        for dim, idx in enumerate(idxs):
+            for k in extra_sp.get_sweep_dimension(dim, default={}):
+                current_sp.add_sweep_parameter(
+                    k, [extra_sp[k][idx] for i in range(length)],
+                    extra_sp.get_sweep_params_property('unit', param_names=k),
+                    extra_sp.get_sweep_params_property('label', param_names=k),
+                    dimension=0,
+                )
+        return current_sp
+
+    def create_experiment(self, idxs):
+        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+        self.experiments[idxs] = self.QuantumExperiment(
+            *self.args, sweep_points=current_sp, **self.kwargs)
+
+    def run_measurement(self, **kw):
+        for qe in self.experiments:
+            qe.run_measurement(**kw)
+
+    def run_analysis(self, **kw):
+        for qe in self.experiments:
+            qe.run_analysis(**kw)
+        self.run_ndim_analysis()
+
+    def run_ndim_analysis(self):
+        pass
+
+
+class NDimMultiTaskingExperiment(NDimQuantumExperiment):
+    def __init__(self, cls, task_list, *args, sweep_points=None, **kwargs):
+        self.task_list = list(task_list)
+        super().__init__(cls, *args, sweep_points=sweep_points, **kwargs)
+
+    def _generate_sweep_lengths(self):
+        super()._generate_sweep_lengths()
+        for task in self.task_list:
+            tsp = SweepPoints(task.get('sweep_points', []))
+            self.sweep_lengths += [0 for i in
+                                   range(len(self.sweep_lengths), len(tsp))]
+            for dim in range(len(tsp)):
+                current_len = tsp.length(dim)
+                if current_len:
+                    if not self.sweep_lengths[dim]:
+                        self.sweep_lengths[dim] = current_len
+                    elif self.sweep_lengths[dim] != current_len:
+                        raise ValueError(
+                            f'Incompatible number of sweep points in dim {dim}.')
+
+    def create_experiment(self, idxs):
+        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+        current_tl = [copy(t) for t in self.task_list]
+        for task in current_tl:
+            task['sweep_points'] = self.make_2d_sweep_points(
+                task.get('sweep_points', []), idxs)
+        self.experiments[idxs] = self.QuantumExperiment(
+            *self.args, sweep_points=current_sp,
+            task_list=current_tl, **self.kwargs)
+
