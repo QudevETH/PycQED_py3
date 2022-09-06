@@ -1862,9 +1862,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 by the classifier. Defaults to  {0: "g", 1: "e", 2: "f", 3: "h"}
             thresholding (bool):
                 whether or not to threshold (i.e. classify) the shots. If True,
-                it will transform [0.01, 0.97, 0.02] into [0, 1, 0]. Note: in
-                case predict_probas = True, it expects raw voltages, in case
-                predict_probas = False, it expects probabilities.
+                it will transform [0.01, 0.97, 0.02] into [0, 1, 0].
 
         Other parameters taken from self.get_param_value:
             use_preselection (bool): whether or not preselection should be used
@@ -1988,9 +1986,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
                     shots
 
-            # TODO: Nathan: if predict_proba is activated then we should
-            #  first classify, then do a count table and thereby estimate
-            #  average proba
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             for ro in range(n_readouts*n_seqs):
