@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict
 import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
@@ -463,6 +464,16 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 return task
         return None
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            MultiTaskingSpectroscopyExperiment.__name__: OrderedDict({
+                'trigger_separation': (float, 10e-6)
+            })
+        })
+        return d
+
 
 class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d feedline spectroscopies on one
@@ -657,6 +668,15 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ]
             qb.set(f'ro_freq', ro_freq)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            ResonatorSpectroscopy.__name__: OrderedDict({
+                'trigger_separation': (float, 5e-6)
+            })
+        })
+        return d
 
 class FeedlineSpectroscopy(ResonatorSpectroscopy):
     """
@@ -1151,6 +1171,18 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 else:
                     log.error('Task for modulated spectroscopy does not contain'
                               'mod_freq.')
+    
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            QubitSpectroscopy.__name__: OrderedDict({
+                'trigger_separation': (float, 50e-6),
+                'pulsed': (bool, False),
+                'modulated': (bool, False)
+            })
+        })
+        return d
 
 
 class QubitSpectroscopy1D(QubitSpectroscopy):
