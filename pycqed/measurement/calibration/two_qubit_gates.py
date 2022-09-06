@@ -837,7 +837,7 @@ class CPhase(CalibBuilder):
 
     def cphase_block(self, sweep_points,
                      qbl, qbr, num_cz_gates=1, max_flux_length=None,
-                     prepend_pulse_dicts=None, **kw):
+                     prepend_pulse_dicts=None, cphase=None, **kw):
         """
         This function creates the blocks for a single CPhase measurement task.
         :param sweep_points: sweep points
@@ -849,6 +849,8 @@ class CPhase(CalibBuilder):
             determined automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             CircuitBuilder.block_from_pulse_dicts
+        :param cphase: (float) conditional phase of the CZ gate (if already
+            calibrated)
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
@@ -874,6 +876,8 @@ class CPhase(CalibBuilder):
 
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbl} {qbr}"] * num_cz_gates)
+        for p in fp.pulses:
+            p['cphase'] = cphase
         # TODO here, we could do DD pulses (CH 2020-06-19)
 
         for k in soft_sweep_dict:
