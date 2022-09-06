@@ -1694,7 +1694,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 # For these experiments the pulse sequence is not identical for
                 # each all sweep points so the block function must be called
                 # at each iteration in sweep_n_dim.
-                if len(self.sweep_points[1]) == 0:
+                if self._min_sweep_dims == 2 and len(self.sweep_points[1]) == 0:
                     # This dummy sweep param is added in parallel_sweep of
                     # MultiTaskingExperiment, but since we do not call that
                     # method in this case, we need to add it here to the
