@@ -1104,7 +1104,11 @@ class QuDev_transmon(Qubit):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -1138,6 +1142,10 @@ class QuDev_transmon(Qubit):
                                  + ". Valid options are None, 'continuous_spec"
                                  + "', 'pulsed_spec' and 'timedomain'.")
 
+        param = f'{self.ge_I_channel()}_centerfreq'
+        if param in self.instr_pulsar.get_instr().parameters:
+            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
@@ -1168,6 +1176,25 @@ class QuDev_transmon(Qubit):
         """
         return self.ge_freq() - self.ge_mod_freq()
 
+    def get_ge_lo_identifier(self):
+        """Returns the ge LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of drive pulse generating device name (str) and
+              synthesizer unit index (int), identifying the internal
+              LO in an signal generation unit of an drive pulse
+              generating device
+          """
+
+        if self.instr_ge_lo() is None:
+            pulsar = self.instr_pulsar.get_instr()
+            awg = pulsar.get_channel_awg(self.ge_I_channel())
+            gen = pulsar.get_centerfreq_generator(self.ge_I_channel())
+            return (awg.name, gen)
+        else:
+            return self.instr_ge_lo()
+
     def get_ro_lo_freq(self):
         """Returns the required local oscillator frequency for readout pulses
 
@@ -1185,6 +1212,21 @@ class QuDev_transmon(Qubit):
         else:
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
+
+    def get_ro_lo_identifier(self):
+        """Returns the ro LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+        """
+
+        if self.instr_ro_lo() is None:
+            return (self.instr_acq(), self.acq_unit())
+        else:
+            return self.instr_ro_lo()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
@@ -1303,13 +1345,30 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
-    def swf_drive_lo_freq(self):
+    def swf_drive_lo_freq(self, allow_IF_sweep=True):
+        """Create a sweep function for sweeping the drive frequency.
+
+        The sweep is implemented as an LO sweep in case of drive pulse
+        generation with an external LO. The implementation depends on the
+        get_frequency_sweep_function method of the acquisition device in case
+        of an internal LO.
+
+        Args:
+            allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
+                LO and IF sweep) may be used (default: True). Note that
+                setting this to False might lead to a sweep function that is
+                only allowed to take specific values supported by the
+                internal LO.
+
+        Returns: the Sweep_function object
+        """
         if self.instr_ge_lo() is not None:  # external LO
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency)
         else:  # no external LO
             pulsar = self.instr_pulsar.get_instr()
-            return pulsar.get_frequency_sweep_function(self.ge_I_channel())
+            return pulsar.get_frequency_sweep_function(
+                self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
 
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
@@ -2202,6 +2261,11 @@ class QuDev_transmon(Qubit):
             comm_freq: The readout pulse separation will be a multiple of
                        1/comm_freq
         """
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment "
+                                      "ReadoutPulseScope instead.")
 
         if delays is None:
             raise ValueError("Unspecified delays for "
@@ -4574,6 +4638,11 @@ class QuDev_transmon(Qubit):
             return
 
     def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment FluxPulseTiming "
+                                      "instead.")
         if label is None:
             label = 'Flux_pulse_timing_{}'.format(self.name)
         self.measure_flux_pulse_scope([self.ge_freq()], delays,
@@ -4610,6 +4679,12 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_scope is '
+                                      'not implemented for setups '
+                                      'without external drive LO. Use '
+                                      'FluxPulseScope class instead!')
+
         if label is None:
             label = 'Flux_scope_{}'.format(self.name)
         MC = self.instr_mc.get_instr()
@@ -4701,6 +4776,13 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_amplitude()'
+                                      ' is not implemented for setups'
+                                      ' without external drive LO. Use'
+                                      ' FluxPulseAmplitudeSweep class'
+                                      ' instead!')
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
@@ -4877,30 +4959,58 @@ class QuDev_transmon(Qubit):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=False)
 
-    def measure_T2_freq_sweep(self, flux_lengths, cz_pulse_name=None,
+    def measure_T2_freq_sweep(self, flux_lengths=None, n_pulses=None,
+                              cz_pulse_name=None,
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
                               exp_metadata=None):
-        '''
+        """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
 
-        Timings of sequence
-
-       |          ----|X90| --------------------------- |X90|--|RO|
-       |          --------| --------- fluxpulse ------- |
-
+        2 sorts of sequences can be generated based on the combination of
+        (flux_lengths, n_pulses):
+        1. (None, array):
+         The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+        |          --------(| - fp -| ) x n_pulses[i] ---------
+       Each flux pulse has a duration equal to the stored value in the
+       operations dict. Note that in this case, the flux_lengths stored in
+       the metadata (and hence used by the default analysis) is
+       fpl * n_pulses, where fpl is the flux pulse length stored in the
+       cz_pulse_name operation, i.e. the total time spent away from sweetspot
+       (but it does not account for buffer times before and after each pulse,
+       which will however be in the sequence).
+        2. (array, None):
+        The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+       |          --------| -- fp --length=flux_lengths[i]----|
+       and the duration of the single flux pulse is adapted according to
+       the values specified in flux_lengths
 
         Args:
-            freqs (numpy array): array of drive frequencies
-            amplitudes (numpy array): array of amplitudes of the flux pulse
-            delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
+            flux_lengths (array):  array containing the flux pulse durations.
+                Used if n_pulses is None.
+            n_pulses (array): array containing the number of flux pulses. Used
+                if flux_lengths is None.
+            cz_pulse_name: name of the flux pulse
+            freqs: array of drive frequencies (from which the flux pulse
+            amplitudes are inferred)
+            amplitudes: array of amplitudes of the flux pulse
+            phases (array, list): array of phases for the second pi-half pulse
+                for the Ramsey experiment
+            analyze:
+            cal_states:
+            cal_points:
+            upload:
+            label:
+            n_cal_points_per_state:
+            exp_metadata:
 
-        Returns: None
+        Returns:
 
-        '''
+        """
         fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
         if freqs is not None:
             amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
@@ -4933,8 +5043,10 @@ class QuDev_transmon(Qubit):
         self.prepare(drive='timedomain')
 
         amplitudes = np.array(amplitudes)
-        flux_lengths = np.array(flux_lengths)
+        if flux_lengths is not None:
+            flux_lengths = np.array(flux_lengths)
         phases = np.array(phases)
+
 
         if cal_points:
             cal_states = CalibrationPoints.guess_cal_states(cal_states)
@@ -4946,6 +5058,7 @@ class QuDev_transmon(Qubit):
         seq, sweep_points = \
             fsqs.T2_freq_sweep_seq(
                 amplitudes=amplitudes, qb_name=self.name,
+                n_pulses=n_pulses,
                 operation_dict=self.get_operation_dict(),
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
@@ -4955,10 +5068,17 @@ class QuDev_transmon(Qubit):
         MC.set_detector_function(self.int_avg_det)
         if exp_metadata is None:
             exp_metadata = {}
+        # for legacy reason, store flux lengths in metadata even if n_pulses
+        # were used to determine the flux lengths, such that the analysis can
+        # easily access them
+        if flux_lengths is None and n_pulses is not None:
+            flux_lengths = np.array(n_pulses) * \
+                           self.get_operation_dict()[cz_pulse_name]['pulse_length']
         exp_metadata.update({'amplitudes': amplitudes,
                              'frequencies': freqs,
                              'phases': phases,
                              'flux_lengths': flux_lengths,
+                             'n_pulses': n_pulses,
                              'use_cal_points': cal_points,
                              'cal_points': repr(cp),
                              'rotate': cal_points,

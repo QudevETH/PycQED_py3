@@ -1834,7 +1834,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def process_single_shots(self, predict_proba=True,
                              classifier_params=None,
-                             states_map=None):
+                             states_map=None,
+                             thresholding=True):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -1859,6 +1860,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             states_map (dict):
                 list of states corresponding to the different integers output
                 by the classifier. Defaults to  {0: "g", 1: "e", 2: "f", 3: "h"}
+            thresholding (bool):
+                whether or not to threshold (i.e. classify) the shots. If True,
+                it will transform [0.01, 0.97, 0.02] into [0, 1, 0].
 
         Other parameters taken from self.get_param_value:
             use_preselection (bool): whether or not preselection should be used
@@ -1970,14 +1974,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' a different number of channels than in the'
                               f' current measurement): {e}')
                     raise e
-                if not 'single_shots_per_qb_probs' in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_probs'] = {}
-                self.proc_data_dict['single_shots_per_qb_probs'][qbn] = shots
 
+            if thresholding:
+                # shots become one-hot encoded arrays with length n_states
+                # shots has shape (n_shots, n_states)
 
-            # TODO: Nathan: if predict_proba is activated then we should
-            #  first classify, then do a count table and thereby estimate
-            #  average proba
+                shots = a_tools.threshold_shots(shots)
+
+                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
+                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
+                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
+                    shots
+
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             for ro in range(n_readouts*n_seqs):
@@ -3251,8 +3259,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # make matrix out of vector
         data_reshaped_no_cp = {qb: np.reshape(
-            deepcopy(pdd['data_to_fit'][qb][
-                     :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
+            deepcopy(pdd['data_to_fit'][qb][:-nr_cp]).flatten(),
             (nr_amps, nr_lengths, nr_phases)) for qb in self.qb_names}
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
@@ -3294,29 +3301,47 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
+        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
+                                       decay=dict(value=1e-6),
+                                       ) for qb in self.qb_names}
+
+        gaussian_decay_func = \
+            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
+
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
-            exp_mod = fit_mods.ExponentialModel()
+            exp_mod = self.get_param_value('exp_fit_mod',
+                                           lmfit.Model(gaussian_decay_func))
+            guess_pars_dict = self.get_param_value("guess_pars_dict",
+                                                   guess_pars_dict_default)[qb]
             for i in range(nr_amps):
                 pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])
+                for par, params in guess_pars_dict.items():
+                    exp_mod.set_param_hint(par, **params)
+                guess_pars = exp_mod.make_params()
 
                 self.fit_dicts[f'exp_fit_{qb}_{i}'] = {
-                    'model': exp_mod,
-                    'fit_xvals': {'x': self.metadata['flux_lengths']},
+                    'fit_fn': exp_mod.func,
+                    'guess_pars': guess_pars,
+                    'fit_xvals': {'x': self.get_param_value('flux_lengths')},
                     'fit_yvals': {'data': np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])}}
 
+
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
                 abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
+                for i in range(len(self.metadata['amplitudes']))])
+            pdd['T2_err'][qb] = np.array([
+                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
                 for i in range(len(self.metadata['amplitudes']))])
 
             pdd['mask'][qb] = []
@@ -3324,9 +3349,11 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 try:
                     if self.fit_res[f'exp_fit_{qb}_{i}']\
                                             .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb][i] = False
+                        pdd['mask'][qb].append(False)
+                    else:
+                        pdd['mask'][qb].append(True)
                 except TypeError:
-                    pdd['mask'][qb][i] = False
+                    pdd['mask'][qb][i].append(False)
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
@@ -3346,6 +3373,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 'linestyle': '-',
                 'xvals': xvals,
                 'yvals': pdd['T2'][qb][mask],
+                'yerr': pdd['T2_err'][qb][mask],
                 'xlabel': xlabel,
                 'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
                 'ylabel': r'T2',
@@ -3354,16 +3382,16 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             # Plot all fits in single figure
-            if not self.get_param_value('all_fits', False):
+            if not self.get_param_value('all_fits', True):
                 continue
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
-                color = colormap(i/(len(self.metadata['frequencies'])-1))
-                label = f'exp_fit_{qb}_amp_{i}'
-                freqs = self.metadata['frequencies'] is not None
-                fitid = self.metadata.get('frequencies',
-                                          self.metadata['amplitudes'])[i]
+                color = colormap(i/(len(self.metadata['amplitudes'])-1))
+                label = f'exp_fit_{qb}_{i}'
+                freqs = self.get_param_value('frequencies')
+                fitid = self.metadata['amplitudes'][i] if freqs is None else \
+                        self.get_param_value('frequencies')[i]
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
@@ -3381,10 +3409,36 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, 1),
                     'legend_pos': 'upper left',
                     }
-
-                label = f'freq_scatter_{qb}_{i}'
-                self.plot_dicts[label] = {
+                delays = self.get_param_value('flux_lengths')
+                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
+                                            ].best_values['amplitude']
+                                            for j in
+                                            range(len(delays))])
+                phase_contrasts_stderr = \
+                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
+                              ].params['amplitude'].stderr
+                              for j in
+                              range(len(delays))])
+                self.plot_dicts[label + 'data'] = {
                     'ax_id': f'T2_fits_{qb}',
+                    'plotfn': self.plot_line,
+                    "xvals": delays,
+                    "yvals": phase_contrasts,
+                    "yerr": phase_contrasts_stderr,
+                    "marker": "o",
+                    'plot_init': self.options_dict.get('plot_init', False),
+                    'color': color,
+                    'setlabel': f'freq={fitid:.4f}' if freqs
+                    else f'amp={fitid:.4f}',
+                    'do_legend': False,
+                    'legend_bbox_to_anchor': (1, 1),
+                    'legend_pos': 'upper left',
+                    'linestyle': "none",
+                }
+
+                label = f'phases_{qb}_ampl{i}'
+                self.plot_dicts[label] = {
+                    'ax_id': f'T2_fits_{qb}_phases',
                     'plotfn': self.plot_line,
                     'xvals': self.metadata['phases'],
                     'linestyle': '',
