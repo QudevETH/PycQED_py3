@@ -1513,6 +1513,10 @@ def threshold_shots(data):
         Returns:
             thresholded data that has the same shape as data
         """
+    if np.ndim(data) != 2:
+        raise ValueError(
+            f"Expected 2 dimensions for input data (n_shots, n_states) but "
+            f"received array with {np.ndim(data)} dimensions: {data.shape}")
     thresholded_data = np.zeros(data.shape, dtype=int)
     thresholded_data[np.arange(len(data)), data.argmax(axis=1)] = 1
     return thresholded_data
