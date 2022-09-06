@@ -950,12 +950,14 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
 
 class NDimQuantumExperiment():
-    def __init__(self, cls, *args, sweep_points=None, **kwargs):
+    QuantumExperiment = QuantumExperiment
+    DUMMY_DIM = 1
+
+    def __init__(self, *args, sweep_points=None,
+                 QuantumExperiment=None, **kwargs):
         self.experiments = {}
-        if cls is None:
+        if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
-        else:
-            self.QuantumExperiment = cls
 
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
@@ -965,7 +967,7 @@ class NDimQuantumExperiment():
         for idxs in self.get_experiment_indices():
             self.create_experiment(idxs)
 
-        if kwargs.get('measure') and kwargs.get('analyze'):
+        if kwargs.get('measure') and kwargs.get('analyze', True):
             self.run_ndim_analysis()
 
     def _generate_sweep_lengths(self):
@@ -979,14 +981,14 @@ class NDimQuantumExperiment():
     def make_2d_sweep_points(self, sweep_points, idxs):
         extra_sp = SweepPoints(sweep_points[2:])
         current_sp = SweepPoints(sweep_points[:2])
-        length = self.sweep_lengths[0]
+        length = self.sweep_lengths[self.DUMMY_DIM]
         for dim, idx in enumerate(idxs):
             for k in extra_sp.get_sweep_dimension(dim, default={}):
                 current_sp.add_sweep_parameter(
                     k, [extra_sp[k][idx] for i in range(length)],
                     extra_sp.get_sweep_params_property('unit', param_names=k),
                     extra_sp.get_sweep_params_property('label', param_names=k),
-                    dimension=0,
+                    dimension=self.DUMMY_DIM,
                 )
         return current_sp
 
@@ -996,11 +998,11 @@ class NDimQuantumExperiment():
             *self.args, sweep_points=current_sp, **self.kwargs)
 
     def run_measurement(self, **kw):
-        for qe in self.experiments:
+        for qe in self.experiments.values():
             qe.run_measurement(**kw)
 
     def run_analysis(self, **kw):
-        for qe in self.experiments:
+        for qe in self.experiments.values():
             qe.run_analysis(**kw)
         self.run_ndim_analysis()
 
@@ -1009,9 +1011,11 @@ class NDimQuantumExperiment():
 
 
 class NDimMultiTaskingExperiment(NDimQuantumExperiment):
-    def __init__(self, cls, task_list, *args, sweep_points=None, **kwargs):
+    def __init__(self, task_list, *args, sweep_points=None,
+                 QuantumExperiment=None, **kwargs):
         self.task_list = list(task_list)
-        super().__init__(cls, *args, sweep_points=sweep_points, **kwargs)
+        super().__init__(*args, sweep_points=sweep_points,
+                         QuantumExperiment=QuantumExperiment, **kwargs)
 
     def _generate_sweep_lengths(self):
         super()._generate_sweep_lengths()
