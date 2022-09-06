@@ -840,15 +840,14 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
-    @staticmethod
-    def get_unique_mccs():
+    def get_unique_mccs(self):
         """
         Returns list of unique multi_core_compiler instances from
         PulsarAWGInterface._pulsar_interfaces.
         """
-        return set([ps_int.multi_core_compiler for ps_int in
-                    set(PulsarAWGInterface._pulsar_interfaces)
-                    if hasattr(ps_int, 'multi_core_compiler')])
+        return set([awg_int.multi_core_compiler
+                    for awg_int in self.awg_interfaces.values()
+                    if hasattr(awg_int, 'multi_core_compiler')])
 
     def reset_active_awgs_mcc(self):
         """

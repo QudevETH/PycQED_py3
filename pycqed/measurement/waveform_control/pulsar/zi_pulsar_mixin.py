@@ -332,6 +332,18 @@ class MultiCoreCompilerQudevZI(MultiCoreCompiler):
         use_tempdir (bool, optional): Use a temporary directory to store the
             generated sequences
     """
+    _instances = []
+
+    @classmethod
+    def get_instance(cls, session=None):
+        for mcc in cls._instances:
+            if mcc._session == session or session is None:
+                return mcc
+        mcc = cls()
+        mcc._session = session
+        cls._instances.append(mcc)
+        return mcc
+
     def __init__(self, *awgs, **kwargs):
         super().__init__(*awgs, **kwargs)
         self._awgs_all = {}
@@ -375,7 +387,7 @@ class ZIMultiCoreCompilerMixin:
     Mixin for creating an instance of MultiCoreCompilerQudevZI for parallel
     compilation and upload of SeqC strings.
     """
-    multi_core_compiler = MultiCoreCompilerQudevZI()
+    multi_core_compilers = {}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -384,6 +396,15 @@ class ZIMultiCoreCompilerMixin:
         compilation. This attribute is only used when self.pulsar.use_mcc() is
         set to True.
         """
+
+    @property
+    def multi_core_compiler(self):
+        if self not in self.multi_core_compilers:
+            awgs = self.awgs_mcc
+            session = awgs[0].parent._tk_object._session if len(awgs) else None
+            self.multi_core_compilers[self] = \
+                MultiCoreCompilerQudevZI.get_instance(session)
+        return self.multi_core_compilers[self]
 
     def _init_mcc(self):
         if not len(self.awgs_mcc):

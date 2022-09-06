@@ -26,11 +26,14 @@ class HDAWG8(HDAWG_core):
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer.get_instance(
-                kwargs.get('host', 'localhost'),
-                port=kwargs.get('port', 8004))
+            # non-standard host to distinguish from real servers
+            host = kwargs.get('host', 'localhost') + '_virtual'
+            kwargs['host'] = host
+            port = kwargs.get('port', 8004)
+            kwargs['port'] = port
+            daq = zibase.MockDAQServer.get_instance(host, port=port)
             self._session = ziqcsess.ZISession(
-                server_host=kwargs.get('host', 'localhost'),
+                server_host=host, server_port=port,
                 connection=daq, new_session=False)
             return daq
 
@@ -52,10 +55,13 @@ class UHFQA(UHFQA_core):
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer.get_instance(
-                kwargs.get('host', 'localhost'),
-                port=kwargs.get('port', 8004))
+            # non-standard host to distinguish from real servers
+            host = kwargs.get('host', 'localhost') + '_virtual'
+            kwargs['host'] = host
+            port = kwargs.get('port', 8004)
+            kwargs['port'] = port
+            daq = zibase.MockDAQServer.get_instance(host, port=port)
             self._session = ziqcsess.ZISession(
-                server_host=kwargs.get('host', 'localhost'),
+                server_host=host, server_port=port,
                 connection=daq, new_session=False)
             return daq
