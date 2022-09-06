@@ -1963,7 +1963,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'sweep_points']
 
             fig_id_original = f"projected_plot_{qb_name}_PCA_"
-            fig_id_analyzed = f"FeedlineSpectroscopy_{fig_id_original}"
+            fig_id_analyzed = f"QubitSpectroscopy1D_{fig_id_original}"
 
             self.plot_dicts[fig_id_analyzed] = deepcopy(
                 self.plot_dicts[fig_id_original])
@@ -2954,7 +2954,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
             # Copy the original plots in order to have both the analyzed and the
             # non-analyzed plots
             fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
-            fig_id_analyzed = f"{fig_id_original}_an"
+            fig_id_analyzed = f"ResonatorSpectroscopyFluxSweep_{fig_id_original}"
             self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
                 f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
 
