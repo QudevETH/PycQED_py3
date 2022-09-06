@@ -10326,7 +10326,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
             #  can be called both from the measurement and analysis side, to avoid code dupplication
             if flux_amplitude_bias_ratio is None:
-                if len(amplitude) > 1:
+                if np.ndim(amplitude) > 0:
                     if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
                             (model == ['approx'] and bias is not None and bias != 0)):
                         raise ValueError('flux_amplitude_bias_ratio is None, but is '
