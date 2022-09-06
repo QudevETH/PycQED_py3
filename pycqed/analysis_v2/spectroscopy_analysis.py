@@ -2602,7 +2602,7 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                     'do_legend': True,
                     'legend_bbox_to_anchor': (0.5, -0.2),
                     'legend_pos': 'center',
-                    'legend_ncol': len(feedline),
+                    'legend_ncol': 4,
                 }
 
             # Plot the labels of the qubits next to their assigned dip
