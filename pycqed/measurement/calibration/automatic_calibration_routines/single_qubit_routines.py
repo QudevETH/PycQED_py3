@@ -1349,6 +1349,13 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 max_kappa_absolute (float): Maximum value of kappa in Hz. 
                     If the kappa found with the fit is bigger than this value,
                     the fit will be considered unsuccessful.
+                min_kappa_fraction_sweep_range (float): Minimum value of kappa
+                    as a fraction of the whole sweep range. If the kappa found
+                    with the fit is smaller than this value, the fit will be
+                    considered unsuccessful.
+                min_kappa_absolute (float): Minimum value of kappa in Hz. 
+                    If the kappa found with the fit is smaller than this value,
+                    the fit will be considered unsuccessful.
                 max_waiting_seconds (float): Maximum number of seconds to wait
                     before running the Decision step. This is necessary because
                     it might take some time before the analysis results are
@@ -1411,11 +1418,17 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 max_kappa_fraction_sweep_range = self.get_param_value(
                     "max_kappa_fraction_sweep_range", qubit=qb
                 )
+                min_kappa_fraction_sweep_range = self.get_param_value(
+                    "min_kappa_fraction_sweep_range", qubit=qb
+                )
                 sweep_points_freq = qb_spec.analysis.sp[f"{qb.name}_freq"]
                 sweep_range = np.max(sweep_points_freq)-np.min(sweep_points_freq)
 
                 max_kappa_absolute = self.get_param_value(
                     "max_kappa_absolute", qubit=qb
+                )
+                min_kappa_absolute = self.get_param_value(
+                    "min_kappa_absolute", qubit=qb
                 )
                 kappa = qb_spec.analysis.fit_res[qb.name].values['kappa']
                 if max_kappa_absolute is not None:
@@ -1423,6 +1436,12 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                         success = False
                 if max_kappa_fraction_sweep_range is not None:
                     if kappa > max_kappa_fraction_sweep_range*sweep_range:
+                        success = False
+                if min_kappa_absolute is not None:
+                    if kappa < min_kappa_absolute:
+                        success = False
+                if min_kappa_fraction_sweep_range is not None:
+                    if kappa < min_kappa_fraction_sweep_range*sweep_range:
                         success = False
 
                 if success:
