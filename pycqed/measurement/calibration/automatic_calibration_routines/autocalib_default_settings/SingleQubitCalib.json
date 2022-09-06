@@ -29,7 +29,7 @@
     },
     "SQCPreparation":{
         "trigger_pulse_period": 300e-6,
-        "reset_to_defaults": true,
+        "reset_to_defaults": false,
         "preparation_type": "wait",
         "acq_weights_type":"SSB"
     },
