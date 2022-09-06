@@ -27,8 +27,7 @@ class PLOT_OPTIONS(Enum):
 class WaveformViewer:
     """
     Spawns a GUI to interactively inspect the waveforms associated to the
-    passed QuantumExperiment object on initialization
-
+    passed QuantumExperiment object on initialization.
     """
     def __init__(self, quantum_experiment, sequence_index=0,
                  segment_index=0, rc_params=None, new_process=False,
@@ -41,23 +40,23 @@ class WaveformViewer:
 
         Args:
             quantum_experiment (QuantumExperiment): the experiment for
-            which the waveforms should be plotted
+                which the waveforms should be plotted
             sequence_index (int): index of initially displayed sequence,
-            default is 0
+                default is 0
             segment_index (int): index of initially displayed segment,
-            default is 0
+             default is 0
             rc_params (dict): modify the rc parameters of the matplotlib
-            plotting backend. By default (if rc_params=None is passed) the
-            rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
-            but they are updated with the parameters passed in the rc_params
-            dictionary
-            new_process (bool): if True the QApplication hosting the GUI
-            will be spawned in a separate process
-            active_qapp (bool): if True, the exec method to start the qt
-            event loop won't be called. Useful if a window should be spawned
-            from a running qt application
+                plotting backend. By default (if rc_params=None is passed) the
+                rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
+                but they are updated with the parameters passed in the
+                rc_params dictionary
+            new_process (bool): If True the QApplication hosting the GUI
+                will be spawned in a separate process.
+                active_qapp (bool): if True, the exec method to start the qt
+                event loop won't be called. Useful if a window should be
+                spawned from a running qt application
             **kwargs: are passed as plotting kwargs to the segment
-            plotting method
+                plotting method
 
         """
         if qt.QtWidgets.__package__ not in ['PySide2']:
@@ -132,6 +131,20 @@ class WaveformViewer:
 
     def spawn_waveform_viewer(self, rc_params=None, new_process=None,
                               active_qapp=False, **kwargs):
+        """
+        Spawns the main window of the WaveformViewer to inspect the
+        waveforms of a QuantumExperiment.
+        Args:
+            rc_params: Matplotlib rcparams to customise the appearance of
+                the plots displayed in the WaveformViewer. Argument is
+                passed to the _update_kwargs method.
+            new_process (bool): If True, the WaveformViewerMainWindow is
+                spawned in a separate child process, such that the parent
+                process can keep processing new commands.
+            active_qapp (bool): If true, self.app.exec_() is not called to
+                start the main event loop of the Qt QApplication instance.
+            **kwargs: Is passed to the _update_kwargs method.
+        """
         if new_process is not None:
             self.new_process = new_process
         self._update_kwargs(rc_params=rc_params, **kwargs)
@@ -141,8 +154,7 @@ class WaveformViewer:
             gui_process.create_waveform_viewer_process(
                 args=(self.sequences, self.qubit_channel_maps,
                       self.experiment_name, self.pass_kwargs),
-                qt_lib=qt.QtWidgets.__package__
-            )
+                qt_lib=qt.QtWidgets.__package__)
         else:
             if self.main_window is None:
                 self._prepare_main_window()
@@ -159,9 +171,13 @@ class WaveformViewer:
             self._is_init = False
         self.main_window.activateWindow()
         qt.QtWidgets.QApplication.instance().processEvents()
-        self.main_window.trigger_resize_event()
+        self.main_window._trigger_resize_event()
         qt.QtWidgets.QApplication.restoreOverrideCursor()
         if not active_qapp:
+            # The matplotlib backend is set to 'Agg'. After closing the last
+            # GUI window, the matplotlib backend that was selected at the
+            # time of spawning the quantum experiment GUI window is
+            # automatically reset.
             self.app._matplotlib_backend = \
                 sys.modules.get('matplotlib').get_backend()
             sys.modules.get('matplotlib').use('Agg')
@@ -169,10 +185,31 @@ class WaveformViewer:
 
 
 class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
-
+    """
+    Main window of the waveform viewer GUI.
+    """
     def __init__(self, sequences, qubit_channel_maps, experiment_name,
                  sequence_index=0, segment_index=0,  rc_params=None,
                  *args, **kwargs):
+        """
+        Instantiates the Qt Widgets of the main window, sets the layout and
+        connects the relevant signals of the widgets to their slots.
+        Args:
+            sequences (list): Contains the Sequence objects of the quantum
+                experiment, whose waveforms are displayed.
+            qubit_channel_maps (list): Channel map of the qubits of the
+                quantum experiment, whose waveforms are displayed.
+            experiment_name (str): Is used as window title.
+            sequence_index (int): Index of the initially displayed sequence.
+            segment_index (int): Index of the initially displayed segment.
+            rc_params (dict): Modify the rc parameters of the matplotlib
+                plotting backend. By default (if rc_params=None is passed), the
+                rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
+                but they are updated with the parameters passed in the
+                rc_params dictionary
+            *args:
+            **kwargs:
+        """
         super().__init__(None)
         self.pulse_information_window = PulseInformationWindow()
         self.sequences = sequences
@@ -257,8 +294,8 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
 
         self.input_layout_widget = qt.QtWidgets.QWidget()
 
-        self.set_layout()
-        self.setWindowTitle(self.get_window_title_string())
+        self._set_layout()
+        self.setWindowTitle(self._get_window_title_string())
 
         self.cbox_sequence_indices.currentIndexChanged.connect(
             lambda: self.on_change(caller_id='sequence_change'))
@@ -271,7 +308,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             lambda: self.on_change(caller_id='qubits_change'))
         self.selectbox_instruments.model().dataChanged.connect(self.on_change)
 
-    def set_layout(self):
+    def _set_layout(self):
         input_widgets = [
             g_utils.add_label_to_widget(
                 self.cbox_sequence_indices, 'Sequence: '),
@@ -297,10 +334,23 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.layout().addWidget(self.input_layout_widget)
 
     def on_toolbar_selection(self):
+        """
+        Slot connected to signal that is emitted, when a tool from
+        self.toolbar is selected. Deactivates the self.toggle_selection_button,
+        such that the pulse selection does not interfere with the usage of
+        the toolbar utilities.
+        """
         if self.toggle_selection_button.isChecked():
             self.toggle_selection_button.setChecked(False)
 
     def on_toggle_selection(self):
+        """
+        Slot connected to signal that is emitted, when the
+        self.toggle_selection_button is toggled.
+        Handles the appearance of the cursor and reactivates the tool that
+        was selected in the toolbar prior to checking the
+        toggle_selection_button, if applicable.
+        """
         if not self.toggle_selection_button.isChecked():
             self.view.setCursor(qt.QtGui.QCursor(
                 qt.QtCore.Qt.CursorShape.ArrowCursor))
@@ -311,7 +361,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             return
 
         # deselect the current toolbar action
-        # if the _lastCursor is not set to cursor.POINTER the mouse will be
+        # if _lastCursor is not set to cursor.POINTER, the mouse will be
         # changed to ArrowCursor after the next mouse move event
         self.toolbar._lastCursor = cursors.POINTER
         self.view.setCursor(qt.QtGui.QCursor(
@@ -322,6 +372,16 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.toolbar._update_buttons_checked()
 
     def on_pick(self, event):
+        """
+        Slot connected to signal that is emitted, when the
+        self.toggle_selection_button is checked and a pulse in the main
+        window of the WaveformViewer is clicked. Stores the attribute names
+        and values of the clicked pulse and passes them to the
+        self.pulse_information_window (secondary window).
+        Args:
+            event (PickEvent): Matplotlib event that triggered the on_pick
+                function call.
+        """
         if not (self.toggle_selection_button.isChecked() and
                 event.mouseevent.button == MouseButton.LEFT):
             return
@@ -359,15 +419,24 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.toggle_selection_button.setChecked(False)
 
     def on_change(self, caller_id=None):
+        """
+        Slot connected to the singals that are emitted, when a new sequence,
+        segment, qubit, instrument or plot option is selected in the lower
+        toolbar. Updates the plot that is displayed in the main window of
+        the WaveformViewer to match the selections made in the lower toolbar.
+        Args:
+            caller_id (str): Identifier string of the signal that caused the
+                function call of on_change.
+        """
         with g_utils.set_wait_cursor(self):
             self.input_layout_widget.setEnabled(False)
             self.current_segment_index = self.cbox_segment_indices.currentIndex()
             self.current_sequence_index = self.cbox_sequence_indices.currentIndex()
             if caller_id == 'sequence_change':
-                self.reload_segment_keys()
-                self.reload_instrument_keys()
+                self._reload_segment_keys()
+                self._reload_instrument_keys()
             if caller_id == 'segment_change' or caller_id == 'qubits_change':
-                self.reload_instrument_keys()
+                self._reload_instrument_keys()
             fig, axes = self.get_experiment_plot()
             qt.QtWidgets.QApplication.instance().processEvents()
             oldfig = self.view.figure
@@ -376,13 +445,13 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             plt.close(oldfig)
             self.view.draw()
             self.cid_bpe = self.view.mpl_connect('pick_event', self.on_pick)
-            self.reinitialize_toolbar()
+            self._reinitialize_toolbar()
 
-            self.setWindowTitle(self.get_window_title_string())
-            self.trigger_resize_event()
+            self.setWindowTitle(self._get_window_title_string())
+            self._trigger_resize_event()
             self.input_layout_widget.setEnabled(True)
 
-    def reload_segment_keys(self):
+    def _reload_segment_keys(self):
         self.cbox_segment_indices.blockSignals(True)
         self.cbox_segment_indices.clear()
         self.cbox_segment_indices.addItems(
@@ -392,7 +461,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
                 self.current_segment_index)
         self.cbox_segment_indices.blockSignals(False)
 
-    def reload_instrument_keys(self):
+    def _reload_instrument_keys(self):
         selected_instruments = self.selectbox_instruments.currentData()
         self.selectbox_instruments.blockSignals(True)
         self.selectbox_instruments.clear()
@@ -418,7 +487,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.selectbox_instruments.updateText()
         self.selectbox_instruments.blockSignals(False)
 
-    def reinitialize_toolbar(self):
+    def _reinitialize_toolbar(self):
         # upon changing the figure associated to the FigureCanvasQTAgg
         # instance self.view, the zoom and pan tools of the toolbar can't be
         # used to manipulate the figure unless the corresponding callback
@@ -434,10 +503,10 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.toolbar._zoom_info = None
         self.toolbar.update()
 
-    def get_window_title_string(self):
+    def _get_window_title_string(self):
         return self.experiment_name
 
-    def trigger_resize_event(self):
+    def _trigger_resize_event(self):
         # ugly hack to trigger a resize event (otherwise the figure in the
         # canvas is not displayed properly)
         size = self.size()
@@ -445,6 +514,13 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.resize(size)
 
     def get_experiment_plot(self):
+        """
+        Gets the segment plot in accordance to the selections made in the
+        lower toolbar of the main window of the WaveformViewer.
+        Returns: Matplotlib figure and axes containing the waveform plots of
+        the currently selected segment.
+
+        """
         qt.QtWidgets.QApplication.instance().processEvents()
         channel_map, instruments = self.prepare_experiment_plot()
         with plt.rc_context(self.rc_params):
@@ -457,6 +533,14 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             return fig, axes
 
     def prepare_experiment_plot(self):
+        """
+        Updates the gui_kwargs dict with the current selections in the 'plot
+        options' menu and returns the selected instrument names as well as
+        the channel map corresponding to the current selection of qubits.
+        Returns: List of names of the currently selected instruments and the
+            channel map corresponding to the current selection of qubits.
+
+        """
         self.gui_kwargs.update({
             'normalized_amplitudes': self.is_checked(PLOT_OPTIONS.NORMALIZED),
             'sharex': self.is_checked(PLOT_OPTIONS.SHAREX),
@@ -488,6 +572,12 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             plot_option.value)).checkState() == qt.QtCore.Qt.CheckState.Checked
 
     def keyPressEvent(self, event):
+        """
+        Close window when ctrl + W is pressed (cmd + W on macos) and set the
+        state of toggle_selection_button to True while ctrl (or cmd) is being
+        pressed (which allows users to display information about pulses by
+        clicking on them).
+        """
         if event.key() == qt.QtCore.Qt.Key.Key_Control:
             self.toggle_selection_button.setChecked(True)
             event.accept()
@@ -498,6 +588,10 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             event.accept()
 
     def keyReleaseEvent(self, event):
+        """
+        Set the state of toggle_selection_button to False when releasing ctrl
+        (or cmd).
+        """
         if event.key() == qt.QtCore.Qt.Key.Key_Control:
             self.toggle_selection_button.setChecked(False)
             event.accept()
@@ -512,7 +606,16 @@ def add_picker_to_line_artists(axes):
 
 
 class PulseInformationWindow(qt.QtWidgets.QWidget):
+    """
+    Secondary window of the WaveformViewer to inspect the properties of
+    Pulse objects. Is opened upon ctrl (or cmd) clicking on a pulse in the
+    main window of the WaveformViewer.
+    """
     def __init__(self):
+        """
+        Instantiates the Qt Widgets of the main window, sets the layout and
+        connects the relevant signals of the widgets to their slots.
+        """
         super().__init__()
         self._data = []
         self.setWindowTitle('Pulse Information')
@@ -532,6 +635,15 @@ class PulseInformationWindow(qt.QtWidgets.QWidget):
         self.resize(600, 800)
 
     def display_window(self, pass_information=None):
+        """
+        Updates the _data attribute of the class instance with the value of
+        pass_information and updates the table in the PulseInformationWindow
+        to show the updated pulse data.
+        Args:
+            pass_information (list): A list of dictionaries containing the
+                pulse attribute names as dict keys and the pulse attribute
+                values as dict values.
+        """
         if pass_information is not None:
             self._data = pass_information
             self.set_table()
@@ -539,6 +651,10 @@ class PulseInformationWindow(qt.QtWidgets.QWidget):
         self.activateWindow()
 
     def set_table(self):
+        """
+        Clears the table of pulse attributes and fills it with the data
+        contained in self._data.
+        """
         while self.table.rowCount() > 0:
             self.table.removeRow(0)
         if len(self._data) != 0:
@@ -559,6 +675,9 @@ class PulseInformationWindow(qt.QtWidgets.QWidget):
                 self.table.setItem(i*len(pulse_dict)+j, 1, col2)
 
     def keyPressEvent(self, event):
+        """
+        Close window when ctrl + W is pressed (cmd + W on macos).
+        """
         if event.key() == qt.QtCore.Qt.Key.Key_W \
                 and event.modifiers() == qt.QtCore.Qt.ControlModifier:
             self.close()
