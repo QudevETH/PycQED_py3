@@ -1106,7 +1106,11 @@ class QuDev_transmon(Qubit):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -1142,6 +1146,10 @@ class QuDev_transmon(Qubit):
                                  + "'continuous_spec_modulated' and "
                                  + "'timedomain'.")
 
+        param = f'{self.ge_I_channel()}_centerfreq'
+        if param in self.instr_pulsar.get_instr().parameters:
+            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
@@ -1172,6 +1180,25 @@ class QuDev_transmon(Qubit):
         """
         return self.ge_freq() - self.ge_mod_freq()
 
+    def get_ge_lo_identifier(self):
+        """Returns the ge LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of drive pulse generating device name (str) and
+              synthesizer unit index (int), identifying the internal
+              LO in an signal generation unit of an drive pulse
+              generating device
+          """
+
+        if self.instr_ge_lo() is None:
+            pulsar = self.instr_pulsar.get_instr()
+            awg = pulsar.get_channel_awg(self.ge_I_channel())
+            gen = pulsar.get_centerfreq_generator(self.ge_I_channel())
+            return (awg.name, gen)
+        else:
+            return self.instr_ge_lo()
+
     def get_ro_lo_freq(self):
         """Returns the required local oscillator frequency for readout pulses
 
@@ -1189,6 +1216,21 @@ class QuDev_transmon(Qubit):
         else:
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
+
+    def get_ro_lo_identifier(self):
+        """Returns the ro LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+        """
+
+        if self.instr_ro_lo() is None:
+            return (self.instr_acq(), self.acq_unit())
+        else:
+            return self.instr_ro_lo()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
@@ -1307,13 +1349,30 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
-    def swf_drive_lo_freq(self):
+    def swf_drive_lo_freq(self, allow_IF_sweep=True):
+        """Create a sweep function for sweeping the drive frequency.
+
+        The sweep is implemented as an LO sweep in case of drive pulse
+        generation with an external LO. The implementation depends on the
+        get_frequency_sweep_function method of the acquisition device in case
+        of an internal LO.
+
+        Args:
+            allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
+                LO and IF sweep) may be used (default: True). Note that
+                setting this to False might lead to a sweep function that is
+                only allowed to take specific values supported by the
+                internal LO.
+
+        Returns: the Sweep_function object
+        """
         if self.instr_ge_lo() is not None:  # external LO
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.instr_ge_lo.get_instr().frequency)
         else:  # no external LO
             pulsar = self.instr_pulsar.get_instr()
-            return pulsar.get_frequency_sweep_function(self.ge_I_channel())
+            return pulsar.get_frequency_sweep_function(
+                self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
 
     def swf_ro_freq_lo(self):
         """Create a sweep function for sweeping the readout frequency.
@@ -2206,6 +2265,11 @@ class QuDev_transmon(Qubit):
             comm_freq: The readout pulse separation will be a multiple of
                        1/comm_freq
         """
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment "
+                                      "ReadoutPulseScope instead.")
 
         if delays is None:
             raise ValueError("Unspecified delays for "
@@ -4578,6 +4642,11 @@ class QuDev_transmon(Qubit):
             return
 
     def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment FluxPulseTiming "
+                                      "instead.")
         if label is None:
             label = 'Flux_pulse_timing_{}'.format(self.name)
         self.measure_flux_pulse_scope([self.ge_freq()], delays,
@@ -4614,6 +4683,12 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_scope is '
+                                      'not implemented for setups '
+                                      'without external drive LO. Use '
+                                      'FluxPulseScope class instead!')
+
         if label is None:
             label = 'Flux_scope_{}'.format(self.name)
         MC = self.instr_mc.get_instr()
@@ -4705,6 +4780,13 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_amplitude()'
+                                      ' is not implemented for setups'
+                                      ' without external drive LO. Use'
+                                      ' FluxPulseAmplitudeSweep class'
+                                      ' instead!')
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name

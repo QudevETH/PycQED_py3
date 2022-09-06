@@ -685,11 +685,14 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self.progress_scaling = None
 
     def prepare(self, sweep_points=None):
+        self.prepare_pulsar()
+        for acq_dev in self.acq_devs:
+            acq_dev.timer = self.timer
+
+    def prepare_pulsar(self):
         if self.prepare_and_finish_pulsar:
             ps.Pulsar.get_instance().start(
                 exclude=[awg.name for awg in self.get_awgs()])
-        for acq_dev in self.acq_devs:
-            acq_dev.timer = self.timer
 
     def get_awgs(self):
         return [self.AWG]
@@ -711,12 +714,16 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         for acq_dev in self.acq_devs:
             # Allow the acqusition device to store additional data
             acq_dev.extra_data_callback = self.extra_data_callback
-            # Final preparations for an acquisition.
-            acq_dev.prepare_poll()
+            # Final preparations for an acquisition before starting the AWGs.
+            acq_dev.prepare_poll_before_AWG_start()
 
         if self.AWG is not None:
             self.AWG.start(stop_first=False)
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.end")
+
+        for acq_dev in self.acq_devs:
+            # Final preparations for an acquisition after starting the AWGs.
+            acq_dev.prepare_poll_after_AWG_start()
 
         # Initialize dicts to store data and status
         acq_paths = {acq_dev.name: acq_dev.acquisition_nodes()
@@ -838,8 +845,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         elif self.AWG is not None:
             self.AWG.stop()
 
-        for d in self.detectors:
-            d.acq_dev.acquisition_finalize()
+        if hasattr(self, 'acq_dev'):
+            self.acq_dev.acquisition_finalize()
 
 
 class MultiPollDetector(PollDetector):
@@ -913,7 +920,7 @@ class MultiPollDetector(PollDetector):
                 elif self.AWG != d.AWG:
                     raise Exception('Not all AWG instances in '
                                     'MultiPollDetector are the same.')
-                d.AWG = None
+            d.AWG = None
 
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
@@ -1086,10 +1093,8 @@ class MultiPollDetector(PollDetector):
         Takes care of setting instruments into a known state at the end of
         acquisition by calling the finish method of each polling detector in
         self.detectors.
-        TODO: shouldn't it call the super method?
         """
-        if self.AWG is not None:
-            self.AWG.stop()
+        super().finish()
         for d in self.detectors:
             d.finish()
 

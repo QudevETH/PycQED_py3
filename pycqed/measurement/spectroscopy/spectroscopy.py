@@ -73,14 +73,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         segments. This reduced set is introduce to prevent that a segment
         is generated for every frequency sweep point.
         """
-        self.analysis = {}
 
         self.trigger_separation = trigger_separation
         self.grouped_tasks = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
-        self.check_freqs_length()
         self.group_tasks()
         self.check_all_freqs_per_lo()
         self.check_hard_sweep_compatibility()
@@ -140,8 +138,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                                                     sweep_points, **kw)
 
         prefix = preprocessed_task['prefix']
-        for k, v in preprocessed_task.get('sweep_functions', dict()).items():
-            # add task sweep functions to the global sweep_functions dict with
+        for k, v in preprocessed_task.get('sweep_functions_dict', {}).items():
+            # add task sweep functions to the global sweep_functions_dict with
             # the appropriately prefixed key
             self.sweep_functions_dict[prefix + k] = v
 
@@ -158,8 +156,44 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         pulse parameter and insert the class SegmentSoftSweep as placeholder
         that will be replaced by an instance in QE._configure_mc.
         """
+        # The following dict of lists will store the mapping between
+        # (local/global) sweep parameters and (local/global) sweep functions
+        class ListsDict(dict):
+            def append(self, key, value):
+                if key not in self:
+                    self[key] = []
+                self[key].append(value)
+        sf_for_sp = ListsDict()
+        # helper lists needed to determine the mapping
+        all_sp = [sp for d in self.sweep_points for sp in d]
+        prefixes = [t['prefix'] for t in self.preprocessed_task_list]
+        # for each sweep function, find for which sweep params it is needed
+        for sf in self.sweep_functions_dict.keys():
+            if sf in all_sp:  # exact match
+                # local swf for local sp or global swf for global sp
+                sf_for_sp.append(sf, sf)
+            else:
+                # it might be a local sweep function for a global sweep point
+                sp_p = list(set([(sp, p) for sp in all_sp for p in prefixes
+                                 if sf == p + sp]))
+                if len(sp_p):
+                    if len(sp_p) > 1:
+                        raise ValueError(
+                            f'Sweep function matches multiple combinations '
+                            f'of prefix and sweep parameter: {sp_p}.')
+                    sf_for_sp.append(sp_p[0][0], sf)
+        # for each sweep param that does not have a sweep function yet
+        for sp in all_sp:
+            if sp not in sf_for_sp:
+                # It might be a global sweep param that is overridden in all
+                # tasks, in which case we can ignore it.
+                if all([sf_for_sp.get(p + sp, []) for p in prefixes]):
+                    sf_for_sp[sp] = []  # no sweep function needed
+
+        # We can now add the needed sweep functions to self.sweep_functions.
         # loop over all sweep_points dimensions
         for i in range(len(self.sweep_points)):
+            sw_ctrl = None
             if i >= len(self.sweep_functions):
                 # add new dimension with empty multi_sweep_function
                 # in case i is out of range
@@ -178,29 +212,40 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 )
 
             for param in self.sweep_points[i].keys():
-                if self.sweep_functions_dict.get(param, None) is not None:
-                    sw_ctrl = getattr(self.sweep_functions_dict[param],
-                                      'sweep_control', 'soft')
-                    if sw_ctrl == 'hard':
+                # Add sweep functions according to the mapping sf_for_sp.
+                for sf_key in sf_for_sp.get(param, []):
+                    sf = self.sweep_functions_dict[sf_key]
+                    if sf is None:
+                        continue
+                    sf_sw_ctrl = getattr(sf, 'sweep_control', 'soft')
+                    if sw_ctrl is not None and sf_sw_ctrl != sw_ctrl:
+                        raise ValueError(
+                            f'Cannot combine soft sweep and hard sweep in '
+                            f'dimension {i}.')
+                    if sf_sw_ctrl == 'hard':
+                        if i != 0:
+                            raise ValueError(
+                                f'Hard sweeps are only allowed in dimension '
+                                f'0. Cannot perform hard sweep for {param} '
+                                f'in dim {i}.')
                         # hard sweep is not encapsulated by Indexed_Sweep
-                        sweep_function = self.sweep_functions_dict[param]
-                        self.sweep_functions[i] = \
-                            self.sweep_functions_dict[param]
-                        # there can only be one hard sweep per dimension
-                        break
+                        # and we only need one hard sweep per dimension
+                        if sw_ctrl is None:
+                            self.sweep_functions[i] = sf
                     else:
                         sweep_function = swf.Indexed_Sweep(
-                            self.sweep_functions_dict[param],
-                            values=self.sweep_points[i][param][0],
+                            sf, values=self.sweep_points[i][param][0],
                             name=self.sweep_points[i][param][2],
                             parameter_name=param
                         )
                         self.sweep_functions[i].add_sweep_function(
                             sweep_function
                         )
-                elif 'freq' in param and 'mod' not in param:
-                    # Probably qb frequency that is now contained in an lo sweep
-                    pass
+                    sw_ctrl = sf_sw_ctrl
+                # Params for which no sweep function is present are treated as
+                # pulse parameter sweeps below.
+                if param in sf_for_sp:
+                    continue  # was treated above already
                 elif i == 1:  # dimension 1
                     # assuming that this parameter is a pulse parameter and we
                     # therefore need a SegmentSoftSweep as the first sweep
@@ -230,10 +275,11 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                         raise NotImplementedError(
                             'Combined sweeping of pulse parameters and other '
                             'parameters for which a sweep function is provided '
-                            'is not supported in dimensino 0.')
+                            'is not supported in dimension 0.')
 
                     self.sweep_points_pulses[i][param] = \
                         self.sweep_points[i][param]
+                    sw_ctrl = 'hard'
 
     def resolve_freq_sweep_points(self, **kw):
         """
@@ -253,48 +299,66 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 # parent function
                 # No need to coordinate the mod freq of different qubits. We
                 # can use the swf returned by the qubit itself.
-                qb = self.get_qubit(tasks[0])
-                freq_key = qb.name + '_freq'
-                self.sweep_functions_dict[freq_key] = self.get_swf_from_qb(qb)
+                self.sweep_functions_dict.update({
+                    task['prefix'] + 'freq':
+                        self.get_lo_swf(self.get_qubit(task))
+                    for task in tasks})
                 continue
 
             # We resolve the LO frequency.
             # For LOs supplying several qubits, the LO is set to the value
             # minimizing the maximum absolut modulation frequency.
-            freqs_all = np.array([
-                task['sweep_points'].get_sweep_params_property(
-                    'values', param_names='freq')for task in tasks])
+            sp_all = [task['sweep_points'] for task in tasks]
+            dim_all = [sp.find_parameter('freq') for sp in sp_all]
+            if any([dim != dim_all[0] for dim in dim_all]):
+                raise ValueError(
+                    'All frequency sweeps must be in the same dimension.')
+            dim = dim_all[0]
+            freqs_all = np.array([sp['freq'] for sp in sp_all])
+
             # optimize the mod freq to lie in the middle of the overall
             # frequency range of this LO
             lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
-                                            + np.min(freqs_all, axis=0))
-            lo_freq_key = lo + '_freq'
+                              + np.min(freqs_all, axis=0))
+            lo_freq_key = (lo if isinstance(lo, str)
+                           else '_'.join([f'{s}' for s in lo])) + '_freq'
             self.sweep_points.add_sweep_parameter(param_name=lo_freq_key,
                                                   values=lo_freqs,
                                                   unit='Hz',
-                                                  dimension=0)
-            self.sweep_functions_dict[lo_freq_key] = self.get_lo_from_qb(
-                                                        self.get_qubit(tasks[0])
-                                                     ).get_instr().frequency
+                                                  dimension=dim)
+            # Add the sweep function for the joint LO sweep.
+            self.sweep_functions_dict[lo_freq_key] = self.get_lo_swf(
+                self.get_qubit(tasks[0]))
+            # Indicate that no individual sweep functions are needed.
+            self.sweep_functions_dict.update({
+                task['prefix'] + 'freq': None for task in tasks})
 
             # We resolve the modulation frequency of the different qubits.
             qubits = []
             for task in tasks:
                 qb = self.get_qubit(task)
                 qubits.append(qb)
-                mod_freqs = task['freqs'] - lo_freqs
+                freqs = task['sweep_points']['freq']
+                mod_freqs = freqs - lo_freqs
                 if all(mod_freqs - mod_freqs[0] == 0):
                     # mod freq is the same for all acquisitions
+                    # As we require the step size between frequencies to be
+                    # equal between all tasks sharing an LO, the modulation
+                    # frequency is the same for every sweep point
                     self.temporary_values.append(
-                        (self.get_mod_from_qb(qb), mod_freqs[0]))
+                        (self.get_mod_freq_param(qb), mod_freqs[0]))
                     task['mod_freq'] = mod_freqs[0]
                 else:
+                    # adds compatibility for different modulation frequencies
+                    # in each sweep point. This will be used as soon as we add
+                    # an allowed_lo_freqs feature to this method and support
+                    # e.g. several qa or sg soft sweeps in one experiment.
                     self.sweep_points.add_sweep_parameter(
                         param_name=task['prefix'] + 'mod_frequency',
                         label=task['prefix'] + 'mod_frequency',
                         values=mod_freqs,
                         unit='Hz',
-                        dimension=0
+                        dimension=dim
                     )
 
     def group_tasks(self, **kw):
@@ -303,34 +367,11 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         """
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            lo_name = lo_instr()
-            if lo_name is not None:
-                if lo_name not in self.grouped_tasks:
-                    self.grouped_tasks[lo_name] = [task]
-                else:
-                    self.grouped_tasks[lo_name] += [task]
-
-    def check_freqs_length(self):
-        """Check that all freq arrays in self.preprocessed_task_list have the
-        same length.
-
-        Raises:
-            ValueError: In case the check is failed.
-        """
-        if not self.preprocessed_task_list:
-            # task_list is empty
-            return
-
-        lengths = np.array([])
-        for task in self.preprocessed_task_list:
-            swpts = task['sweep_points']
-            dim = swpts.find_parameter('freq')
-            lengths = np.append(lengths, swpts.length(dim))
-        diffs = lengths - lengths[0]
-        if not all([d == 0 for d in diffs]):
-            raise ValueError("All tasks need to have the same number of "
-                             "frequency points.")
+            lo_name = self.get_lo_identifier(qb)
+            if lo_name not in self.grouped_tasks:
+                self.grouped_tasks[lo_name] = [task]
+            else:
+                self.grouped_tasks[lo_name] += [task]
 
     def check_all_freqs_per_lo(self, **kw):
         """Checks if all frequency sweeps assigned to one LO have the same
@@ -338,8 +379,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         """
         for lo, tasks in self.grouped_tasks.items():
             all_freqs = np.array([
-                task['sweep_points'].get_sweep_params_property(
-                    'values', param_names='freq')for task in tasks])
+                task['sweep_points']['freq'] for task in tasks])
             if np.ndim(all_freqs) == 1:
                 all_freqs = [all_freqs]
             all_diffs = [np.diff(freqs) for freqs in all_freqs]
@@ -364,29 +404,29 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
     def sweep_block(self, **kw):
         raise NotImplementedError('Child class has to implement sweep_block.')
 
-    def get_lo_from_qb(self, qb, **kw):
-        """Get the InstrumentRefParameter of the qubits LO that is corresponding
-        to the frequency that is swept in the first dimension, e.g. drive LO in
-        qb spec and RO LO in feedline spec.
+    def get_lo_identifier(self, qb, **kw):
+        """Get the LO identifier from the qubit
+
+        Returns the LO identifier corresponding to the frequency that is
+        swept, e.g. drive LO in qb spec and RO LO in resonator spec.
 
         Child classes have to implement this method and should not call this
         super method.
 
         Args:
-            qb (QuDev_transmon): Qubit of which the LO InstrumentRefParameter is
-                returned.
+            qb (QuDev_transmon): the qubit object
 
         Returns:
-            InstrumentRefParameter: The LO of the qubit.
+            str or tuple: the LO identifier
 
         Raises:
             NotImplementedError: In case the child class did not implement the
                 method.
         """
         raise NotImplementedError('Child class has to implement'
-                                  ' get_lo_from_qb.')
+                                  ' get_lo_identifier.')
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         """Returns the QCodes parameter for the modulation frequency of the
         first dimension frequency sweep.
 
@@ -401,13 +441,31 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 method.
         """
         raise NotImplementedError('Child class has to implement'
-                                  ' get_mod_from_qb.')
+                                  ' get_mod_freq_param.')
+
+    def get_lo_swf(self, qb):
+        """Returns a sweep function for a frequency sweep for the qubit.
+
+        Child classes have to implement this method and should not call this
+        super method.
+
+        Args:
+            qb (QuDev_transmon): Qubit for which the sweep function is
+            returned.
+
+        Raises:
+            NotImplementedError: In case the child class did not implement the
+                method.
+        """
+        raise NotImplementedError('Child class has to implement get_lo_swf.')
 
     def _fill_temporary_values(self):
         """adds additionally required qcodes parameter to the
         self.temporary_values list
         """
         # make sure that all triggers are set to the correct trigger separation
+        if self.trigger_separation is None:
+            return
         triggers = []
         for qb in self.qubits:
             trigger = qb.instr_trigger
@@ -480,9 +538,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             spectroscopy measurement. (1. dim. sweep points)
         volts: List or np.array of fluxline voltages to perform a 2D qubit
             spectroscopy. This requires to also provide the proper qcodes
-            parameter to set the fluxline voltage as item `'sweep_functions'` in
-            the task, e.g.:
-            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            parameter to set the fluxline voltage as item
+            `'sweep_functions_dict'` in the task, e.g.:
+            `task['sweep_functions_dict'] = {'volt': fluxlines_dict[qb.name]}`
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
@@ -506,7 +564,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         'ro_amp':  dict(param_name='amplitude', unit='V',
                       label=r'RO pulse amplitude',
                       dimension=1),
-        'ro_length':  dict(param_name='length', unit='s',
+        'ro_length':  dict(param_name='pulse_length', unit='s',
                       label=r'RO pulse length',
                       dimension=1),
     }
@@ -517,10 +575,10 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                  **kw):
         try:
             super().__init__(task_list, sweep_points=sweep_points,
-                            trigger_separation=trigger_separation,
-                            segment_kwargs={'acquisition_mode': \
-                                            dict(sweeper='software')},
-                            **kw)
+                             trigger_separation=trigger_separation,
+                             segment_kwargs={'acquisition_mode':
+                                             dict(sweeper='software')},
+                             **kw)
             self.autorun(**kw)
         except Exception as x:
             self.exception = x
@@ -536,26 +594,6 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                                    'use_hardware_sweeper') and \
                                            acq_instr.use_hardware_sweeper())
         return preprocessed_task
-
-    def group_tasks(self, **kw):
-        """Groups tasks that share an LO ar an acq. device & unit.
-        """
-        for task in self.preprocessed_task_list:
-            qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            qb_ro_mwg = lo_instr()
-            if qb_ro_mwg is not None:
-                if qb_ro_mwg not in self.grouped_tasks:
-                    self.grouped_tasks[qb_ro_mwg] = [task]
-                else:
-                    self.grouped_tasks[qb_ro_mwg] += [task]
-            else:
-                # no external LO, use acq device instead
-                qb_acq_dev_unit = (qb.instr_acq(), qb.acq_unit())
-                if qb_acq_dev_unit not in self.grouped_tasks:
-                    self.grouped_tasks[qb_acq_dev_unit] = [task]
-                else:
-                    self.grouped_tasks[qb_acq_dev_unit] += [task]
 
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
@@ -574,8 +612,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             if task['hard_sweep']:
                 qb = self.get_qubit(task)
                 acq_instr = qb.instr_acq.get_instr()
-                freqs = task['sweep_points'].get_sweep_params_property(
-                        'values', param_names='freq')
+                freqs = task['sweep_points']['freq']
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
                 # adjust ro_freq in tmp_vals such that qb.prepare will set the
                 # correct lo_freq.
@@ -626,13 +663,13 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ro]
 
-    def get_lo_from_qb(self, qb, **kw):
-        return qb.instr_ro_lo
+    def get_lo_identifier(self, qb, **kw):
+        return qb.get_ro_lo_identifier()
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         return qb.ro_mod_freq
 
-    def get_swf_from_qb(self, qb):
+    def get_lo_swf(self, qb):
         return qb.swf_ro_freq_lo()
 
     def run_update(self, **kw):
@@ -673,9 +710,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             spectroscopy measurement. (1. dim. sweep points)
         volts: List or np.array of fluxline voltages to perform a 2D qubit
             spectroscopy. This requires to also provide the proper qcodes
-            parameter to set the fluxline voltage as item `'sweep_functions'` in
-            the task, e.g.:
-            `task['sweep_functions'] = {'volt': fluxlines_dict[qb.name]}`
+            parameter to set the fluxline voltage as item
+            `'sweep_functions_dict'` in the task, e.g.:
+            `task['sweep_functions_dict'] = {'volt': fluxlines_dict[qb.name]}`
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
@@ -744,45 +781,21 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         qb = self.get_qubit(preprocessed_task)
         pulsar = qb.instr_pulsar.get_instr()
         awg_name = pulsar.get(f'{qb.ge_I_channel()}_awg')
-        preprocessed_task['hard_sweep'] = (
-            f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
-            pulsar.get(f'{awg_name}_use_hardware_sweeper'))
+        preprocessed_task['hard_sweep'] = pulsar.get(
+            f'{awg_name}_use_hardware_sweeper', False)
 
         # Convenience feature to automatically use the LO power parameter to
         # sweep the spec_power in a soft_sweep spectroscopy
         prefix = preprocessed_task['prefix']
-        if 'spec_power' in preprocessed_task \
-           and not preprocessed_task['hard_sweep'] \
-           and prefix + 'spec_power' not in self.sweep_functions_dict.keys():
-            self.sweep_functions_dict[prefix + 'spec_power'] = \
-                qb.instr_ge_lo.get_instr().power()
-        return preprocessed_task
+        if (preprocessed_task['sweep_points'].find_parameter('spec_power')
+                    is not None
+                and not preprocessed_task['hard_sweep']
+                and prefix + 'spec_power' not in self.sweep_functions_dict):
+            sf = self._get_power_param(qb, get_swf=True)
+            if sf is not None:
+                self.sweep_functions_dict[prefix + 'spec_power'] = sf
 
-    def group_tasks(self, **kw):
-        """Fills the grouped_tasks dict with a list of tasks from
-        preprocessed_task_list per LO found in the preprocessed_task_list.
-        """
-        for task in self.preprocessed_task_list:
-            qb = self.get_qubit(task)
-            lo_instr = self.get_lo_from_qb(qb)
-            lo_name = lo_instr()
-            if lo_name is not None:
-                if lo_name not in self.grouped_tasks:
-                    self.grouped_tasks[lo_name] = [task]
-                else:
-                    self.grouped_tasks[lo_name] += [task]
-            else:
-                # no external LO, use synthesizer
-                # FIXME: SHFSG(QC) specifc
-                pulsar = qb.instr_pulsar.get_instr()
-                id = pulsar.get(f"{qb.ge_I_channel()}_id")
-                awg = pulsar.get(f"{qb.ge_I_channel()}_awg")
-                sg_channel = pulsar.awg_intefaces[awg].awg.sgchannels[int(id[2]) - 1]
-                qb_awg_synth = f"{awg}_synth{sg_channel.synthesizer()}"
-                if qb_awg_synth not in self.grouped_tasks:
-                    self.grouped_tasks[qb_awg_synth] = [task]
-                else:
-                    self.grouped_tasks[qb_awg_synth] += [task]
+        return preprocessed_task
 
     def check_hard_sweep_compatibility(self, **kw):
         super().check_hard_sweep_compatibility()
@@ -790,7 +803,6 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             if not any([task['hard_sweep'] for task in tasks]):
                 continue
             elif len(tasks) > 1:
-                # FIXME: SHFSG(QC) specific
                 raise ValueError(f"Currently only one task per synthesizer is "
                                  f"supported for hard sweeps. Qubits "
                                  f"{[task['qb'] for task in tasks]} share "
@@ -801,20 +813,18 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         """
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            pulsar = qb.instr_pulsar.get_instr()
-            freqs = task['sweep_points'].get_sweep_params_property(
-                'values', param_names='freq')
             ch = qb.ge_I_channel()
-            amp_range = pulsar.get(f'{ch}_amp')
-            amp = 10 ** (qb.spec_power() / 20 - 0.5)
-            gain = amp / amp_range
+            _, amp_from_power = self._get_power_param(qb)
             self.segment_kwargs['mod_config'][ch] = \
                 dict(internal_mod=self.pulsed)
             self.segment_kwargs['sine_config'][ch] = \
-                dict(continous=not self.pulsed,
+                dict(continuous=not self.pulsed,
                      ignore_waveforms=not self.pulsed,
-                     gains=tuple(gain * x for x in (0.0, 1.0, 1.0, 0.0)))
+                     gains=tuple(amp_from_power(qb.spec_power()) * x
+                                 for x in (0.0, 1.0, 1.0, 0.0)))
             if task['hard_sweep']:
+                pulsar = qb.instr_pulsar.get_instr()
+                freqs = task['sweep_points']['freq']
                 center_freq, mod_freqs = pulsar.get_params_for_spectrum(
                     qb.ge_I_channel(), freqs)
                 self.segment_kwargs['sweep_params'][f'{ch}_osc_sweep'] = \
@@ -858,10 +868,13 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
         if self.pulsed:
             qubit = self.get_qubit(task)
             pulse_modifs = {'op_code=Spec': {'element_name': 'spec_el',}}
-            if self.get_lo_from_qb(qubit)() is None:
+            if self._get_power_param(qubit)[0] is None:
                 # No external LO, use pulse to set the spec power
-                pulse_modifs['op_code=Spec']['amplitude'] = \
-                    dbm_to_vp(qubit.spec_power())
+                if sweep_points.find_parameter('spec_power') is not None:
+                    amp = ParametricValue('spec_power', func=dbm_to_vp)
+                else:
+                    amp = dbm_to_vp(qubit.spec_power())
+                pulse_modifs['op_code=Spec']['amplitude'] = amp
             spec = self.block_from_ops('spec', [f"Z0 {qb}", f"Spec {qb}"],
                                     pulse_modifs=pulse_modifs)
             # create ParametricValues from param_name in sweep_points
@@ -880,49 +893,64 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 return [ro, empty_trigger]
         return [ro]
 
-    def get_lo_from_qb(self, qb, **kw):
-        return qb.instr_ge_lo
+    def get_lo_identifier(self, qb, **kw):
+        return qb.get_ge_lo_identifier()
 
-    def get_mod_from_qb(self, qb, **kw):
+    def get_mod_freq_param(self, qb, **kw):
         return qb.ge_mod_freq
 
-    def get_swf_from_qb(self, qb):
+    def get_lo_swf(self, qb):
         if getattr(self, 'modulated', True):
             return swf.Offset_Sweep(
-                sweep_function=self.get_lo_from_qb(qb).get_instr().frequency,
-                offset=-self.get_mod_from_qb(qb)(),
+                sweep_function=qb.swf_drive_lo_freq(allow_IF_sweep=False),
+                offset=-self.get_mod_freq_param(qb)(),
                 name='Drive frequency',
                 parameter_name='Drive frequency')
         else:
             return qb.swf_drive_lo_freq()
 
+    def _get_power_param(self, qb, get_swf=False):
+        if qb.instr_ge_lo() is not None:
+            param = qb.instr_ge_lo.get_instr().power
+            func = lambda p: p
+            sf = param
+        elif self.pulsed:
+            # For pulsed spec without external LO, we currently implement a
+            # pulse parameter sweep instead.
+            param, sf = None, None
+            func = lambda p: 1.0  # no scaling
+        else:
+            pulsar = qb.instr_pulsar.get_instr()
+            ch = qb.ge_I_channel()
+            param = pulsar.parameters[f'{ch}_direct_output_amp']
+            amp_range = pulsar.get(f'{ch}_amp')
+            func = lambda power, a=amp_range: dbm_to_vp(power) / a
+            sf = swf.Transformed_Sweep(
+                param, func, 'Spectrocopy power', unit='dBm')
+        if get_swf:
+            return sf
+        else:
+            return param, func
+
     def _fill_temporary_values(self):
         super()._fill_temporary_values()
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
-            if self.get_lo_from_qb(qb)() is None and not task['hard_sweep']:
+            if qb.instr_ge_lo() is None and not task['hard_sweep']:
                 # SHFSG Soft Sweep settings:
+                param, func = self._get_power_param(qb)
+                if param is not None:
+                    self.temporary_values.append(
+                        (param, func(qb.spec_power())))
                 pulsar = qb.instr_pulsar.get_instr()
-                # FIXME: move conversion from amp to gain to SHFSG pulsar method
-                # `_direct_mod_amplitude_setter`. Afterwards the if and elif
-                # branches can be combined into one
-                amp_range = pulsar.get(f'{qb.ge_I_channel()}_amp')
-                amp = dbm_to_vp(qb.spec_power())
-                gain = amp / amp_range
-                mod_freq = qb.instr_pulsar.get_instr().parameters[
-                        f'{qb.ge_I_channel()}_direct_mod_freq'
-                ]
-                self.temporary_values.append((mod_freq,
-                                                self.get_mod_from_qb(qb)()))
-                amp = qb.instr_pulsar.get_instr().parameters[
-                    f'{qb.ge_I_channel()}_direct_output_amp'
-                ]
-                self.temporary_values.append((amp, gain))
+                mod_freq = pulsar.parameters[
+                    f'{qb.ge_I_channel()}_direct_mod_freq']
+                self.temporary_values.append(
+                    (mod_freq, self.get_mod_freq_param(qb)()))
             elif self.modulated:
                 # HDAWG modulated spectroscopy settings:
                 if task.get('mod_freq', False):
                     # FIXME: HDAWG specific code, should be moved to pulsar?
-                    qb = self.get_qubit(task)
                     mod_freq = qb.instr_pulsar.get_instr().parameters[
                         f'{qb.ge_I_channel()}_direct_mod_freq'
                     ]
@@ -967,17 +995,12 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     )
 
     def __init__(self, task_list, sweep_points=None,
-                 trigger_separation=150e-6,
+                 trigger_separation=None,
                  states=("g", "e"), **kw):
-        # FIXME: consider not using a temporary trigger separation for this
-        # measurement (and just use the one that is currently configured in the
-        # TriggerDevice, like for other measurements that include qb drive
-        # pulses)
         self.states = list(states)
         super().__init__(task_list, sweep_points=sweep_points,
                          trigger_separation=trigger_separation, states=states,
                          **kw)
-
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:

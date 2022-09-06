@@ -510,12 +510,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         analysis_kwargs (dict): arguments for the analysis. Defaults to all qb names
         delegate_plotting (bool): Whether or not to create a job for an analysisDaemon
             and skip the plotting during the analysis.
-        update (bool): update readout classifier parameters.
-            Does not update the readout correction matrix (i.e. qb.acq_state_prob_mtx),
-            as we ended up using this a lot less often than the update for readout
-            classifier params. The user can still access the state_prob_mtx through
-            the analysis object and set the corresponding parameter manually if desired.
-
+        update (bool): update readout classifier parameters (qb.acq_classifier_params)
+            and the acquisition state probability matrix (qb.acq_state_prob_mtx).
 
     Returns:
 
@@ -1309,6 +1305,10 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
         sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
 
     MC.set_sweep_points(sweep_points)
+    if qbm.instr_ge_lo is None:
+        raise NotImplementedError('measure_J_coupling is not implemented '
+                                  'for non-mixer based drive pulse '
+                                  'generation.')
     MC.set_sweep_function_2D(swf.Offset_Sweep(
         qbm.instr_ge_lo.get_instr().frequency,
         -qbm.ge_mod_freq(),

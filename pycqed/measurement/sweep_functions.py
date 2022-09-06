@@ -62,7 +62,8 @@ class Sweep_function(object):
 
 class UploadingSweepFunction(Sweep_function):
     def __init__(self, sequence=None, upload=True, upload_first=True,
-                 start_pulsar=False, start_exclude_awgs=tuple(), **kw):
+                 start_pulsar=False, start_exclude_awgs=tuple(),
+                 upload_finished_callback=None, **kw):
         """Extends any sweep function to be able to upload sequences.
 
         Args:
@@ -81,6 +82,8 @@ class UploadingSweepFunction(Sweep_function):
                 A collection of AWG names that will not be started directly
                 after upload in case start_pulsar is True. Defaults to empty
                 tuple.
+            upload_finished_callback (function, optional): if a function is
+                provided, it will be called after every upload.
         """
         super().__init__(**kw)
         self.sequence = sequence
@@ -88,6 +91,7 @@ class UploadingSweepFunction(Sweep_function):
         self.upload_first = upload_first
         self.start_pulsar = start_pulsar
         self.start_exclude_awgs = start_exclude_awgs
+        self.upload_finished_callback = upload_finished_callback
 
     def prepare(self, **kw):
         """Takes care of uploading the first sequence and starting the pulsar.
@@ -120,6 +124,8 @@ class UploadingSweepFunction(Sweep_function):
             raise ValueError('Cannot upload with sequence being None')
         if self.upload or force_upload:
             self.sequence.upload()
+            if self.upload_finished_callback is not None:
+                self.upload_finished_callback()
 
     def configure_upload(self, upload=True, upload_first=True,
                         start_pulsar=True):
@@ -662,7 +668,7 @@ class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
     set_parameter is implemented as a pass method to prevent warning messages.
     """
     def __init__(self, parameter_name='None', upload_first=True,
-                 start_pulsar=True):
+                 start_pulsar=False):
         super().__init__(upload_first=upload_first, start_pulsar=start_pulsar)
         self.parameter_name = parameter_name
         self.unit = 'Hz'
