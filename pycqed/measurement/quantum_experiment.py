@@ -366,6 +366,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             analysis_class = ba.BaseDataAnalysis
         if analysis_kwargs is None:
             analysis_kwargs = {}
+        analysis_kwargs.setdefault('t_start', self.timestamp)
         self.analysis = analysis_class(**analysis_kwargs)
         return self.analysis
 
