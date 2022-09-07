@@ -63,6 +63,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
                                    host='localhost', interface=awg.interface,
                                    server=awg.server)
+            if getattr(self.awg.daq, 'server', None) == 'emulator':
+                # This is a hack for virtual setups to make sure that the
+                # ready node is in sync between the two mock DAQ servers.
+                for i in range(4):
+                    path = f'/{self.awg.devname}/awgs/{i}/ready'
+                    self._awg_mcc._session.daq_server.nodes[
+                        path] = self.awg.daq.nodes[path]
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
