@@ -6,6 +6,7 @@ import numpy as np
 import re
 import copy
 import fnmatch
+import types
 
 class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
     """
@@ -81,10 +82,18 @@ class MockDAQServer(zibase.MockDAQServer):
         self.nodes['/zi/about/dataserver'] = {
             'type': 'String', 'value': self.__class__.__name__}
         self._device_types = {}
-        # create aliases syncSet...
+        # create syncSet methods
         for k in dir(self):
             if k.startswith('set') and len(k) > 3:
-                setattr(self, f'syncS{k[1:]}', getattr(self, k))
+                if not hasattr(self, 'get' + k[3:]):
+                    continue
+                def syncset(self, path, value,
+                            setter=getattr(self, k),
+                            getter=getattr(self, 'get' + k[3:])):
+                    setter(path, value)
+                    return getter(path)
+                setattr(self, f'syncS{k[1:]}',
+                        types.MethodType(syncset, self))
 
     def listNodes(self, path):
         return json.loads(self.listNodesJSON(path + "/*"))
