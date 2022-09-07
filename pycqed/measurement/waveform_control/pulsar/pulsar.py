@@ -543,7 +543,10 @@ class Pulsar(Instrument):
                            parameter_class=ManualParameter, vals=vals.Bool(),
                            docstring='Flag determining whether to enable '
                                      'parallel compilation and upload of '
-                                     'SecQ strings.')
+                                     'SecQ strings. Please do not enable '
+                                     'this on a virtual setup unless one '
+                                     'wants to explicity test something '
+                                     'related to parallel compilation.')
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
