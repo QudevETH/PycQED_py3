@@ -333,9 +333,23 @@ class MultiCoreCompilerQudevZI(MultiCoreCompiler):
             generated sequences
     """
     _instances = []
+    """A list that records all multi-core compilers instantiated from this 
+    class (MultiCoreCompilerQudevZI).
+    """
 
     @classmethod
     def get_instance(cls, session=None):
+        """Get a multi-core compiler working on the specified session. For
+        details regarding the sessions and ZI data server, please refer to
+        the docstring of class zhinst.qcodes.ZISession
+
+        Args:
+            session (ZISession): a ZI server client session
+
+        Returns:
+            mcc (MultiCoreCompilerQudevZI): a multi-core compiler
+                corresponding to the specified session.
+        """
         for mcc in cls._instances:
             if mcc._session == session or session is None:
                 return mcc
@@ -349,8 +363,8 @@ class MultiCoreCompilerQudevZI(MultiCoreCompiler):
         self._awgs_all = {}
         # Move existing AWGs to the full AWG dict self._awgs_all. Remove AWGs
         # in the active AWG dict self._awgs to prevent processing all AWGs in
-        # the multi-core compiler. Active AWGs will be added when running
-        # pulsar.
+        # the multi-core compiler. Active AWGs will be added when programming
+        # individual AWGs.
         self._awgs_all.update(self._awgs)
         self.reset_active_awgs()
 
@@ -445,7 +459,12 @@ class ZIMultiCoreCompilerMixin:
             waveforms (array): waveforms to upload
             wave_hashes: waveforms hashes
         """
-        raise NotImplementedError('TODO')
+        raise NotImplementedError('Method "upload_waveforms" is not '
+                                  'implemented for parent class '
+                                  '"ZIMultiCoreCompilerMixin". \n'
+                                  'Please rewrite this method in children '
+                                  'classes with device-specific '
+                                  'implementations.')
 
     @property
     def awgs_mcc(self) -> list:
@@ -453,4 +472,9 @@ class ZIMultiCoreCompilerMixin:
         Returns list of the _awg_mcc cores.
         If _awg_mcc was not defined, returns empty list.
         """
-        raise NotImplementedError('TODO')
+        raise NotImplementedError('Method "awgs_mcc" is not '
+                                  'implemented for parent class '
+                                  '"ZIMultiCoreCompilerMixin". \n'
+                                  'Please rewrite this method in children '
+                                  'classes with device-specific '
+                                  'implementations.')
