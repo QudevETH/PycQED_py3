@@ -298,6 +298,9 @@ class MockAwgModule(zibase.MockAwgModule):
                 fn = os.path.join(base_dir, f'{self._device}_{self._index}_awg_default.elf')
                 with open(fn, "w") as f:
                     f.write('')
+                path = f'/{self._device}/awgs/{self._index}/ready'
+                if path in self._daq.nodes:
+                    self._daq.setInt(path, 1)
         else:
             super().set(path, value)
 
