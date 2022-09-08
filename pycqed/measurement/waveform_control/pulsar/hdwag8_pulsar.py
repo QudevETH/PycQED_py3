@@ -297,7 +297,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         use_placeholder_waves = self.pulsar.get(f"{self.awg.name}_use_placeholder_waves")
 
         if not use_placeholder_waves:
-            if not self.zi_waves_cleared:
+            if not self.zi_waves_clean():
                 self._zi_clear_waves()
 
         for awg_nr in self._hdawg_active_awgs():
@@ -594,4 +594,5 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def sigout_on(self, ch, on=True):
         chid = self.pulsar.get(ch + '_id')
-        self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+        if chid[-1] != 'm':  # not a marker channel
+            self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

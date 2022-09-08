@@ -904,7 +904,8 @@ class Segment:
             el_list = []
             i = 0
             for el in self.elements_on_awg[awg]:
-                if el not in self.element_start_end:
+                if el not in self.element_start_end or awg not in \
+                        self.element_start_end[el]:
                     self.element_start_length(el, awg)
                 el_list.append([self.element_start_end[el][awg][0], i, el])
                 i += 1

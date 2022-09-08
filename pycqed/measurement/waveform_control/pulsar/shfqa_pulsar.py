@@ -360,8 +360,9 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         return self.awg.get_params_for_spectrum(requested_freqs)
 
-    def get_frequency_sweep_function(self, ch: str):
-        return self.awg.get_lo_sweep_function()
+    def get_frequency_sweep_function(self, ch: str, **kw):
+        chid = self.pulsar.get(ch + '_id')
+        return self.awg.get_lo_sweep_function(int(chid[2]) - 1, **kw)
 
 
 class SHFQAPulsar(SHFAcquisitionModulePulsar):
