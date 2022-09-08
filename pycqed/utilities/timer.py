@@ -373,7 +373,8 @@ class Timer(OrderedDict):
         if ax_kwargs is None:
             ax_kwargs = dict()
         if ax is None and fig is None:
-            fig, ax = plt.subplots(figsize=(plot_mod.FIGURE_WIDTH_2COL, 2.104))
+            fig, ax = plt.subplots(figsize=(plot_mod.FIGURE_WIDTH_1COL,
+                                            len(all_start_and_durations) * 0.5))
         if fig is None:
             fig = ax.get_figure()
         y_ticklabels = []
