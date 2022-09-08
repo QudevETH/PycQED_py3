@@ -51,15 +51,19 @@ class Timer(OrderedDict):
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # print(args)
+            # make explicit name with instance name if the object has the attribute "name"
+            if hasattr(args[0], "name"):
+                prefix = args[0].name + self.name_separator + ".".join(func.__qualname__.split(".")[1:])
+            else:
+                prefix = func.__qualname__
             if hasattr(args[0], "timer"):
-                args[0].timer.checkpoint(func.__qualname__ + self.name_separator + self.NAME_CKPT_START)
+                args[0].timer.checkpoint(prefix + self.name_separator + self.NAME_CKPT_START)
             else:
                 log.warning(f'Using @Timer decorator on {args[0]} but {args[0]} has no .timer attribute.'
                             'Time will not be logged.')
             output = func(*args, **kwargs)
             if hasattr(args[0], "timer"):
-                args[0].timer.checkpoint(func.__qualname__ + self.name_separator + self.NAME_CKPT_END)
+                args[0].timer.checkpoint(prefix + self.name_separator + self.NAME_CKPT_END)
             return output
 
         return wrapper
