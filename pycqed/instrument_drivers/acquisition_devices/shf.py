@@ -27,10 +27,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             triggered by the external trigger of acq unit 0.
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
-        integration_vs_scope_delay (float): Additional delay of the readout
-            and spectroscopy modules in hardware compared to the scope. This is
-            compensated in software by reducing the delay of the readout and
-            spectroscopy modules by this value.
     """
     acq_length_granularity = 16
 
@@ -47,8 +43,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
     acq_weights_n_samples = 4096
-    # measured, see Q:\Teams\Quantum computing\Labbooks\QML > QCNNv2\220817
-    integration_vs_scope_delay = 34e-9
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized'],  # FIXME data types unused
@@ -103,14 +97,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             vals=validators.Bool())
 
         self.add_parameter(
-            'scope_trigger_delay',
-            initial_value=200e-9,
+            'acq_trigger_delay',
+            initial_value=300e-9,
             parameter_class=ManualParameter,
-            docstring='Delay between the pulse generation and the scope. '
-                      'The integration units are triggered '
-                      f'{self.integration_vs_scope_delay/1e-9} ns earlier '
-                      f'than this, to compensate hardware delays.',
-            vals=validators.Numbers(min_value=self.integration_vs_scope_delay))
+            docstring='Delay between the pulse generation and the acquisition.',
+            vals=validators.Numbers(min_value=0))
 
     @property
     def devname(self):
@@ -239,7 +230,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                                  for i in self._acq_units_used}
 
         # Set the scope trigger delay with respect to pulse generation
-        self.scopes[0].trigger.delay(self.scope_trigger_delay())
+        self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
         for i in range(self.n_acq_units):
             # Set trigger delay to the same value for all modes. This is
@@ -247,9 +238,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             # is set to a smaller value than for the scope, to compensate the
             # higher hardware delay compared to the scope.
             self.qachannels[i].readout.integration.delay(
-                self.scope_trigger_delay()-self.integration_vs_scope_delay)
+                self.acq_trigger_delay())
             self.qachannels[i].spectroscopy.delay(
-                self.scope_trigger_delay()-self.integration_vs_scope_delay)
+                self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
             self.qachannels[i].readout.stop()  # readout mode
@@ -338,17 +329,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode("readout")
-        # Arbitrarily always using the trigger from ch0, since there is only
-        # one scope module
-        if self.seqtrigger is None:
-            # FIXME to measure timetraces in parallel we would need to be
-            #  able to set the trigger to a fixed channel (since the scope
-            #  only has a single trigger channel), but as of today
-            #  triggering from different channels yields minor timing
-            #  differences (seem to be 2 ns between acq units 0-1 and 2-3)
-            trigger_channel = f'channel{acq_unit}_trigger_input0'
-        else:
-            trigger_channel = f'channel{self.seqtrigger}_sequencer_trigger0'
+        # FIXME should issue a warning if parallel measurements, since in this
+        #  case we can't ensure that scope and integration unit are synchronised
+        trigger_channel = f'channel{acq_unit}_sequencer_monitor0'
+        # FIXME are these different triggering schemes still needed?
+        # if self.seqtrigger is None:
+        #     trigger_channel = f'channel{acq_unit}_trigger_input0'
+        # else:
+        #     trigger_channel = f'channel{self.seqtrigger}_sequencer_trigger0'
         self.scopes[0].configure(
             input_select={acq_unit: f"channel{acq_unit}_signal_input"},
             num_samples=num_points_per_run,
@@ -592,7 +580,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             raise ValueError(
                 f'Acquisition device {self.name} ({self.devname}): '
                 f'Acquisition length {self._acq_length} corresponds to '
-                f'{n_samples}samples , which is not a multiple of the '
+                f'{n_samples} samples, which is not a multiple of the '
                 f'granularity {self.acq_length_granularity}.')
 
 
