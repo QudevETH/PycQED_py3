@@ -80,8 +80,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         # dict for storing previously-uploaded waveforms
         self._hdawg_waveform_cache = dict()
 
-    @property
-    def awgs_mcc(self) -> list:
+    def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:

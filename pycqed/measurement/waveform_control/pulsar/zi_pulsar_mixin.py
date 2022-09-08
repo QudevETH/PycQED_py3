@@ -402,6 +402,7 @@ class ZIMultiCoreCompilerMixin:
     compilation and upload of SeqC strings.
     """
     multi_core_compilers = {}
+    _disable_mcc = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -423,9 +424,15 @@ class ZIMultiCoreCompilerMixin:
     def _init_mcc(self):
         if not len(self.awgs_mcc):
             return  # no sub-AWG supports MCC
-        # add sub-AWGs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
+        try:
+            # add sub-AWGs to multi_core_compiler class variable
+            for awg in self.awgs_mcc:
+                self.multi_core_compiler.add_awg(awg)
+        except Exception as e:
+            log.error(f'Failed to initialize MCC for AWG {self.awg.name}: '
+                      f'{e}.')
+            self._disable_mcc = True
+            return
         # register a finalize callback in the main pulsar
         self.pulsar.mcc_finalize_callbacks[self.awg.name] = \
             self.finalize_upload_after_mcc
@@ -468,6 +475,16 @@ class ZIMultiCoreCompilerMixin:
 
     @property
     def awgs_mcc(self) -> list:
+        """
+        Returns list of the _awg_mcc cores.
+        If self._disable_mcc is set to True, returns empty list.
+        """
+        if self._disable_mcc:
+            return []
+        else:
+            return self._get_awgs_mcc()
+
+    def _get_awgs_mcc(self) -> list:
         """
         Returns list of the _awg_mcc cores.
         If _awg_mcc was not defined, returns empty list.

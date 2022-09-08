@@ -79,8 +79,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         self._init_mcc()
 
-    @property
-    def awgs_mcc(self) -> list:
+    def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:

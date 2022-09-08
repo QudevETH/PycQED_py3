@@ -70,8 +70,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         (off) in :meth:`start` (:meth:`stop`).
         """
 
-    @property
-    def awgs_mcc(self) -> list:
+    def _get_awgs_mcc(self) -> list:
         return [sgc.awg for sgc in self.awg.sgchannels]
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
