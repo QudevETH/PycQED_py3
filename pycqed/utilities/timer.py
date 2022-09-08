@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import datetime as dt
 import logging
@@ -19,11 +21,12 @@ class Timer(OrderedDict):
     NAME_CKPT_END = "end"
 
     def __init__(self, name="timer", fmt="%Y-%m-%d %H:%M:%S.%f", name_separator=".",
-                 verbose=False, auto_start=True, **kwargs):
+                 verbose=False, auto_start=True, children=None, **kwargs):
         self.fmt = fmt
         self.name = name
         self.name_separator = name_separator
         self.verbose = verbose
+        self.children = {} if children is None else children
         # timer should not start logging when initializing with previous values
         if len(kwargs):
             auto_start = False
@@ -33,7 +36,13 @@ class Timer(OrderedDict):
             if isinstance(values, str):
                 values = eval(values)
             try:
-                self.checkpoint(ckpt_name, values=values, log_init=False)
+                if isinstance(values, dict):
+                    # assume values is a child timer
+                    self.children.update({ckpt_name: Timer(ckpt_name,
+                                                          auto_start=False,
+                                                          **values)})
+                else:
+                    self.checkpoint(ckpt_name, values=values, log_init=False)
             except Exception as e:
                 log.warning(f'Could not initialize checkpoint {ckpt_name}. Skipping.')
         if auto_start:
@@ -164,15 +173,26 @@ class Timer(OrderedDict):
         return latest_val
 
     def save(self, data_object, group_name=None):
-        '''
-        Saves metadata on the MC (such as timings)
-        '''
+        """
+        Saves timer object in a data_object (hdf5 file)
+        Args:
+            data_object (HDF5 object): data file object/group under which
+             the timers should be saved
+            group_name (str): name of the group of the timer. Defaults to the
+                name of the timer
+
+        Returns:
+
+        """
+
         if group_name is None:
             group_name = self.name
-        set_grp = data_object.create_group(group_name)
+        entry_grp = data_object.create_group(group_name)
         d = {k: repr(v) for k, v in self.items()}
-        write_dict_to_hdf5(d, entry_point=set_grp,
+        write_dict_to_hdf5(d, entry_point=entry_grp,
                                overwrite=False)
+        for name, subtimer in self.children.items():
+            subtimer.save(entry_grp)
 
     def sort(self, sortby="earliest", reverse=False, checkpoints="all"):
         """
