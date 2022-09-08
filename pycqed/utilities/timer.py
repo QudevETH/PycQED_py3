@@ -422,6 +422,29 @@ class Timer(OrderedDict):
             fig.tight_layout()
         return fig
 
+    def rename_checkpoints(self, prefix="", suffix="", which=None):
+        """
+        Rename checkpoints
+        Args:
+            prefix (str): prefix for all new names
+            suffix (str): suffix for all new names
+            which (str, dict):
+                - "all" will rename all existing checkpoint
+                    with the given prefix and/or suffix
+                - a dict where keys are the old checkpoint names and
+                    values are the new checkpoint names. This will
+                    rename only the provided checkpoints in the dictionary.
+
+        Returns:
+
+        """
+        if which is None:
+            which = {}
+        if which == "all":
+            which = {ckptn: ckptn for ckptn in self}
+        for old_ckpt_name, new_ckpt_name in which.items():
+            self[prefix + new_ckpt_name + suffix] = self.pop(old_ckpt_name)
+
     def table(self, checkpoints="all"):
         """
         Table representation of the duration stored in a timer.
@@ -488,9 +511,12 @@ def multi_plot(timers, **plot_kwargs):
 
     """
     # create dummy timer that contains checkpoints of other timers
-    # note: this won't work if several timers have the same checkpoint names
     tm = Timer(auto_start=False)
-    [tm.update(t) for t in timers]
+    for t in timers:
+        tt = deepcopy(t) # do not modify original timer
+        tt.rename_checkpoints(tt.name + "_", which="all")
+        tm.update(tt)
+
     return tm.plot(**plot_kwargs)
 
 
