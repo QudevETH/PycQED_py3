@@ -8787,11 +8787,16 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         pass
 
     def plot(self, **kwargs):
-        timers = [t for t in self.timers.values() if len(t)]
+        timers = [t for t in self.timers.values()]
         plot_kws = self.get_param_value('plot_kwargs', {})
         for t in timers:
             try:
-                self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                if len(t):
+                    self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                # plot combined plot of children
+                if self.get_param_value('children_timer', True) and len(t.children):
+                    self.figs['timer_' + t.name + "_children"] = \
+                        tm_mod.multi_plot(list(t.children.values()), **plot_kws)
             except Exception as e:
                 if self.raise_exceptions:
                     raise

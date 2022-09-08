@@ -743,7 +743,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)
             if quantum_experiment:
-                self.timer.save(timer_group)
+                self.timer.save(data_file)
 
             if sequence:
                 seq_group = timer_group.create_group('Sequences')
@@ -759,20 +759,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                         f"Only last instance will be kept")
                         s.timer.save(seq_group)
 
-                        if segments:
-                            seg_group = seq_group[timer_seq_name].create_group(timer_seq_name + ".segments")
-                            for _, seg in s.segments.items():
-                                try:
-                                    timer_seg_name = seg.timer.name
-                                    # check that name doesn't exist and it case it does, append an index
-                                    # Note: normally that should not happen (not desirable)
-                                    if timer_seg_name in seg_group.keys():
-                                        log.warning(f"Timer with name {timer_seg_name} already "
-                                                    f"exists in Segments timers. "
-                                                    f"Only last instance will be kept")
-                                    seg.timer.save(seg_group)
-                                except AttributeError:
-                                    pass
 
                     except AttributeError:
                         pass # in case some sequences don't have timers
