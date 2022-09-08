@@ -501,3 +501,132 @@ class ZIMultiCoreCompilerMixin:
                                   'Please rewrite this method in children '
                                   'classes with device-specific '
                                   'implementations.')
+
+
+class ZIDriveAWGChannel:
+    """Interface for ZI drive AWG channels/channel pairs. Each instance of
+    this class saves configuration of this channel and handles communication
+    with the base instrument class when programming the channel.
+    """
+
+    def __init__(
+            self,
+            awg,
+            awg_interface,
+            awg_nr: int,
+    ):
+        self._awg = awg
+        """Driver of the AWG where this channel/channel pair is."""
+
+        self._awg_interface = awg_interface
+        """Pulsar interface of the AWG where this channel/channel pair is."""
+
+        self._awg_nr = awg_nr
+        """AWG channel/channel pair number."""
+
+        self._channel_ids = None
+        """A list of all programmable IDs of this AWG channel/channel pair."""
+
+        self._analog_channel_ids = None
+        """A list of all analog channel IDs of this AWG channel/channel pair."""
+
+        self._marker_channel_ids = None
+        """A list of all marker channel IDs of this AWG channel/channel pair."""
+
+        self._upload_idx = None
+        """Node index on the ZI data server."""
+
+        self._wave_definitions = []
+        """Wave definition strings to be added to the sequencer code."""
+
+        self._codeword_table = {}
+        """Codeword table for DIO wave triggering."""
+
+        self._codeword_table_defs = []
+        """Codeword table definitions to be added to the sequencer code."""
+
+        self._playback_strings = []
+        """Playback strings to be added to the sequencer code."""
+
+        self._wave_idx_lookup = {}
+        """Look-up dictionary of the defined waveform indices."""
+
+        self._sine_config = {}
+        """Sinusoidal wave generation configuration."""
+
+        self._mod_config = {}
+        """Internal modulation configuration."""
+
+        self._has_waveforms = {}
+        """Dictionary of flags indicating whether this channel has waveform 
+        to play in the current programming round."""
+
+        self._use_placeholder_waves = False
+        """Whether to use placeholder waves in the sequencer code."""
+
+        self._use_filter = False
+        # TODO: check if this docstring is correct
+        """Whether to use filter programmed to the device"""
+
+        self._generate_channel_ids(awg_nr=awg_nr)
+        self._reset_has_waveform_flags()
+
+    def _generate_channel_ids(
+            self,
+            awg_nr,
+    ):
+        """Generates all programmable ids of this channel/channel pair (e.g.
+        I channel, Q channel, marker channels) and update the relevant class
+        attributes
+        """
+        pass
+
+    def _reset_codeword_table(self):
+        self._codeword_table = {}
+
+    def _reset_sequence_strings(
+            self,
+            reset_wave_definition: bool = True,
+            reset_codeword_table_defs: bool = True,
+            reset_playback_strings: bool = True,
+    ):
+        if reset_wave_definition:
+            self._wave_definitions = []
+
+        if reset_codeword_table_defs:
+            self._codeword_table_defs = []
+
+        if reset_playback_strings:
+            self._playback_strings = []
+
+    def _reset_has_waveform_flags(self):
+        for chid in self._channel_ids:
+            self._has_waveforms[chid] = False
+
+    @property
+    def use_placeholder_waves(self):
+        return self._use_placeholder_waves
+
+    @use_placeholder_waves.setter
+    def use_placeholder_waves(
+            self,
+            value: bool,
+    ):
+        # TODO: reset this value at the beginning of every program_awg methods
+        self._use_placeholder_waves = value
+
+    def program_awg_channel(self):
+        pass
+
+    def _update_channel_config(self):
+        pass
+
+    def _generate_filter_seq_code(self):
+        pass
+
+    def _generate_oscillator_seq_code(self):
+        pass
+
+    def _generate_wave_seq_code(self):
+        pass
+

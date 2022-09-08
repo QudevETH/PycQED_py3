@@ -19,6 +19,7 @@ except Exception:
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIDriveAWGChannel
 
 
 log = logging.getLogger(__name__)
@@ -790,3 +791,25 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         chid = self.pulsar.get(ch + '_id')
         if chid[-1] != 'm':  # not a marker channel
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+
+
+class HDAWG8Channel(ZIDriveAWGChannel):
+    """Pulsar interface for ZI HDAWG channel pairs
+    """
+
+    def __init__(self, awg_nr: int):
+        super().__init__(awg_nr)
+
+    def _generate_channel_ids(
+            self,
+            awg_nr
+    ):
+        ch1id = 'ch{}'.format(awg_nr * 2 + 1)
+        ch1mid = 'ch{}m'.format(awg_nr * 2 + 1)
+        ch2id = 'ch{}'.format(awg_nr * 2 + 2)
+        ch2mid = 'ch{}m'.format(awg_nr * 2 + 2)
+
+        self._channel_ids = [ch1id, ch1mid, ch2id, ch2mid]
+        self._analog_channel_ids = [ch1id, ch2id]
+        self._marker_channel_ids = [ch1mid, ch2mid]
+        self._upload_idx = awg_nr
