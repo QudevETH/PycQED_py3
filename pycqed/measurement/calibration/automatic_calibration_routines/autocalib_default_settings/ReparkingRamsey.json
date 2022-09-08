@@ -1,0 +1,7 @@
+{
+    "delta_t": 150e-9,
+    "t0": 100e-9,
+    "n_periods": 6,
+    "pts_per_period": 5,
+    "dc_voltage_offsets": {"low": -0.05, "high": 0.05, "pts": 5}
+}
