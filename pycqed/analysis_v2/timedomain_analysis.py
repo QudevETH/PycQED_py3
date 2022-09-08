@@ -8114,22 +8114,22 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             'val': contrast, 'stderr': contrast_stderr}
 
                         # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
-                        population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
+                        contrast_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
                                          dtype=np.float64)
                         y = amps[1::2]
                         y_err = amps_errs[1::2]
                         try:
-                            population_loss_stderrs = np.sqrt(np.array(
+                            contrast_loss_stderrs = np.sqrt(np.array(
                                 ((y * x_err) ** 2 + (x * y_err) ** 2) / (y ** 4),
                                 dtype=np.float64))
                         except:
-                            population_loss_stderrs = float("nan")
+                            contrast_loss_stderrs = float("nan")
                         self.proc_data_dict['analysis_params_dict'][
-                            f'population_loss_{qbn}'] = \
-                            {'val': population_loss,
-                             'stderr': population_loss_stderrs}
+                            f'contrast_loss_{qbn}'] = \
+                            {'val': contrast_loss,
+                             'stderr': contrast_loss_stderrs}
 
                 else:
                     self.proc_data_dict['analysis_params_dict'][
@@ -8230,10 +8230,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}']['val'][0],
+                                           f'contrast_loss_{qbn}']['val'][0],
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}'][
+                                           f'contrast_loss_{qbn}'][
                                            'stderr'][0])
                         pdap = self.proc_data_dict.get(
                             'percent_data_after_presel', False)
