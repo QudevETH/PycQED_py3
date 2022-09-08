@@ -65,6 +65,12 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
                                   host='localhost', interface=awg.interface,
                                   **kw)
+            if getattr(self.awg.daq, 'server', None) == 'emulator':
+                # This is a hack for virtual setups to make sure that the
+                # ready node is in sync between the two mock DAQ servers.
+                path = f'/{self.awg.devname}/awgs/0/ready'
+                self._awg_mcc._session.daq_server.nodes[
+                    path] = self.awg.daq.nodes[path]
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '

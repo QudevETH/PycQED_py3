@@ -541,12 +541,9 @@ class Pulsar(Instrument):
                            set_parser=self._use_sequence_cache_parser)
         self.add_parameter('use_mcc', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool(),
-                           docstring='Flag determining whether to enable '
+                           docstring='Flag determining whether to use '
                                      'parallel compilation and upload of '
-                                     'SecQ strings. Please do not enable '
-                                     'this on a virtual setup unless one '
-                                     'wants to explicity test something '
-                                     'related to parallel compilation.')
+                                     'SecQ strings.')
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
