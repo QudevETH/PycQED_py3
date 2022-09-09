@@ -361,14 +361,10 @@ class Timer(OrderedDict):
         from pycqed.analysis_v3 import plotting as plot_mod
         unit_to_t_factor = dict(us=1e-6, ms=1e-3, s=1, min=60, h=3600,
                                 day=3600 * 24, week=3600 * 24 * 7)
+
         all_start_and_durations = self.get_ckpt_fragments(checkpoints)
         total_durations = {ckpt_name: np.sum([t[1] for t in times])
                            for ckpt_name, times in all_start_and_durations.items()}
-
-        total_durations_rel = {n: v.total_seconds() / self.duration() if
-                               self.duration() != 0 else 1 for n, v in
-                               total_durations.items() }
-
         # plotting
         if ax_kwargs is None:
             ax_kwargs = dict()
@@ -378,6 +374,30 @@ class Timer(OrderedDict):
         if fig is None:
             fig = ax.get_figure()
         y_ticklabels = []
+
+        # nothing to plot
+        if len(all_start_and_durations) == 0:
+            log.warning(f'Trying to plot empty timer:{self.name}')
+            return fig
+
+        # check whether there might be inaccuracies in durations
+        max_dur = self.find_latest()[-1] - self.find_earliest()[-1]
+        for ckpt_name, dur in total_durations.items():
+            if dur > max_dur:
+                log.warning(f'Total duration of checkpoint {ckpt_name} in '
+                            f'timer {self.name} computed by adding all start '
+                            f'and stop together is larger than the largest'
+                            f' time interval found in the timer (computed'
+                            f' by finding earliest and latest absolute time)'
+                            f': {dur} vs {max_dur}. It could be due to '
+                            f'imprecision of datetime.now() when '
+                            f'checkpoints are used to time very short '
+                            f'time-intervals.'
+                            f'')
+        total_durations_rel = {n: v.total_seconds() / self.duration() if
+                               self.duration() != 0 else 1 for n, v in
+                               total_durations.items()}
+
         ref_time = self.find_earliest()[-1]
         t_factor = unit_to_t_factor.get(xunit, xunit)
         for i, (label, values) in enumerate(all_start_and_durations.items()):
@@ -646,6 +666,15 @@ class Checkpoint(list):
     def __repr__(self):
         return self.__str__()
 
+    # def __deepcopy__(self, memo):
+    #     cls = self.__class__
+    #     result = cls.__new__(cls, log_init=False)
+    #     print(result)
+    #     memo[id(self)] = result
+    #     for k, v in self.__dict__.items():
+    #         setattr(result, k, deepcopy(v, memo))
+    #
+    #     return result
 
 class TimedMetaClass(type):
     """
