@@ -56,6 +56,18 @@ class Timer(OrderedDict):
             tm.checkpoint(ckpt_name, values=values, log_init=False)
         return tm
 
+    def __deepcopy__(self, memo):
+        # the default implementation of deepcopy somehow creates a new
+        # checkpoint at creation time. prevent this using a custom deepcopy
+        cls = self.__class__
+        result = cls.__new__(cls, auto_start=False)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, deepcopy(v, memo))
+        for k, v in self.items():
+            result[(deepcopy(k, memo))] = deepcopy(v, memo)
+        return result
+
     def __call__(self, func):
 
         @functools.wraps(func)
@@ -666,15 +678,6 @@ class Checkpoint(list):
     def __repr__(self):
         return self.__str__()
 
-    # def __deepcopy__(self, memo):
-    #     cls = self.__class__
-    #     result = cls.__new__(cls, log_init=False)
-    #     print(result)
-    #     memo[id(self)] = result
-    #     for k, v in self.__dict__.items():
-    #         setattr(result, k, deepcopy(v, memo))
-    #
-    #     return result
 
 class TimedMetaClass(type):
     """
