@@ -336,7 +336,7 @@ class Timer(OrderedDict):
     def plot(self, checkpoints="all", type="bar", fig=None, ax=None, bar_width=0.45,
              xunit='min', xlim=None, date_format=None, annotate=True, title=None,
              time_axis=False, alpha=None, show_sum="absolute", ax_kwargs=None,
-             tight_layout=True, milliseconds=False):
+             tight_layout=True, milliseconds="auto"):
         """
         Plots a timer as a timeline or broken horizontal bar chart.
         Args:
@@ -364,8 +364,9 @@ class Timer(OrderedDict):
             ax_kwargs (dict): additional kwargs for the axes properties (
                 overwrite labels, scales, etc.).
             tight_layout (bool):
-            milliseconds (bool): whether or not to include milliseconds in
-                displayed total durations.
+            milliseconds (bool, str): whether or not to include milliseconds in
+                displayed total durations. Defaults to "auto" (displays ms if
+                 duration is < 1s)
 
         Returns:
 
@@ -521,34 +522,34 @@ class Timer(OrderedDict):
         return df
 
     @staticmethod
-    def _human_delta(tdelta, milliseconds=False):
+    def _human_delta(tdelta, milliseconds="auto"):
         """
         Takes a timedelta object and formats it for humans.
-        Usage:
-            # 149 day(s) 8 hr(s) 36 min 19 sec
-            print human_delta(datetime(2014, 3, 30) - datetime.now())
-        Example Results:
-            23 sec
-            12 min 45 sec
-            1 hr(s) 11 min 2 sec
-            3 day(s) 13 hr(s) 56 min 34 sec
         :param tdelta: The timedelta object.
+        :param milliseconds (bool, str): "auto" will display ms in case
+        the time delta is < 1s.
         :return: The human formatted timedelta
         """
         d = dict(days=tdelta.days)
         d['hrs'], rem = divmod(tdelta.seconds, 3600)
         d['min'], d['sec'] = divmod(rem, 60)
         if milliseconds:
-            d['msecs'] = int(np.round(tdelta.microseconds * 1e-3))
+            d['msec'] = int(np.round(tdelta.microseconds * 1e-3))
         else:
+            d['msec'] = 0
             d['sec'] += int(np.round(tdelta.microseconds * 1e-6))
 
         if d['days'] != 0:
-            fmt = '{days} day(s) {hrs:02}:{min:02}:{sec:02}'
+            fmt = '{days} day(s) {hrs:02}:{min:02}'
+        elif (d['hrs'] == 0 and
+              d['min'] == 0 and
+              d['sec'] == 0 and milliseconds == "auto"):
+            fmt = '{msec:03} ms'
         else:
             fmt = '{hrs:02}:{min:02}:{sec:02}'
-        if milliseconds:
-            fmt += '.{msecs:03}'
+
+        if milliseconds and milliseconds != "auto":
+            fmt += '.{msec:03}'
         return fmt.format(**d)
 
 
