@@ -522,14 +522,20 @@ class Timer(OrderedDict):
         return df
 
     @staticmethod
-    def _human_delta(tdelta, milliseconds="auto"):
+    def _human_delta(tdelta, milliseconds="auto", return_empty=False):
         """
         Takes a timedelta object and formats it for humans.
         :param tdelta: The timedelta object.
         :param milliseconds (bool, str): "auto" will display ms in case
         the time delta is < 1s.
+        :param return_empty (bool): If True, returns a label even if
+        the time delta is 0. Defaults to False.
         :return: The human formatted timedelta
         """
+
+        if tdelta == dt.timedelta() and not return_empty:
+            return ""
+
         d = dict(days=tdelta.days)
         d['hrs'], rem = divmod(tdelta.seconds, 3600)
         d['min'], d['sec'] = divmod(rem, 60)
