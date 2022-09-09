@@ -11,7 +11,7 @@ try:
     from pycqed.measurement.waveform_control.pulsar.zi_multi_core_compiler. \
         multi_core_compiler import MultiCoreCompiler
 except ImportError:
-    log.warning('Could not import MultiCoreCompiler, parallel programming of ZI devices will not work.')
+    log.debug('Could not import MultiCoreCompiler, parallel programming of ZI devices will not work.')
     class MultiCoreCompiler():
         def __init__(self):
             self._awgs = {}
@@ -414,6 +414,14 @@ class ZIMultiCoreCompilerMixin:
 
     @property
     def multi_core_compiler(self):
+        """Getter of the ZI multi-core compiler. If the compiler does not
+        exist, a new one will be created and added to the class attribute
+        self.multi_core_compilers to keep track of all existing compilers.
+
+        Returns:
+            multi_core_compiler (MultiCoreCompilerQudevZI): ZI multi-core
+            compiler for the current instance.
+        """
         if self not in self.multi_core_compilers:
             awgs = self.awgs_mcc
             session = awgs[0].parent._tk_object._session if len(awgs) else None
@@ -433,7 +441,7 @@ class ZIMultiCoreCompilerMixin:
                       f'{e}.')
             self._disable_mcc = True
             return
-        # register a finalize callback in the main pulsar
+        # register a finalized callback in the main pulsar
         self.pulsar.mcc_finalize_callbacks[self.awg.name] = \
             self.finalize_upload_after_mcc
 
@@ -475,8 +483,8 @@ class ZIMultiCoreCompilerMixin:
 
     @property
     def awgs_mcc(self) -> list:
-        """
-        Returns list of the _awg_mcc cores.
+        """List of AWG cores that support parallel compilation.
+
         If self._disable_mcc is set to True, returns empty list.
         """
         if self._disable_mcc:
@@ -485,11 +493,9 @@ class ZIMultiCoreCompilerMixin:
             return self._get_awgs_mcc()
 
     def _get_awgs_mcc(self) -> list:
+        """Returns the list of the AWG cores that support parallel compilation.
         """
-        Returns list of the _awg_mcc cores.
-        If _awg_mcc was not defined, returns empty list.
-        """
-        raise NotImplementedError('Method "awgs_mcc" is not '
+        raise NotImplementedError('Method "_get_awgs_mcc" is not '
                                   'implemented for parent class '
                                   '"ZIMultiCoreCompilerMixin". \n'
                                   'Please rewrite this method in children '

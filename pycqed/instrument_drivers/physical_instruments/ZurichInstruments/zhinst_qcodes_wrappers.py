@@ -12,9 +12,9 @@ log = logging.getLogger(__name__)
 class HDAWG8(HDAWG_core):
     """QuDev-specific PycQED driver for the ZI HDAWG
 
-    This is not the drive currently used for general operation of PycQED,
-    but a helper class to make parallel compilation compatible with virtual
-    HDAWG.
+    This is not the driver currently used for general operation of PycQED,
+    but only used to enable parallel compilation, which required a driver
+    based on the zhinst-qcodes framework.
     """
 
     def __init__(self, *args, **kwargs):
@@ -41,9 +41,9 @@ class HDAWG8(HDAWG_core):
 class UHFQA(UHFQA_core):
     """QuDev-specific PycQED driver for the ZI UHFQA
 
-    This is not the drive currently used for general operation of PycQED,
-    but a helper class to make parallel compilation compatible with virtual
-    UHFQA.
+    This is not the driver currently used for general operation of PycQED,
+    but only used to enable parallel compilation, which required a driver
+    based on the zhinst-qcodes framework.
     """
 
     def __init__(self, *args, **kwargs):

@@ -603,8 +603,8 @@ class Pulsar(Instrument):
         self.channel_groups = {}
         self.num_channel_groups = {}
         self.mcc_finalize_callbacks = {}
-        """A list of methods which requires execution after multi-core 
-        compilation. """
+        """A dict of methods which requires execution after multi-core 
+        compilation. Keys are AWG names, and values are methods to execute."""
 
         self._awgs_prequeried_state = False
 
