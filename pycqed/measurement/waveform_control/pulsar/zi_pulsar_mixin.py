@@ -516,13 +516,13 @@ class ZIDriveAWGChannel:
             awg_nr: int,
     ):
         self._awg = awg
-        """Driver of the AWG where this channel/channel pair is."""
+        """ZI-API Driver of the parent device."""
 
         self._awg_interface = awg_interface
-        """Pulsar interface of the AWG where this channel/channel pair is."""
+        """Pulsar interface of the parent device."""
 
         self._awg_nr = awg_nr
-        """AWG channel/channel pair number."""
+        """AWG channel/channel pair number of the current instance."""
 
         self._channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
