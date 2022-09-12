@@ -48,10 +48,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  plot_sequence=False, filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None, mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
-                                                  awg_swf.SegmentSoftSweep),
+                                                                     awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda : True, **kw):
+                 callback_condition=lambda: True, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -154,7 +154,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                       'implemented yet. Either dev or qubits'
                                       'or operation_dict has to be provided.')
             # planned future behavior (but has to be tested in all aspects):
-            # if no qubits/devive/operation_dict are provided, use empty
+            # if no qubits/device/operation_dict are provided, use empty
             # list to skip iterations over qubit lists
             # qubits = []
         super().__init__(dev=dev, qubits=qubits, operation_dict=operation_dict,

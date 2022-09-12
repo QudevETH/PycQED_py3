@@ -1,3 +1,5 @@
+from qcodes import Parameter
+
 from pycqed.measurement.calibration.single_qubit_gates import (
     SingleQubitGateCalibExperiment
 )
@@ -9,6 +11,7 @@ from pycqed.utilities.reload_settings import reload_settings
 from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
+from typing import List, Any, Tuple
 import numpy as np
 import copy
 import logging
@@ -224,6 +227,8 @@ class SettingsDictionary(dict):
                         "with a qubit are allowed. Provide qubit as a keyword.")
                 db_value = self.db_client.get_property_value_from_param_args(
                     qubit.name, param, associated_component_type_hint)
+                # FIXME if a qubit *str* is given (as in the documentation) this
+                #  will raise an error.
                 success = db_value is not None
                 if success:
                     return db_value.value, success
@@ -380,9 +385,10 @@ class RoutineTemplate(list):
         """Initialize the routine template.
 
         Args:
-            steps (list): List of steps that define the routine. Each step
-                consists of a list of three elements. Namely, the step class,
-                the step label (a string), and the step settings (a dictionary).
+            steps (list of :obj:`Step`): List of steps that define the routine.
+                Each step consists of a list of three elements. Namely, the step
+                class, the step label (a string), and the step settings (a
+                dictionary).
                 For example:
                 steps = [
                     [StepClass1, step_label_1, step_settings_1],
@@ -693,21 +699,21 @@ class Step:
 
         """
         self.routine = routine
-        self.step_label = self.kw.pop('step_label', None)
+        self.step_label = kw.pop('step_label', None)
         self.dev = dev
         # Copy default settings from autocalib if this is the root routine, else
         # create an empty SettingsDictionary
         default_settings = self.dev.autocalib_settings.copy(
         ) if self.routine is None else self.routine.settings.copy({})
-        self.settings = self.kw.pop("settings", default_settings)
-        self.qubits = self.kw.pop("qubits", self.dev.get_qubits())
+        self.settings = kw.pop("settings", default_settings)
+        self.qubits = kw.pop("qubits", self.dev.get_qubits())
 
         # FIXME: this is there to make the current one-qubit-only implementation
-        # of HamiltionianFitting work easily
+        # of HamiltonianFitting work easily
         # remove dependency on self.qubit
         self.qubit = self.qubits[0]
 
-        settings_user = self.kw.pop('settings_user', None)
+        settings_user = kw.pop('settings_user', None)
         if settings_user:
             self.settings.update_user_settings(settings_user)
         self.parameter_lookups = [
@@ -1064,7 +1070,7 @@ class AutomaticCalibrationRoutine(Step):
     after the base class __init__ and before the routine is actually created
     (which happens in final_init).
 
-    In the children classes, the intialization follows this hierarchy:
+    In the children classes, the initialization follows this hierarchy:
         ChildRoutine.__init__
             AutomaticCalibrationRoutine.__init__
             final_init
@@ -1114,6 +1120,13 @@ class AutomaticCalibrationRoutine(Step):
         self.leaf = False
 
         self.DCSources = self.kw.pop("DCSources", None)
+
+        self.routine_steps: List[Step] = []
+        self.current_step_index = 0
+
+        self.routine_template: RoutineTemplate = None
+        self.current_step: Step = None
+        self.current_step_tmp_vals: List[Tuple[Parameter, Any]] = None
 
         # MC - trying to get it from either the device or the qubits
         for source in [self.dev] + self.qubits:
@@ -1175,7 +1188,7 @@ class AutomaticCalibrationRoutine(Step):
         At the end, ExperimentStep.settings will be updated according to the
         hierarchy specified in the lookups.
 
-        Arguements:
+        Arguments:
             lookups (list): A list of all scopes for the parent routine
                 of the step whose settings need to be merged. The elements
                 of the list will be interpreted in descending order of priority.
@@ -1298,7 +1311,6 @@ class AutomaticCalibrationRoutine(Step):
         """
         # Create RoutineTemplate based on _DEFAULT_ROUTINE_TEMPLATE
         self.routine_template = copy.deepcopy(self._DEFAULT_ROUTINE_TEMPLATE)
-        self.routine_template.routine = self
 
         for step in self.routine_template:
             # Retrieve the step settings from the configuration parameter
@@ -1495,7 +1507,7 @@ class AutomaticCalibrationRoutine(Step):
             self.run()
             return
 
-        # Start and stop indeces
+        # Start and stop indices
         if start_index is not None:
             self.current_step_index = start_index
         elif self.current_step_index >= len(self.routine_template):
@@ -1574,8 +1586,6 @@ class AutomaticCalibrationRoutine(Step):
         NOTE: This method wipes the results of the previous run stored in
         routine_steps.
         """
-        self.routine_steps = []
-        self.current_step_index = 0
 
         # Loading initial parameters. Note that if load_parameters=False,
         # the parameters are not reloaded and thus remain the same. This is
@@ -1597,14 +1607,14 @@ class AutomaticCalibrationRoutine(Step):
         self.create_initial_routine(load_parameters=False)
         if self.autorun:
             # FIXME: if the init does not finish the object does not exist and
-            # the routine results are not accesible
+            # the routine results are not accessible
             try:
                 self.run()
             except:
                 log.error(
                     "Autorun failed to fully run, concluded routine steps"
                     "are stored in the routine_steps attribute.",
-                    exc_info=1,
+                    exc_info=True,
                 )
 
     @property

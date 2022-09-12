@@ -635,18 +635,19 @@ class CalibBuilder(MultiTaskingExperiment):
     def __init__(self, task_list, **kw):
         super().__init__(task_list=task_list, **kw)
         self.set_update_callback(**kw)
+        self.update: bool = False
 
     def set_update_callback(self, update=False, **kw):
         """
-        Configures QuantumExperiement to run the function run_update()
+        Configures QuantumExperiment to run the function run_update()
         (or a user-specified callback function) in autorun after measurement
         and analysis, conditioned on the flag self.update. The flag is
-        intialized to True if update=True was passed, and False otherwise.
+        initialized to True if update=True was passed, and False otherwise.
 
         """
         self.update = update
         self.callback = kw.get('callback', self.run_update)
-        self.callback_condition = lambda : self.update and self.analyze
+        self.callback_condition = lambda: self.update and self.analyze
 
     def run_update(self, **kw):
         # must be overriden by child classes to update the
