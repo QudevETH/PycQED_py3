@@ -12,6 +12,7 @@ from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
 from typing import List, Any, Tuple
+from warnings import warn
 import numpy as np
 import copy
 import logging
@@ -521,73 +522,20 @@ class RoutineTemplate(list):
 
     def view(
         self,
-        print_global_settings=True,
-        print_general_settings=True,
-        print_tmp_vals=False,
+        **kws
     ):
-        """Prints a user-friendly representation of the routine template.
-
-        Args:
-            print_global_settings (bool): If True, prints the global settings
-                of the routine. Defaults to True.
-            print_general_settings (bool): If True, prints the 'General' scope
-                of the routine settings. Defaults to True.
-            print_tmp_vals (bool): If True, prints the temporary values of the
-                routine. Defaults to False.
+        """DEPRECATED.
         """
-        try:
-            print(self.routine.name)
-        except AttributeError:
-            pass
-
-        if print_global_settings:
-            print("Global settings:")
-            pprint.pprint(self.global_settings)
-            print()
-
-        if print_general_settings:
-            try:
-                print("General settings:")
-                pprint.pprint(
-                    self.routine.settings[self.routine.name]['General'])
-                print()
-            except AttributeError:
-                pass
-
-        for i, x in enumerate(self):
-            print(f"Step {i}, {x[0].__name__} ({x[1]})")
-            print("Settings:")
-            pprint.pprint(x[2], indent=4)
-
-            if print_tmp_vals:
-                try:
-                    print("Temporary values:")
-                    pprint.pprint(x[3], indent=4)
-                except IndexError:
-                    pass
-            print()
+        warn('This method is deprecated, use `Routine.view()` instead',
+             DeprecationWarning, stacklevel=2)
 
     def __str__(self):
         """Returns a string representation of the routine template.
 
         FIXME: this representation does not include the tmp_vals of the steps.
         """
-        try:
-            s = self.routine.name + "\n"
-        except AttributeError:
-            s = ""
 
-        if self.global_settings:
-            s += "Global settings:\n"
-            s += pprint.pformat(self.global_settings) + "\n"
-
-        try:
-            if self.routine.settings:
-                s += "General settings:\n"
-                s += pprint.pformat(
-                    self.routine.settings[self.routine.name]['General']) + "\n"
-        except AttributeError:
-            pass
+        s = ""
 
         for i, x in enumerate(self):
             s += f"Step {i}, {x[0].__name__}, {x[1]}\n"
@@ -1651,18 +1599,49 @@ class AutomaticCalibrationRoutine(Step):
 
         return settings
 
-    def view(self, **kw):
-        """Prints a user friendly representation of the routine settings
+    def view(
+        self,
+        print_global_settings=True,
+        print_general_settings=True,
+        print_tmp_vals=False,
+        **kws
+    ):
+        """Prints a user-friendly representation of the routine template.
 
-        Keyword Arguments:
+        Args:
             print_global_settings (bool): If True, prints the global settings
                 of the routine. Defaults to True.
-            print_parameters (bool): If True, prints the parameters of the
-                routine. Defaults to True.
+            print_general_settings (bool): If True, prints the 'General' scope
+                of the routine settings. Defaults to True.
             print_tmp_vals (bool): If True, prints the temporary values of the
                 routine. Defaults to False.
         """
-        self.routine_template.view(**kw)
+
+        print(self.name)
+
+        if print_global_settings:
+            print("Global settings:")
+            pprint.pprint(self.global_settings)
+            print()
+
+        if print_general_settings:
+            print("General settings:")
+            pprint.pprint(
+                self.settings[self.name]['General'])
+            print()
+
+        for i, x in enumerate(self.routine_template):
+            print(f"Step {i}, {x[0].__name__} ({x[1]})")
+            print("Settings:")
+            pprint.pprint(x[2], indent=4)
+
+            if print_tmp_vals:
+                try:
+                    print("Temporary values:")
+                    pprint.pprint(x[3], indent=4)
+                except IndexError:
+                    pass
+            print()
 
     def update_settings_at_index(self, settings: dict, index):
         """Updates the settings of the step at position 'index'. Wrapper of
