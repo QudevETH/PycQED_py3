@@ -884,10 +884,11 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
     def run(self):
         """Runs the FeedlineSpectroscopy experiment and the analysis for it.
         """
-        # Set 'measure' and 'analyze' of ResonatorSpectroscopy to True in
-        # order to use its autorun() function
+        # Set 'measure', 'analyze' and `update` of ResonatorSpectroscopy to True
+        # in order to use its autorun() function
         self.experiment_settings['measure'] = True
         self.experiment_settings['analyze'] = True
+        self.experiment_settings['update'] = True
         self._update_parameters(**self.experiment_settings)
         self.autorun(**self.experiment_settings)
 
