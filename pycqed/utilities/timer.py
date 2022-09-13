@@ -161,6 +161,33 @@ class Timer(OrderedDict):
 
         return matches
 
+    def __getitem__(self, item):
+        """
+        Get a checkpoint from the timer: timer['ckpt_name']
+        Children of a timer: timer['child_timer_name']
+        Checkpoint of the child timer: timer['child_timer_name.ckpt_name']
+        Args:
+            item:
+
+        Returns:
+
+        """
+        try:
+            return super().__getitem__(item)
+        except KeyError as ke:
+            try:
+                return self.children[item]
+            except KeyError as kke:
+                try:
+                    split = item.split(self.name_separator)
+                    child = split[0]
+                    val = f"{self.name_separator}".join(split[1:])
+                    return self.children[child][val]
+                except KeyError as kkke:
+                    log.error(f"No checkpoint in {self.name} or its children "
+                                f"has name: {item}")
+                    raise kkke
+
     def find_earliest(self, after=None, checkpoints="all"):
         if checkpoints == "all":
             checkpoints = list(self)
