@@ -8804,9 +8804,13 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 if self.get_param_value('children_timer', True) and len(t.children):
                     self.figs['timer_' + t.name + "_children"] = \
                         tm_mod.multi_plot(list(t.children.values()), **plot_kws)
+                    # recursive plot
+                    for n, subtimer in t.children.items():
+                        if len(subtimer.children):
+                            self.figs[f'timer_{n}'] = subtimer.plot(**plot_kws)
             except Exception as e:
                 if self.raise_exceptions:
-                    raise
+                    raise e
                 log.error(f'Could not plot Timer: {t.name}: {e}')
 
         if self.get_param_value('combined_timer', True):
