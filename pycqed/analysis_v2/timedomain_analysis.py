@@ -8778,8 +8778,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
+        self.nr_averages = self._extract_nr_averages()
+
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
+            ref_time=self.get_param_value("ref_time")
+        )
+
+        # Extract bare experiment timer
+        self.timers['BareExperiment'] = self.bare_experiment_timer(
             ref_time=self.get_param_value("ref_time")
         )
 
@@ -8833,23 +8840,69 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return bmtimer
 
-    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
-                              count_nan_measurements=False):
+    def bare_experiment_timer(self, ref_time=None,
+                                   checkpoint='bare_experiment', **kw):
+        tot_sec = self.bare_experiment_time(**kw)
+        tm = tm_mod.Timer('BareExperiment', auto_start=False)
+        if ref_time is None:
+            try:
+                ts = [t.find_earliest() for t in self.timers.values()]
+                ts = [t[-1] for t in ts if len(t)]
+                arg_sorted = sorted(range(len(ts)),
+                                    key=list(ts).__getitem__)
+                ref_time = ts[arg_sorted[0]]
+            except Exception as e:
+                log.error('Failed to extract reference time for bare'
+                          f'Experiment timer. Please fix the error'
+                          f'or pass in a reference time manually.')
+                raise e
+
+        # TODO add more options of how to distribute the bm time in the timer
+        #  (not only start stop but e.g. distribute it)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.start",
+                           values=[ref_time], log_init=False)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.end",
+                           values=[ref_time + dt.timedelta(seconds=tot_sec)],
+                           log_init=False)
+
+        return tm
+
+    def _extract_nr_averages(self):
+        #TODO Currently does not support soft averages or soft repetitions
         det_metadata = self.metadata.get("Detector Metadata", None)
-        if nr_averages is None:
-            nr_averages = self.get_param_value('nr_averages', None)
+        nr_averages = self.get_param_value('nr_averages', None)
         if det_metadata is not None and nr_averages is None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            nr_averages = det_metadata.get('nr_averages', det_metadata.get('nr_shots', None))
+            nr_averages = det_metadata.get('nr_averages',
+                                           det_metadata.get('nr_shots', None))
             if nr_averages is None:
                 det = list(det_metadata.get('detectors', {}).values())[0]
                 nr_averages = det.get('nr_averages', det.get('nr_shots', None))
         if nr_averages is None:
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
-        self.nr_averages = nr_averages
+        return nr_averages
+
+    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
+                              count_nan_measurements=False):
+        """
+        Computes the measurement time i.e. the number of segments * the repetition rate
+        * number of averages.
+        Args:
+            nr_averages: number of averages for each segment
+            repetition_rate: time interval between two main triggers of
+                subsequent segments
+            count_nan_measurements: whether or not to account for segments in
+                unfinished measurements.
+
+        Returns:
+
+        """
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        det_metadata = self.metadata.get("Detector Metadata", None)
         # metadata['detectors'] is a dict for MultiPollDetector and else a list
         df_names = list(det_metadata['detectors'])
         # Testing the first detector, since detectors in a MultiPollDetector
@@ -8871,6 +8924,44 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             perc_meas = 1 - np.sum(np.isnan(vals)) / np.prod(vals.shape)
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
+
+    def bare_experiment_time(self, nr_averages=None):
+        """
+        Computes the bare experiment time from the segments durations,
+        which are extracted from the segment timers.
+        Note: unlike bare_measurement_time,
+            for now this function always accounts for the full experiment time
+            even if the measurement was interrupted.
+        Args:
+            nr_averages: Number of averages for each segment.
+                Defaults to self.nr_averages, which is extracted by
+                self._extract_nr_averages()
+
+        Returns:
+            Total experiment time (in seconds)
+        """
+
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        try:
+            # duration of segments are stored with the .dt checkpoint end
+            ckpts = self.timers['Sequences'].find_keys('.dt',
+                                                       search_children=True)
+            # since ns are not supported by datetime, the durations are stored
+            # in micro seconds, so we need to set them back to nanoseconds
+            segment_durations = [
+                (self.timers['Sequences'][ck][0] -
+                 dt.datetime.utcfromtimestamp(0)).total_seconds() / 1e3
+                for ck in ckpts]
+            self.proc_data_dict["segment_durations"] = \
+                {ck:d for ck, d in zip(ckpts, segment_durations)}
+
+            tot_secs = np.sum(segment_durations) * nr_averages
+            return tot_secs
+        except Exception as e:
+            log.error(f'Could not compute bare experiment time : {e}.'
+                      f'Returning timer with 0s duration.')
+            return 0
 
     @staticmethod
     def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,

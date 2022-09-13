@@ -133,7 +133,7 @@ class Timer(OrderedDict):
         except KeyError as ke:
             log.error(f"Could not find key in timer: {ke}. Available keys: {self.keys()}")
 
-    def find_keys(self, query="", mode='endswith'):
+    def find_keys(self, query="", mode='endswith', search_children=False):
         """
         Finds keys of checkpoints based on query. Defaults to returning all keys.
         Args:
@@ -152,6 +152,13 @@ class Timer(OrderedDict):
                               startswith=s.startswith, endswith=s.endswith)
             if match_func[mode](query):
                 matches.append(s)
+
+        if search_children:
+            for subtimer in self.children.values():
+                keys = subtimer.find_keys(query, mode=mode,
+                                   search_children=search_children)
+                matches.extend([subtimer.name + "." + k for k in keys])
+
         return matches
 
     def find_earliest(self, after=None, checkpoints="all"):
@@ -394,7 +401,7 @@ class Timer(OrderedDict):
             return fig
 
         # check whether there might be inaccuracies in durations
-        max_dur = self.find_latest()[-1] - self.find_earliest()[-1]
+        max_dur = self.duration(return_type="time_delta")
         for ckpt_name, dur in total_durations.items():
             if dur > max_dur:
                 log.warning(f'Total duration of checkpoint {ckpt_name} in '
