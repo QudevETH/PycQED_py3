@@ -734,16 +734,17 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     #
     #     self.__dict__[name] = value
 
-    def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
+    def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp, filepath=filepath, mode="r+")
+        data_file = helper_functions.open_hdf_file(self.timestamp,
+                                                   filepath=filepath, mode="r+")
         try:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)
             if quantum_experiment:
-                self.timer.save(data_file)
+                self.timer.save(timer_group)
 
             if sequence:
                 seq_group = timer_group.create_group('Sequences')
