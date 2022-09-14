@@ -541,10 +541,10 @@ class ZIDriveAWGChannel:
         self.channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
 
-        self._analog_channel_ids = None
+        self.analog_channel_ids = None
         """A list of all analog channel IDs of this AWG channel/channel pair."""
 
-        self._marker_channel_ids = None
+        self.marker_channel_ids = None
         """A list of all marker channel IDs of this AWG channel/channel pair."""
 
         self._upload_idx = None
@@ -692,13 +692,12 @@ class ZIDriveAWGChannel:
             waveforms=waveforms,
             awg_sequence=awg_sequence,
         )
-        self._compile_awg_program()
+        self._compile_awg_program(program=program)
         self._upload_after_compilation(waveforms=waveforms)
 
         self._set_signal_output_status()
         if any(self.has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self._awg.name)
-
 
     def _update_channel_config(
             self,
@@ -818,7 +817,7 @@ class ZIDriveAWGChannel:
 
                 # update has_waveforms flag if there is non-trivial wave
                 # defined under a channel ID.
-                for i, chid in self.channel_ids:
+                for i, chid in enumerate(self.channel_ids):
                     self.has_waveforms[chid] |= wave[i] is not None
 
                 if not upload:
@@ -927,7 +926,7 @@ class ZIDriveAWGChannel:
         if run_compiler:
             # We have to retrieve the following parameter to set it
             # again after programming the AWG.
-            prev_dio_valid_polarity = self.awg.get(
+            prev_dio_valid_polarity = self._awg.get(
                 'awgs_{}_dio_valid_polarity'.format(self._awg_nr))
 
             self._awg.configure_awg_from_string(
@@ -936,7 +935,7 @@ class ZIDriveAWGChannel:
                 timeout=600
             )
 
-            self.awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
+            self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
                          prev_dio_valid_polarity)
             if self._use_placeholder_waves:
                 self._awg_interface._hdawg_waveform_cache[

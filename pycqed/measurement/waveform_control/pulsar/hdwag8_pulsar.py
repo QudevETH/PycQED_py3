@@ -432,7 +432,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         else:
             return 1
 
-    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+    def program_awg_old(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
         self.wfms_to_upload = {}  # reset waveform upload memory
@@ -708,7 +708,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         if any(ch_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
-    def program_awg_new(self, awg_sequence, waveforms, repeat_pattern=None,
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
         use_placeholder_waves = self.pulsar.get(
@@ -856,9 +856,9 @@ class HDAWG8Channel(ZIDriveAWGChannel):
         ch2id = 'ch{}'.format(awg_nr * 2 + 2)
         ch2mid = 'ch{}m'.format(awg_nr * 2 + 2)
 
-        self._channel_ids = [ch1id, ch1mid, ch2id, ch2mid]
-        self._analog_channel_ids = [ch1id, ch2id]
-        self._marker_channel_ids = [ch1mid, ch2mid]
+        self.channel_ids = [ch1id, ch1mid, ch2id, ch2mid]
+        self.analog_channel_ids = [ch1id, ch2id]
+        self.marker_channel_ids = [ch1mid, ch2mid]
         self._upload_idx = awg_nr
 
     def _update_internal_mod_config(
@@ -873,7 +873,7 @@ class HDAWG8Channel(ZIDriveAWGChannel):
             waveform-hash for each codeword and each channel.
         """
         channels = [self.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self._analog_channel_ids]
+                    for chid in self.analog_channel_ids]
         pulsar = self.pulsar
 
         if all([pulsar.get(f"{chan}_internal_modulation")
