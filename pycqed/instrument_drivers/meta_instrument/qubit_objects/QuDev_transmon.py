@@ -5527,6 +5527,37 @@ def add_CZ_MG_pulse(qbc, qbt):
                                 initial_value=0, vals=vals.Numbers())
 
 
+def add_parametric_flux_reset(qb, op_name="PFR",
+                              parameter_prefix='parametric_flux_reset',
+                              transition_name='ge',
+                              pulse_type='BufferedCZPulse'):
+    """
+    Method to add a parametric flux based reset operation.
+    """
+    tn = '' if transition_name == 'ge' else f'_{transition_name}'
+    op_name = f"{op_name}{tn}"
+
+    # find pulse module
+    import pycqed.measurement.waveform_control.pulse as bpl
+    pulse_func = bpl.get_pulse_class(pulse_type)
+
+    # for all connected qubits add the operation with name gate_name
+
+    parameter_prefix = f'{parameter_prefix}{tn}'
+    qb.add_operation(op_name)
+
+    # get default pulse params for the pulse type
+    params = pulse_func.pulse_params()
+    for param, init_val in params.items():
+        qb.add_pulse_parameter(op_name, parameter_prefix + '_' + param, param,
+                                 initial_value=init_val, vals=None)
+
+    # needed for unresolved pulses but not attribute of pulse object
+    if 'basis_rotation' not in params.keys():
+        qb.add_pulse_parameter(op_name, parameter_prefix + '_basis_rotation',
+                                    'basis_rotation', initial_value={},
+                               vals=None)
+
 
 
 
