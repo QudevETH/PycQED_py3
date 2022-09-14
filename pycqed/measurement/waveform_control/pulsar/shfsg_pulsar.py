@@ -9,6 +9,8 @@ from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIDriveAWGChannel
+from .zi_pulsar_mixin import diff_and_combine_dicts
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
@@ -794,3 +796,139 @@ class SHFSGPulsar(SHFGeneratorModulePulsar):
                              vals=vals.Bool())
 
         self._create_all_channel_parameters(channel_name_map)
+
+
+class SHFGeneratorChannel(ZIDriveAWGChannel):
+    """Pulsar interface for SHF drive channels."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _generate_channel_ids(
+            self,
+            awg_nr
+    ):
+        ch1id = f'sg{awg_nr+1}i'
+        ch2id = f'sg{awg_nr+1}q'
+        chmid = 'ch{}m'.format(awg_nr * 2 + 1)
+
+        self._channel_ids = [ch1id, chmid, ch2id]
+        self._analog_channel_ids = [ch1id, ch2id]
+        self._marker_channel_ids = [chmid]
+        self._upload_idx = awg_nr
+
+    def _update_internal_mod_config(
+            self,
+            awg_sequence,
+    ):
+        """Collects and combines internal modulation generation settings
+        specified in awg_sequence. If settings from different elements are
+        coherent with each other, the combined setting will be programmed to
+        the channel.
+
+        Args:
+            awg_sequence: A list of elements. Each element consists of a
+            waveform-hash for each codeword and each channel.
+        """
+        channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
+                    for chid in self._channel_ids]
+        channel_mod_config = {ch: {} for ch in channels}
+
+        # Combine internal modulation configurations from all elements in
+        # the sequence into one and check if they are compatible with each other
+        for element in awg_sequence:
+            awg_sequence_element = awg_sequence[element]
+            if awg_sequence_element is None:
+                continue
+            metadata = awg_sequence_element.get('metadata', {})
+            element_mod_config = metadata.get('mod_config', {})
+            if not diff_and_combine_dicts(
+                    element_mod_config,
+                    channel_mod_config,
+                    excluded_keys=['mod_freq', 'mod_phase']
+            ):
+                raise Exception('Modulation config in metadata is incompatible'
+                                'between different elements in same sequence.')
+
+        # Configure internal modulation for each channel. For the SG modules we
+        # take config of the I channel and ignore the Q channel configuration
+        for ch, config in channel_mod_config.items():
+            if ch.endswith('q'):
+                continue
+            self.configure_internal_mod(
+                ch,
+                enable=config.get('internal_mod', False),
+                osc_index=config.get('osc', 0),
+                sine_generator_index=config.get('sine', 0),
+                gains=config.get('gains', (1.0, - 1.0, 1.0, 1.0))
+            )
+
+        self._mod_config = channel_mod_config
+
+    def _update_sine_generation_config(
+            self,
+            awg_sequence,
+    ):
+        """Collects and combines sine wave generation settings specified in
+        awg_sequence. If settings from different elements are coherent with
+        each other, the combined setting will be programmed to the channel.
+
+        Args:
+            awg_sequence: A list of elements. Each element consists of a
+            waveform-hash for each codeword and each channel.
+        """
+        channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
+                    for chid in self._channel_ids]
+        channel_sine_config = {ch: {} for ch in channels}
+
+        # Combine sine generation configurations from all elements in
+        # the sequence into one and check if they are compatible with each other
+        for element in awg_sequence:
+            awg_sequence_element = awg_sequence[element]
+            if awg_sequence_element is None:
+                continue
+            metadata = awg_sequence_element.get('metadata', {})
+            element_sine_config = metadata.get('sine_config', {})
+            if not diff_and_combine_dicts(
+                    element_sine_config,
+                    channel_sine_config
+            ):
+                raise Exception('Sine config in metadata is incompatible'
+                                'between different elements in same sequence.')
+
+        # Configure sine output for each channel. For the SG modules we
+        # take config of the I channel and ignore the Q channel configuration
+        for ch, config in channel_sine_config.items():
+            if ch.endswith('q'):
+                continue
+            self._awg_interface.configure_sine_generation(
+                ch,
+                enable=config.get('continuous', False),
+                osc_index=config.get('osc', 0),
+                sine_generator_index=config.get('sine', 0),
+                gains=config.get('gains', (0.0, 1.0, 1.0, 0.0))
+            )
+
+        self._sine_config = channel_sine_config
+
+    def _generate_oscillator_seq_code(self):
+        if self._mod_config.get('internal_mod', False) \
+                or self._sine_config.get('continuous', False):
+            # Reset the starting phase of all oscillators at the beginning
+            # of a sequence using the resetOscPhase instruction. This
+            # ensures that the carrier-envelope offset, and thus the final
+            # output signal, is identical from one repetition to the next.
+            self._playback_strings.append(f'resetOscPhase();\n')
+            osc_id = str(self._mod_config.get('osc', '0')) \
+                if self._mod_config.get('internal_mod', False) \
+                else str(self._sine_config.get('osc', '0'))
+            self._playback_strings.append(f'const SWEEP_OSC = {osc_id};\n')
+
+    def _set_signal_output_status(self):
+        if self.pulsar.sigouts_on_after_programming():
+            for sgchannel in self._awg.sgchannels:
+                sgchannel.output.on(True)
+
+
+
+
