@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import numpy as np
+from copy import deepcopy
 
 
 log = logging.getLogger(__name__)
@@ -509,6 +510,16 @@ class ZIDriveAWGChannel:
     with the base instrument class when programming the channel.
     """
 
+    _sequence_string_template = (
+        "{wave_definitions}\n"
+        "\n"
+        "{codeword_table_defs}\n"
+        "\n"
+        "while (1) {{\n"
+        "  {playback_string}\n"
+        "}}\n"
+    )
+
     def __init__(
             self,
             awg,
@@ -521,10 +532,13 @@ class ZIDriveAWGChannel:
         self._awg_interface = awg_interface
         """Pulsar interface of the parent device."""
 
+        self.pulsar = awg_interface.pulsar
+        """A copy of pulsar instance for the current AWG channel."""
+
         self._awg_nr = awg_nr
         """AWG channel/channel pair number of the current instance."""
 
-        self._channel_ids = None
+        self.channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
 
         self._analog_channel_ids = None
@@ -535,6 +549,9 @@ class ZIDriveAWGChannel:
 
         self._upload_idx = None
         """Node index on the ZI data server."""
+
+        self._defined_waves = None
+        """Waves that has been assigned names on this channel."""
 
         self._wave_definitions = []
         """Wave definition strings to be added to the sequencer code."""
@@ -548,16 +565,22 @@ class ZIDriveAWGChannel:
         self._playback_strings = []
         """Playback strings to be added to the sequencer code."""
 
+        self._counter = 1
+        """Counter for interleaved playback string."""
+
+        self._interleaves = []
+        """Interleaved playback string to be added to the sequencer code."""
+
         self._wave_idx_lookup = {}
         """Look-up dictionary of the defined waveform indices."""
-
-        self._sine_config = {}
-        """Sinusoidal wave generation configuration."""
 
         self._mod_config = {}
         """Internal modulation configuration."""
 
-        self._has_waveforms = {}
+        self._sine_config = {}
+        """Sinusoidal wave generation configuration."""
+
+        self.has_waveforms = {}
         """Dictionary of flags indicating whether this channel has waveform 
         to play in the current programming round."""
 
@@ -568,7 +591,13 @@ class ZIDriveAWGChannel:
         # TODO: check if this docstring is correct
         """Whether to use filter programmed to the device"""
 
+        self._divisor = {}
+        # TODO: check if this docstring is correct
+        """A dictionary that records down-sampling ratio (divisor) for each 
+        channel ID."""
+
         self._generate_channel_ids(awg_nr=awg_nr)
+        self._generate_divisor()
         self._reset_has_waveform_flags()
 
     def _generate_channel_ids(
@@ -581,6 +610,9 @@ class ZIDriveAWGChannel:
         """
         pass
 
+    def _generate_divisor(self):
+        self._divisor = {chid: 1 for chid in self.channel_ids}
+
     def _reset_codeword_table(self):
         self._codeword_table = {}
 
@@ -589,6 +621,8 @@ class ZIDriveAWGChannel:
             reset_wave_definition: bool = True,
             reset_codeword_table_defs: bool = True,
             reset_playback_strings: bool = True,
+            reset_interleaves: bool = True,
+            reset_counter: bool = True,
     ):
         if reset_wave_definition:
             self._wave_definitions = []
@@ -599,34 +633,371 @@ class ZIDriveAWGChannel:
         if reset_playback_strings:
             self._playback_strings = []
 
+        if reset_interleaves:
+            self._interleaves = []
+
+        if reset_counter:
+            self._counter = 1
+
     def _reset_has_waveform_flags(self):
-        for chid in self._channel_ids:
-            self._has_waveforms[chid] = False
+        for chid in self.channel_ids:
+            self.has_waveforms[chid] = False
 
-    @property
-    def use_placeholder_waves(self):
-        return self._use_placeholder_waves
+    def _reset_defined_waves(self):
+        self._defined_waves = (set(), dict()) if self._use_placeholder_waves \
+            else set()
 
-    @use_placeholder_waves.setter
-    def use_placeholder_waves(
+    def program_awg_channel(
             self,
-            value: bool,
+            awg_sequence,
+            waveforms,
+            upload,
+            program,
     ):
-        # TODO: reset this value at the beginning of every program_awg methods
-        self._use_placeholder_waves = value
+        self._reset_has_waveform_flags()
+        self._reset_sequence_strings()
+        self._reset_codeword_table()
+        self._update_channel_config(awg_sequence=awg_sequence)
+        self._reset_defined_waves()
 
-    def program_awg_channel(self):
+        # if not self._use_placeholder_waves:
+        #     if not self._awg_interface.zi_waves_clean():
+        #         self._awg_interface.zi_clear_waves()
+
+        self._generate_wave_seq_code(
+            awg_sequence=awg_sequence,
+            waveforms=waveforms,
+            upload=upload,
+            program=program,
+        )
+
+        if not any([self.has_waveforms.values()]):
+            # prevent ZI_base_instrument.start() from starting this sub AWG
+            self._awg._awg_program[self._awg_nr] = None
+            return
+
+        # tell ZI_base_instrument that it should not compile a program on
+        # this sub AWG (because we already do it here)
+        self._awg._awg_needs_configuration[self._awg_nr] = False
+        # tell ZI_base_instrument.start() to start this sub AWG (The base
+        # class will start sub AWGs for which _awg_program is not None. Since
+        # we set _awg_needs_configuration to False, we do not need to put the
+        # actual program here, but anything different from None is sufficient.)
+        self._awg._awg_program[self._awg_nr] = True
+
+        if not upload:
+            return
+
+        self._upload_before_compilation(
+            waveforms=waveforms,
+            awg_sequence=awg_sequence,
+        )
+        self._compile_awg_program()
+        self._upload_after_compilation(waveforms=waveforms)
+
+        self._set_signal_output_status()
+        if any(self.has_waveforms.values()):
+            self.pulsar.add_awg_with_waveforms(self._awg.name)
+
+
+    def _update_channel_config(
+            self,
+            awg_sequence,
+    ):
+        self._update_use_placeholder_wave_flag()
+        self._update_use_filter_flag(awg_sequence=awg_sequence)
+        self._update_internal_mod_config(awg_sequence=awg_sequence)
+        self._update_sine_generation_config(awg_sequence=awg_sequence)
+
+    def _update_use_filter_flag(
+            self,
+            awg_sequence,
+    ):
+        """Updates self._use_filter flag with the setting specified in
+        awg_sequence."""
+
+        self._use_filter = any(
+            [e is not None and
+             e.get('metadata', {}).get('allow_filter', False)
+             for e in awg_sequence.values()]
+        )
+
+    def _update_use_placeholder_wave_flag(self):
+        """Updates self._use_placeholder_wave flag with the setting specified
+        in pulsar."""
+        self._use_placeholder_waves = self.pulsar.get(
+            f"{self._awg.name}_use_placeholder_waves")
+
+    def _update_internal_mod_config(
+            self,
+            awg_sequence,
+    ):
         pass
 
-    def _update_channel_config(self):
+    def _update_sine_generation_config(
+            self,
+            awg_sequence,
+    ):
         pass
 
     def _generate_filter_seq_code(self):
-        pass
+        if self._use_filter:
+            self._playback_strings += ['var i_seg = -1;']
+            self._wave_definitions += [
+                f'var first_seg = getUserReg({self._awg.USER_REG_FIRST_SEGMENT});',
+                f'var last_seg = getUserReg({self._awg.USER_REG_LAST_SEGMENT});',
+            ]
 
     def _generate_oscillator_seq_code(self):
         pass
 
-    def _generate_wave_seq_code(self):
+    def _generate_wave_seq_code(
+            self,
+            awg_sequence,
+            waveforms,
+            upload,
+            program
+    ):
+        self._wave_idx_lookup = {}
+        next_wave_idx = 0
+        current_segment = 'no_segment'
+        first_element_of_segment = True
+
+        for element in awg_sequence:
+            awg_sequence_element = deepcopy(awg_sequence[element])
+            if awg_sequence_element is None:
+                current_segment = element
+                self._playback_strings.append(f'// Segment {current_segment}')
+                if self._use_filter:
+                    self._playback_strings.append('i_seg += 1;')
+                first_element_of_segment = True
+                continue
+            self._wave_idx_lookup[element] = {}
+            self._playback_strings.append(f'// Element {element}')
+
+            metadata = awg_sequence_element.pop('metadata', {})
+            # The following line only has an effect if the metadata
+            # specifies that the segment should be repeated multiple times.
+            self._playback_strings += \
+                ZIPulsarMixin._zi_playback_string_loop_start(
+                    metadata,
+                    self.channel_ids
+                )
+
+            nr_cw = len(set(awg_sequence_element.keys()) - \
+                        {'no_codeword'})
+
+            if nr_cw == 1:
+                log.warning(
+                    f'Only one codeword has been set for {element}')
+                self._playback_strings += \
+                    ZIPulsarMixin._zi_playback_string_loop_end(metadata)
+                continue
+
+            for cw in awg_sequence_element:
+                if cw == 'no_codeword':
+                    if nr_cw != 0:
+                        continue
+                chid_to_hash = awg_sequence_element[cw]
+                wave = tuple(chid_to_hash.get(ch, None)
+                             for ch in self.channel_ids)
+                if wave == (None, None, None, None):
+                    continue
+                if nr_cw != 0:
+                    w1, w2 = self._awg_interface._zi_waves_to_wavenames(wave)
+                    if cw not in self._codeword_table:
+                        self._codeword_table_defs += \
+                            self._awg_interface._zi_codeword_table_entry(
+                                cw, wave, self._use_placeholder_waves)
+                        self._codeword_table[cw] = (w1, w2)
+                    elif self._codeword_table[cw] != (w1, w2) \
+                            and self.pulsar.reuse_waveforms():
+                        log.warning('Same codeword used for different '
+                                    'waveforms. Using first waveform. '
+                                    f'Ignoring element {element}.')
+
+                # update has_waveforms flag if there is non-trivial wave
+                # defined under a channel ID.
+                for i, chid in self.channel_ids:
+                    self.has_waveforms[chid] |= wave[i] is not None
+
+                if not upload:
+                    # _program_awg was called only to decide which
+                    # sub-AWGs are active, and the rest of this loop
+                    # can be skipped
+                    continue
+
+                if self._use_placeholder_waves:
+                    if wave in self._defined_waves[1].values():
+                        self._wave_idx_lookup[element][cw] = [
+                            i for i, v in self._defined_waves[1].items()
+                            if v == wave][0]
+                        continue
+                    self._wave_idx_lookup[element][cw] = next_wave_idx
+                    next_wave_idx += 1
+                    placeholder_wave_lengths = \
+                        [waveforms[h].size for h in wave if h is not None]
+                    if max(placeholder_wave_lengths) != \
+                            min(placeholder_wave_lengths):
+                        log.warning(f"Waveforms of unequal length on"
+                                    f"{self._awg.name}, vawg{self._awg_nr}, "
+                                    f"{current_segment}, {element}.")
+                    self._wave_definitions += \
+                        self._awg_interface._zi_wave_definition(
+                            wave,
+                            self._defined_waves,
+                            max(placeholder_wave_lengths),
+                            self._wave_idx_lookup[element][cw]
+                        )
+                else:
+                    wave = tuple(
+                        self._with_divisor(h, chid) if h is not None
+                        else None for h, chid in zip(wave, self.channel_ids))
+                    self._wave_definitions += \
+                        self._awg_interface._zi_wave_definition(
+                            wave, self._defined_waves)
+
+            if not upload:
+                # _program_awg was called only to decide which
+                # sub-AWGs are active, and the rest of this loop
+                # can be skipped
+                continue
+
+            self._generate_playback_string(
+                wave=wave,
+                codeword=(nr_cw != 0),
+                use_placeholder_waves=self._use_placeholder_waves,
+                metadata=metadata,
+                first_element_of_segment=first_element_of_segment
+            )
+
+            first_element_of_segment = False
+            self._playback_strings += \
+                ZIPulsarMixin._zi_playback_string_loop_end(metadata)
+
+    def _generate_playback_string(
+            self,
+            wave,
+            codeword,
+            use_placeholder_waves,
+            metadata,
+            first_element_of_segment,
+    ):
         pass
+
+    def _upload_before_compilation(
+            self,
+            waveforms,
+            awg_sequence,
+    ):
+        if not self._use_placeholder_waves:
+            waves_to_upload = {
+                self._with_divisor(h, chid):
+                    self.divisor[chid] * waveforms[h][::self._divisor[chid]]
+                for codewords in awg_sequence.values()
+                if codewords is not None
+                for cw, chids in codewords.items()
+                if cw != 'metadata'
+                for chid, h in chids.items()}
+            self._awg_interface._zi_write_waves(waves_to_upload)
+
+    def _compile_awg_program(
+            self,
+            program
+    ):
+        awg_str = self._sequence_string_template.format(
+            wave_definitions='\n'.join(self._wave_definitions + self._interleaves),
+            codeword_table_defs='\n'.join(self._codeword_table_defs),
+            playback_string='\n  '.join(self._playback_strings),
+        )
+
+        if not self._use_placeholder_waves or program:
+            run_compiler = True
+        else:
+            cached_lookup = self._awg_interface._hdawg_waveform_cache.get(
+                f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup', None)
+            try:
+                np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
+                run_compiler = False
+            except AssertionError:
+                log.debug(f'{self.awg.name}_{self._awg_nr}: Waveform reuse '
+                          f'pattern has changed. Forcing recompilation.')
+                run_compiler = True
+
+        if run_compiler:
+            # We have to retrieve the following parameter to set it
+            # again after programming the AWG.
+            prev_dio_valid_polarity = self.awg.get(
+                'awgs_{}_dio_valid_polarity'.format(self._awg_nr))
+
+            self._awg.configure_awg_from_string(
+                awg_nr=self._awg_nr,
+                program_string=awg_str,
+                timeout=600
+            )
+
+            self.awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
+                         prev_dio_valid_polarity)
+            if self._use_placeholder_waves:
+                self._awg_interface._hdawg_waveform_cache[
+                    f'{self._awg.name}_{self._awg_nr}'] = {}
+                self._awg_interface._hdawg_waveform_cache[
+                    f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup'] = \
+                    self._wave_idx_lookup
+
+    def _upload_after_compilation(
+            self,
+            waveforms,
+    ):
+        if self._use_placeholder_waves:
+            for idx, wave_hashes in self._defined_waves[1].items():
+                self._awg_interface._update_waveforms(
+                    self._awg_nr,
+                    idx,
+                    wave_hashes,
+                    waveforms
+                )
+
+    def _set_signal_output_status(self):
+        pass
+
+    def _with_divisor(self, h, ch):
+        return h if self._divisor[ch] == 1 else (h, self._divisor[ch])
+
+
+def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
+    """Recursively adds entries in dict new to the combined dict and
+    checks if the values on the lowest level are the same in combined
+    and new.
+
+    Args:
+        new (dict): Dict with new values that will be added to the
+            combined dict after testing if the values for existing keys
+            match with the ones in combined.
+        combined (dict): Dict to which the items in new will be added.
+        excluded_keys (list[str], optional): List of dict keys (str)
+            that will not be added to combined and not be tested to have
+            the same values in new and combined. Defaults to tuple().
+
+    Returns:
+        bool: Whether all values for all keys in new (except
+            excluded_keys) that already excisted in combined are the
+            same for new and combined.
+    """
+    if not (isinstance(new, dict) and isinstance(combined, dict)):
+        if new != combined:
+            return False
+        else:
+            return True
+    for key in new.keys():
+        if key in excluded_keys:
+            # we do not care if this is the same in all dicts
+            continue
+        if key in combined.keys():
+            if not diff_and_combine_dicts(new[key], combined[key],
+                                          excluded_keys):
+                return False
+        else:
+            combined[key] = new[key]
+    return True
 
