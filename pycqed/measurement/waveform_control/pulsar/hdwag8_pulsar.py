@@ -81,6 +81,15 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         # dict for storing previously-uploaded waveforms
         self._hdawg_waveform_cache = dict()
 
+        self._hdawg_channel_pairs = []
+        for awg_nr in self._hdawg_active_awgs():
+            channel_pair = HDAWG8Channel(
+                awg=self.awg,
+                awg_interface=self,
+                awg_nr=awg_nr
+            )
+            self._hdawg_channel_pairs.append(channel_pair)
+
     def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
@@ -699,6 +708,38 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         if any(ch_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
+    def program_awg_new(self, awg_sequence, waveforms, repeat_pattern=None,
+                    channels_to_upload="all", channels_to_program="all"):
+
+        use_placeholder_waves = self.pulsar.get(
+            f"{self.awg.name}_use_placeholder_waves")
+        if not use_placeholder_waves:
+            if not self.zi_waves_clean():
+                self._zi_clear_waves()
+
+        has_waveforms = False
+        for channel_pair in self._hdawg_channel_pairs:
+            upload = channels_to_upload == 'all' or \
+                      any([ch in channels_to_upload
+                           for ch in channel_pair.channel_ids])
+            program = channels_to_program == 'all' or \
+                      any([ch in channels_to_program
+                           for ch in channel_pair.channel_ids])
+            channel_pair.program_awg_channel(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                program=program,
+                upload=upload
+            )
+            has_waveforms |= any(channel_pair.has_waveforms)
+
+        if self.pulsar.sigouts_on_after_programming():
+            for ch in range(8):
+                self.awg.set('sigouts_{}_on'.format(ch), True)
+
+        if has_waveforms:
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
+
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.pulsar.use_sequence_cache():
             if wave_hashes == self._hdawg_waveform_cache[
@@ -794,11 +835,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
 
 class HDAWG8Channel(ZIDriveAWGChannel):
-    """Pulsar interface for ZI HDAWG channel pairs
-    """
+    """Pulsar interface for ZI HDAWG channel pairs."""
 
-    def __init__(self, awg_nr: int):
-        super().__init__(awg_nr)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._hdawg_internal_mod = False
+        # TODO: this attribute is used only when using the old internal
+        #  modulation implementation on HDAWG. Remove this attribute once the
+        #  new implementation is deployed.
+        """Flag that indicates whether internal modulation is turned on for 
+        this device."""
 
     def _generate_channel_ids(
             self,
@@ -813,3 +860,77 @@ class HDAWG8Channel(ZIDriveAWGChannel):
         self._analog_channel_ids = [ch1id, ch2id]
         self._marker_channel_ids = [ch1mid, ch2mid]
         self._upload_idx = awg_nr
+
+    def _update_internal_mod_config(
+            self,
+            awg_sequence,
+    ):
+        """Updates self._hdawg_internal_modulation flag according to the
+        setting specified in pulsar.
+
+        Args:
+            awg_sequence: A list of elements. Each element consists of a
+            waveform-hash for each codeword and each channel.
+        """
+        channels = [self.pulsar._id_channel(chid, self._awg.name)
+                    for chid in self._analog_channel_ids]
+        pulsar = self.pulsar
+
+        if all([pulsar.get(f"{chan}_internal_modulation")
+                for chan in channels]):
+            self._hdawg_internal_mod = True
+        elif not any([pulsar.get(f"{chan}_internal_modulation")
+                      for chan in channels]):
+            self._hdawg_internal_mod = False
+        else:
+            raise NotImplementedError('Internal modulation can only be'
+                                      'specified per sub AWG!')
+
+    def _generate_playback_string(
+            self,
+            wave,
+            codeword,
+            use_placeholder_waves,
+            metadata,
+            first_element_of_segment
+    ):
+        if not self._hdawg_internal_mod:
+            if first_element_of_segment:
+                prepend_zeros = self.pulsar.parameters[
+                    f"{self._awg.name}_prepend_zeros"]()
+                if prepend_zeros is None:
+                    prepend_zeros = self.pulsar.prepend_zeros()
+                elif isinstance(prepend_zeros, list):
+                    prepend_zeros = prepend_zeros[self._awg_nr]
+            else:
+                prepend_zeros = 0
+            self._playback_strings += self._awg_interface._zi_playback_string(
+                name=self._awg.name,
+                device='hdawg',
+                wave=wave,
+                codeword=codeword,
+                prepend_zeros=prepend_zeros,
+                placeholder_wave=use_placeholder_waves,
+                allow_filter=metadata.get('allow_filter', False)
+            )
+        elif not use_placeholder_waves:
+            pb_string, interleave_string = \
+                self._awg_interface._zi_interleaved_playback_string(
+                    name=self._awg.name,
+                    device='hdawg',
+                    counter=self._counter,
+                    wave=wave,
+                    codeword=codeword
+                )
+            self._counter += 1
+            self._playback_strings += pb_string
+            self._interleaves += interleave_string
+        else:
+            raise NotImplementedError("Placeholder waves in "
+                                      "combination with internal "
+                                      "modulation not implemented.")
+
+    def _set_signal_output_status(self):
+        if self.pulsar.sigouts_on_after_programming():
+            for ch in range(8):
+                self._awg.set('sigouts_{}_on'.format(ch), True)
