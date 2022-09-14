@@ -671,7 +671,7 @@ class ZIDriveAWGChannel:
             program=program,
         )
 
-        if not any([self.has_waveforms.values()]):
+        if not any(self.has_waveforms.values()):
             # prevent ZI_base_instrument.start() from starting this sub AWG
             self._awg._awg_program[self._awg_nr] = None
             return
