@@ -711,6 +711,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
+        self.wfms_to_upload = {}  # reset waveform upload memory
+
         use_placeholder_waves = self.pulsar.get(
             f"{self.awg.name}_use_placeholder_waves")
         if not use_placeholder_waves:
