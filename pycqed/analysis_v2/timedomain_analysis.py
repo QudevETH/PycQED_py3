@@ -10034,8 +10034,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
                 n_resets = prep_params.get('reset_reps')
-                # in some cases the number of reset might not be part of the 
-                # reset params if it was not provided at run time. 
+                # in some cases the number of reset might not be part of the
+                # reset params if it was not provided at run time.
                 # So we tell the user about it and mention how the info can be provided.
                 if not n_resets:
                     log.warning('reset_reps not found in reset_params obtained '
@@ -10594,7 +10594,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         }
 
         if self.do_fitting:
-            # define grid with limits based on measurement points 
+            # define grid with limits based on measurement points
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
@@ -12377,7 +12377,11 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
 
-        def pf_function(t, w_p=100e6, delta_w=100e6, g_ro=10e6, kappa=10e6, scaling=1):
+        def pf_function(t, w_p=100e6, g_ro=10e6, kappa=10e6, scaling=1, #harmonic='first',
+                        # fs2=0, fs4=0, fs6=0
+                        delta_w=100e6,
+                        time_offset=0, pop_offset=0
+                        ):
             """
             # Calculates the probability to be in the f state for SWAP with the
             # readout resoantor
@@ -12392,7 +12396,7 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             :return:  probability to be in f state
             """
 
-            t = t*1e9
+            t = t*1e9 + time_offset*1e9
             w_p =  w_p*1e-9
             kappa = kappa * 1e-9
             g_ro = g_ro * 1e-9
@@ -12404,10 +12408,15 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             d = 1 / np.emath.sqrt(2 * (1 - (kappa / (4 * g)) ** 2))
             lambda1 = -1j * kappa / 4 + np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
             lambda2 = -1j * kappa / 4 - np.emath.sqrt(g ** 2 - (kappa / 4) ** 2)
-            pf = 0.5 * scaling * np.abs(
-                d * (b - c) * np.exp(-1j * lambda1 * t) - d * (b + c) * np.exp(
-                    -1j * lambda2 * t)) ** 2
-            # extend to scaling factors etc
+
+            pf = (t<-time_offset) * scaling + (t>=-time_offset) * 0.5 * scaling * np.abs(
+                d * (b - c) * np.exp(-1j * 2 * np.pi * lambda1 * t) - d * (b + c) * np.exp(
+                    -1j * 2 * np.pi * lambda2 * t)) ** 2
+
+            M = np.emath.sqrt(16 * g ** 2 - kappa ** 2) / 4
+            pf = pop_offset + (t < -time_offset) * scaling + (t >= -time_offset) * scaling * np.exp(-kappa * t * 2 * np.pi / 2) * (
+                        np.cos(2 * np.pi * M * t) + kappa / (4 * M) * np.sin(2 * np.pi * M * t)) ** 2 # from paper, but same as above
+
             return pf
 
         # def pf_function(t, g=6e6, kappa=20e6, scaling = 1):
@@ -12424,7 +12433,10 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
 
         def add_fit_dict(qbn, data, key):
             if self.num_cal_points != 0:
-                data = np.array([element[:-self.num_cal_points] for element in data])
+                if np.array(data).ndim > 1:
+                    data = np.array([element[:-self.num_cal_points] for element in data])
+                else:
+                    data = data[:-self.num_cal_points]
 
             t = self.proc_data_dict['sweep_points_dict'][qbn]['msmt_sweep_points']
             try:
@@ -12440,6 +12452,7 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             g_ro = self.get_param_value('g_ro', 10e6)
             fit_g_ro = self.get_param_value('fit_g_ro', False)
             delta_w = self.get_param_value('delta_w', 100e6)
+            delta_w = 2*w_p-841522029.0463486 # qubit14 detuning wR-wEF
             fit_delta_w = self.get_param_value('fit_delta_w', False)
 
 
@@ -12454,6 +12467,25 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             #                         vary=True)
             pf_model.set_param_hint('delta_w', value=delta_w, min=10e6, max=400e6, vary=fit_delta_w)
             pf_model.set_param_hint('scaling', value=1, min=0, max=1.5)
+            pf_model.set_param_hint('time_offset', value=0, min=-10e-9, max=1e-9)
+            pf_model.set_param_hint('pop_offset', value=0, min=-0.05, max=+0.05)
+
+            # if self.harmonic == 'first':
+            #     # pf_model.set_param_hint('harmonic', value='first', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6, max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=0, min=0, max=400e4, vary=False)
+            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4, vary=False)
+            # if self.harmonic == 'second':
+            #     # pf_model.set_param_hint('harmonic', value='second', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6, max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=delta_w/10, min=0, max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4, vary=False)
+            # if self.harmonic == 'third':
+            #     # pf_model.set_param_hint('harmonic', value='third', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6, max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=delta_w / 100, min=10e4, max=400e4, vary=True)
+            #     pf_model.set_param_hint('fs6', value=delta_w / 100, min=10e4, max=400e4, vary=True)
+
             guess_pars = pf_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -12510,8 +12542,10 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                     # yvals = self.proc_data_dict['sweep_points_2D_dict'][qbn]['frequency']
                     yvals = self.proc_data_dict['data_to_fit'][qbn]
                     if self.num_cal_points != 0:
-                        yvals = np.array(
-                            [element[:-self.num_cal_points] for element in yvals][0])
+                        if np.array(yvals).ndim > 1:
+                            yvals = np.array([element[:-self.num_cal_points] for element in yvals][0])
+                        else:
+                            yvals = yvals[:-self.num_cal_points]
 
                     self.plot_dicts[f'{base_plot_name}_main'] = {
                         # 'plotfn': self.plot_colorxy,
@@ -12671,7 +12705,7 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
         To be specific: Calculates the time evolution of the y and z
         components of the qubit state vector under the application of
-        an X gate described by the time-independent Hamiltonian 
+        an X gate described by the time-independent Hamiltonian
         (ang_scaling*pi/t_gate)*sigma_x/2.
 
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
