@@ -71,6 +71,15 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         (off) in :meth:`start` (:meth:`stop`).
         """
 
+        self._shf_generator_channels = []
+        for awg_nr in range(len(self.awg.sgchannels)):
+            channel = SHFGeneratorChannel(
+                awg=self.awg,
+                awg_interface=self,
+                awg_nr=awg_nr
+            )
+            self._shf_generator_channels.append(channel)
+
     def _get_awgs_mcc(self) -> list:
         return [sgc.awg for sgc in self.awg.sgchannels]
 
@@ -168,7 +177,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
 
     # FIXME: clean up and move func. common with HDAWG to zi_pulsar_mixin module
-    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+    def program_awg_old(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
         self.wfms_to_upload = {}  # reset waveform upload memory
         chids = [f'sg{i + 1}{iq}' for i in range(len(self.awg.sgchannels))
@@ -526,6 +535,38 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         if any(ch_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                        channels_to_upload="all", channels_to_program="all"):
+
+        self.wfms_to_upload = {}  # reset waveform upload memory
+
+        use_placeholder_waves = self.pulsar.get(
+            f"{self.awg.name}_use_placeholder_waves")
+        if not use_placeholder_waves:
+            if not self.zi_waves_clean():
+                self._zi_clear_waves()
+
+        has_waveforms = False
+        for channel in self._shf_generator_channels:
+            upload = channels_to_upload == 'all' or \
+                any([ch in channels_to_upload for ch in channel.channel_ids])
+            program = channels_to_program == 'all' or \
+                any([ch in channels_to_program for ch in channel.channel_ids])
+            channel.program_awg_channel(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                program=program,
+                upload=upload
+            )
+            has_waveforms |= any(channel.has_waveforms)
+
+        if self.pulsar.sigouts_on_after_programming():
+            for sgchannel in self.awg.sgchannels:
+                sgchannel.output.on(True)
+
+        if has_waveforms:
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
+
     def is_awg_running(self):
         is_running = []
         first_sg_awg = len(getattr(self.awg, 'qachannels', []))
@@ -812,9 +853,9 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         ch2id = f'sg{awg_nr+1}q'
         chmid = 'ch{}m'.format(awg_nr * 2 + 1)
 
-        self._channel_ids = [ch1id, chmid, ch2id]
-        self._analog_channel_ids = [ch1id, ch2id]
-        self._marker_channel_ids = [chmid]
+        self.channel_ids = [ch1id, chmid, ch2id]
+        self.analog_channel_ids = [ch1id, ch2id]
+        self.marker_channel_ids = [chmid]
         self._upload_idx = awg_nr
 
     def _update_internal_mod_config(
@@ -855,7 +896,7 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         for ch, config in channel_mod_config.items():
             if ch.endswith('q'):
                 continue
-            self.configure_internal_mod(
+            self._awg_interface.configure_internal_mod(
                 ch,
                 enable=config.get('internal_mod', False),
                 osc_index=config.get('osc', 0),
