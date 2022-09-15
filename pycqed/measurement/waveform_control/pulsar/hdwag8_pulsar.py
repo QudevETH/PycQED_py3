@@ -874,12 +874,11 @@ class HDAWG8Channel(ZIDriveAWGChannel):
         """
         channels = [self.pulsar._id_channel(chid, self._awg.name)
                     for chid in self.analog_channel_ids]
-        pulsar = self.pulsar
 
-        if all([pulsar.get(f"{chan}_internal_modulation")
+        if all([self.pulsar.get(f"{chan}_internal_modulation")
                 for chan in channels]):
             self._hdawg_internal_mod = True
-        elif not any([pulsar.get(f"{chan}_internal_modulation")
+        elif not any([self.pulsar.get(f"{chan}_internal_modulation")
                       for chan in channels]):
             self._hdawg_internal_mod = False
         else:
