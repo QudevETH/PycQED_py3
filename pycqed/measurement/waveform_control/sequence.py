@@ -85,8 +85,6 @@ class Sequence:
             channel name as highest-level key:
             sequences[awg][elname][cw][chid] == channel_hashes[ch][elname][cw]
         """
-        # TODO change awg to group everywhere and in get_element_codewords and in get_element_channels and in waveforms
-        # TODO keep sequences organized via awgs
         waveforms = {}
         sequences = {}
         channel_hashes = {}
@@ -217,8 +215,6 @@ class Sequence:
                 seg._test_overlap()
             # mark sequence as resolved
             seq.is_resolved = True
-
-# TODO search for element/awg to check whether the rest is really all OK
 
     def n_acq_elements(self, per_segment=False):
         """
