@@ -144,8 +144,8 @@ class Sequence:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \
                         seg.allow_filter
-                    sequences[awg][elname]['metadata'].setdefault('trigger_group', set())
-                    sequences[awg][elname]['metadata']['trigger_group'].add(group)
+                    sequences[awg][elname]['metadata'].setdefault('trigger_groups', set())
+                    sequences[awg][elname]['metadata']['trigger_groups'].add(group)
                     # Write modulation and sine configuration to element
                     if seg.mod_config:
                         sequences[awg][elname]['metadata']['mod_config'] = \

@@ -284,7 +284,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
-                trigger_groups = metadata['trigger_group']
+                trigger_groups = metadata['trigger_groups']
                 if not self.pulsar.check_channels_in_trigger_groups(
                         channels, trigger_groups):
                     return playback_strings
