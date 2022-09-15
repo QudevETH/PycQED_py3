@@ -659,7 +659,7 @@ class Pulsar(Instrument):
 
     def define_awg_channels(self, awg:Instrument,
                             channel_name_map:dict=None,
-                            trigger_group_map:dict={}):
+                            trigger_group_map:dict=None):
         """Add an AWG with a channel mapping to the pulsar.
 
         Args:
@@ -670,6 +670,8 @@ class Pulsar(Instrument):
 
         if channel_name_map is None:
             channel_name_map = {}
+        if trigger_group_map is None:
+            trigger_group_map = {}
 
         # Sanity checks
         for channel_name in channel_name_map.values():
