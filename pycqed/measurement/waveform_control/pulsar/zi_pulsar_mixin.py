@@ -894,7 +894,7 @@ class ZIDriveAWGChannel:
         if not self._use_placeholder_waves:
             waves_to_upload = {
                 self._with_divisor(h, chid):
-                    self.divisor[chid] * waveforms[h][::self._divisor[chid]]
+                    self._divisor[chid] * waveforms[h][::self._divisor[chid]]
                 for codewords in awg_sequence.values()
                 if codewords is not None
                 for cw, chids in codewords.items()
