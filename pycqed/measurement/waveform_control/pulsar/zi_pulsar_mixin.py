@@ -664,6 +664,8 @@ class ZIDriveAWGChannel:
         #     if not self._awg_interface.zi_waves_clean():
         #         self._awg_interface.zi_clear_waves()
 
+        self._generate_filter_seq_code()
+        self._generate_oscillator_seq_code()
         self._generate_wave_seq_code(
             awg_sequence=awg_sequence,
             waveforms=waveforms,
