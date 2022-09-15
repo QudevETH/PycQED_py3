@@ -193,7 +193,7 @@ class PulsarAWGInterface(ABC):
                              parameter_class=ManualParameter,
                              docstring="Dictionary of group names as keys "
                                        "and a list of channels within each "
-                                       "group as keys. This allows "
+                                       "group as values. This allows "
                                        "the user to specify triggered "
                                        "sub groups of an AWG.",
                              vals=vals.Dict())
