@@ -921,7 +921,7 @@ class ZIDriveAWGChannel:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
                 run_compiler = False
             except AssertionError:
-                log.debug(f'{self.awg.name}_{self._awg_nr}: Waveform reuse '
+                log.debug(f'{self._awg.name}_{self._awg_nr}: Waveform reuse '
                           f'pattern has changed. Forcing recompilation.')
                 run_compiler = True
 
