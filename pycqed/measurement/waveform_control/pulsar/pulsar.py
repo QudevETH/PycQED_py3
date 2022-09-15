@@ -794,6 +794,7 @@ class Pulsar(Instrument):
         for awg_name in self.awgs:
             if group in self.get(f"{awg_name}_trigger_groups"):
                 return awg_name
+
     def get_trigger_group_channels(self, group:str)->List[str]:
         """
         Return all channels of the trigger group. If default return all
