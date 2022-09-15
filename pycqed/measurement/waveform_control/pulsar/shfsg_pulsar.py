@@ -184,6 +184,38 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             channels_to_program=channels_to_program,
         )
 
+    def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
+                        channels_to_upload="all", channels_to_program="all"):
+
+        self.wfms_to_upload = {}  # reset waveform upload memory
+
+        use_placeholder_waves = self.pulsar.get(
+            f"{self.awg.name}_use_placeholder_waves")
+        if not use_placeholder_waves:
+            if not self.zi_waves_clean():
+                self._zi_clear_waves()
+
+        has_waveforms = False
+        for channel in self._shf_generator_channels:
+            upload = channels_to_upload == 'all' or \
+                any([ch in channels_to_upload for ch in channel.channel_ids])
+            program = channels_to_program == 'all' or \
+                any([ch in channels_to_program for ch in channel.channel_ids])
+            channel.program_awg_channel(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                program=program,
+                upload=upload
+            )
+            has_waveforms |= any(channel.has_waveforms)
+
+        if self.pulsar.sigouts_on_after_programming():
+            for sgchannel in self.awg.sgchannels:
+                sgchannel.output.on(True)
+
+        if has_waveforms:
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
+
     def is_awg_running(self):
         is_running = []
         first_sg_awg = len(getattr(self.awg, 'qachannels', []))
