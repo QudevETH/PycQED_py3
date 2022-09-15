@@ -722,11 +722,11 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         has_waveforms = False
         for channel_pair in self._hdawg_channel_pairs:
             upload = channels_to_upload == 'all' or \
-                      any([ch in channels_to_upload
-                           for ch in channel_pair.channel_ids])
+                any([ch in channels_to_upload
+                     for ch in channel_pair.channel_ids])
             program = channels_to_program == 'all' or \
-                      any([ch in channels_to_program
-                           for ch in channel_pair.channel_ids])
+                any([ch in channels_to_program
+                     for ch in channel_pair.channel_ids])
             channel_pair.program_awg_channel(
                 awg_sequence=awg_sequence,
                 waveforms=waveforms,
