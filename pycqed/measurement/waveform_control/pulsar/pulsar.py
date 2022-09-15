@@ -861,6 +861,28 @@ class Pulsar(Instrument):
         else:
             return trigger_channels[group]
 
+    def check_channels_in_trigger_groups(self, channels:set[str],
+                                         trigger_groups:set[list[str]]):
+        """
+        Checks whether the set of channels has a none zero overlap with
+        channels in the trigger groups.
+
+        Args:
+            channels: set of channel names
+            trigger_groups: set of trigger group names
+
+        Returns:
+            True if at least one of the channels is in the trigger group,
+            else returns False.
+        """
+        group_channels = []
+        for group in trigger_groups:
+            group_channels += \
+                self.get_trigger_group_channels(group)
+
+        return len(set(group_channels) & channels) != 0
+
+
     def get_enforce_single_element(self, ch:str) -> bool:
         awg = self.get_channel_awg(ch).name
         group = self.get_trigger_group(ch)

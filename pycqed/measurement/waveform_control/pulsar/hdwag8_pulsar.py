@@ -354,14 +354,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
-
-                groups = metadata['trigger_group']
-                group_channels = []
-                for group in groups:
-                    group_channels += \
-                        self.pulsar.get_trigger_group_channels(group)
-
-                if len(set(group_channels) & set(channels)) == 0:
+                trigger_groups = metadata['trigger_group']
+                if not self.pulsar.check_channels_in_trigger_groups(
+                        set(channels), trigger_groups):
                     continue
 
                 # The following line only has an effect if the metadata
