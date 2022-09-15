@@ -888,13 +888,13 @@ class Pulsar(Instrument):
 
     def get_enforce_single_element(self, ch:str) -> bool:
         awg = self.get_channel_awg(ch).name
-        group = self.get_trigger_group(ch)
 
         enforce_single_element = self.get(f"{awg}_enforce_single_element")
 
         if isinstance(enforce_single_element, bool):
             return enforce_single_element
         else:
+            group = self.get_trigger_group(ch)
             return enforce_single_element[group]
 
     def clock(self, channel:str=None, awg:str=None):
