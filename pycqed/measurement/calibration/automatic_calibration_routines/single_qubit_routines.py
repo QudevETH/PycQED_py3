@@ -1024,8 +1024,18 @@ class FindFrequency(AutomaticCalibrationRoutine):
         """Creates the routine template for the FindFrequency routine.
         """
         super().create_routine_template()
-
-        pipulse_settings = {'qubits': self.qubits}
+        transition_name = self.get_param_value("transition_name",
+                                               qubit=self.qubit)
+        pipulse_settings = {
+            "qubits": self.qubits,
+            "settings": {
+                "PiPulseCalibration": {
+                    "General": {
+                        "transition_name": transition_name,
+                    }
+                }
+            }
+        }
         self.add_step(PiPulseCalibration, 'pi_pulse_calibration',
                       pipulse_settings)
 
@@ -1061,7 +1071,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
             # 3) v_high based on default value
             # if rabi_amps is None:
             if amp180:
-                settings['Rabi']['v_max'] = amp180
+                rabi_settings = {
+                    'Rabi':{
+                        'v_max': amp180
+                    }
+                }
+                update_nested_dictionary(settings,rabi_settings)
 
             # Delays and artificial detuning for Ramsey
             # if ramsey_delays is None or artificial_detuning is None:
@@ -1070,7 +1085,24 @@ class FindFrequency(AutomaticCalibrationRoutine):
             # 2) based on T2_star
             # 3) based on default
             if self.get_param_value("use_T2_star"):
-                settings['Ramsey']['delta_t'] = T2_star
+                ramsey_settings = {
+                    'Ramsey':{
+                        'delta_t': T2_star
+                    }
+                }
+                update_nested_dictionary(settings,ramsey_settings)
+
+        
+        transition_name = self.get_param_value("transition_name",
+                                        qubit=self.qubit)
+        pipulse_settings = {
+            "PiPulseCalibration": {
+                "General": {
+                    "transition_name": transition_name,
+                }
+            }
+        }
+        update_nested_dictionary(settings,pipulse_settings)
 
         self.add_step(
             *[
