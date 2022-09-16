@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 
 _DEFAULT_SEGMENT = (0, 32767)
+_DEFAULT_TRG_GRP = 'def_trg_grp'
 
 
 class PulsarAWGInterface(ABC):
@@ -743,7 +744,7 @@ class Pulsar(Instrument):
 
             specified_channels.update(set(channels))
 
-        new_trigger_group_map[f"{awg_name}_default_trigger_group"] =\
+        new_trigger_group_map[f"{awg_name}_{_DEFAULT_TRG_GRP}"] =\
             list(set(awg_channels) - specified_channels)
 
         self.set(f"{awg_name}_trigger_groups", new_trigger_group_map)
@@ -782,7 +783,7 @@ class Pulsar(Instrument):
         awg_name = self.get_channel_awg(channel).name
         trigger_groups = self.get(f"{awg_name}_trigger_groups")
 
-        found_group = f"{awg_name}_def_trig_grp"
+        found_group = f"{awg_name}_{_DEFAULT_TRG_GRP}"
 
         for group, channels in trigger_groups.items():
             if channel in channels:
