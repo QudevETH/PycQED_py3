@@ -773,7 +773,7 @@ class Pulsar(Instrument):
         awg_name = self.get_channel_awg(channel).name
         trigger_groups = self.get(f"{awg_name}_trigger_groups")
 
-        found_group = f"{awg_name}_default_trigger_group"
+        found_group = f"{awg_name}_def_trig_grp"
 
         for group, channels in trigger_groups.items():
             if channel in channels:
