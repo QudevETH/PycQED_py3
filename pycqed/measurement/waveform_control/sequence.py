@@ -111,7 +111,8 @@ class Sequence:
             if awg not in sequences:
                 sequences[awg] = odict()
             for segname, seg in self.segments.items():
-                # Store the name of the segment
+                # Store name of the segment as key and None as value.
+                # This is used when compiling docstrings in seqc.
                 sequences[awg].setdefault(segname)
                 elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
