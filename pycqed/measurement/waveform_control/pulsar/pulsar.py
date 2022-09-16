@@ -602,7 +602,6 @@ class Pulsar(Instrument):
         self._inter_element_spacing = 'auto'
         self.channels = set() # channel names
         self.awgs:Set[str] = set() # AWG names
-        self.trigger_groups: Set[str] = set()  # AWG trigger group names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
@@ -631,6 +630,15 @@ class Pulsar(Instrument):
         if val and not self.use_sequence_cache():
             self.reset_sequence_cache()
         return val
+
+    @property
+    def trigger_groups(self):
+        """Returns a set of all trigger group names in pulsar.
+
+        Returns:
+            Set of all trigger group names.
+        """
+        return set([g for awg in self.awgs for g in self.get(f'{awg}_trigger_groups')])
 
     def reset_sequence_cache(self):
         """Resets the sequence cache.
@@ -748,8 +756,6 @@ class Pulsar(Instrument):
             list(set(awg_channels) - specified_channels)
 
         self.set(f"{awg_name}_trigger_groups", new_trigger_group_map)
-        self.trigger_groups.update(set(new_trigger_group_map.keys()))
-
 
     def find_awg_channels(self, awg:str) -> List[str]:
         """Return a list of channels associated to an AWG."""
