@@ -464,7 +464,6 @@ class Segment:
         #   channel + the name of the last element
         # * and find the end time of the last pulse of the segment
         for element in self.element_start_end.keys():
-            # TODO refactor to groups
             # finds the channels of AWGs with that element
             awg_channels = set()
             for group in self.element_start_end[element]:
