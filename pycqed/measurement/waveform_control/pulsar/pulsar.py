@@ -819,8 +819,6 @@ class Pulsar(Instrument):
         Args:
             group: Name of the group.
         """
-
-
         awg = self.get_awg_from_trigger_group(group)
         delay = self.get(f"{awg}_delay")
 
