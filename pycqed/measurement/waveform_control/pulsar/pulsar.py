@@ -168,7 +168,11 @@ class PulsarAWGInterface(ABC):
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
                              initial_value=self.ELEMENT_START_GRANULARITY,
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Granularity in number of samples "
+                                       "with which elements can be tiggered."
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_min_length",
                              get_cmd=lambda: self.MIN_LENGTH)
         pulsar.add_parameter(f"{name}_inter_element_deadtime",
@@ -183,10 +187,15 @@ class PulsarAWGInterface(ABC):
                              parameter_class=ManualParameter,
                              docstring="Global delay applied to this channel. "
                                        "Positive values move pulses on this "
-                                       "channel forward in time.")
+                                       "channel forward in time. "
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_trigger_channels",
                              initial_value=[],
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="List of channels triggering that awg."
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_compensation_pulse_min_length",
                              initial_value=0, unit='s',
                              parameter_class=ManualParameter)
