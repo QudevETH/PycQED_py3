@@ -156,7 +156,9 @@ class PulsarAWGInterface(ABC):
                                        "(eg. readout) passed in "
                                        "'repeat dictionary'.")
         pulsar.add_parameter(f"{name}_enforce_single_element",
-                             initial_value=False, vals=vals.Bool(),
+                             initial_value=False,
+                             vals=vals.MultiType(vals.Dict(),
+                                               vals.Bool()),
                              parameter_class=ManualParameter,
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
@@ -887,6 +889,14 @@ class Pulsar(Instrument):
 
 
     def get_enforce_single_element(self, ch:str) -> bool:
+        """
+        Wrapper function for {awg}_enforce_single_element. Returns a Bool
+        whether enforce single element is activated for channel ch.
+        Args:
+            ch (str): name of channel
+        Returns:
+             True if enforce single element is activated, else False.
+        """
         awg = self.get_channel_awg(ch).name
 
         enforce_single_element = self.get(f"{awg}_enforce_single_element")
