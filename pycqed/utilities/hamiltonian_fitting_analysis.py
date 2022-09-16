@@ -12,8 +12,9 @@ import h5py
 log = logging.getLogger(__name__)
 
 # FIXME: usage of the code could maybe be simplified by using a real
-# object-oriented approach. For instance, you pass along dicts of
-# experimental_values between various functions. Analogous idea for result_dict.
+#  object-oriented approach. For instance, you pass along dicts of
+#  experimental_values between various functions. Analogous idea for
+#  result_dict.
 
 
 class HamiltonianFittingAnalysis:
@@ -41,12 +42,12 @@ class HamiltonianFittingAnalysis:
         """
         Calculates eigenenergies of transmon coupled with resonator system.
 
-        Key words will be passed on to transmon.transmon_resonator_levels
+        Keywords will be passed on to transmon.transmon_resonator_levels
 
         Arguments:
             phi: dimensionless flux
-            Ejmax: Josephson energy
-            Ec: Charge energy
+            Ej_max: Josephson energy
+            E_c: Charging energy
             d: assymmetry
             g: coupling strength
             fr: bare resonator spectroscopy
@@ -439,7 +440,7 @@ class HamiltonianFittingAnalysis:
 
     @staticmethod
     def model(bias, parameters, transitions):
-        """ "
+        """
         Model function that will be used to calculate transition frequencies.
         """
         transitions = HamiltonianFittingAnalysis._translate_transitions(

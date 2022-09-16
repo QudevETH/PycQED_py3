@@ -12,6 +12,8 @@ from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
 from typing import List, Any, Tuple, Dict
+from pycqed.instrument_drivers.meta_instrument.qubit_objects import \
+    QuDev_transmon
 from warnings import warn
 import numpy as np
 import copy
@@ -299,8 +301,8 @@ class SettingsDictionary(dict):
             log.warning("No settings_sample_folder specified.")
 
         for settings_folder in [
-                settings_default_folder, settings_setup_folder,
-                settings_sample_folder
+            settings_default_folder, settings_setup_folder,
+            settings_sample_folder
         ]:
             if settings_folder is not None:
                 settings_files = os.listdir(settings_folder)
@@ -380,10 +382,10 @@ class RoutineTemplate(list):
     """
 
     def __init__(
-        self,
-        steps,
-        global_settings=None,
-        routine=None,
+            self,
+            steps,
+            global_settings=None,
+            routine=None,
     ):
         """Initialize the routine template.
 
@@ -523,8 +525,8 @@ class RoutineTemplate(list):
             self.update_settings_at_index(settings=x, index=i)
 
     def view(
-        self,
-        **kws
+            self,
+            **kws
     ):
         """DEPRECATED.
         """
@@ -595,7 +597,7 @@ class RoutineTemplate(list):
         """
         assert isinstance(step, list), "Step must be a list"
         assert (
-            len(step) == 3 or len(step) == 4
+                len(step) == 3 or len(step) == 4
         ), "Step must be a list of length 3 or 4 (to include temporary values)"
         assert isinstance(step[0], type), (
             "The first element of the step "
@@ -657,7 +659,8 @@ class Step:
         default_settings = self.dev.autocalib_settings.copy(
         ) if self.routine is None else self.routine.settings.copy({})
         self.settings = kw.pop("settings", default_settings)
-        self.qubits = kw.pop("qubits", self.dev.get_qubits())
+        self.qubits: List[QuDev_transmon] = kw.pop("qubits",
+                                                   self.dev.get_qubits())
 
         # FIXME: this is there to make the current one-qubit-only implementation
         # of HamiltonianFitting work easily
@@ -1035,11 +1038,11 @@ class AutomaticCalibrationRoutine(Step):
     """
 
     def __init__(
-        self,
-        dev,
-        routine=None,
-        autorun=True,
-        **kw,
+            self,
+            dev,
+            routine=None,
+            autorun=True,
+            **kw,
     ):
         """Initializes the routine.
 
@@ -1327,7 +1330,8 @@ class AutomaticCalibrationRoutine(Step):
                 # Find the qubits belonging to parallel_group
                 qubits_filtered = [
                     qb for qb in self.qubits if qb.name is parallel_group or
-                    parallel_group in self.get_qubit_groups(qb.name)
+                                                parallel_group in self.get_qubit_groups(
+                        qb.name)
                 ]
                 # Create a new step for qubits_filtered only and add it to the
                 # routine template
@@ -1372,7 +1376,7 @@ class AutomaticCalibrationRoutine(Step):
         # Executing the step with corresponding settings
         if issubclass(step_class,
                       qbcal.SingleQubitGateCalibExperiment) or issubclass(
-                          step_class, QuantumExperiment):
+            step_class, QuantumExperiment):
             step = step_class(qubits=qubits,
                               routine=self,
                               dev=dev,
@@ -1446,7 +1450,7 @@ class AutomaticCalibrationRoutine(Step):
             # saving instrument settings before the routine
             self.MC.create_instrument_settings_file(
                 f"pre-{self.name}_routine-settings")
-            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1,)[0]
+            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1, )[0]
         else:
             # Registering start of routine so all data in measurement period can
             # be retrieved later to determine the Hamiltonian model
@@ -1604,11 +1608,11 @@ class AutomaticCalibrationRoutine(Step):
         return settings
 
     def view(
-        self,
-        print_global_settings=True,
-        print_general_settings=True,
-        print_tmp_vals=False,
-        **kws
+            self,
+            print_global_settings=True,
+            print_general_settings=True,
+            print_tmp_vals=False,
+            **kws
     ):
         """Prints a user-friendly representation of the routine template.
 
