@@ -1183,7 +1183,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         **kw,
     ):
         # FIXME: fluxlines_dict has to be passed as an argument because the
-        # fluxlines are not available directly from the qubit objects.
+        #  fluxlines are not available directly from the qubit objects.
         self.fluxlines_dict = fluxlines_dict
 
         super().__init__(
@@ -1313,7 +1313,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 running the Decision step. This is necessary because it might
                 take some time before the analysis results are available.
         """
-        if not isinstance(qubits, list):  # If, e.g., a single qubit was passed
+        if not isinstance(qubits, list):  # Helps of a single qubit was passed
             qubits = [qubits]
 
         super().__init__(
@@ -1408,8 +1408,11 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 mean = np.mean(data)
                 std_err = np.std(data)
                 var = std_err**2
-                # Calculate the variance of the variance using
-                # https://en.wikipedia.org/wiki/Variance#Distribution_of_the_sample_variance
+                # FIXME Calculates the variance of the entire sweep.
+                #  This is basically a the noise and only works when the
+                #  majority of the data point are expected to have approximately
+                #  the same value.
+                #  See https://en.wikipedia.org/wiki/Variance#Distribution_of_the_sample_variance
                 var_of_var = 1 / n * (np.mean(
                     (data - mean)**4) - (n - 3) / (n - 1) * var**2)
                 red_chi_upper_bound = var - np.sqrt(var_of_var)

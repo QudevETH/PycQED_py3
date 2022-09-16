@@ -847,8 +847,8 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
                 V_per_phi0 = np.abs(2 * (sweet_spot - opposite_sweet_spot))
                 qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
 
-                # Update the sign of flux_parking depending to be consistent with
-                # the positive sign V_per_phi0
+                # Update the sign of flux_parking depending to be consistent
+                # with the positive sign V_per_phi0
                 if opposite_sweet_spot > sweet_spot and qb.flux_parking() == 0.5:
                     qb.flux_parking(-0.5)
                 elif opposite_sweet_spot < sweet_spot and qb.flux_parking() == -0.5:

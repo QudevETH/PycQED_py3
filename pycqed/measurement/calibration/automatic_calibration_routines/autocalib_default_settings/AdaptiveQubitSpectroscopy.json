@@ -19,21 +19,21 @@
         "min_kappa_absolute": 0
     },
 
-    "qubit_spectroscopy_1": {
+    "qubit_spectroscopy_1d": {
         "spec_power": -5,
         "freq_range": 1.5e9,
         "pts": 1000,
         "freq_center": "{current}"
     },
 
-    "qubit_spectroscopy_1_repetition_2": {
+    "qubit_spectroscopy_1d_repetition_2": {
         "spec_power": 0,
         "freq_range": 2e9,
         "pts": 1500,
         "freq_center": "{current}"
     },
 
-    "qubit_spectroscopy_1_repetition_3": {
+    "qubit_spectroscopy_1d_repetition_3": {
         "spec_power": 5,
         "freq_range": 2.5e9,
         "pts": 2500,

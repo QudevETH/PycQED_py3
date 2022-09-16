@@ -11,7 +11,7 @@ from pycqed.utilities.reload_settings import reload_settings
 from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
-from typing import List, Any, Tuple
+from typing import List, Any, Tuple, Dict
 from warnings import warn
 import numpy as np
 import copy
@@ -121,7 +121,7 @@ class SettingsDictionary(dict):
                 the dictionary.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
-                routine)
+                routine).
             associated_component_type_hint (str): A hint for the device
                 database, if the parameter does not belong to the qubit.
 
@@ -167,10 +167,12 @@ class SettingsDictionary(dict):
                     # Look if param is defined for a specific qubit or a group
                     # of qubits
                     if qubit and 'qubits' in self[lookup]:
-                        for group, v in self[lookup]['qubits'].items():
-                            if group == qubit or group in groups:
-                                if param in v:
-                                    return v[param], True
+                        # Ignore the qubits list of the experiment
+                        if isinstance(self[lookup]['qubits'], dict):
+                            for group, v in self[lookup]['qubits'].items():
+                                if group == qubit or group in groups:
+                                    if param in v:
+                                        return v[param], True
                     # Return the parameter if it is found in self[lookup]
                     if param in self[lookup]:
                         return self[lookup][param], True
@@ -643,7 +645,8 @@ class Step:
             qubits (list): A list with the Qubit objects which should be part of
                 the step.
             settings_user (dict): A dictionary from the user to update the
-                configuration parameters with.
+                configuration parameters. The structure of the dictionary must
+                be compatible with that of a general settings dictionary.
 
         """
         self.routine = routine
@@ -718,19 +721,19 @@ class Step:
                 was found in the configuration parameter dictionary. Defaults to
                 None.
                 FIXME: A better solution would be to change the function and
-                return also a bool indicating whether a parameter was found.
-                This would require minimal changes in this function, but it
-                would require to go through the code and fix all the lines
-                containing a call to get_param_value.
+                 return also a bool indicating whether a parameter was found.
+                 This would require minimal changes in this function, but it
+                 would require to go through the code and fix all the lines
+                 containing a call to get_param_value.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
                 routine)
-            associated_component_type_hint (str): A hint for the device database,
-                if the parameter does not belong to the qubit.
+            associated_component_type_hint (str): A hint for the device
+                database, if the parameter does not belong to the qubit.
 
         Returns:
             The value found in the dictionary. If no value was found, either the
-            default value is returned if specified or otherwhise None.
+            default value is returned if specified or otherwise None.
         """
         # Get the groups the specified qubit belongs to. This allows searching
         # for qubit-specific settings
@@ -1074,6 +1077,7 @@ class AutomaticCalibrationRoutine(Step):
 
         self.routine_template: RoutineTemplate = None
         self.current_step: Step = None
+        self.current_step_settings: Dict = None
         self.current_step_tmp_vals: List[Tuple[Parameter, Any]] = None
 
         # MC - trying to get it from either the device or the qubits
@@ -1943,7 +1947,7 @@ def update_nested_dictionary(d, u):
     """
     for k, v in u.items():
         # Check whether the value 'v' is a dictionary. In this case,
-        # updates_nested_dictionary is called again recursively. The
+        # update_nested_dictionary is called again recursively. The
         # subdictionary d[k] will be updated with v.
         if isinstance(v, collections.abc.Mapping):
             d[k] = update_nested_dictionary(d.get(k, {}), v)
