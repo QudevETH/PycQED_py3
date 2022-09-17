@@ -663,7 +663,7 @@ class Step:
                                                    self.dev.get_qubits())
 
         # FIXME: this is there to make the current one-qubit-only implementation
-        # of HamiltonianFitting work easily
+        #  of HamiltonianFitting work easily
         # remove dependency on self.qubit
         self.qubit = self.qubits[0]
 
@@ -691,8 +691,8 @@ class Step:
             return False
 
     def get_param_value(self,
-                        param,
-                        qubit=None,
+                        param: str,
+                        qubit: QuDev_transmon=None,
                         sublookups=None,
                         default=None,
                         leaf=None,
@@ -715,6 +715,7 @@ class Step:
 
         Args:
             param (str): The name of the parameter to look up.
+            qubit (Qudev_transmon): Qubit instance to which the param is related
             sublookups (list of str): Optional subscopes to be looked up. The
                 sublookups will be assumed to be sorted by priority (highest
                 priority first).
@@ -803,7 +804,7 @@ class Step:
             set: A set of strings with the group names the qubit is part of.
         """
         # FIXME: When a qubit is removed from a group with the same
-        # name in higher hierarchy, it will still remain.
+        #  name in higher hierarchy, it will still remain.
         lookups = ['Groups']
         groups = self.settings.get_qubit_groups(qubit, lookups)
         if self.routine is not None:
@@ -1201,8 +1202,8 @@ class AutomaticCalibrationRoutine(Step):
         return settings
 
     def extract_step_settings(self,
-                              step_class,
-                              step_label,
+                              step_class: Step,
+                              step_label: str,
                               step_settings=None,
                               lookups=None,
                               sublookups=None):
@@ -1238,8 +1239,6 @@ class AutomaticCalibrationRoutine(Step):
             dict: A dictionary containing the settings extracted from the
                 configuration parameter dictionary.
         """
-        if not issubclass(step_class, Step):
-            raise NotImplementedError("Steps have to inherit from class Step.")
         if step_settings is None:
             step_settings = {}
         # No 'General' lookup since at this point we are only interested
@@ -1437,10 +1436,10 @@ class AutomaticCalibrationRoutine(Step):
                 step1), if stop_index is set to 2.
 
         FIXME: There's an issue when starting from a given start index. The
-        routine_steps is only wiped if the routine ran completely and is reran
-        from the start. In the future, it might be good to implement a way so
-        the user can choose if previous results should be wiped or not (that is,
-        if routine_steps should be wiped or not).
+         routine_steps is only wiped if the routine ran completely and is reran
+         from the start. In the future, it might be good to implement a way so
+         the user can choose if previous results should be wiped or not (that is,
+         if routine_steps should be wiped or not).
         """
         routine_name = self.name
 
@@ -1563,7 +1562,7 @@ class AutomaticCalibrationRoutine(Step):
         self.create_initial_routine(load_parameters=False)
         if self.autorun:
             # FIXME: if the init does not finish the object does not exist and
-            # the routine results are not accessible
+            #  the routine results are not accessible
             try:
                 self.run()
             except:
@@ -1585,10 +1584,10 @@ class AutomaticCalibrationRoutine(Step):
                 (overwriting the previous frb value).
 
         FIXME: The selection of parameters extracted from the qb is currently
-        tailored to the first example use cases. This either needs to be
-        generalized to extract more parameters here, or we could decide the
-        concrete routines could override the method to extract their specific
-        parameters.
+         tailored to the first example use cases. This either needs to be
+         generalized to extract more parameters here, or we could decide the
+         concrete routines could override the method to extract their specific
+         parameters.
         """
         qb = self.qubit
 
@@ -1733,9 +1732,9 @@ class AutomaticCalibrationRoutine(Step):
                                                             index=index)
 
     def add_step(self,
-                 step_class,
-                 step_label,
-                 step_settings,
+                 step_class: Step,
+                 step_label: str,
+                 step_settings: Dict[str, Any],
                  step_tmp_vals=None,
                  index=None):
         """Adds a step to the routine template. The settings of the step are

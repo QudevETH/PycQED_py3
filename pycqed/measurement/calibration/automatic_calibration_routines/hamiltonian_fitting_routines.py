@@ -78,7 +78,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         # Retrieve the DCSources from the fluxlines_dict. These are necessary
         # to reload the pre-routine settings when update=False
         self.DCSources = []
-        for qb in self.dev.qubits:
+        for qb in self.dev.qubits:  # TODO shouldn't it be `self.qubits`? BG.
             dc_source = self.fluxlines_dict[qb.name].instrument
             if dc_source not in self.DCSources:
                 self.DCSources.append(dc_source)
@@ -301,17 +301,17 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     -0.5: ('ge',),
                     -0.25: ('ge',)}
 
-            flux_to_voltage_and_freq_guess (dict): Guessed values for voltage
-                and ge-frequencies for the fluxes in the measurement dictionary
-                in case no Hamiltonian model is available yet. If passed, the
-                dictionary must include guesses for the first two fluxes of
-                `measurements` (which should be sweet spots). Default is None,
-                in which case it is required to have use_prior_model==True. This
-                means that the guesses will automatically be calculated with the
-                existing model.
+            flux_to_voltage_and_freq_guess (dict(float, tuple(float, float))):
+                Guessed values for voltage and ge-frequencies for the fluxes in
+                the measurement dictionary in case no Hamiltonian model is
+                available yet. If passed, the dictionary must include guesses
+                for the first two fluxes of `measurements` (which should be
+                sweet spots). Default is None, in which case it is required to
+                have use_prior_model==True. This means that the guesses will
+                automatically be calculated with the existing model.
 
-                Note, for succesful execution of the routine either a
-                flux_to_voltage_and_freq_guess must be passed or a
+                Note, for successful execution of the routine either a
+                `flux_to_voltage_and_freq_guess` must be passed or a
                 flux-voltage model must be specified in the qubit object.
 
                 For example, `flux_to_voltage_and_freq_guess = {0:(-0.5,
@@ -352,13 +352,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 False.
 
         FIXME: If the guess is very rough, it might be good to have an option to
-        run a qubit spectroscopy before. This could be included in the future
-        either directly here or, maybe even better, as an optional step in
-        FindFrequency.
+         run a qubit spectroscopy before. This could be included in the future
+         either directly here or, maybe even better, as an optional step in
+         FindFrequency.
 
         FIXME: There needs to be a general framework allowing the user to decide
-        which optional steps should be included (e.g., mixer calib, qb spec,
-        FindFreq before ReparkingRamsey, etc.).
+         which optional steps should be included (e.g., mixer calib, qb spec,
+         FindFreq before ReparkingRamsey, etc.).
 
         FIXME: The routine relies on fp-assisted read-out which assumes
          that the qubit object has a model containing the dac_sweet_spot and
@@ -389,10 +389,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Flux to voltage and frequency dictionaries (guessed and measured)
         self.flux_to_voltage_and_freq = {}
         if flux_to_voltage_and_freq_guess is not None:
-            flux_to_voltage_and_freq_guess = (
-                flux_to_voltage_and_freq_guess.copy())
-        self.flux_to_voltage_and_freq_guess: Dict[
-            float, Tuple[float, float]] = flux_to_voltage_and_freq_guess
+            self.flux_to_voltage_and_freq_guess: Dict[float, Tuple[
+                float, float]] = flux_to_voltage_and_freq_guess.copy()
 
         # Routine attributes
         self.fluxlines_dict = fluxlines_dict
@@ -502,10 +500,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                   step_settings)
 
                     # Finding the ge-transition frequency at this voltage
-                    find_freq_settings = {
-                        "transition_name": transition,
-                    }
                     step_label = 'find_frequency_' + transition + '_' + str(i)
+                    find_freq_settings = {
+                        'settings': {
+                            step_label: {
+                                "General": {
+                                    "transition_name": transition,
+                                }
+                            }
+                        }
+                    }
                     self.add_step(
                         FindFrequency,
                         step_label,
@@ -541,7 +545,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                     step_label: {
                                         "flux": flux
                                     }
-                                            },
+                                },
                             },
                         )
 
@@ -558,11 +562,17 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     self.add_step(self.UpdateFrequency, step_label,
                                   step_settings)
 
-                    find_freq_settings = {
-                        "transition_name": transition,
-                    }
                     # Finding the ef-frequency
                     step_label = "find_frequency_" + transition
+                    find_freq_settings = {
+                        'settings': {
+                            step_label: {
+                                "General": {
+                                    "transition_name": transition,
+                                }
+                            }
+                        }
+                    }
                     self.add_step(
                         FindFrequency,
                         step_label,
@@ -644,7 +654,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
         # Interweave routine if the user wants to include mixer calibration
         # FIXME: Currently not included because it still needs to be properly
-        # tested (there were problem with mixer calibration on Otemma)
+        #  tested (there were problem with mixer calibration on Otemma)
         # self.add_mixer_calib_steps(**self.kw)
 
     def add_mixer_calib_steps(self, **kw):
