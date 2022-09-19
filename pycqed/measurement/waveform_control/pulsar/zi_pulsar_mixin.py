@@ -885,21 +885,20 @@ class ZIDriveAWGChannel:
     ):
         pass
 
-    def _upload_before_compilation(
+    def _upload_csv_waveforms(
             self,
             waveforms,
             awg_sequence,
     ):
-        if not self._use_placeholder_waves:
-            waves_to_upload = {
-                self._with_divisor(h, chid):
-                    self._divisor[chid] * waveforms[h][::self._divisor[chid]]
-                for codewords in awg_sequence.values()
-                if codewords is not None
-                for cw, chids in codewords.items()
-                if cw != 'metadata'
-                for chid, h in chids.items()}
-            self._awg_interface._zi_write_waves(waves_to_upload)
+        waves_to_upload = {
+            self._with_divisor(h, chid):
+                self._divisor[chid] * waveforms[h][::self._divisor[chid]]
+            for codewords in awg_sequence.values()
+            if codewords is not None
+            for cw, chids in codewords.items()
+            if cw != 'metadata'
+            for chid, h in chids.items()}
+        self._awg_interface._zi_write_waves(waves_to_upload)
 
     def _compile_awg_program(
             self,
@@ -945,18 +944,17 @@ class ZIDriveAWGChannel:
                     f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup'] = \
                     self._wave_idx_lookup
 
-    def _upload_after_compilation(
+    def _upload_placeholder_waveforms(
             self,
             waveforms,
     ):
-        if self._use_placeholder_waves:
-            for idx, wave_hashes in self._defined_waves[1].items():
-                self._awg_interface._update_waveforms(
-                    self._awg_nr,
-                    idx,
-                    wave_hashes,
-                    waveforms
-                )
+        for idx, wave_hashes in self._defined_waves[1].items():
+            self._awg_interface._update_waveforms(
+                awg_nr=self._awg_nr,
+                wave_idx=idx,
+                wave_hashes=wave_hashes,
+                waveforms=waveforms,
+            )
 
     def _set_signal_output_status(self):
         pass
