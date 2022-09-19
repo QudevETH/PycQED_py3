@@ -343,6 +343,9 @@ class MockDAQServer():
                         'type': 'ZIVectorData', 'value': np.array([])}
                     self.nodes[f'/{self.device}/awgs/{awg_nr}/waveform/waves/{i}'] = {
                         'type': 'ZIVectorData', 'value': np.array([])}
+                # adds nodes that save command tables
+                self.nodes[f'/{self.device}/awgs/{awg_nr}/commandtable/data'] = {
+                    'type': 'ZIVectorData', 'value': []}
             for sigout_nr in range(8):
                 self.nodes[f'/{self.device}/sigouts/{sigout_nr}/precompensation/fir/coefficients'] = {
                     'type': 'ZIVectorData', 'value': np.array([])}

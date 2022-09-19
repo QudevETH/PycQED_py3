@@ -768,9 +768,8 @@ class ZIGeneratorModule:
             self.has_waveforms[chid] = False
 
     def _reset_defined_waves(self):
-        """Resets defined waves memory."""
         self._defined_waves = (set(), dict()) \
-            if self._use_placeholder_waves \
+            if self._use_placeholder_waves or self._use_command_table\
             else set()
 
     def program_awg_channel(
@@ -832,6 +831,7 @@ class ZIGeneratorModule:
                 waveforms=waveforms,
                 awg_sequence=awg_sequence,
             )
+
         # Compiles and upload sequencer code to the device if required.
         self._compile_awg_program(program=program)
 
@@ -841,6 +841,14 @@ class ZIGeneratorModule:
             # sequencer code, because waveform memory will be erased when the
             # device is re-programmed with the new sequencer code.
             self._upload_placeholder_waveforms(waveforms=waveforms)
+
+        if self._use_command_table:
+            # Command table should be uploaded after compiling and uploading
+            # the sequencer code, because the command table memory will be
+            # erased when the device is re-programmed with the new sequencer
+            # code.
+            self._upload_command_table()
+
         self._set_signal_output_status()
         if any(self.has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self._awg.name)
@@ -851,6 +859,7 @@ class ZIGeneratorModule:
     ):
         self._update_use_placeholder_wave_flag()
         self._update_use_filter_flag(awg_sequence=awg_sequence)
+        self._update_use_command_table_flag()
         self._update_internal_mod_config(awg_sequence=awg_sequence)
         self._update_sine_generation_config(awg_sequence=awg_sequence)
 
@@ -871,6 +880,10 @@ class ZIGeneratorModule:
              e.get('metadata', {}).get('allow_filter', False)
              for e in awg_sequence.values()]
         )
+
+    def _update_use_command_table_flag(self):
+        self._use_command_table = \
+            self.pulsar.get(f"{self._awg.name}_use_command_table")
 
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
@@ -956,6 +969,7 @@ class ZIGeneratorModule:
         first_element_of_segment = True
 
         for element in awg_sequence:
+            self._command_table_lookup[element] = {}
             awg_sequence_element = deepcopy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
@@ -1049,7 +1063,21 @@ class ZIGeneratorModule:
                                     'waveforms. Using first waveform. '
                                     f'Ignoring element {element}.')
 
-                if self._use_placeholder_waves:
+                # Update self.has_waveforms flag of the corresponding channel
+                # ID if there are waveforms defined.
+                for i, chid in enumerate(self.channel_ids):
+                    self.has_waveforms[chid] |= wave[i] is not None
+
+                if not upload:
+                    # _program_awg was called only to decide which
+                    # sub-AWGs are active, and the rest of this loop
+                    # can be skipped
+                    continue
+
+
+                self._wave_idx_lookup[element][cw] = None
+                reuse_definition = False
+                if self._use_placeholder_waves or self._use_command_table:
                     # If the wave is already assigned an index, we will point
                     # the wave to the existing index and skip the rest of wave
                     # definition.
@@ -1057,9 +1085,49 @@ class ZIGeneratorModule:
                         self._wave_idx_lookup[element][cw] = [
                             i for i, v in self._defined_waves[1].items()
                             if v == wave][0]
+                        reuse_definition = True
+                    else:
+                        self._wave_idx_lookup[element][cw] = next_wave_idx
+                        next_wave_idx += 1
+
+                # Command table will not be used when the lookup value is set
+                # to None.
+                self._command_table_lookup[element][cw] = None
+
+                # Update (and thus activate) command table if specified.
+                if self._use_command_table:
+                    # TODO: allow configuring amplitudes and phases from
+                    #  higher level codes.
+                    entry_index = len(self._command_table)
+                    entry = self._generate_command_table_entry(
+                        entry_index=entry_index,
+                        wave_index=self._wave_idx_lookup[element][cw],
+                        amplitude=1.0,
+                        phase=0.0
+                    )
+                    update_entry = True
+
+                    # Check if the same entry already exists in the command
+                    # table. If so, the existing entry will be reused and the
+                    # new entry will not be uploaded.
+                    for existing_entry in self._command_table:
+                        if self._compare_command_table_entry(
+                            entry,
+                            existing_entry
+                        ):
+                            entry_index = existing_entry["index"]
+                            update_entry = False
+
+                    # records mapping between element-codeword and entry index
+                    self._command_table_lookup[element][cw] = entry_index
+
+                    if update_entry:
+                        self._command_table.append(entry)
+
+                if self._use_placeholder_waves:
+                    # No need to add new definitions when reusing old ones
+                    if reuse_definition:
                         continue
-                    self._wave_idx_lookup[element][cw] = next_wave_idx
-                    next_wave_idx += 1
 
                     # Check if the longest placeholder wave length equals to
                     # the shortest one. If not, use the longest wave
