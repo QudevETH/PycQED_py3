@@ -286,6 +286,7 @@ class ZIPulsarMixin:
 
     def zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                            prepend_zeros=0, placeholder_wave=False,
+                           command_table_index=None,
                            allow_filter=False):
         playback_string = []
         if allow_filter:
@@ -299,6 +300,8 @@ class ZIPulsarMixin:
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
+        elif command_table_index is not None:
+            playback_string.append(f"executeTableEntry({command_table_index});")
         else:
             if w1 is None and w2 is not None and use_hack and not placeholder_wave:
                 # This hack is needed due to a bug on the HDAWG.
