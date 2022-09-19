@@ -611,11 +611,11 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
                 else str(self._sine_config.get('osc', '0'))
             self._playback_strings.append(f'const SWEEP_OSC = {osc_id};\n')
 
+
+
+
+
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():
             for sgchannel in self._awg.sgchannels:
                 sgchannel.output.on(True)
-
-
-
-
