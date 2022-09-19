@@ -499,6 +499,12 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         self.marker_channel_ids = [chmid]
         self._upload_idx = awg_nr
 
+    def _update_use_filter_flag(
+            self,
+            awg_sequence,
+    ):
+        # FIXME: deactivated until implemented for QA
+        self._use_filter = False
     def _update_internal_mod_config(
             self,
             awg_sequence,
