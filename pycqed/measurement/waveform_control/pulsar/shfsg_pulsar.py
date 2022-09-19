@@ -608,6 +608,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave,
             codeword,
             use_placeholder_waves,
+            command_table_index,
             metadata,
             first_element_of_segment
     ):
@@ -619,6 +620,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             codeword=codeword,
             prepend_zeros=prepend_zeros,
             placeholder_wave=use_placeholder_waves,
+            command_table_index=command_table_index,
             allow_filter=metadata.get('allow_filter', False)
         )
 

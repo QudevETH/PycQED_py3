@@ -18,6 +18,9 @@ try:
 except Exception:
     pass
 
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
+    .ZI_base_instrument import MockDAQServer
+
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 from .zi_pulsar_mixin import ZIGeneratorModule
@@ -625,6 +628,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             wave,
             codeword,
             use_placeholder_waves,
+            command_table_index,
             metadata,
             first_element_of_segment
     ):
@@ -645,6 +649,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 codeword=codeword,
                 prepend_zeros=prepend_zeros,
                 placeholder_wave=use_placeholder_waves,
+                command_table_index=command_table_index,
                 allow_filter=metadata.get('allow_filter', False)
             )
         elif not use_placeholder_waves:
