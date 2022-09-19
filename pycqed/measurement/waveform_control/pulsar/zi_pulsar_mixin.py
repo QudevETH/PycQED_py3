@@ -613,21 +613,21 @@ class ZIDriveAWGChannel:
     def _generate_divisor(self):
         self._divisor = {chid: 1 for chid in self.channel_ids}
 
-    def _reset_codeword_table(self):
-        self._codeword_table = {}
 
     def _reset_sequence_strings(
             self,
             reset_wave_definition: bool = True,
-            reset_codeword_table_defs: bool = True,
+            reset_codeword_table: bool = True,
             reset_playback_strings: bool = True,
             reset_interleaves: bool = True,
             reset_counter: bool = True,
     ):
+        """Resets everything relates to populating sequence strings."""
         if reset_wave_definition:
             self._wave_definitions = []
 
-        if reset_codeword_table_defs:
+        if reset_codeword_table:
+            self._codeword_table = {}
             self._codeword_table_defs = []
 
         if reset_playback_strings:
@@ -656,7 +656,6 @@ class ZIDriveAWGChannel:
     ):
         self._reset_has_waveform_flags()
         self._reset_sequence_strings()
-        self._reset_codeword_table()
         self._update_channel_config(awg_sequence=awg_sequence)
         self._reset_defined_waves()
 
