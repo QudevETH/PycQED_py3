@@ -663,6 +663,12 @@ class ZIGeneratorModule:
         self._codeword_table_defs = []
         """Codeword table definitions to be added to the sequencer code."""
 
+        self._command_table = []
+        """Command table for pulse sequencing."""
+
+        self._command_table_lookup = {}
+        """Dict that records mapping element, codeword (keys) and command 
+        table entry index (value)."""
         self._playback_strings = []
         """Playback strings to be added to the sequencer code."""
 
@@ -688,6 +694,8 @@ class ZIGeneratorModule:
         self._use_placeholder_waves = False
         """Whether to use placeholder waves in the sequencer code."""
 
+        self._use_command_table = False
+        """Whether to use command table for pulse sequencing."""
         self._use_filter = False
         # TODO: check if this docstring is correct
         """Whether to use filter programmed to the device."""
@@ -724,6 +732,7 @@ class ZIGeneratorModule:
             reset_wave_definition: bool = True,
             reset_codeword_table: bool = True,
             reset_playback_strings: bool = True,
+            reset_command_table: bool = True,
             reset_interleaves: bool = True,
             reset_counter: bool = True,
     ):
@@ -735,6 +744,9 @@ class ZIGeneratorModule:
             self._codeword_table = {}
             self._codeword_table_defs = []
 
+        if reset_command_table:
+            self._command_table = []
+            self._command_table_lookup = {}
         if reset_playback_strings:
             self._playback_strings = []
 
