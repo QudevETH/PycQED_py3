@@ -654,14 +654,15 @@ class ZIDriveAWGChannel:
             upload,
             program,
     ):
+        # Collects settings from pulsar. Uploads sine wave generation
+        # and internal modulation settings to the device.
         self._reset_has_waveform_flags()
         self._reset_sequence_strings()
         self._update_channel_config(awg_sequence=awg_sequence)
         self._reset_defined_waves()
 
-        # if not self._use_placeholder_waves:
-        #     if not self._awg_interface.zi_waves_clean():
-        #         self._awg_interface.zi_clear_waves()
+        # Generates sequencer code according to channel settings and
+        # waveforms specified in awg_sequence.
 
         self._generate_filter_seq_code()
         self._generate_oscillator_seq_code()
@@ -669,33 +670,39 @@ class ZIDriveAWGChannel:
             awg_sequence=awg_sequence,
             waveforms=waveforms,
             upload=upload,
-            program=program,
         )
 
         if not any(self.has_waveforms.values()):
-            # prevent ZI_base_instrument.start() from starting this sub AWG
+            # If no waveform is assigned to this AWG channel/channel pair,
+            # prevent ZI_base_instrument.start() from starting this sub and
+            # return.
             self._awg._awg_program[self._awg_nr] = None
             return
 
-        # tell ZI_base_instrument that it should not compile a program on
-        # this sub AWG (because we already do it here)
-        self._awg._awg_needs_configuration[self._awg_nr] = False
-        # tell ZI_base_instrument.start() to start this sub AWG (The base
-        # class will start sub AWGs for which _awg_program is not None. Since
-        # we set _awg_needs_configuration to False, we do not need to put the
-        # actual program here, but anything different from None is sufficient.)
-        self._awg._awg_program[self._awg_nr] = True
+        # Instruct AWG instrument driver to start this channel/channel pair.
+        self._update_awg_instrument_status()
 
         if not upload:
+            # program_awg_channel was called only to decide which sub-AWGs
+            # are active, and the rest of this loop can be skipped.
             return
 
-        self._upload_before_compilation(
-            waveforms=waveforms,
-            awg_sequence=awg_sequence,
-        )
+        if not self._use_placeholder_waves:
+            # Waveform upload in the .csv format should be completed before
+            # compiling and uploading the sequencer code.
+            self._upload_csv_waveforms(
+                waveforms=waveforms,
+                awg_sequence=awg_sequence,
+            )
+        # Compiles and upload sequencer code to the device if required.
         self._compile_awg_program(program=program)
-        self._upload_after_compilation(waveforms=waveforms)
 
+        if self._use_placeholder_waves:
+            # Waveform upload in the binary format (i.e. with placeholder
+            # waves) should be done after compiling and uploading the
+            # sequencer code, because waveform memory will be erased when the
+            # device is re-programmed with the new sequencer code.
+            self._upload_placeholder_waveforms(waveforms=waveforms)
         self._set_signal_output_status()
         if any(self.has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self._awg.name)
@@ -740,6 +747,15 @@ class ZIDriveAWGChannel:
     ):
         pass
 
+    def _update_awg_instrument_status(self):
+        # tell ZI_base_instrument that it should not compile a program on
+        # this sub AWG (because we already do it here)
+        self._awg._awg_needs_configuration[self._awg_nr] = False
+        # tell ZI_base_instrument.start() to start this sub AWG (The base
+        # class will start sub AWGs for which _awg_program is not None. Since
+        # we set _awg_needs_configuration to False, we do not need to put the
+        # actual program here, but anything different from None is sufficient.)
+        self._awg._awg_program[self._awg_nr] = True
     def _generate_filter_seq_code(self):
         if self._use_filter:
             self._playback_strings += ['var i_seg = -1;']
@@ -756,7 +772,6 @@ class ZIDriveAWGChannel:
             awg_sequence,
             waveforms,
             upload,
-            program
     ):
         self._wave_idx_lookup = {}
         next_wave_idx = 0
@@ -816,7 +831,7 @@ class ZIDriveAWGChannel:
                                     'waveforms. Using first waveform. '
                                     f'Ignoring element {element}.')
 
-                # update has_waveforms flag if there is non-trivial wave
+                # Update self.has_waveforms flag if there is a non-trivial wave
                 # defined under a channel ID.
                 for i, chid in enumerate(self.channel_ids):
                     self.has_waveforms[chid] |= wave[i] is not None
@@ -835,6 +850,9 @@ class ZIDriveAWGChannel:
                         continue
                     self._wave_idx_lookup[element][cw] = next_wave_idx
                     next_wave_idx += 1
+                    # Check if the longest placeholder wave length equals to
+                    # the shorted one. If not, use the longest wave length to
+                    # fit all waveforms.
                     placeholder_wave_lengths = \
                         [waveforms[h].size for h in wave if h is not None]
                     if max(placeholder_wave_lengths) != \
@@ -842,20 +860,23 @@ class ZIDriveAWGChannel:
                         log.warning(f"Waveforms of unequal length on"
                                     f"{self._awg.name}, vawg{self._awg_nr}, "
                                     f"{current_segment}, {element}.")
+                    # Append wave definition.
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
-                            wave,
-                            self._defined_waves,
-                            max(placeholder_wave_lengths),
-                            self._wave_idx_lookup[element][cw]
+                            wave=wave,
+                            defined_waves=self._defined_waves,
+                            wave_index=self._wave_idx_lookup[element][cw],
+                            placeholder_wave_length=max(placeholder_wave_lengths),
                         )
                 else:
                     wave = tuple(
-                        self._with_divisor(h, chid) if h is not None
-                        else None for h, chid in zip(wave, self.channel_ids))
+                        self._with_divisor(h, chid)
+                        if h is not None else None
+                        for h, chid in zip(wave, self.channel_ids)
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
-                            wave, self._defined_waves)
+                            wave=wave,
+                            defined_waves=self._defined_waves,
 
             if not upload:
                 # _program_awg was called only to decide which
@@ -957,7 +978,8 @@ class ZIDriveAWGChannel:
             )
 
     def _set_signal_output_status(self):
-        pass
+        raise NotImplementedError("This method should be rewritten in "
+                                  "children classes.")
 
     def _with_divisor(self, h, ch):
         return h if self._divisor[ch] == 1 else (h, self._divisor[ch])
