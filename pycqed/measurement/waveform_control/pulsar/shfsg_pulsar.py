@@ -2,6 +2,7 @@ import logging
 from typing import List, Tuple
 
 import numpy as np
+import json
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -647,6 +648,100 @@ class SHFGeneratorModule(ZIGeneratorModule):
         sgchannel = self._awg.sgchannels[self._awg_nr]
         if hasattr(self._awg, 'store_awg_source_string'):
             self._awg.store_awg_source_string(sgchannel, awg_str)
+
+    def _generate_command_table_entry(
+            self,
+            entry_index: int,
+            wave_index: int,
+            amplitude: float = 1.0,
+            phase: float = 0.0,
+            sideband: str = 'left',
+    ):
+        """Generates a command table entry in the format specified
+        by ZI. Details of the command table can be found in
+        https://docs.zhinst.com/shfqc_user_manual/tutorials/tutorial_command_table.html
+
+        Args:
+            entry_index (int): index of the command table entry.
+            wave_index(int): index of the waveform to play.
+            amplitude (float or array-like): output amplitude with respect to
+                the specified waveform. If a scalar is provided, amplitudes
+                of both analog  channels are scaled to this value. If an
+                array of length 4 is provided, amplitudes of two analog
+                channels are specified explicitly. Accepts input range [-1,1].
+            phase (float or array-like): initial phase of the carrier wave. If a
+                scalar is provided, phases of both analog channels are
+                scaled to this value. If an array of length 4 is provided,
+                phases of two analog channels are specified explicitly.
+            sideband (str: 'left', 'right'): sideband to generate during
+                digital up-conversion.
+
+        Returns:
+            command_table_entry (dict): A command table entry for SHF
+                generator channels.
+        """
+
+        if isinstance(amplitude, float):
+            # if 'amplitude' is a scalar, the same scaling is used for all
+            # amplitude factors in the digital up-conversion unit.
+            amplitude = [amplitude, amplitude, amplitude, amplitude]
+
+            # Configures the correct sideband by flipping the sign of the
+            # corresponding off-diagonal element for digital up-conversion.
+            if sideband == 'right':
+                amplitude[1] *= -1
+            elif sideband == 'left':
+                amplitude[2] *= -1
+            else:
+                raise ValueError(f"{self._awg.name} channel pair {self._awg_nr}"
+                                 f"receives inappropriate sideband "
+                                 f"specification. Accepts 'left' or 'right'.")
+
+        elif not ((isinstance(amplitude, np.ndarray) or
+                   isinstance(amplitude, list)) and len(amplitude) == 4):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table amplitude "
+                             f"value. Accepts float or array-like object with "
+                             f"length 4.")
+
+        shfsg_command_table_entry = {
+            "index": entry_index,
+            "waveform": {"index": wave_index},
+            "amplitude00": {"value": amplitude[0]},
+            "amplitude01": {"value": amplitude[1]},
+            "amplitude10": {"value": amplitude[2]},
+            "amplitude11": {"value": amplitude[3]},
+            "phase": {"value": [phase]}
+        }
+
+        return shfsg_command_table_entry
+
+    def _upload_command_table(self):
+        # ZI data acquisition server
+        daq = self._awg.session.daq_server
+        device_id = self._awg.get_idn()['serial']
+
+        # add a wrapper outside the command table list
+        command_table_list_upload = {
+            "$schema": "https://docs.zhinst.com/shfsg/commandtable/v1_0/schema",
+            "header": {"version": "1.0"},
+            "table": self._command_table
+        }
+
+        data_node = f"/{device_id}/sgchannels" \
+                    f"/{self._awg_nr}/awg/commandtable/data"
+        daq.setVector(data_node, json.dumps(command_table_list_upload))
+
+        # check if the command table has been properly uploaded
+        status_node = f"/{device_id}/sgchannels" \
+                      f"/{self._awg_nr}/awg/commandtable/status"
+        status = daq.getInt(status_node)
+
+        if status != 1:
+            log.warning(f"Failed to upload the command table to "
+                        f"{self._awg.name}, error index {status}")
+
+        return status
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

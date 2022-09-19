@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from copy import deepcopy
 from functools import partial
+import json
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -672,6 +673,101 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             program_string=awg_str,
             timeout=600
         )
+
+    def _generate_command_table_entry(
+            self,
+            entry_index: int,
+            wave_index: int,
+            amplitude: float = 1.0,
+            phase: float = 0.0,
+            sideband: str = 'right',
+    ):
+        """Generates a command table entry in the format specified
+        by ZI. Details of the command table can be found in
+        https://docs.zhinst.com/shfqc_user_manual/tutorials/tutorial_command_table.html
+
+        Args:
+            entry_index (int): index of the command table entry.
+            wave_index(int): index of the waveform to play.
+            amplitude (float or ndarray): output amplitude with respect to the
+                specified waveform. If a scalar is provided, amplitudes of both
+                analog  channels are scaled to this value. If an array of
+                length 2 is provided, amplitudes of two analog channels are
+                specified explicitly. Accepts input range [-1,1].
+            phase (float or ndarray): initial phase of the carrier wave. If a
+                scalar is provided, phases of both analog channels are
+                scaled to this value. If an array of length 2 is provided,
+                phases of two analog channels are specified explicitly.
+            sideband (str: 'left', 'right'): sideband to generate during
+                up-conversion. This parameter is irrelevant to HDAWG channel
+                pairs.
+
+        Returns:
+            command_table_entry (dict): A command table entry for HDAWG
+            channel pairs.
+        """
+
+        if isinstance(amplitude, float):
+            amplitude = [amplitude, amplitude]
+        elif not ((isinstance(amplitude, np.ndarray) or
+                   isinstance(amplitude, list)) and len(amplitude) == 2):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table amplitude "
+                             f"value, accepts float or array-like object with "
+                             f"length 2.")
+
+        if isinstance(phase, float):
+            phase = [phase, phase]
+        elif not ((isinstance(phase, np.ndarray) or
+                   isinstance(phase, list)) and len(phase) == 2):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table phase "
+                             f"value, accepts float or array-like object with "
+                             f"length 2.")
+
+        hdawg_command_table_entry = {
+            "index": entry_index,
+            "waveform": {"index": wave_index},
+            "amplitude0": amplitude[0],
+            "amplitude1": amplitude[1],
+            "phase0": phase[0],
+            "phase1": phase[1],
+        }
+
+        return hdawg_command_table_entry
+
+    def _upload_command_table(self):
+        # ZI data acquisition server
+        daq = self._awg.daq
+        device_id = self._awg.get_idn()['serial']
+
+        # add a wrapper outside the command table list
+        command_table_list_upload = {
+            "$schema": "https://docs.zhinst.com/hdawg/commandtable/v2/schema",
+            "header": {"version": "0.2"},
+            "table": self._command_table
+        }
+
+        data_node = f"/{device_id}/awgs" \
+                    f"/{self._awg_nr}/commandtable/data"
+        daq.setVector(data_node, json.dumps(command_table_list_upload))
+
+        if not isinstance(daq, MockDAQServer):
+            # This is a DAQ server for actual devices. We request upload
+            # status from the device and check if it is successful.
+            status_node = f"/{device_id}/awgs" \
+                          f"/{self._awg_nr}/commandtable/status"
+            status = daq.getInt(status_node)
+
+            if status != 1:
+                log.warning(f"Failed to upload the command table to "
+                            f"{self._awg.name}, error index {status}")
+        else:
+            # This is a DAQ server for virtual devices. We assume that upload
+            # is successful.
+            status = 1
+
+        return status
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

@@ -1120,6 +1120,7 @@ class ZIGeneratorModule:
             wave,
             codeword,
             use_placeholder_waves,
+            command_table_index,
             metadata,
             first_element_of_segment,
     ):
@@ -1139,7 +1140,6 @@ class ZIGeneratorModule:
         """
         raise NotImplementedError("This method should be rewritten in child "
                                   "classes.")
-
     def _upload_csv_waveforms(
             self,
             waveforms,
@@ -1168,6 +1168,57 @@ class ZIGeneratorModule:
 
         self._awg_interface.zi_write_waves(waves_to_upload)
 
+    def _generate_command_table_entry(
+            self,
+            entry_index: int,
+            wave_index: int,
+            amplitude: float = None,
+            phase: float = 0.0
+    ):
+        """returns a command table entry in the format specified
+        by ZI. Details of the command table can be found in
+        https://docs.zhinst.com/shfqc_user_manual/tutorials/tutorial_command_table.html
+
+        Arguments:
+            entry_index (int): index of the current command table entry
+
+            wave_index (int): index of the reference wave
+
+            amplitudes (Optional, array-like): an array of 4 recording the
+            amplitudes specified in the command table. They are grouped in
+            the order (amplitude00, amplitude01, amplitude10, amplitude11).
+            If not specified, this array is set to (1, -1, 1, 1)
+
+            phase (Optional, float): phase of the waveform. Default is 0.0.
+
+        Returns:
+            command_table (Dict):
+        """
+        pass
+
+    @staticmethod
+    def _compare_command_table_entry(
+            entry1: dict,
+            entry2: dict
+    ):
+        """compares if two command table entries equal except for the index
+
+        Arguments:
+            entry1 (dict): a dictionary that represents a command table entry.
+            entry2 (dict):  a dictionary that represents a command table entry.
+
+        Return:
+            equal (bool): if the two entries are equal, except from their
+                indices.
+        """
+
+        entry1_copy = deepcopy(entry1)
+        entry2_copy = deepcopy(entry2)
+
+        entry1_copy["index"] = 0
+        entry2_copy["index"] = 0
+
+        return entry1_copy == entry2_copy
     def _compile_awg_program(
             self,
             program
@@ -1289,6 +1340,24 @@ class ZIGeneratorModule:
         # explicitly saving AWG sequencer strings in the attribute
         # self._awg._awg_source_strings.
         pass
+
+    def _upload_command_table(self):
+        """ write a list of specified command tables to the device
+
+        Returns:
+            upload_status (int): status of the upload.
+            - 0: command table data clear
+            - 1: command table successfully uploaded
+            - 8: uploading of data to the command table failed due to a JSON
+                 parsing error.
+
+            See node documentation
+            https://docs.zhinst.com/hdawg_user_manual/node_definitions.html or
+            https://docs.zhinst.com/shfqc_user_manual/nodedoc.html
+            for more details.
+        """
+        raise NotImplementedError("This method should be rewritten in "
+                                  "children classes.")
 
     def _set_signal_output_status(self):
         """Turns on the output of this channel/channel pair if specified by
