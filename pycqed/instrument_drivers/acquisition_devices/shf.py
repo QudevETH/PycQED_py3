@@ -362,10 +362,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             else:
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
