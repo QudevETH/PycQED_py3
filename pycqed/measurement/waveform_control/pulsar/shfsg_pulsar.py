@@ -2,7 +2,6 @@ import logging
 from typing import List, Tuple
 
 import numpy as np
-from copy import deepcopy
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
