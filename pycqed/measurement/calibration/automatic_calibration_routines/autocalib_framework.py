@@ -25,7 +25,8 @@ import os
 import json
 import re
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('Routines')
+log.setLevel('INFO')
 
 try:
     from pycqed.utilities import devicedb
@@ -692,7 +693,7 @@ class Step:
 
     def get_param_value(self,
                         param: str,
-                        qubit: QuDev_transmon=None,
+                        qubit: QuDev_transmon = None,
                         sublookups=None,
                         default=None,
                         leaf=None,

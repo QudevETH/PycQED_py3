@@ -10,6 +10,7 @@ from .single_qubit_routines import (
     SingleQubitCalib    
 )
 from .hamiltonian_fitting_routines import (
-    ParkAndQubitSpectroscopy,
     HamiltonianFitting
 )
+
+from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
