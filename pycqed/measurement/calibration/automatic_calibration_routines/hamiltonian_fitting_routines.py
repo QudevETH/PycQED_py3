@@ -1027,13 +1027,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             dict: dictionary of verification measurements.
 
         FIXME: In an automated routine that is supposed to run without user
-        interaction, plots should rather be stored in a timestamp folder rather
-        than being shown on the screen. get_experimental_values_from_timestamps
-        (or get_experimental_values?) could keep track of which timestamps
-        belong to the current analysis, and you could then use get_folder
-        (from analysis_toolbox) to get the folder of the latest among these
-        timestamps. However, this might require refactoring the methods to not
-        be static methods.
+         interaction, plots should rather be stored in a timestamp folder rather
+         than being shown on the screen. get_experimental_values_from_timestamps
+         (or get_experimental_values?) could keep track of which timestamps
+         belong to the current analysis, and you could then use get_folder
+         (from analysis_toolbox) to get the folder of the latest among these
+         timestamps. However, this might require refactoring the methods to not
+         be static methods.
         """
 
         result_dict = qubit.fit_ge_freq_from_dc_offset()

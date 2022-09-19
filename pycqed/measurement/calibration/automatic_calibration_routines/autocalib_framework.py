@@ -11,7 +11,7 @@ from pycqed.utilities.reload_settings import reload_settings
 from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
-from typing import List, Any, Tuple, Dict
+from typing import List, Any, Tuple, Dict, Union
 from pycqed.instrument_drivers.meta_instrument.qubit_objects import \
     QuDev_transmon
 from warnings import warn
@@ -636,8 +636,8 @@ class Step:
 
         Arguments:
             dev (Device): The device which is currently measured.
-            routine (Step): The parent of the step. If this step is the root
-                routine, this should be None.
+            routine (AutomaticCalibrationRoutine): The parent of the step. If
+                this step is the root routine, this should be None.
 
         Keyword Arguments:
             step_label (str): A unique label for this step to be used in the
@@ -652,7 +652,7 @@ class Step:
                 be compatible with that of a general settings dictionary.
 
         """
-        self.routine = routine
+        self.routine: Union[AutomaticCalibrationRoutine, None] = routine
         self.step_label = kw.pop('step_label', None)
         self.dev = dev
         # Copy default settings from autocalib if this is the root routine, else
@@ -677,6 +677,9 @@ class Step:
         ]
         self.parameter_sublookups = None
         self.leaf = True
+
+        # Store results with qubits as keys
+        self.step_results: Dict[Any, Union[Dict[Any, Any], Any]] = {}
 
     class NotFound:
         """This class is used in get_param_value to identify the cases where

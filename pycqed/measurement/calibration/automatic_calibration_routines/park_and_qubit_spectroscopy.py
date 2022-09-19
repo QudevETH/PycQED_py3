@@ -11,8 +11,6 @@ from .single_qubit_routines import (ReparkingRamseyStep,
                                     FindFrequency,
                                     AdaptiveQubitSpectroscopy)
 
-from pycqed.utilities import hamiltonian_fitting_analysis as hfa
-from pycqed.utilities.state_and_transition_translation import *
 from pycqed.utilities.general import temporary_value
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
@@ -21,8 +19,21 @@ import numpy as np
 from typing import List, Any, Dict, Tuple
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
+from dataclasses import dataclass
 
 log = logging.getLogger('Routines')
+
+
+@dataclass
+class ParkAndQubitSpectroscopyResults:
+    # Store results for a single qubit
+    initial_ge_freq: float = None
+    initial_flux: float = None
+    initial_voltage: float = None
+
+    measured_ge_freq: float = None
+    measured_flux: float = None
+    measured_voltage: float = None
 
 
 class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
@@ -77,7 +88,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         # Retrieve the DCSources from the fluxlines_dict. These are necessary
         # to reload the pre-routine settings when update=False
         self.DCSources = []
-        for qb in self.dev.qubits:  # TODO shouldn't it be `self.qubits`? BG.
+        for qb in self.qubits:
             dc_source = self.fluxlines_dict[qb.name].instrument
             if dc_source not in self.DCSources:
                 self.DCSources.append(dc_source)
@@ -98,6 +109,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         self.measured_ge_freqs = {}
         self.measured_fluxes = {}
         self.measured_voltages = {}
+        self.step_results = {qb.name: ParkAndQubitSpectroscopyResults for qb in
+                             self.qubits}
         self.final_init(**kw)
 
     def create_routine_template(self):
@@ -162,15 +175,11 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 designated_ss_volt = qb.calculate_voltage_from_flux(
                     designated_ss_flux)
                 if designated_ss_flux == 0:
-                    # Qubit parked at the USS
-                    if designated_ss_volt > 0:
-                        # LSS will be negative
-                        opposite_ss_flux = -0.5
-                    else:
-                        # LSS will be positive
-                        opposite_ss_flux = 0.5
+                    # Qubit parked at the USS.
+                    # LSS will be with opposite voltage sign
+                    opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
                 elif np.abs(designated_ss_flux) == 0.5:
-                    # Qubit parked at the LSS,
+                    # Qubit parked at the LSS
                     opposite_ss_flux = 0
                 else:
                     raise ValueError("Only Sweet Spots are supported!")
@@ -191,7 +200,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                     voltage = self.get_param_value("voltage", qubit=qb.name)
                     uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
                     V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
-                    flux = (self.routine.fluxlines_dict[qb.name]() - uss) / V_per_phi0
+                    flux = (self.routine.fluxlines_dict[
+                                qb.name]() - uss) / V_per_phi0
                 if voltage is None:
                     raise ValueError("No voltage or flux specified")
                 self.routine.measured_fluxes[qb.name] = flux
@@ -213,7 +223,6 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         the parent routine, so that the user can retrieve them even if the
         initial values are restored.
         """
-
         def run(self):
             for qb in self.qubits:
                 self.routine.measured_ge_freqs[qb.name] = qb.ge_freq()
