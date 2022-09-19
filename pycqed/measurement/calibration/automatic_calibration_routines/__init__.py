@@ -14,3 +14,5 @@ from .hamiltonian_fitting_routines import (
 )
 
 from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
+
+from .initial_hamiltonian_model import PopulateInitialHamiltonianModel

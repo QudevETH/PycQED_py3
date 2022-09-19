@@ -1,0 +1,134 @@
+from .autocalib_framework import IntermediateStep, RoutineTemplate
+from .autocalib_framework import AutomaticCalibrationRoutine
+
+from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
+
+import numpy as np
+import logging
+from typing import List, Any, Dict, Tuple, Literal
+from pycqed.instrument_drivers.meta_instrument.device import Device
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
+from dataclasses import dataclass
+
+log = logging.getLogger('Routines')
+
+
+@dataclass
+class QubitHamiltonianParameters:
+    # Parameters that must be provided using, e.g., `InitialQubitParking`
+    dac_sweet_spot: float
+    V_per_phi0: float
+
+    # Parameter that can be extracted from design
+    E_c: float = None
+
+    # Parameters that will be estimated during the routine
+    Ej_max: float = None
+    asymmetry: float = None
+
+
+class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
+    r"""This routine populates a first guess for the Hamiltonian model of a
+    transmon.
+
+    It is meant to run after the `InitialQubitParking` routine and before the
+    full `HamiltonianFitting` routine.
+    In practice, it measures the transmon frequency at the two sweet-spots,
+    and uses these values together with the design E_c value to give a first
+    estimation of the EJ_max and asymmetry (d) values of the transmon.
+
+    Following Koch et al. 2017 (DOI: 10.1103/PhysRevA.76.042319), eqs. 2.11 and
+    2.18, the following equations are used:
+    .. math::
+        \Phi=0: \ &hf_{ge} = -E_c + \sqrt{8E_c  E_{J,max}} \\
+        \Phi=\pm \frac{1}{2} \Phi_0: \ &hf_{ge} = -E_c + \sqrt{8dE_c E_{J,max} }
+    """
+
+    def __init__(self,
+                 dev: Device,
+                 qubits: List[QuDev_transmon],
+                 fluxlines_dict: Dict[str, Any],
+                 **kw,
+                 ):
+        super().__init__(
+            dev=dev,
+            qubits=qubits,
+            fluxlines_dict=fluxlines_dict,
+            **kw,
+        )
+        self.fluxlines_dict = fluxlines_dict
+        self.hamiltonian_parameters: Dict[str, QubitHamiltonianParameters] = {}
+        for qubit in self.qubits:
+            existing_hamiltonian_params = qubit.fit_ge_freq_from_dc_offset()
+            if 'E_c' not in existing_hamiltonian_params:
+                existing_hamiltonian_params['E_c'] = self.extract_qubit_E_c(
+                    qubit)
+            if all([k in existing_hamiltonian_params for k in
+                    ['Ej_max', 'asymmetry']]):
+                log.info(f"Ej_max and asymmetry values already exist in the "
+                         f"attributes of qubit {qubit}. The routine will skip "
+                         f"it.")
+
+            self.hamiltonian_parameters[
+                qubit.name] = QubitHamiltonianParameters(
+                **existing_hamiltonian_params)
+
+        self.final_init(**kw)
+
+    @staticmethod
+    def extract_qubit_E_c(qubit: QuDev_transmon) -> float:
+        # TODO Implement this method to give a meaningful value! (from the
+        #  design DB?)
+        log.warning("Implement this method to give a meaningful value!")
+        return 0.3
+
+    def create_initial_routine(self, load_parameters=True):
+        super().create_routine_template()  # Create empty routine template
+        qubit: QuDev_transmon = self.qubit
+        USS_flux = 0
+        LSS_flux = -0.5 * np.sign(qubit.calculate_voltage_from_flux(flux=0.0))
+        for flux in [USS_flux, LSS_flux]:
+            # Add park and spectroscopy step
+            step_label = f'park_and_qubit_spectroscopy_flux_{flux}'
+            step_settings = {'settings': {
+                step_label: {'General': {'flux': flux,
+                                         'fluxlines_dict': self.fluxlines_dict}
+                             }}}
+            self.add_step(ParkAndQubitSpectroscopy,
+                          step_label=step_label,
+                          step_settings=step_settings)
+
+            # Add model update step
+            step_label = f'update_hamiltonian_model_flux_{flux}'
+            step_settings = {step_label: {'flux': flux}}
+            self.add_step(self.UpdateHamiltonianModel,
+                          step_label=step_label,
+                          step_settings=step_settings)
+
+    class UpdateHamiltonianModel(IntermediateStep):
+        """Updates the parameters of the initial Hamiltonian with the values
+         extracted from the last step.
+        """
+
+        def __init__(self,
+                     **kw):
+            super().__init__(**kw)
+            self.flux = self.get_param_value('flux')
+
+        def run(self):
+            for qubit in self.qubits:
+                qubit_parameters: QubitHamiltonianParameters = \
+                    self.routine.hamiltonian_parameters[qubit.name]
+                qubit_park_and_spec = self.routine.routine_steps[-1]
+                ge_freq = qubit_park_and_spec.measured_ge_freqs[qubit.name]
+                E_c = qubit_parameters.E_c
+                if self.flux == 0:
+                    Ej_max = np.square(ge_freq + E_c) / (8 * E_c)
+                    qubit_parameters.Ej_max = Ej_max
+                else:
+                    assert (Ej_max := qubit_parameters.Ej_max) is not None, (
+                        f'The calculation of the asymmetry (d) relies on '
+                        f'Ej_max,which should be evaluated at Phi=0.')
+                    d = np.square(ge_freq + E_c) / (8 * E_c * Ej_max)
+                    qubit_parameters.asymmetry = d
