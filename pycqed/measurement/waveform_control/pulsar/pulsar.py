@@ -1152,6 +1152,7 @@ class Pulsar(Instrument):
             settings_to_check = ['{}_use_placeholder_waves',
                                  '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
+                                 '{}_use_command_table',
                                  'prepend_zeros']
             settings = {}
             metadata = {}

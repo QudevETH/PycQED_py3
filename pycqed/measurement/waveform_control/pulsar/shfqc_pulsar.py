@@ -41,6 +41,9 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_use_command_table",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1",),
