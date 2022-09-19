@@ -84,14 +84,38 @@ class ZIPulsarMixin:
         else:
             return ""
 
-    def zi_wave_definition(self, wave, defined_waves=None,
-                           placeholder_wave_length=None,
-                           placeholder_wave_index=None):
+    def _zi_wave_definition(
+            self,
+            wave,
+            defined_waves=None,
+            wave_index=None,
+            placeholder_wave_length=None,
+    ):
+        """ Generate wave definition for the sequence code.
+
+        Args:
+
+             wave: wave to define in the sequence code
+
+             defined_waves: waves that already have definitions. Newly
+             defined waves will be added to this dictionary
+
+             wave_index (Optional, int): if specified, assignWaveIndex() will
+             be used to assign this wave with index wave_index. This index
+             can be used later for binary upload or sequencing with the
+             command table
+
+             placeholder_wave_length (Optional, int): length to reserve for
+             the placeholder wave. If not specified, placeholder wave will
+             not be used.
+        """
+
         if defined_waves is None:
-            if placeholder_wave_length is None:
+            if wave_index is None:
                 defined_waves = set()
             else:
                 defined_waves = set(), dict()
+
         wave_definition = []
         w1, w2 = self.zi_waves_to_wavenames(wave)
         if placeholder_wave_length is None:
@@ -102,18 +126,37 @@ class ZIPulsarMixin:
                     wa = self.pulsar._hash_to_wavename(analog)
                     if wa not in defined_waves:
                         wave_definition.append(f'wave {wa} = "{wa}";')
-                        defined_waves.add(wa)
+                        if isinstance(defined_waves, set):
+                            defined_waves.add(wa)
+                        else:
+                            defined_waves[0].add(wa)
+                            defined_waves[1][wave_index] = wave
+
                 if marker is not None:
                     wm = self.pulsar._hash_to_wavename(marker)
                     if wm not in defined_waves:
                         wave_definition.append(f'wave {wm} = "{wm}";')
-                        defined_waves.add(wm)
+                        if isinstance(defined_waves, set):
+                            defined_waves.add(wm)
+                        else:
+                            defined_waves[0].add(wm)
+                            defined_waves[1][wave_index] = wave
+
                 if analog is not None and marker is not None:
                     if wc not in defined_waves:
                         wave_definition.append(f"wave {wc} = {wa} + {wm};")
-                        defined_waves.add(wc)
+                        if isinstance(defined_waves, set):
+                            defined_waves.add(wc)
+                        else:
+                            defined_waves[0].add(wc)
+                            defined_waves[1][wave_index] = wave
+
         else:
-            # use placeholder waves
+            if wave_index is None:
+                # wave index has to be specified when using placeholder waves
+                raise ValueError(f"wave_index must not be None when "
+                                 f"specifying placeholder waves")
+
             n = placeholder_wave_length
             if w1 is None and w2 is not None:
                 w1 = f"{w2}_but_zero"
@@ -124,11 +167,14 @@ class ZIPulsarMixin:
                         ("" if marker is None else ", true") +
                         ");")
                     defined_waves[0].add(wc)
+            defined_waves[1][wave_index] = wave
+
+        if wave_index is not None:
             wave_definition.append(
                 f"assignWaveIndex({self._zi_wavename_pair_to_argument(w1, w2)},"
-                f" {placeholder_wave_index});"
+                f" {wave_index});"
             )
-            defined_waves[1][placeholder_wave_index] = wave
+
         return wave_definition
 
     @staticmethod
