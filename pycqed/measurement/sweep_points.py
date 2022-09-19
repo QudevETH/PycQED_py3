@@ -467,7 +467,6 @@ class SweepPoints(list):
         dim = self.find_parameter(param_name)
         return self.get_sweep_params_property('values', dim, param_names=param_name)
 
-
     def subset(self, i, dimension=0):
         """
         Returns a new SweepPoints object with one of the dimensions reduced

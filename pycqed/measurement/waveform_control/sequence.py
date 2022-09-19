@@ -43,6 +43,8 @@ class Sequence:
             raise NameError('Name {} already exisits in the sequence!'.format(
                 segment.name))
         self.segments[segment.name] = segment
+        if len(self.segments) == 1:
+            self.segments[segment.name].is_first_segment = True
 
     def extend(self, segments):
         """
@@ -124,11 +126,19 @@ class Sequence:
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
                     if elname in seg.acquisition_elements:
-                        sequences[awg][elname]['metadata']['acq'] = True
+                        sequences[awg][elname]['metadata']['acq'] = \
+                            seg.acquisition_mode
                     else:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \
                         seg.allow_filter
+                    # Write modulation and sine configuration to element
+                    if seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] = \
+                                seg.mod_config
+                    if seg.sine_config:
+                        sequences[awg][elname]['metadata']['sine_config'] = \
+                                seg.sine_config
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
@@ -233,10 +243,13 @@ class Sequence:
             pulse=pulse_name
         else:
             pulse = operation_dict[pulse_name]
-        repeat = dict()
-        for ch in pulse_channel_names:
-            repeat[pulse[ch]] = pattern
-        self.repeat_patterns.update(repeat)
+        if not pulse.get('disable_repeat_pattern', False):
+            repeat = dict()
+            for ch in pulse_channel_names:
+                if pulse[ch] is None:
+                    continue
+                repeat[pulse[ch]] = pattern
+            self.repeat_patterns.update(repeat)
         return self.repeat_patterns
 
     def repeat_ro(self, pulse_name, operation_dict):

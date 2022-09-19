@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -59,18 +59,19 @@ class Device(Instrument):
         qubits = [qb if not isinstance(qb, str) else self.find_instrument(qb) for qb in qubits]
         connectivity_graph = [[qb1 if isinstance(qb1, str) else qb1.name,
                                qb2 if isinstance(qb2, str) else qb2.name] for [qb1, qb2] in connectivity_graph]
+        self._two_qb_gates = []
 
         for qb in qubits:
             setattr(self, qb.name, qb)
 
-        self.add_parameter('qubits',
-                           vals=vals.Lists(),
-                           initial_value=qubits,
-                           parameter_class=ManualParameter)
+        self.qubits = qubits
         self.add_parameter('qb_names',
                            vals=vals.Lists(),
                            initial_value=qb_names,
                            parameter_class=ManualParameter)
+
+        self.MWGs = []
+        self.TWPAs = []
 
         self._operations = {}  # dictionary containing dictionaries of operations with parameters
 
@@ -102,10 +103,15 @@ class Device(Instrument):
                            docstring='a list of operations on the device, without single QB operations.',
                            get_cmd=self._get_operations)
         self.add_parameter('two_qb_gates',
-                           vals=vals.Lists(),
-                           initial_value=[],
                            docstring='stores all two qubit gate names',
-                           parameter_class=ManualParameter)
+                           get_cmd=lambda s=self: copy(s._two_qb_gates)
+                           )
+        self.add_parameter(
+            'default_cz_gate_name',
+            parameter_class=ManualParameter, initial_value=None,
+            vals=vals.MultiType(vals.Strings(), vals.Enum(None)),
+            set_parser=self._valid_cz_gate,
+            docstring='Name of the CZ gate that should be used by default.')
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -242,17 +248,17 @@ class Device(Instrument):
             - list of integers specifying the index, e.g. [0, 1] for qb1, qb2
         :param return_type (str): "obj" --> qubit objects are returned.
             "str": --> qubit names are returned.
-            "ind": --> returns indices to find the qubits in self.qubits()
+            "ind": --> returns indices to find the qubits in self.qubits
         :return: list of qb_names or qb objects. Note that a list is
             returned in all cases
         """
         if return_type not in ['obj', 'str', 'ind']:
             raise ValueError(f'Return type: {return_type} not understood')
 
-        qb_names = [qb.name for qb in self.qubits()]
+        qb_names = [qb.name for qb in self.qubits]
         if qubits == 'all':
             if return_type == "obj":
-                return self.qubits()
+                return copy(self.qubits)
             elif return_type == "str":
                 return qb_names
             else:
@@ -284,7 +290,7 @@ class Device(Instrument):
         if return_type == "str":
             return qubits_to_return
         elif return_type == "obj":
-            return [self.qubits()[qb_names.index(qbn)]
+            return [self.qubits[qb_names.index(qbn)]
                     for qbn in qubits_to_return]
         else:
             return [qb_names.index(qb) for qb in qubits_to_return]
@@ -337,9 +343,12 @@ class Device(Instrument):
 
         # threshold_map has to be updated for all qubits
         thresh_map = {}
-        for prep_params in [qb.preparation_params() for qb in qb_list]:
+        for i, prep_params in enumerate([qb.preparation_params()
+                                         for qb in qb_list]):
             if 'threshold_mapping' in prep_params:
-                thresh_map.update(prep_params['threshold_mapping'])
+
+                thresh_map.update({qb_list[i].name:
+                                       prep_params['threshold_mapping']})
 
         prep_params = deepcopy(self.preparation_params())
         prep_params['threshold_mapping'] = thresh_map
@@ -351,14 +360,14 @@ class Device(Instrument):
         # because the UHF_multi_detector function adds suffixes
 
         qubits = self.get_qubits(qubits)
-        if multi_uhf_det_func.detectors[0].name == 'raw_UHFQC_classifier_det':
+        if multi_uhf_det_func.detectors[0].name == 'raw_classifier_det':
             meas_obj_value_names_map = {
                 qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                     multi_uhf_det_func.value_names,
                     qb.int_avg_classif_det.value_names)
                 for qb in qubits}
         elif multi_uhf_det_func.detectors[0].name == \
-                'UHFQC_input_average_detector':
+                'AveragingPollDetector':
             meas_obj_value_names_map = {
                 qb.name: hlp_mod.get_sublst_with_all_strings_of_list(
                     multi_uhf_det_func.value_names, qb.inp_avg_det.value_names)
@@ -444,6 +453,38 @@ class Device(Instrument):
                                  f'{gate_name} {qb1_name} {qb2_name} '
                                  f'does not exist!')
 
+    def prepare_mwg(self):
+        for MWG in self.MWGs:
+            MWG.off()
+        for TWPA in self.TWPAs:
+            TWPA.on()
+            pass
+
+    def update_cancellation_params(self):
+        for qbc in self.get_qubits():
+            if qbc.ge_pulse_type() != 'SSB_DRAG_pulse_with_cancellation':
+                continue
+            cpars = qbc.ge_cancellation_params()
+            for qb in self.get_qubits():
+                iq = (qb.ge_I_channel(), qb.ge_Q_channel())
+                if iq not in cpars:
+                    continue
+                cpars[iq]['mod_frequency'] = (qbc.ge_freq() - qb.ge_freq() +
+                                            qb.ge_mod_freq())
+                cpars[iq]['phi_skew'] = qb.ge_phi_skew()
+                cpars[iq]['alpha'] = qb.ge_alpha()
+
+    def set_default_acq_channels(self):
+        qbs = self.get_qubits()
+        feedlines = {(qb.instr_acq(), qb.acq_unit()) for qb in qbs}
+        for fl in feedlines:
+            qb_fl = [qb for qb in qbs
+                    if qb.instr_acq() == fl[0]
+                    and qb.acq_unit() == fl[1]]
+            for i, qb in enumerate(qb_fl):
+                qb.acq_I_channel(2 * i)
+                qb.acq_Q_channel(2 * i + 1)
+
     def check_connection(self, qubit_a, qubit_b, connectivity_graph=None, raise_exception=True):
         """
         Checks whether two qubits are connected.
@@ -481,7 +522,7 @@ class Device(Instrument):
         """
 
         # add gate to list of two qubit gates
-        self.set('two_qb_gates', self.get('two_qb_gates') + [gate_name])
+        self._two_qb_gates.append(gate_name)
 
         # find pulse module
         pulse_func = bpl.get_pulse_class(pulse_type)
@@ -511,6 +552,17 @@ class Device(Instrument):
                         raise ValueError(f'No flux pulse channel defined for {qb}!')
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
+
+        if self.default_cz_gate_name() is None:
+            # Make the newly added gate the default
+            self.default_cz_gate_name(gate_name)
+
+    def _valid_cz_gate(self, gate_name):
+        if gate_name is not None and gate_name not in self._two_qb_gates:
+            raise ValueError(
+                f'{gate_name} is not a valid two-qubit gate name. Valid '
+                f'names are: {self._two_qb_gates}')
+        return gate_name
 
     def get_channel_delays(self):
         """
@@ -544,7 +596,7 @@ class Device(Instrument):
         # configure channel delays
         channel_delays = self.get_channel_delays()
         for ch, v in channel_delays.items():
-            awg = pulsar.AWG_obj(channel=ch)
+            awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
 

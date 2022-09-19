@@ -146,6 +146,10 @@ class BaseDataAnalysis(object):
                 self.options_dict = OrderedDict()
             else:
                 self.options_dict = options_dict
+            # The following dict can be populated by child classes to set
+            # default values that are different from the default behavior of
+            # the base class.
+            self.default_options = {}
 
             ################################################
             # These options determine what data to extract #
@@ -180,6 +184,8 @@ class BaseDataAnalysis(object):
             self.figs = OrderedDict()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
+            self.transparent_background = self.options_dict.get(
+                'transparent_background', self.presentation_mode)
             self.do_individual_traces = self.options_dict.get(
                 'do_individual_traces', False)
             self.tight_fig = self.options_dict.get('tight_fig', True)
@@ -229,15 +235,29 @@ class BaseDataAnalysis(object):
             self.process_data()  # binning, filtering etc
             if self.do_fitting:
                 self.prepare_fitting()  # set up fit_dicts
-                self.run_fitting()  # fitting to models
-                self.save_fit_results()
-                self.analyze_fit_results()  # analyzing the results of the fits
+                try:
+                    self.run_fitting()  # fitting to models
+                except Exception as e:
+                    if self.raise_exceptions:
+                        raise e
+                    else:
+                        log.error('Fitting has failed.')
+                        log.error(traceback.format_exc())
+                        self.do_fitting = False
+
+            if self.do_fitting:
+                # Fitting has not failed: continue with saving and analysing
+                # the fit results
+                self.save_fit_results()  # saving the fit results
+                self.analyze_fit_results()  # analyzing the fit results
+
 
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
                 self.prepare_plots()  # specify default plots
                 if not self.extract_only:
-                    self.plot(key_list='auto')  # make the plots
+                    # make the plots
+                    self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -400,7 +420,10 @@ class BaseDataAnalysis(object):
             data_file.close()
             raise e
 
-    def get_param_value(self, param_name, default_value=None, metadata_index=0):
+    def _get_param_value(self, param_name, default_value=None, metadata_index=0):
+        log.warning('Deprecation warning: please use new function '
+                    'self.get_param_value(). This function is intended to be '
+                    'used only in case of crashes with new function.')
         # no stored metadata
         if not hasattr(self, "metadata") or self.metadata is None:
             return self.options_dict.get(param_name, default_value)
@@ -415,9 +438,44 @@ class BaseDataAnalysis(object):
             return self.options_dict.get(param_name, self.metadata.get(
                 param_name, default_value))
 
-    def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
+    def get_param_value(self, param_name, default_value=None, index=0,
+                        search_attrs=('options_dict', 'metadata',
+                                      'raw_data_dict', 'default_options')):
+        """
+        Gets a value from a set of searchable hashable attributes.
+        :param param_name: name of the parameter to be searched
+        :param default_value: value in case parameter is not found
+        :param index: in case the searchable attribute of interest is a list of
+        hashable (e.g. list of raw_data_dicts), index of the list in which one
+        should search the parameter
+        :param search_attrs (list, tuple): attributes to be searched by the
+        function. Priority is given to first entry, i.e. if a parameter
+        "timestamp" is both in the options_dict and in the metadata,
+        search_attrs =('options_dict', 'raw_data_dict') will return the
+        timestamp of the options dict while ('raw_data_dict', 'options_dict')
+        will return the timestamp of the raw data dict.
+        :return:
+        """
+        def recursive_search(param, p):
+            if hasattr(self, p):
+                d = getattr(self, p)
+                if isinstance(d, (list, tuple)):
+                    d = d[index]
+                if param in d:
+                    return d[param]
+            if p == search_attrs[-1]:
+                return default_value
+            else:
+                return recursive_search(param, search_attrs[search_attrs.index(p) +
+                                                         1])
+        return recursive_search(param_name, search_attrs[0])
+
+    def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
+                                     timestamps=None):
+        if timestamps is None:
+            timestamps = self.timestamps
         raw_data_dict = []
-        for timestamp in self.timestamps:
+        for timestamp in timestamps:
             raw_data_dict_ts = OrderedDict([(param, []) for param in
                                             params_dict])
 
@@ -569,7 +627,7 @@ class BaseDataAnalysis(object):
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
                     if 'active' in prep_params.get('preparation_type', 'wait'):
-                        reset_reps = prep_params.get('reset_reps', 1)
+                        reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
                     elif "preselection" in prep_params.get('preparation_type',
                                                            'wait'):
@@ -689,8 +747,8 @@ class BaseDataAnalysis(object):
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
-            if 'TwoD' not in self.options_dict:
-                self.options_dict['TwoD'] = TwoD
+            if 'TwoD' not in self.default_options:
+                self.default_options['TwoD'] = TwoD
         else:
             temp_dict_list = []
             twod_list = []
@@ -709,13 +767,13 @@ class BaseDataAnalysis(object):
                 temp_dict_list.append(rdd,)
                 twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
-            if 'TwoD' not in self.options_dict:
+            if 'TwoD' not in self.default_options:
                 if not all(twod_list):
                     log.info('Not all measurements have the same '
                              'number of sweep dimensions. TwoD flag '
                              'will remain unset.')
                 else:
-                    self.options_dict['TwoD'] = twod_list[0]
+                    self.default_options['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -806,7 +864,8 @@ class BaseDataAnalysis(object):
         axes_keys_to_pop = []
         for ax_key, ax in self.axs.items():
             for ax_to_pop in axes_to_pop:
-                if ax is ax_to_pop:
+                if (hasattr(ax, '__iter__') and ax_to_pop in ax)\
+                        or ax is ax_to_pop:
                     axes_keys_to_pop.append(ax_key)
                     break
         for ax_key in axes_keys_to_pop:
@@ -910,6 +969,8 @@ class BaseDataAnalysis(object):
             guessfn_pars = fit_dict.get('guessfn_pars', {})
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
+            method = fit_dict.get('method', 'leastsq')
+            steps = fit_dict.get('steps', None)
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -941,8 +1002,8 @@ class BaseDataAnalysis(object):
                     for key, val in list(guess_dict.items()):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
-            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
-                                            params=guess_pars)
+            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
+                                            params=guess_pars, steps=steps)
 
             self.fit_res[key] = fit_dict['fit_res']
 
@@ -1092,14 +1153,37 @@ class BaseDataAnalysis(object):
                         dic['params'][param_name][k] = getattr(param, k)
         return dic
 
-    def plot(self, key_list=None, axs_dict=None,
-             presentation_mode=None, no_label=False):
+    def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
+             transparent_background=None, no_label=False):
         """
-        Goes over the plots defined in the plot_dicts and creates the
-        desired figures.
+        Plot figures defined in self.plot_dict.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            presentation_mode (bool): whether to prepare for presentation
+            no_label (bool): whether figure should have a label
         """
+        self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
             presentation_mode = self.presentation_mode
+        if transparent_background is None:
+            transparent_background = self.transparent_background
+        if presentation_mode:
+            self.plot_for_presentation(self.key_list, transparent_background)
+        else:
+            self._plot(self.key_list, transparent_background)
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+        """
+        Goes over the entries in self.plot_dict specified by key_list, and
+        prepares them for plotting. If key_list is None, the keys of
+        self.plot_dicts will be used.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            no_label (bool): whether figure should have a label
+        """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
@@ -1143,60 +1227,65 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
+    def _plot(self, key_list, transparent_background=False):
+        """
+        Creates the figures specified by key_list.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            plot_touching = pdict.get('touching', False)
+
+            if type(pdict['plotfn']) is str:
+                plotfn = getattr(self, pdict['plotfn'])
+            else:
+                plotfn = pdict['plotfn']
+
+            # used to ensure axes are touching
+            if plot_touching:
+                self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
+                                                                 hspace=0)
+
+            # Check if pdict is one of the accepted arguments, these are
+            # the plotting functions in the analysis base class.
+            if 'pdict' in signature(plotfn).parameters:
+                if pdict['ax_id'] is None:
+                    plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+
+            # most normal plot functions also work, it is required
+            # that these accept an "ax" argument to plot on and **kwargs
+            # the pdict is passed in as kwargs to such a function
+            elif 'ax' in signature(plotfn).parameters:
+                # Calling the function passing along anything
+                # defined in the specific plot dict as kwargs
+                if pdict['ax_id'] is None:
+                    plotfn(ax=self.axs[pdict['fig_id']], **pdict)
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+            else:
+                raise ValueError(
+                    '"{}" is not a valid plot function'.format(plotfn))
+
+            if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
 
-        if presentation_mode:
-            self.plot_for_presentation(key_list=key_list, no_label=no_label)
-        else:
-            for key in key_list:
-                pdict = self.plot_dicts[key]
-                plot_touching = pdict.get('touching', False)
-
-                if type(pdict['plotfn']) is str:
-                    plotfn = getattr(self, pdict['plotfn'])
-                else:
-                    plotfn = pdict['plotfn']
-
-                # used to ensure axes are touching
-                if plot_touching:
-                    self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
-                                                                     hspace=0)
-
-                # Check if pdict is one of the accepted arguments, these are
-                # the plotting functions in the analysis base class.
-                if 'pdict' in signature(plotfn).parameters:
-                    if pdict['ax_id'] is None:
-                        plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-
-                # most normal plot functions also work, it is required
-                # that these accept an "ax" argument to plot on and **kwargs
-                # the pdict is passed in as kwargs to such a function
-                elif 'ax' in signature(plotfn).parameters:
-                    # Calling the function passing along anything
-                    # defined in the specific plot dict as kwargs
-                    if pdict['ax_id'] is None:
-                        plotfn(ax=self.axs[pdict['fig_id']], **pdict)
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-                else:
-                    raise ValueError(
-                        '"{}" is not a valid plot function'.format(plotfn))
-
-            self.format_datetime_xaxes(key_list)
-            self.add_to_plots(key_list=key_list)
+        self.format_datetime_xaxes(key_list)
+        self.add_to_plots(key_list=key_list)
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1210,14 +1299,18 @@ class BaseDataAnalysis(object):
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
+    def plot_for_presentation(self, key_list=None, transparent_background=True):
+        """
+        Prepares and produces plots for presentation.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
         if key_list is None:
             key_list = list(self.plot_dicts.keys())
         for key in key_list:
             self.plot_dicts[key]['title'] = None
 
-        self.plot(key_list=key_list, presentation_mode=False,
-                  no_label=no_label)
+        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
@@ -1447,10 +1540,11 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
-
+        plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
 
+        plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
         plot_linestyle = pdict.get('linestyle', '-')
         plot_marker = pdict.get('marker', 'o')
@@ -1509,7 +1603,7 @@ class BaseDataAnalysis(object):
             axs.set_xlim(xmin, xmax)
 
         if plot_title is not None:
-            axs.figure.text(0.5, 1, plot_title,
+            axs.figure.text(0.5, 1 + plot_title_pad, plot_title,
                             horizontalalignment='center',
                             verticalalignment='bottom',
                             transform=axs.transAxes)
@@ -1973,6 +2067,7 @@ class BaseDataAnalysis(object):
         plot_ypos = pdict.get('ypos', .98)
         verticalalignment = pdict.get('verticalalignment', 'top')
         horizontalalignment = pdict.get('horizontalalignment', 'right')
+        fontsize=pdict.get("fontsize", None)
         color = pdict.get('color', 'k')
         # fancy box props is based on the matplotlib legend
         box_props = pdict.get('box_props', 'fancy')
@@ -1987,14 +2082,16 @@ class BaseDataAnalysis(object):
                          strings=plot_text_string, colors=color,
                          ax=axs, orientation=orientation,
                          verticalalignment=verticalalignment,
-                         horizontalalignment=horizontalalignment)
+                         horizontalalignment=horizontalalignment,
+                         fontsize=fontsize)
         else:
             # pfunc is expected to be ax.text
             pfunc(x=plot_xpos, y=plot_ypos, s=plot_text_string,
                   transform=axs.transAxes,
                   verticalalignment=verticalalignment,
                   horizontalalignment=horizontalalignment,
-                  bbox=box_props)
+                  bbox=box_props,
+                  fontsize=fontsize)
 
     def plot_vlines(self, pdict, axs):
         """
@@ -2173,6 +2270,36 @@ class BaseDataAnalysis(object):
             return 1.2e9
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
+
+    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+        """
+        Returns all attributes in a path. Path could also be e.g. a particular qubit
+        """
+        h5mode = 'r'
+        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
+        h5filepath = a_tools.measurement_filename(folder)
+        data_file = h5py.File(h5filepath, h5mode)
+
+        try:
+            attr_names = list(data_file[path]) + list(data_file[path].attrs)
+            data_file.close()
+            return attr_names
+        except Exception as e:
+            data_file.close()
+            raise e
+
+    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+        """
+        Returns all instruments of a given class
+        """
+        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
+        dev_names = []
+        for instrument in instruments:
+            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
+                                                        attribute='__class__', hdf_file_index=hdf_file_index)
+            if  instrument_class == instr_class:
+                dev_names.append(instrument)
+        return dev_names
 
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):

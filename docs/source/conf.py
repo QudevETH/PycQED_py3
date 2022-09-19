@@ -13,7 +13,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath("../.."))
 sys.path.append(os.path.abspath("./ext"))
 
 # Custom variable __sphinx_build__ which can be used to check inside the code
@@ -21,10 +21,12 @@ sys.path.append(os.path.abspath("./ext"))
 import builtins
 builtins.__sphinx_build__ = True
 
+
 # -- Project information -----------------------------------------------------
 
-project = 'PycQED'
-copyright = '2021, QuDev'
+project = "PycQED"
+copyright = "2021, QuDev"
+
 
 # -- General configuration ---------------------------------------------------
 
@@ -34,31 +36,36 @@ import sphinx_rtd_theme
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon',
-    'sphinx_rtd_theme',
-    'myst_parser',
-    'autodoc_instrument',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
+    "sphinx_rtd_theme",
+    "myst_parser",
+    "autodoc_instrument",
 ]
 
-source_suffix = ['.rst', '.md']
+# Enable writing pages both in ReStructuredText and Markdown
+source_suffix = [".rst", ".md"]
 
+# Include figure number
 numfig = True
 
+# Md -> ReST extension configuration
 myst_enable_extensions = [
-    "amsmath",
-    "dollarmath",
-    "tasklist",
+    "amsmath", # Latex math expressions
+    "dollarmath", # Latex math expressions
+    "tasklist", # Checklists
 ]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
+
 
 # -- Autodoc and autosummary -------------------------------------------------
 
@@ -68,23 +75,38 @@ add_module_names = False
 autosummary_generate = True
 
 autodoc_default_options = {
-    'undoc-members': True,
+    "undoc-members": True, # Include members with no docstrings
+    "special-members": "__init__", # Include following dunder functions in docs
 }
+
+
+# -- intersphinx documentation -----------------------------------------------
+
+intersphinx_mapping = {
+    # Can be used to add links to Python Standard library
+    "python": ("https://docs.python.org/3.9/", None),
+    # Can be used to add links to qcodes objects
+    "qcodes": ("https://qcodes.github.io/Qcodes/", None),
+    "h5py": ('https://docs.h5py.org/en/latest', None),
+    "numpy": ('https://numpy.org/doc/stable', None),
+    "matplotlib": ('https://matplotlib.org/stable', None),
+}
+
 
 # -- Options for HTML output -------------------------------------------------
 
 # Use Read-the-docs theme instead of default theme
-html_theme = 'sphinx_rtd_theme'
+html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 # Hide "View page source" link
 html_show_sourcelink = False
 
 
-# -- autodoc_instrument extensin ---------------------------------------------
+# -- autodoc_instrument extension --------------------------------------------
 
 autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")

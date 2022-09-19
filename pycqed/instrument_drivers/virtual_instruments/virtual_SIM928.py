@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 from qcodes.instrument.parameter import ManualParameter
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 
 log = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class VirtualSIM928(Instrument):
              A list of slot numbers where a SIM928 module is present (starting
                  from 1)
         """
-        return list(range(1, 10))
+        return list(self.slot_names)
 
     def set_voltage(self, i, voltage):
         """

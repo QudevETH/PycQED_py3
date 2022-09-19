@@ -9,6 +9,7 @@ from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from pycqed.analysis_v3 import pipeline_analysis as pla
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import data_extraction as dat_extr_mod
+from pycqed.analysis_v3 import flux_distortion as flux_dist_mod
 from pycqed.analysis_v3 import fitting as fit_mod
 from pycqed.analysis_v3 import plotting as plot_mod
 from pycqed.analysis_v3 import saving as save_mod
@@ -29,6 +30,7 @@ def reload_anav3():
     reload(plot_mod)
     reload(save_mod)
     reload(dat_proc_mod)
+    reload(flux_dist_mod)
     reload(rabi_ana)
     reload(ramsey_ana)
     reload(rb_ana)

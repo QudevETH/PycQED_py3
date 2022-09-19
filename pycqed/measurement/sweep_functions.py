@@ -394,6 +394,14 @@ class FilteredSweep(multi_sweep_function):
         super().__init__(sweep_functions, parameter_name, name, **kw)
 
     def set_parameter(self, val):
+        # Set the soft sweep parameter in the sweep_functions. This is done
+        # before updating filter_segments in pulsar. In case the following
+        # set_parameter triggers a reprogramming, pulsar will skip the
+        # programming of AWGs for which filter segments emulation is needed,
+        # and those AWGs will be programmed during the following update of
+        # filter_segments, so that only the needed segments of the new
+        # sequence get programmed.
+        super().set_parameter(val)
         # Determine the current segment filter and inform Pulsar.
         filter_segments = self.filter_lookup[val]
         self.sequence.pulsar.filter_segments(filter_segments)
@@ -405,5 +413,23 @@ class FilteredSweep(multi_sweep_function):
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
                                range(a)]
-        # set the soft sweep parameter in the sweep_functions
-        super().set_parameter(val)
+
+
+class SpectroscopyHardSweep(Hard_Sweep):
+    """Defines a hard sweep function used for hard spectroscopy.
+
+    The frequency range over which this sweep function should sweep is not
+    set in the sweep function itself, but either in the metadata of the elements
+    in the used segment. This gives Pulsar access to the frequency range,
+    allowing Pulsar to program the corresponding frequency parameters in the
+    seqc code.
+
+    set_parameter is implemented as a pass method to prevent warning messages.
+    """
+    def __init__(self, parameter_name='None'):
+        super().__init__()
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+
+    def set_parameter(self, value):
+        pass  # Set in the Segment, see docstring

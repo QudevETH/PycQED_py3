@@ -12,6 +12,8 @@ import requests
 import numpy as np
 import numbers
 from scipy.optimize import fmin_powell
+
+import pycqed.version
 from pycqed.measurement import hdf5_data as h5d
 from pycqed.utilities import general
 from pycqed.utilities.general import dict_to_ordered_tuples
@@ -47,6 +49,8 @@ except Exception:
           'to see the full error')
     print('When instantiating an MC object,'
           ' be sure to set live_plot_enabled=False')
+
+EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
 
 
 class MeasurementControl(Instrument):
@@ -116,6 +120,10 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
+        self.add_parameter('compress_dataset',
+                           vals=vals.Bool(),
+                           parameter_class=ManualParameter,
+                           initial_value=True)
         self.add_parameter(
             'max_attempts', docstring=
             'Maximum number of attempts. Values larger than 1 will mean that '
@@ -159,12 +167,7 @@ class MeasurementControl(Instrument):
 
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
-            self.main_QtPlot = QtPlot(
-                window_title='Main plotmon of {}'.format(self.name),
-                figsize=(600, 400))
-            self.secondary_QtPlot = QtPlot(
-                window_title='Secondary plotmon of {}'.format(self.name),
-                figsize=(600, 400))
+            self.open_plotmon_windows()
 
         self.plotting_interval(plotting_interval)
 
@@ -294,7 +297,7 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.save_exp_metadata(self.exp_metadata, self.data_object)
+            self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
                 self.check_keyboard_interrupt()
@@ -327,8 +330,7 @@ class MeasurementControl(Instrument):
                 percentage_done = self.get_percdone()
                 if percentage_done == 0 or not self.clean_interrupt():
                     raise e
-                self.save_exp_metadata({'percentage_done': percentage_done},
-                                       self.data_object)
+                self.save_exp_metadata({'percentage_done': percentage_done})
                 log.warning('Caught a KeyboardInterrupt and there is '
                             'unsaved data. Trying clean exit to save data.')
             except Exception as e:
@@ -338,7 +340,7 @@ class MeasurementControl(Instrument):
                 # metadata, the exception will be either logged (if an
                 # automatic retry is triggered) or raised.
                 exception = e
-                formatted_exc = traceback.format_exc()
+                log.error(traceback.format_exc())
             result = self.dset[()]
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
@@ -360,7 +362,6 @@ class MeasurementControl(Instrument):
                           f'). Retrying.'
                     self.log_to_slack(msg)
                     log.error(msg)
-                    log.error(formatted_exc)
                     # Call the retry_cleanup_functions if there are any (see
                     # docstring of parameter max_attempts).
                     [fnc() for fnc in getattr(
@@ -815,6 +816,37 @@ class MeasurementControl(Instrument):
         else:
             return self.live_plot_enabled()
 
+    def open_plotmon_windows(self, name=None, close_previous_windows=True):
+        """Opens the windows of the main and secondary plotting monitor.
+
+        This method is called in the init if live_plot_enabled is True,
+        and it can also be called by the user, e.g., if the windows have
+        been closed by accident.
+
+        Args:
+            name (str): A name to be shown in the title bar of the windows.
+                Defaults to None, in which case the name of the MC object is
+                used.
+            close_previous_windows (bool): Specifies whether the previously
+                used plotmon windows should be closed before creating the
+                new ones. Default: True.
+        """
+        if close_previous_windows:
+            for plotmon in ['main_QtPlot', 'secondary_QtPlot']:
+                try:
+                    getattr(self, plotmon).win.close()
+                except Exception:
+                    # Either the window did not exist, or an error occured.
+                    # This can be ignored: in the worst case, an unused
+                    # window will stay open.
+                    pass
+        if name is None:
+            name = self.name
+        self.main_QtPlot = QtPlot(
+            window_title=f'Main plotmon of {name}', figsize=(600, 400))
+        self.secondary_QtPlot = QtPlot(
+            window_title=f'Secondary plotmon of {name}', figsize=(600, 400))
+
     def _get_plotmon_axes_info(self):
         '''
         Returns a dict indexed by value_names, which contains information
@@ -1091,6 +1123,8 @@ class MeasurementControl(Instrument):
                     # supported by 2D plotmon), we have to fall back to
                     # displaying sweep indices in the 2D plot.
                     for i in range(len(labels)):  # for each sweep dim
+                        if len(new_sweep_vals[i]) == 1:  # single sweep point
+                            continue  # the following check is not needed
                         # Check if the new_sweep_vals are not equidistant
                         # or if they have all the same value
                         diff = np.diff(new_sweep_vals[i])
@@ -1617,17 +1651,33 @@ class MeasurementControl(Instrument):
                 val_name+' (' + self.detector_function.value_units[i] + ')')
         return self.column_names
 
-    def create_experimentaldata_dataset(self):
-        if 'Experimental Data' in self.data_object:
-            data_group = self.data_object['Experimental Data']
+    def _get_experimentaldata_group(self):
+        if EXPERIMENTAL_DATA_GROUP_NAME in self.data_object:
+            return self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
         else:
-            data_group = self.data_object.create_group('Experimental Data')
+            return self.data_object.create_group(EXPERIMENTAL_DATA_GROUP_NAME)
+
+    def _get_create_dataset_kwargs(self):
+        """
+        Get the kwargs to pass to create_dataset in
+        create_experimentaldata_dataset and save_extra_data.
+
+        Returns:
+            dict with the kwargs
+        """
+        kwargs = {}
+        if self.compress_dataset():
+            kwargs.update({'compression': "gzip", 'compression_opts': 9})
+        return kwargs
+
+    def create_experimentaldata_dataset(self):
+        data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
             'Data', (0, len(self.sweep_functions) +
                      len(self.detector_function.value_names)),
             maxshape=(None, len(self.sweep_functions) +
                       len(self.detector_function.value_names)),
-            dtype='float64')
+            dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
         # Added to tell analysis how to extract the data
@@ -1659,6 +1709,54 @@ class MeasurementControl(Instrument):
             "value_units": self.detector_function.value_units
         }
         return result_dict
+
+    def save_extra_data(self, group_name, dataset_name, data,
+                        column_names=None):
+        """Save further data in addition to the Data table
+
+        This can, e.g., be used to save raw data in cases where the data in
+        the Data table is processed in software, or data that is provided by
+        the acquisition instrument in addition to the main measurement data.
+        Note that the method can only be used during a run of MC, i.e.,
+        while self.data_object is open.
+
+        Note that this method is provided as a callback function to
+        self.detector_function.
+
+        Args:
+            group_name (str): Name of the subgroup inside experimental data
+                group. The subgroup is automatically created if it does
+                not exist.
+            dataset_name (str): The name of the dataset in which the data
+                should be stored. If the dataset exists already, the shape
+                of the new data must be compatible with the dimensions of
+                the existing dataset such that it can be appended in axis 0.
+                Note that the name can contain slashes indicating a
+                hierarchy of subgroups with only the part behind the last
+                slash interpreted as dataset name.
+            data (np.array): the data to be stored
+            column_names (None or list of str): names of the columns of the
+                data array. If this is not None and a new dataset is
+                created, the list is stored as an attribute column_names of
+                the new dataset.
+        """
+        data_group = self._get_experimentaldata_group()
+        if group_name in data_group:
+            group = data_group[group_name]
+        else:
+            group = data_group.create_group(group_name)
+        if dataset_name not in group:
+            dset = group.create_dataset(dataset_name, data=data,
+                                        maxshape=[None] * len(data.shape),
+                                        **self._get_create_dataset_kwargs())
+            if column_names is not None:
+                dset.attrs['column_names'] = h5d.encode_to_utf8(column_names)
+        else:
+            dset = group[dataset_name]
+            # FIXME: we should check whether dimensions and column names
+            #  are the same
+            dset.resize(dset.shape[0] + data.shape[0], axis=0)
+            dset[-data.shape[0]:] = data
 
     def save_optimization_settings(self):
         '''
@@ -1692,8 +1790,8 @@ class MeasurementControl(Instrument):
                                         xfavorite, stds,
                                         [fbest], xbest, [evals_best]])
         if (not 'optimization_result'
-                in self.data_object['Experimental Data'].keys()):
-            opt_res_grp = self.data_object['Experimental Data']
+                in self.data_object[EXPERIMENTAL_DATA_GROUP_NAME].keys()):
+            opt_res_grp = self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
             self.opt_res_dset = opt_res_grp.create_dataset(
                 'optimization_result', (0, len(results_array)),
                 maxshape=(None, len(results_array)),
@@ -1866,6 +1964,7 @@ class MeasurementControl(Instrument):
                     log.warning(f'Could not run parameter check for '
                                 f'{inst_name}.{p_name}: the parameter was not '
                                 f'found in the snapshot.')
+        entry_point.attrs["__class__"] = inst_snapshot['__class__']
 
     def save_MC_metadata(self, data_object=None, *args):
         '''
@@ -1886,9 +1985,9 @@ class MeasurementControl(Instrument):
         sha1_id, diff = self.get_git_info()
         set_grp.attrs['git_sha1_id'] = sha1_id
         set_grp.attrs['git_diff'] = diff
+        set_grp.attrs['pycqed_version'] = pycqed.version.__version__
 
-    @classmethod
-    def save_exp_metadata(self, metadata: dict, data_object):
+    def save_exp_metadata(self, metadata: dict):
         '''
         Saves experiment metadata to the data file. The metadata is saved at
             file['Experimental Data']['Experimental Metadata']
@@ -1897,13 +1996,8 @@ class MeasurementControl(Instrument):
             metadata (dict):
                     Simple dictionary without nesting. An attribute will be
                     created for every key in this dictionary.
-            data_object:
-                    An open hdf5 data object.
         '''
-        if 'Experimental Data' in data_object:
-            data_group = data_object['Experimental Data']
-        else:
-            data_group = data_object.create_group('Experimental Data')
+        data_group = self._get_experimentaldata_group()
 
         if 'Experimental Metadata' in data_group:
             metadata_group = data_group['Experimental Metadata']
@@ -1952,7 +2046,7 @@ class MeasurementControl(Instrument):
             [self.remove_parameter_check(p) for p in parameter]
         iname = _get_instrument_name_for_parameter_checks(parameter)
         if parameter.name in self.parameter_checks.get(iname, {}):
-            self.parameter_checks[iname].pop(parameter)
+            self.parameter_checks[iname].pop(parameter.name)
         else:
             log.warning(f'No check for parameter {iname}.{parameter.name} was '
                         f'configured.')
@@ -2039,7 +2133,7 @@ class MeasurementControl(Instrument):
                     t_left=t_left,
                     t_end=t_end,)
 
-            if percdone != 100:
+            if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
@@ -2194,6 +2288,7 @@ class MeasurementControl(Instrument):
                                                 wrapped_det_control)
         self.detector_function = detector_function
         self.set_detector_function_name(detector_function.name)
+        self.detector_function.extra_data_callback = self.save_extra_data
 
     def get_detector_function(self):
         return self.detector_function
@@ -2360,24 +2455,18 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
         it from the object (used in recursive calls of this function)
     :return: (str)
     """
-    def get_short_name():
-        if short_name is not None:
-            return short_name
-        elif hasattr(object, 'short_name'):
-            return object.short_name
-        else:
-            raise AttributeError(
-                f'Could not determine the name of {object}.')
 
     if hasattr(object, 'instrument'):
         # it is a parameter
         return _get_instrument_name_for_parameter_checks(object.instrument)
     elif getattr(object, 'parent', None) is not None:
-        if object.short_name in object.parent.submodules:
+        if object in object.parent.submodules.values():
             # it is a submodule, and will appear in the snapshot with
-            # its short_name
+            # the key used in submodules
+            key = [k for k in object.parent.submodules
+                   if object.parent.submodules[k] == object][0]
             return _get_instrument_name_for_parameter_checks(
-                object.parent) + '.' + get_short_name()
+                object.parent) + '.' + key
         # It might be a channel in a channel list that references the
         # instrument as parent, but not the channel list.
         l = [(s, k) for k, s in object.parent.submodules.items()
@@ -2392,8 +2481,10 @@ def _get_instrument_name_for_parameter_checks(object, short_name=None):
             object[0], 'parent', None) is not None:
         # If it is a list and we find the parent via the first element.
         # A channel list is a submodule and thus appears in the snapshot with
-        # its short_name.
+        # the key used in submodules.
+        key = [k for k in object[0].parent.submodules
+               if object[0].parent.submodules[k] == object][0]
         return _get_instrument_name_for_parameter_checks(
-            object[0].parent) + '.' + get_short_name()
+            object[0].parent) + '.' + key
     else:  # it is an instrument
         return object.name

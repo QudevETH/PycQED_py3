@@ -26,7 +26,7 @@ class n_qubit_seq_sweep(swf.Hard_Sweep):
 class n_qubit_off_on(swf.Hard_Sweep):
 
     def __init__(self, pulse_pars_list, RO_pars_list, upload=True,
-                 preselection=False, parallel_pulses=False, RO_spacing=200e-9):
+                 preselection=False, parallel_pulses=False, RO_spacing=2000e-9):
         super().__init__()
         self.pulse_pars_list = pulse_pars_list
         self.RO_pars_list = RO_pars_list

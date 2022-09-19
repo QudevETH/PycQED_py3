@@ -5,7 +5,7 @@ from pycqed.analysis_v3 import helper_functions
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
-from pycqed.utilities.timer import Timer, Checkpoint
+from pycqed.utilities.timer import Timer, TimedMetaClass
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
@@ -13,11 +13,14 @@ from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.utilities.general as general
 from copy import deepcopy
+from collections import OrderedDict as odict
+from pycqed.measurement.sweep_points import SweepPoints
 import logging
+from pycqed.gui.waveform_viewer import WaveformViewer
 log = logging.getLogger(__name__)
 
 
-class QuantumExperiment(CircuitBuilder):
+class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     """
     Base class for Experiments with pycqed. A QuantumExperiment consists of
     3 main parts:
@@ -29,6 +32,7 @@ class QuantumExperiment(CircuitBuilder):
       may be overwritten by child classes to start measurement-specific analysis
 
     """
+    TIMED_METHODS = ["run_analysis"]
     _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
@@ -179,7 +183,7 @@ class QuantumExperiment(CircuitBuilder):
         self.filter_segments_mask = filter_segments_mask
         self.sweep_points = self.sequence_kwargs.get("sweep_points", None)
         self.mc_points = mc_points if mc_points is not None else [[], []]
-        self.sweep_functions = sweep_functions
+        self.sweep_functions = list(sweep_functions)
         self.force_2D_sweep = force_2D_sweep
         self.compression_seg_lim = compression_seg_lim
         self.harmonize_element_lengths = harmonize_element_lengths
@@ -209,7 +213,8 @@ class QuantumExperiment(CircuitBuilder):
 
         # determine data type
         if "log" in self.df_name or not \
-                self.df_kwargs.get('averaged', True):
+                self.df_kwargs.get("det_get_values_kws",
+                                   {}).get('averaged', True):
             data_type = "singleshot"
         else:
             data_type = "averaged"
@@ -218,6 +223,7 @@ class QuantumExperiment(CircuitBuilder):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type})
+        self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
@@ -427,6 +433,11 @@ class QuantumExperiment(CircuitBuilder):
                     extra sequences are compatible with the normal sequences
                     of the QuantumExperiment, e.g., in terms of number of
                     acquisition elements.
+                - aux_triggers (dict): a dict where each key is a tuple of a
+                    sequence index and segment index, and the corresponding
+                    value is a list of channel names. This will add trigger
+                    pulses on the given channels for the first pulse of
+                    the segment indicated by the key.
         Returns:
 
         """
@@ -465,6 +476,11 @@ class QuantumExperiment(CircuitBuilder):
                 self.mc_points[1] = np.concatenate([
                     self.mc_points[1],
                     np.arange(len(extra_seqs)) + self.mc_points[1][-1] + 1])
+            aux_triggers = sequence_kwargs.get('aux_triggers', None)
+            if aux_triggers is not None:
+                for (i, j), v in aux_triggers.items():
+                    self.sequences[i][j].unresolved_pulses[
+                        0].pulse_obj.trigger_channels = v
 
         # check sequence
         assert len(self.sequences) != 0, "No sequence found."
@@ -520,8 +536,8 @@ class QuantumExperiment(CircuitBuilder):
         if len(self.sequences) > 1:
             # compress 2D sweep
             if self.compression_seg_lim is not None:
-                if self.sweep_functions == (awg_swf.SegmentHardSweep,
-                                            awg_swf.SegmentSoftSweep):
+                if self.sweep_functions == [awg_swf.SegmentHardSweep,
+                                            awg_swf.SegmentSoftSweep]:
                     self.sequences, self.mc_points[0], \
                     self.mc_points[1], cf = \
                         self.sequences[0].compress_2D_sweep(self.sequences,
@@ -572,6 +588,19 @@ class QuantumExperiment(CircuitBuilder):
                 sweep_func_2nd_dim = self.sweep_functions[1](
                     sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
             else:
+                # Check whether it is a nested sweep function whose first
+                # sweep function is a SegmentSoftSweep class as placeholder.
+                swfs = getattr(self.sweep_functions[1], 'sweep_functions',
+                               [None])
+                if (swfs[0] == awg_swf.SegmentSoftSweep):
+                    # Replace the SegmentSoftSweep placeholder by a properly
+                    # configured instance of SegmentSoftSweep.
+                    if len(swfs) > 1:
+                        # make sure that units are compatible
+                        unit = getattr(swfs[1], 'unit', unit)
+                    swfs[0] = awg_swf.SegmentSoftSweep(
+                        sweep_func_1st_dim, self.sequences,
+                        sweep_param_name, unit)
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
@@ -625,8 +654,14 @@ class QuantumExperiment(CircuitBuilder):
 
         # Configure detector function
         # FIXME: this should be extended to meas_objs that are not qubits
+        if sweep_func_1st_dim.sweep_control == 'hard':
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            # Used by IntegratingAveragingPollDetector and its childen,
+            # detectors that don't implement this kwarg will ignore it
+            self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
-            self.meas_objs, **self.df_kwargs)[self.df_name]
+            self.df_name, self.meas_objs, **self.df_kwargs)
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
@@ -828,7 +863,87 @@ class QuantumExperiment(CircuitBuilder):
         # avoid returning a list of Nones (if show_and_close is True)
         return [v for v in figs_and_axs if v is not None] or None
 
-
-
     def __repr__(self):
-        return f"QuantumExperiment(dev={self.dev}, qubits={self.qubits})"
+        return f"QuantumExperiment(dev={getattr(self, 'dev', None)}, " \
+               f"qubits={getattr(self, 'qubits', None)})"
+
+    def spawn_waveform_viewer(self, **kwargs):
+        """
+        Spawns a WaveformViewer window to interactively inspect the control,
+        readout and trigger pulses of the QuantumExperiment instance.
+        Args:
+            **kwargs: Are passed to the __init__ method of WaveformViewer,
+                see WaveformViewer docstring.
+        """
+        if self.waveform_viewer is None:
+            self.waveform_viewer = WaveformViewer(self, **kwargs)
+        else:
+            self.waveform_viewer.spawn_waveform_viewer(**kwargs)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        """
+        Determines which options of a quantum experiment can be configured
+        in the QuantumExperimentGUI. Returns a dictionary with keys
+        'kwargs', 'task_list_fields' and 'sweeping_parameters', where the
+        corresponding values are themselves ordered dictionaries.
+
+        The 'kwargs', 'task_list_fields' and 'sweeping_parameters' ordered
+        dictionaries can be extended in the subclasses of QuantumExperiment.
+        The keys of the ordered dictionaries should indicate, in which class
+        the configuration options were added to the corresponding ordered
+        dictionary. The values of the ordered dictionaries are regular
+        dictionaries and contain the name, type and default value of the
+        configuration options. Only the configuration options that
+        are added to these dictionaries are available in the
+        QuantumExperimentGUI.
+
+        The 'kwargs' ordered dict contains the keyword arguments to
+        configure/instantiate QuantumExperiment objects. Quantum experiments
+        of type MultiTaskingExperiment can be configured by specifying a
+        task_list. The 'task_list_fields' ordered dict contains the keyword
+        arguments that can be used to configure task lists in the GUI. Finally,
+        the 'sweeping_parameters' ordered dict contains the sweep parameters
+        that can be selected in the QuantumExperimentGUI (e.g. pulse
+        amplitude in the case of a Rabi experiment).
+
+        For the lowest level dict, the keys correspond to the keyword
+        argument names of the configuration options, while the values are
+        tuples. The first entry of a tuple indicates the field type in
+        which the configuration option can be set (e.g. if the first entry
+        is bool, the GUI will provide a checkbox to set the value of the
+        configuration option). See the docstring of the
+        create_field_from_field_information method of the
+        QuantumExperimentGUI class to see, which value corresponds to what
+        field type. The second entry specifies the default value of the field,
+        i.e. the value that is initially displayed in the field. If None,
+        no value is displayed by default.
+
+        Args:
+            device (Device): Device object containing information about the
+                currently installed superconducting device.
+
+        Returns:
+            Dictionary containing the configuration options available in
+                the QuantumExperimentGUI.
+        """
+        two_qb_gates = device.two_qb_gates()
+        return {
+            'kwargs': odict({
+                QuantumExperiment.__name__: {
+                    # kwarg: (fieldtype, default_value),
+                    'label': (str, None),
+                    'sweep_points': (SweepPoints, None),
+                    'upload': (bool, True),
+                    'measure': (bool, True),
+                    'analyze': (bool, True),
+                    'delegate_plotting': (bool, False),
+                    'compression_seg_lim': (int, None),
+                    'cz_pulse_name': (
+                        set(two_qb_gates),
+                        two_qb_gates[0] if len(two_qb_gates) else None)
+                },
+            }),
+            'task_list_fields': odict({}),
+            'sweeping_parameters': odict({}),
+        }

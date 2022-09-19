@@ -1,13 +1,20 @@
 import numpy as np
+from collections import OrderedDict as odict
 from copy import copy, deepcopy
 import traceback
+
+from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
 import pycqed.measurement.sweep_functions as swf
-from pycqed.measurement.waveform_control.block import ParametricValue
+import pycqed.measurement.awg_sweep_functions as awg_swf
+from pycqed.measurement.waveform_control.block import ParametricValue, Block
 from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
+from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
+from pycqed.measurement import multi_qubit_module as mqm
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -273,7 +280,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
     """
 
     def __init__(self, task_list, sweep_points=None, allowed_lo_freqs=None,
-                 adapt_drive_amp=False, adapt_ro_freq=False, **kw):
+                 adapt_drive_amp=False, adapt_ro_freq=False,
+                 internal_modulation=None, **kw):
         for task in task_list:
             if not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
@@ -291,6 +299,13 @@ class ParallelLOSweepExperiment(CalibBuilder):
         self.qb_offsets = {}
         self.lo_sweep_points = []
         self.allowed_lo_freqs = allowed_lo_freqs
+        self.internal_modulation = (True if internal_modulation is None
+                                            and allowed_lo_freqs is not None
+                                    else internal_modulation)
+        if allowed_lo_freqs is None and internal_modulation:
+            log.warning('ParallelLOSweepExperiment: internal_modulation is '
+                        'set to True, but this will be ignored in a pure LO '
+                        'sweep, where no allowed_lo_freqs are set.')
         self.adapt_drive_amp = adapt_drive_amp
         self.adapt_ro_freq = adapt_ro_freq
         self.drive_amp_adaptation = {}
@@ -373,7 +388,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 f_start[qb] = self.sweep_points.get_sweep_params_property(
                     'values', 1, freq_sp)[0]
                 self.qb_offsets[qb] = f_start[qb] - self.lo_sweep_points[0]
-                lo = qb.instr_ge_lo.get_instr()
+                lo = qb.get_ge_lo_identifier()
                 if lo not in self.lo_qubits:
                     self.lo_qubits[lo] = [qb]
                 else:
@@ -391,14 +406,58 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     temp_vals.append(
                         (qb.ge_mod_freq, f_start[qb] - self.lo_offsets[lo]))
             self.exp_metadata['lo_offsets'] = {
-                k.name: v for k, v in self.lo_offsets.items()}
+                k: v for k, v in self.lo_offsets.items()}
 
         if self.allowed_lo_freqs is not None:
-            # HDAWG internal modulation is needed, switch off modulation in
-            # the waveform generation
-            for task in self.preprocessed_task_list:
-                task['pulse_modifs'] = {'attr=mod_frequency': None}
-            self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
+            if self.internal_modulation:
+                # HDAWG internal modulation is needed, switch off modulation
+                # in the waveform generation
+                for task in self.preprocessed_task_list:
+                    task['pulse_modifs'] = {'attr=mod_frequency': None}
+                self.cal_points.pulse_modifs = {'attr=mod_frequency': None}
+            else:
+                def major_minor_func(val, major_values):
+                    ind = np.argmin(np.abs(major_values - val))
+                    mval = major_values[ind]
+                    return (mval, val - mval)
+
+                modifs = {}
+                for task in self.preprocessed_task_list:
+                    qb = self.get_qubits(task['qb'])[0][0]
+                    lo = qb.get_ge_lo_identifier()
+                    if len(self.lo_qubits[lo]) > 1:
+                        raise NotImplementedError(
+                            'ParallelLOSweepExperiment with '
+                            'internal_modulation=False is currently only '
+                            'implemented for a single qubit per LO.'
+                        )
+                    if not kw.get('optimize_mod_freqs', False):
+                        raise NotImplementedError(
+                            'ParallelLOSweepExperiment with '
+                            'internal_modulation=False is currently only '
+                            'implemented for optimize_mod_freqs=True.'
+                        )
+                    maj_vals = np.array(self.allowed_lo_freqs)
+                    func = lambda x, mv=maj_vals : major_minor_func(x, mv)[1]
+                    if 'pulse_modifs' not in task:
+                        task['pulse_modifs'] = {}
+                    # Below, we replace mod_frequency by a ParametricValue in all X180
+                    # pulses in all task-specific blocks and in all calibration point
+                    # segments. Since the cal segments are generated globally (and not
+                    # per task), we need to manually ensure that a sweep parameter with
+                    # task prefix is used if it exists. If no task-specific freq sweep
+                    # parameter is found, the global freq sweep parameter is used. For
+                    # the task-specific blocks, prefixing is automatically taken into
+                    # account by the base class.
+                    params = ['freq'] * 2
+                    pre_param = task['prefix'] + params[1]
+                    if self.sweep_points.find_parameter(pre_param) is not None:
+                        params[1] = pre_param
+                    for d, sp in zip([task['pulse_modifs'], modifs], params):
+                        d.update({
+                            f'op_code=X180 {qb.name}, attr=mod_frequency':
+                                ParametricValue(sp, func=func)})
+                self.cal_points.pulse_modifs = modifs
 
         # If applicable, configure drive amplitude adaptation based on the
         # models stored in the qubit objects.
@@ -501,11 +560,17 @@ class ParallelLOSweepExperiment(CalibBuilder):
         temp_vals = []
         name = 'Drive frequency shift'
         sweep_functions = [swf.Offset_Sweep(
-            lo.frequency, offset, name=name, parameter_name=name, unit='Hz')
+            self.lo_qubits[lo][0].swf_drive_lo_freq(allow_IF_sweep=False),
+            offset, name=name, parameter_name=name, unit='Hz')
             for lo, offset in self.lo_offsets.items()]
         if self.allowed_lo_freqs is not None:
             minor_sweep_functions = []
             for lo, qbs in self.lo_qubits.items():
+                if not self.internal_modulation:
+                    # Minor sweep function not needed. Use dummy sweep.
+                    minor_sweep_functions = [
+                        swf.Soft_Sweep() for i in range(len(sweep_functions))]
+                    break
                 qb_sweep_functions = []
                 for qb in qbs:
                     mod_freq = self.get_pulse(f"X180 {qb.name}")[
@@ -577,6 +642,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
         for task in self.task_list:
             if 'fluxline' not in task:
                 continue
+            temp_vals.append((task['fluxline'], task['fluxline']()))
             qb = self.get_qubits(task['qb'])[0][0]
             dc_amp = (lambda x, o=self.qb_offsets[qb], qb=qb:
                       qb.calculate_flux_voltage(x + o))
@@ -584,10 +650,29 @@ class ParallelLOSweepExperiment(CalibBuilder):
                 task['fluxline'], transformation=dc_amp,
                 name=f'DC Offset {qb.name}',
                 parameter_name=f'Parking freq {qb.name}', unit='Hz')]
-        self.sweep_functions = [
-            self.sweep_functions[0], swf.multi_sweep_function(
-                sweep_functions, name=name, parameter_name=name)]
-        self.mc_points[1] = self.lo_sweep_points
+        if self.allowed_lo_freqs is None or self.internal_modulation:
+            # The dimension 1 sweep is a parallel sweep of all sweep_functions
+            # created here, and they directly understand the sweep points
+            # stored in self.lo_sweep_points.
+            self.sweep_functions = [
+                self.sweep_functions[0], swf.multi_sweep_function(
+                    sweep_functions, name=name, parameter_name=name)]
+            self.mc_points[1] = self.lo_sweep_points
+        else:
+            # IF sweep without internal modulation, i.e., we have to
+            # reprogram the drive AWG for every sequence. Thus, the sweep
+            # in dimension 1 is a parallel sweep of a SegmentSoftSweep and of
+            # all sweep_functions created here. Since the SegmentSoftSweep
+            # requires indices as sweep points, we use an Indexed_Sweep to
+            # translate the indices to the sweep points stored in
+            # self.lo_sweep_points, which are required by the sweep
+            # functions created here.
+            self.sweep_functions = [
+                self.sweep_functions[0], swf.multi_sweep_function([
+                    awg_swf.SegmentSoftSweep,  # placeholder, see _configure_mc
+                    swf.Indexed_Sweep(swf.multi_sweep_function(
+                        sweep_functions, name=name, parameter_name=name),
+                        self.lo_sweep_points)])]
         with temporary_value(*temp_vals):
             super().run_measurement(**kw)
 
@@ -700,7 +785,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
         if fp_during_ro_buffer is None:
             fp_during_ro_buffer = 0.2e-6
 
-        if ro_pulse_delay is 'auto' and (fp_truncation or \
+        if ro_pulse_delay == 'auto' and (fp_truncation or \
             hasattr(fp_truncation, '__iter__')):
             raise Exception('fp_truncation does currently not work ' + \
                             'with the auto mode of ro_pulse_delay.')
@@ -1232,6 +1317,55 @@ class Cryoscope(CalibBuilder):
         for qb, block in self.blocks_to_save.items():
             self.exp_metadata['flux_pulse_blocks'][qb] = block.build()
 
+class FluxPulseTiming(FluxPulseScope):
+    """
+        Flux pulse timing measurement used to determine the determine the
+        timing of the flux pulse with respect to the qubit drive.
+        It is based on the flux pulse scope measurement and thus
+        features the same pulse sequnce but with the drive frequency
+        fixed at the qubit ge frequency.
+        pulse sequence:
+                      <- delay ->
+           |    -------------    |X180|  ---------------------  |RO|
+           |    ---   | ---- fluxpulse ----- |
+
+            sweep_points:
+            delay (numpy array): array of delays of the flux pulse
+
+        Returns: None
+    """
+    default_experiment_name = 'FluxPulseTiming'
+    kw_for_sweep_points = dict(
+        **FluxPulseScope.kw_for_sweep_points,
+        qb=dict(param_name='freq', unit='Hz',
+                label=r'drive frequency, $f_d$',
+                values_func='get_ge_freq',
+                dimension=1),
+    )
+
+    def get_ge_freq(self, qb):
+        """
+        Returns the ge frequency of the provided qubit name. This is used
+        to create the sweep points of length 1 of the routine.
+        :param qb: (string) name of qubit
+
+        Returns:
+            list containing as single entry the ge frequency of the qubit
+        """
+        qb = self.get_qubits(qb)[0][0]
+        return [qb.ge_freq()]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw:
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = tda.FluxPulseTimingAnalysis(
+            qb_names=self.meas_obj_names, **analysis_kwargs)
 
 class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
     """
@@ -1320,8 +1454,133 @@ class FluxPulseAmplitudeSweep(ParallelLOSweepExperiment):
             qb.fit_ge_freq_from_flux_pulse_amp(
                 self.analysis.fit_res[f'freq_fit_{qb.name}'].best_values)
 
+class ReadoutPulseScope(ParallelLOSweepExperiment):
+    """
+        Readout pulse scope measurement used to determine the delay of the
+        qubit's drive AWG with respect to the qubit readout pulse.
 
-class SingleQubitGateCalibExperiment (CalibBuilder):
+        pulse sequence:
+           |    -------------    |X180|  ---------------------  |RO|
+           |    ---   | ---- RO ----- |
+
+
+            sweep_points:
+            delays (numpy array): array of delays of the drive pulse w.r.t.
+            the readout pulse
+            freq (numpy array): array of drive frequencies
+
+        Returns: None
+
+    """
+
+    kw_for_task_keys = ['ro_separation']
+    kw_for_sweep_points = {
+        'freqs': dict(param_name='freq', unit='Hz',
+                      label=r'drive frequency, $f_d$',
+                      dimension=1),
+        'delays': dict(param_name='delay', unit='s',
+                       label=r'readout pulse delay',
+                       dimension=0),
+    }
+    default_experiment_name = 'Readout_pulse_scope'
+
+    def __init__(self, task_list, sweep_points=None, **kw):
+        # configure detector function parameters
+        kw['df_kwargs'] = kw.get('df_kwargs', {})
+        kw['df_kwargs'].update(
+            {'values_per_point': 2,
+             'values_per_point_suffix': ['_probe', '_measure']})
+
+        try:
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+            self.exp_metadata.update({'rotation_type': 'global_PCA'})
+            self.autorun(**kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, ro_separation,
+                    prepend_pulse_dicts=None, **kw):
+        """
+        Performs X180 pulse on top of a readout pulse.
+        :param qb: (str) the name of the qubit
+        :param sweep_points: (SweepPoints object or list of dicts or None)
+        sweep points valid for all tasks.
+        :param ro_separation: (float) separation between the two readout
+        pulses as specified between the start of both pulses.
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
+        :param kw:
+        """
+        b = self.block_from_ops('ro_ge', [f'RO {qb}', f'X180 {qb}'])
+
+        ro = b.pulses[0]
+        # here probe refers to the X180 pulse that "probes" the
+        # first readout pulse
+        probe = b.pulses[1]
+        probe['ref_point'] = 'start'
+        probe['ref_point_new'] = 'end'
+
+        # make sure that no pulse starts before 0 point of the block
+        probe_pulse_length = probe['sigma'] * probe['nr_sigma']
+        ro['pulse_delay'] = -min(sweep_points['delay']) + probe_pulse_length
+        probe['pulse_delay'] = ParametricValue('delay')
+
+        b_ro = self.block_from_ops('final_ro', [f'RO {qb}'])
+
+        # Assure that ro separation is comensurate with start granularity
+        pulsar_obj = self.get_qubits(qb)[0][0].instr_pulsar.get_instr()
+        acq_instr = self.get_qubits(qb)[0][0].instr_acq()
+        # Pulsar parameter _element_start_granularity is
+        # set to 0 for acq instruments. Access parameter
+        # via ELEMENT_START_GRANULARITY
+        gran = pulsar_obj.awg_interfaces[acq_instr].ELEMENT_START_GRANULARITY
+        ro_separation -= ro_separation % (-gran)
+        b_ro.pulses[0]['pulse_delay'] = ro_separation
+        b = self.simultaneous_blocks('final', [b, b_ro])
+        if prepend_pulse_dicts is not None:
+            pb = self.block_from_pulse_dicts(prepend_pulse_dicts,
+                                             block_name='prepend')
+            b = self.sequential_blocks('final_with_prepend', [pb, b])
+        return b
+
+    @Timer()
+    def run_analysis(self, analysis_kwargs={}, **kw):
+        """
+        Runs analysis and stores analysis instances in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: currently ignored
+        """
+
+        self.analysis = tda.MultiQubit_TimeDomain_Analysis(
+            qb_names=self.meas_obj_names, **analysis_kwargs)
+
+    def seg_from_cal_points(self, *args, **kw):
+        """
+        Configure super.seg_from_cal_points() for sequence with two readouts
+        per segment and hence twice the number of calibration points. Check
+        super() method for args, kw and returned values.
+        """
+        # given that this routine makes use of two read out pulses
+        # per segment, also two repetitions per cal state have to
+        # be added to allow the analysis to run successfully
+        number_of_cal_repetitions = 2
+        kw['df_values_per_point'] = number_of_cal_repetitions
+        return super().seg_from_cal_points(*args, **kw)
+
+    def sweep_n_dim(self, *args, **kw):
+        """
+        Configure super.sweep_n_dim() for sequence with two readouts
+        per segment. Check super() method for args, kw and returned values.
+        """
+        n_reps = 2
+        seqs, vals = super().sweep_n_dim(*args, **kw)
+        n_acqs = int(len(vals[0])/n_reps)
+        vals[0] = vals[0][:n_acqs]
+        return seqs, vals
+
+class SingleQubitGateCalibExperiment(CalibBuilder):
     """
     Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
     T1, QScale, InPhaseAmpCalib). This is a multitasking experiment, see
@@ -1359,6 +1618,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
     """
     kw_for_task_keys = ['transition_name']
     default_experiment_name = 'SingleQubitGateCalibExperiment'
+    call_parallel_sweep = True  # whether to call parallel_sweep of parent
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         try:
@@ -1430,8 +1690,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
                 self.sweep_points.get_meas_obj_sweep_points_map(
                     self.meas_obj_names)
 
-            if 'qscale' in self.experiment_name.lower() or \
-                    'inphase_amp_calib' in self.experiment_name.lower():
+            if not self.call_parallel_sweep:
                 # For these experiments the pulse sequence is not identical for
                 # each all sweep points so the block function must be called
                 # at each iteration in sweep_n_dim.
@@ -1457,7 +1716,7 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
             # work with dummy TwoD sweeps
             self.mc_points = [self.mc_points[0], []]
 
-            self.autorun(store_preprocessed_task_list=True, **kw)
+            self.autorun(**kw)
 
         except Exception as x:
             self.exception = x
@@ -1602,6 +1861,27 @@ class SingleQubitGateCalibExperiment (CalibBuilder):
         # To be overloaded by children.
         pass
 
+    def run_measurement(self, **kw):
+        if 'store_preprocessed_task_list' not in kw:
+            # parameters in preprocessed_task_list should also be availiable later in analysis
+            kw['store_preprocessed_task_list'] = True
+
+        super().run_measurement(**kw)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({})
+            })
+        d['task_list_fields'].update({
+            SingleQubitGateCalibExperiment.__name__: odict({
+                'qb': ((Qubit, 'single_select'), None),
+                'transition_name': (['ge', 'ef', 'fh'], 'ge'),
+            })
+        })
+        return d
+
 
 class Rabi(SingleQubitGateCalibExperiment):
     """
@@ -1651,6 +1931,7 @@ class Rabi(SingleQubitGateCalibExperiment):
         - amps
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + ['n']
     kw_for_sweep_points = {
         'amps': dict(param_name='amplitude', unit='V',
                      label='Pulse Amplitude', dimension=0)
@@ -1660,7 +1941,6 @@ class Rabi(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, **kw):
         try:
-            self.kw_for_task_keys += ['n']
             if 'n' not in kw:
                 # add default n to kw before passing to init of parent
                 kw['n'] = 1
@@ -1741,6 +2021,27 @@ class Rabi(SingleQubitGateCalibExperiment):
             amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['piPulse']
             qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+            qubit.set(f'{task["transition_name_input"]}_amp90_scale', 0.5)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['task_list_fields'].update({
+            Rabi.__name__: odict({
+                'n': (int, 1),
+            })
+        })
+        d['sweeping_parameters'].update({
+            Rabi.__name__: {
+                0: {
+                    'amplitude': 'V',
+                },
+                1: {
+                    'sigma': 's',
+                },
+            }
+        })
+        return d
 
 
 class Ramsey(SingleQubitGateCalibExperiment):
@@ -1807,6 +2108,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         - delays
     """
 
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys + [
+        'artificial_detuning']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0)
@@ -1816,7 +2119,6 @@ class Ramsey(SingleQubitGateCalibExperiment):
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  delays=None, echo=False, **kw):
         try:
-            self.kw_for_task_keys += ['artificial_detuning']
             if 'artificial_detuning' not in kw:
                 # add default artificial_detuning to kw before passing to
                 # init of parent
@@ -1834,7 +2136,7 @@ class Ramsey(SingleQubitGateCalibExperiment):
         Updates self.experiment_name to Echo if self.echo is True.
         """
         if self.echo:
-            self.experiment_name.replace('Ramsey', 'Echo')
+            self.experiment_name = self.experiment_name.replace('Ramsey', 'Echo')
 
     def preprocess_task(self, task, global_sweep_points, sweep_points=None,
                         **kw):
@@ -1913,14 +2215,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        options_dict = analysis_kwargs.pop('options_dict', {})
-        options_dict.update(dict(
-            fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
-            artificial_detuning=kw.pop('artificial_detuning', None)))
         self.analysis = tda.EchoAnalysis if self.echo else tda.RamseyAnalysis
         self.analysis = self.analysis(
             qb_names=self.meas_obj_names, t_start=self.timestamp,
-            options_dict=options_dict, **analysis_kwargs)
+            **analysis_kwargs)
 
     def run_update(self, **kw):
         """
@@ -1951,6 +2249,29 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            Ramsey.__name__: odict({
+                'echo': (bool, False),
+            })
+        })
+        d['task_list_fields'].update({
+            Ramsey.__name__: odict({
+                'artificial_detuning': (float, None),
+            })
+        })
+        d['sweeping_parameters'].update({
+            Ramsey.__name__: {
+                0: {
+                    'pulse_delay': 's',
+                },
+                1: {},
+            }
+        })
+        return d
 
 
 class ReparkingRamsey(Ramsey):
@@ -1993,6 +2314,7 @@ class ReparkingRamsey(Ramsey):
         - dc_voltage_offsets
     """
 
+    kw_for_task_keys = Ramsey.kw_for_task_keys + ['fluxline']
     kw_for_sweep_points = {
         'delays': dict(param_name='pulse_delay', unit='s',
                        label=r'Second $\pi$-half pulse delay', dimension=0),
@@ -2008,7 +2330,6 @@ class ReparkingRamsey(Ramsey):
                  delays=None, dc_voltages=None, dc_voltage_offsets=None,  **kw):
 
         try:
-            self.kw_for_task_keys += ['fluxline']
             if 'fluxline' not in kw:
                 # add default value for fluxline to kw before passing to
                 # init of parent
@@ -2055,7 +2376,7 @@ class ReparkingRamsey(Ramsey):
     def run_measurement(self, **kw):
         """
         Configures additional sweep functions and temporary values for the
-        for the current dc voltage values, before calling the method of the
+        current dc voltage values, before calling the method of the
         base class.
         """
         sweep_functions = []
@@ -2262,6 +2583,19 @@ class T1(SingleQubitGateCalibExperiment):
                 qubit.name]['T1']
             qubit.set(f'T1{task["transition_name"]}', T1)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            T1.__name__: {
+                0: {
+                    'pulse_delay': 's',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class QScale(SingleQubitGateCalibExperiment):
     """
@@ -2312,11 +2646,12 @@ class QScale(SingleQubitGateCalibExperiment):
     """
 
     kw_for_sweep_points = {
-        'qscales': dict(param_name='motzoi', unit='V',
-                        label='Pulse Amplitude', dimension=0,
+        'qscales': dict(param_name='motzoi', unit='',
+                        label='Quadrature scaling, $q$', dimension=0,
                         values_func=lambda q: np.repeat(q, 3))
     }
     default_experiment_name = 'Qscale'
+    call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  qscales=None, **kw):
@@ -2432,6 +2767,19 @@ class QScale(SingleQubitGateCalibExperiment):
                 qubit.name]['qscale']
             qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QScale.__name__: {
+                0: {
+                    'motzoi': 'V',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
     """
@@ -2488,6 +2836,7 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
                          np.arange(nr_p + 1)[::2])
     }
     default_experiment_name = 'Inphase_amp_calib'
+    call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  n_pulses=None, **kw):
@@ -2570,10 +2919,332 @@ class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
         :param kw: keyword arguments
         """
         for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']]
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
             qubit.set(f'{task["transition_name_input"]}_amp180',
                       self.analysis.proc_data_dict['analysis_params_dict'][
                           qubit.name]['corrected_amp'])
+
+
+class DriveAmpCalib(SingleQubitGateCalibExperiment):
+    """
+    Calibration measurement for the qubit drive amplitude that makes use of
+    error amplification from application of N subsequent pulses.
+
+    This is a multitasking experiment, see docstrings of MultiTaskingExperiment
+    and of CalibBuilder for general information. Each task corresponds to one
+    qubit specified by the key 'qb' (either name of QuDev_transmon instance)
+    i.e., multiple qubit can be measured in parallel.
+
+    This experiment can be run in two modes:
+
+    1. The qubit is brought into superposition with a pi-half pulse, after which
+    n_repetitions pairs of pulses are applied with amplitudes of the first
+    and second pulse in each pair chosen such that, ideally, the pair implements
+    a rotation of pi. The correct amplitude for the pulse whose amplitude is not
+    fixed by fixed_scaling can be found by sweeping around the expected correct
+    amplitude (see info about sweep points below).
+
+    This mode is enabled by specifying the input parameter fixed_scaling as
+    a fraction of a pi rotation. This number will be used to scale the amplitude
+    of the second pulse in the pair, while that of the first pulse will be
+    scaled by amp_scalings given in sweep points (see below).
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb: |X90| --- [ |Rx(phi)| --- |Rx(pi - phi)| ] x n_repetitions --- |RO|
+
+    2. The qubit is brought into superposition with a pi-half pulse, after which
+    n_repetitions * nr_pulses_pi pulses are applied with amplitudes scaled by
+    amp_scaling.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb: |X90|---[|Rx(pi/nr_pulses_pi)|] x n_repetitions x n_pulses_pi--|RO|
+
+    Idea behind this calibration measurement:
+     If the pulses are perfectly calibrated, the qubit will remain in the
+     superposition state with 50% excited state probability independent of
+     n_repetitions and amp_scalings. Miscalibrations will be signaled by an
+     oscillation of the excited state probability around 50% with increasing N.
+     By minimizing the standard deviation of this oscillation away from the 50%
+     line as a function of the amp_scalings we can calibrate any drive amplitude
+     with high precision.
+
+    For either mode, expected sweep points, either global or per task
+     - n_repetitions in dimension 0: number of effective pi rotations after the
+        initial pi-half pulse.
+     - amp_scalings in dimension 1: dimensionless fractions of a pi rotation
+        around the x-axis of the Bloch sphere.
+
+    Keyword args:
+        Can be used to provide keyword arguments to sweep_n_dim, autorun,
+        and to the parent classes.
+
+        The following keyword arguments will be copied as entries in
+        sweep_points:
+        - n_repetitions: list or array
+        - amp_scalings: list or array
+
+        The following keyword arguments will be copied as a key to tasks
+        that do not have their own value specified (see docstring of
+        sweep_block):
+        - n_pulses_pi (int; default: None): the number of pulses that
+            will implement a pi rotation.
+        - fixed_scaling (float, default: None): toggles between the two ways
+            of running this experiment explained above by setting the
+            amplitude scaling of the second pulse in the pair (see mode 1
+            above).
+
+        Moreover, the following keyword arguments are understood:
+            for_leakage (bool, default: False): if True, runs the experiment
+                without the first X90 pulse and sets cal_states to 'gef'
+    """
+    kw_for_sweep_points = {
+        'n_repetitions': dict(param_name='n_repetitions', unit='',
+                         label='Nr. repetitions, $N$', dimension=0),
+        'amp_scalings': dict(param_name='amp_scalings', unit='',
+                             label='Amplitude Scaling, $r$', dimension=1),
+    }
+
+    default_experiment_name = 'Drive_amp_calib'
+    call_parallel_sweep = False  # pulse sequence changes between segments
+    kw_for_task_keys = ['n_pulses_pi', 'fixed_scaling']
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 n_repetitions=None, amp_scalings=None, n_pulses_pi=1,
+                 fixed_scaling=None, **kw):
+        try:
+            # Define experiment_name and call the parent class __init__
+            self.for_leakage = kw.get('for_leakage', False)
+            if self.for_leakage and 'cal_states' not in kw:
+                kw['cal_states'] = 'gef'
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             n_repetitions=n_repetitions,
+                             amp_scalings=amp_scalings,
+                             n_pulses_pi=n_pulses_pi,
+                             fixed_scaling=fixed_scaling,
+                             **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_experiment_name(self):
+        """
+        Updates self.experiment_name with the number of Rabi pulses n.
+        """
+        n_reps = []
+        for task in self.preprocessed_task_list:
+            n_reps += [task['sweep_points'].get_sweep_params_property(
+                'values', param_names='n_repetitions')[-1]]
+        if len(np.unique(n_reps)) == 1:
+            self.experiment_name += f'_{n_reps[0]}_repetitions'
+        nr_pi = [task['n_pulses_pi'] for task in self.preprocessed_task_list]
+        fixed_sc_exp = any([task['fixed_scaling'] is not None
+                        for task in self.preprocessed_task_list])
+        if not fixed_sc_exp and len(np.unique(nr_pi)) == 1:
+            self.experiment_name += f'_{nr_pi[0]}xpi_over_{nr_pi[0]}'
+        if self.for_leakage:
+            self.experiment_name += '_leakage'
+
+    def update_sweep_points(self):
+        """
+        If amp_scalings were not specified in the second sweep dimension,
+        this function will add them as np.array([1/n_pulses_pi]) or
+        np.array([1 - 1/n_pulses_pi]) if fixed_scaling is not None.
+        """
+        swp_dim1 = self.sweep_points.get_sweep_dimension(1)
+        if len(swp_dim1) == 0:
+            # amp_scalings were not specified
+            nr_ppi = []
+            prefixes = []
+            fixed_scalings = []
+            for task in self.preprocessed_task_list:
+                swpts = task['sweep_points']
+                n_pulses_pi = task['n_pulses_pi']
+                fixed_scaling = task['fixed_scaling']
+                prefixes += [task['prefix']]
+                nr_ppi += [n_pulses_pi]
+                fixed_scalings += [fixed_scaling]
+                vals = np.array([1/n_pulses_pi]) if fixed_scaling is None \
+                    else np.array([1 - 1/n_pulses_pi])
+                swpts.add_sweep_parameter('amp_scalings', vals,  unit='',
+                                          label='Amplitude Scaling, $r$',
+                                          dimension=1)
+
+            # update self.sweep_points
+            if len(np.unique(nr_ppi)) == 1:
+                # all tasks use the same sweep points
+                vals = np.array([1/nr_ppi[0]]) if fixed_scalings[0] is None \
+                    else np.array([1 - 1/nr_ppi[0]])
+                self.sweep_points.add_sweep_parameter(
+                    'amp_scalings', vals, unit='',
+                    label='Amplitude Scaling, $r$', dimension=1)
+            else:
+                # different values for each task
+                for i in range(len(nr_ppi)):
+                    vals = np.array([1 / nr_ppi[i]]) \
+                        if fixed_scalings[i] is None \
+                        else np.array([1 - 1 / nr_ppi[i]])
+                    self.sweep_points.add_sweep_parameter(
+                        f'{prefixes[i]}amp_scalings', vals, unit='',
+                        label='Amplitude Scaling, $r$', dimension=1)
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, sweep_points, **kw):
+        """
+        This function creates the block at the current iteration in sweep_n_dim,
+        specified by sp1d_idx and sp2d_idx.
+
+        Args:
+            sp1d_idx: current index in the first sweep dimension
+            sp2d_idx: current index in the second sweep dimension
+            sweep_points: SweepPoints object
+
+        Keyword args
+            to allow pass through kw even if it contains entries that are
+            not needed
+
+        Returns:
+            instance of Block created with simultaneous_blocks from a list
+            of blocks corresponding to the tasks in preprocessed_task_list.
+
+        Assumes self.preprocessed_task_list has been defined and that it
+        contains the entries specified by the following keys:
+         - 'qb': qubit name
+         - 'sweep_points': SweepPoints instance
+         - 'transition_name' (see docstring of parent class)
+         - 'n_pulses_pi': int specifying the number of pulses that
+             will implement a pi rotation.
+         - 'fixed_scaling': NOne or float specifying amplitude scaling of the
+             second pulse in the pair (see below)
+
+        If fixed_scaling is None, n_repetitions * n_pulses_pi identical
+        pulses will be added after the initial pi-half pulse and their
+        amplitudes will be scaled by amp_scaling.
+
+        If fixed_scaling is specified, n_repetitions pairs of X180 pulses
+        will be added after the initial pi-half pulse, where the amplitude of
+        the first pulse is scaled by amp_scaling, and the amplitude of the
+        second scaled by fixed_scaling.
+        """
+
+        # Define list to gather the final blocks for each task
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            transition_name = task['transition_name']
+            sweep_points = task['sweep_points']
+            fixed_scaling = task['fixed_scaling']
+            qb = task['qb']
+
+            # Get the block to prepend from the parent class
+            # (see docstring there)
+            prepend_block = super().sweep_block(qb, sweep_points,
+                                                transition_name)
+
+            n_reps = sweep_points.get_sweep_params_property(
+                'values', 0, 'n_repetitions')[sp1d_idx]
+            sp2d = sweep_points.get_sweep_dimension(1)
+            if fixed_scaling is not None:
+                if len(sp2d) > 1:
+                    raise NotImplementedError('Only one parameter in the second '
+                                              'sweep dimension is supported '
+                                              'when using fixed_scaling.')
+                # Apply pairs of X180 pulses, where the amplitude of the first
+                # pulse is scaled by amp_scaling, and the amplitude of the
+                # second scaled by fixed_scaling. (specified by sp2d_idx).
+
+                # Create the pulse list for n_repetitions specified by sp1d_idx
+                pulse_list = [f'X90{transition_name} {qb}'] + \
+                             (n_reps * [f'X180{transition_name} {qb}',
+                                          f'X180{transition_name} {qb}'])
+                # Create a block from this list of pulses
+                drive_calib_block = self.block_from_ops(f'pulses_{qb}',
+                                                        pulse_list)
+
+                amp_scaling = sweep_points.get_sweep_params_property(
+                    'values', 1)[sp2d_idx]
+                # Scale amp of all even pulses after the first by amp_scaling
+                for pulse_dict in drive_calib_block.pulses[1:][0::2]:
+                    pulse_dict['amplitude'] *= amp_scaling
+                # Scale amp of all odd pulses after the first by fixed_scaling
+                for pulse_dict in drive_calib_block.pulses[1:][1::2]:
+                    pulse_dict['amplitude'] *= fixed_scaling
+            else:
+                # Apply n_repetitions * n_pulses_pi X180 pulses after the
+                # initialpi-half pulse, and scale the amplitude of these X180
+                # pulses by amp_scaling (specified by sp2d_idx).
+
+                n_pulses_pi = task['n_pulses_pi']
+                # Create the pulse list for n_repetitions specified by sp1d_idx
+                pulse_list = [] if self.for_leakage else \
+                    [f'X90{transition_name} {qb}']
+                pulse_list += n_reps * n_pulses_pi * \
+                              [f'X180{transition_name} {qb}']
+
+                # Create a block from this list of pulses
+                drive_calib_block = self.block_from_ops(f'pulses_{qb}',
+                                                        pulse_list)
+                # Divide amp of all pulses after the first by amp_scaling
+                for pulse_dict in drive_calib_block.pulses[not self.for_leakage:]:
+                    for param_name in sp2d:
+                        values = sp2d[param_name][0]
+                        if param_name == 'amp_scalings':
+                            pulse_dict['amplitude'] *= values[sp2d_idx]
+                        else:
+                            pulse_dict[param_name] = values[sp2d_idx]
+
+            # Append the final block for this task to parallel_block_list
+            parallel_block_list += [self.sequential_blocks(
+                f'drive_calib_{qb}', prepend_block + [drive_calib_block])]
+
+        return self.simultaneous_blocks(f'drive_amp_calib_{sp2d_idx}_{sp1d_idx}',
+                                        parallel_block_list, block_align='end')
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.DriveAmpCalibAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        If the experiment was run for a pi-pulse or a pi-half pulse, this
+        method updates the pi-pulse amplitude (tr_name_amp180) or the amp90
+        scaling (tr_name_amp90_scale) of the qubit in each task with the value
+        extracted by the analysis.
+
+        Keyword args:
+         to allow pass through kw even though they are not needed
+        """
+
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            ideal_sc = self.analysis.ideal_scalings[qubit.name]
+            if ideal_sc == 1:
+                # pi pulse amp calibration
+                amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
+                    qubit.name]['correct_amplitude']
+                qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+            elif ideal_sc == 0.5:
+                # pi/2 pulse amp calibration
+                amp90_sc = self.analysis.proc_data_dict['analysis_params_dict'][
+                    qubit.name]['correct_scalings_mean']
+                qubit.set(f'{task["transition_name_input"]}_amp90_scale',
+                          amp90_sc)
+            else:
+                log.info(f'No qubit parameter to update for a {ideal_sc}pi '
+                         f'rotation. Update only possible for pi and pi/2.')
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
@@ -2631,3 +3302,526 @@ class RabiFrequencySweep(ParallelLOSweepExperiment):
         b.pulses[0]['amplitude'] = ParametricValue('amplitude')
         self.data_to_fit.update({qb: 'pe'})
         return b
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """Run RabiAnalysis
+
+        The RabiAnalysis will create individual Rabi fits for each of the
+        qubit frequencies in the sweep, as well as 2D plots of raw and
+        corrected data.
+
+        FIXME: We currently do not call the RabiFrequencySweepAnalysis because
+         the additional fitting steps in that class do not always work
+         reliably yet.
+
+        Args:
+            analysis_kwargs: keyword arguments passed to the analysis class
+            kw: passed through to super method
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 't_start' not in analysis_kwargs:
+            analysis_kwargs['t_start'] = self.timestamp
+        super().run_analysis(analysis_class=tda.RabiAnalysis,
+                             analysis_kwargs=analysis_kwargs, **kw)
+
+
+class ActiveReset(CalibBuilder):
+    @handle_exception
+    def __init__(self, task_list=None, recalibrate_ro=False,
+                 prep_states=('g', 'e'), n_shots=10000,
+                 reset_reps=10, set_thresholds=True,
+                 **kw):
+        """
+        Characterize active reset with the following sequence:
+
+        |prep-pulses|--|prep_state_i|--(|RO|--|reset_pulse|) x reset_reps --|RO|
+
+        -Prep-pulses are preselection/active_reset pulses, with parameters defined
+        in qb.preparation_params().
+        - Prep_state_i is "g", "e", "f" as provided by prep_states.
+        - the following readout and reset pulses use the "ro_separation" and
+        "post_ro_wait" of the qb.preparation_params() but the number of pulses is set
+        by reset_reps, such that we can both apply active reset and characterize the
+        reset with different number of pulses.
+        Args:
+            task_list (list): list of task for the reset. Needs the keys
+            recalibrate_ro (bool): whether or not to recalibrate the readout
+                before characterizing the active reset.
+            prep_states (iterable): list of states on which the reset will be
+                characterized
+            reset_reps (int): number of readouts used to characterize the reset.
+                Note that this parameter does NOT correspond to 'reset_reps' in
+                qb.preparation_params() (the latter is used for reset pe
+            set_thresholds (bool): whether or not to set the thresholds from
+                qb.acq_classifier_params() to the corresponding UHF channel
+            n_shots (int): number of single shot measurements
+            **kw:
+        """
+
+        self.experiment_name = kw.get('experiment_name',
+                                      f"active_reset_{prep_states}")
+
+        # build default task in which all qubits are measured
+        if task_list is None:
+            assert kw.get('qubits', None) is not None, \
+                    "qubits must be passed to create default task_list " \
+                    "if task_list=None."
+            task_list = [{"qubit": [qb.name]} for qb in kw.get('qubits')]
+
+        # configure detector function parameters
+        if kw.get("classified", False):
+            kw['df_kwargs'] = kw.get('df_kwargs', {})
+            if 'det_get_values_kws' not in kw['df_kwargs']:
+                kw['df_kwargs'] = {'det_get_values_kws':
+                                    {'classified': True,
+                                     'correlated': False,
+                                     'thresholded': False,
+                                     'averaged': False}}
+            else:
+                # ensure still single shot
+                kw['df_kwargs']['det_get_values_kws'].update({'averaged':False})
+        else:
+            kw['df_name'] = kw.get('df_name', "int_log_det")
+
+
+
+        self.set_thresholds = set_thresholds
+        self.recalibrate_ro = recalibrate_ro
+        # force resetting of thresholds if recalibrating readout
+        if self.recalibrate_ro and not self.set_thresholds:
+            log.warning(f"recalibrate_ro=True but set_threshold=False,"
+                        f" the latest thresholds from the recalibration"
+                        f" won't be uploaded to the UHF.")
+        self.prep_states = prep_states
+        self.reset_reps = reset_reps
+        self.n_shots = n_shots
+
+        # init parent
+        super().__init__(task_list=task_list, **kw)
+
+        if self.dev is None and self.recalibrate_ro:
+            raise NotImplementedError(
+                "Device must be past when 'recalibrate_ro' is True"
+                " because the mqm.measure_ssro() requires the device "
+                "as argument. TODO: transcribe measure_ssro to QExperiment"
+                " framework to avoid this constraint.")
+
+        # all tasks must have same init sweep point because this will
+        # fix the number of readouts
+        # for now sweep points are global. But we could make the second
+        # dimension task-dependent when introducing the sweep over
+        # thresholds
+        default_sp = SweepPoints("initialize", self.prep_states)
+        default_sp.add_sweep_dimension()
+        # second dimension to have once only readout and once with feedback
+        default_sp.add_sweep_parameter("pulse_off", [1, 0])
+        self.sweep_points = kw.get('sweep_points',
+                                   default_sp)
+
+        # get preparation parameters for all qubits. Note: in the future we could
+        # possibly modify prep_params to be different for each uhf, as long as
+        # the number of readout is the same for all UHFs in the experiment
+        self.prep_params = deepcopy(self.get_prep_params())
+        # set explicitly some preparation params so that they can be retrieved
+        # in the analysis
+        for param in ('ro_separation', 'post_ro_wait'):
+            if not param in self.prep_params:
+                self.prep_params[param] = self.STD_PREP_PARAMS[param]
+        # set temporary values
+        qb_in_exp = self.find_qubits_in_tasks(self.qubits, self.task_list)
+        self.temporary_values.extend([(qb.acq_shots, self.n_shots)
+                                      for qb in qb_in_exp])
+
+        # by default empty cal points
+        # FIXME: Ideally these 2 lines should be handled properly by lower level class,
+        #  that does not assume calibration points, instead of overwriting
+        self.cal_points = kw.get('cal_points',
+                                 CalibrationPoints([qb.name for qb in qb_in_exp],
+                                                   ()))
+        self.cal_states = kw.get('cal_states', ())
+        self.autorun(**kw)
+
+    # FIXME: temporary solution to overwrite base method until the question of
+    #  defining whether or not self.prepare_measurement should be used in the
+    #  general case.
+    def autorun(self, **kw):
+        if self.measure:
+            self.prepare_measurement(**kw)
+        super().autorun(**kw)
+
+    def prepare_measurement(self, **kw):
+
+        if self.recalibrate_ro:
+            self.analysis = mqm.measure_ssro(self.dev, self.qubits, self.prep_states,
+                                             update=True,
+                                             n_shots=self.n_shots,
+                                             analysis_kwargs=dict(
+                                                 options_dict=dict(
+                                                 hist_scale="log")))
+            # reanalyze to get thresholds
+            options_dict = dict(classif_method="threshold", hist_scale="log")
+            a = tda.MultiQutrit_Singleshot_Readout_Analysis(qb_names=self.qb_names,
+                                                            options_dict=options_dict)
+            for qb in self.qubits:
+                classifier_params = a.proc_data_dict[
+                    'analysis_params']['classifier_params'][qb.name]
+                qb.acq_classifier_params().update(classifier_params)
+                qb.preparation_params()['threshold_mapping'] = \
+                    classifier_params['mapping']
+        if self.set_thresholds:
+            self._set_thresholds(self.qubits)
+        self.exp_metadata.update({"thresholds":
+                                      self._get_thresholds(self.qubits)})
+        self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        self.sequences, self.mc_points = \
+            self.parallel_sweep(self.preprocessed_task_list,
+                                self.reset_block, block_align="start", **kw)
+
+        # should transform raw voltage to probas in analysis if no cal points
+        # and not classified readout already
+        predict_proba = len(self.cal_states) == 0 and not self.classified
+        self.exp_metadata.update({"n_shots": self.n_shots,
+                                  "predict_proba": predict_proba,
+                                  "reset_reps": self.reset_reps})
+
+    def reset_block(self, qubit, **kw):
+        _ , qubit = self.get_qubits(qubit) # ensure qubit in list format
+
+        prep_params = deepcopy(self.prep_params)
+
+        self.prep_params['ro_separation'] = ro_sep = prep_params.get("ro_separation",
+                                 self.STD_PREP_PARAMS['ro_separation'])
+        # remove the reset repetition for preparation and use the number
+        # of reset reps for characterization (provided in the experiment)
+        prep_params.pop('reset_reps', None)
+        prep_params.pop('preparation_type', None)
+
+        reset_type = f"active_reset_{'e' if len(self.prep_states) < 3 else 'ef'}"
+        reset_block = self.prepare(block_name="reset_ro_and_feedback_pulses",
+                                   qb_names=qubit,
+                                   preparation_type=reset_type,
+                                   reset_reps=self.reset_reps, **prep_params)
+        # delay the reset block by appropriate time as self.prepare otherwise adds reset
+        # pulses before segment start
+        # reset_block.block_start.update({"pulse_delay": ro_sep * self.reset_reps})
+        pulse_modifs={"attr=pulse_off, op_code=X180": ParametricValue("pulse_off"),
+                      "attr=pulse_off, op_code=X180_ef": ParametricValue("pulse_off")}
+        reset_block = Block("Reset_block",
+                            reset_block.build(block_delay=ro_sep * self.reset_reps),
+                            pulse_modifs=pulse_modifs)
+
+        ro = self.mux_readout(qubit)
+        return [reset_block, ro]
+
+    def run_analysis(self, analysis_class=None, **kwargs):
+
+        self.analysis = tda.MultiQutritActiveResetAnalysis(**kwargs)
+
+    def run_update(self, **kw):
+        print('Update')
+
+    @staticmethod
+    def _set_thresholds(qubits, clf_params=None):
+        """
+        Sets the thresholds in clf_params to the corresponding UHF channel(s)
+        for each qubit in qubits.
+        Args:
+            qubits (list, QuDevTransmon): (list of) qubit(s)
+            clf_params (dict): dictionary containing the thresholds that must
+                be set on the corresponding UHF channel(s).
+                If several qubits are passed, then it assumes clf_params if of the form:
+                {qbi: clf_params_qbi, ...}, where clf_params_qbi contains at least
+                the "threshold" key.
+                If a single qubit qbi is passed (not in a list), then expects only
+                clf_params_qbi.
+                If None, then defaults to qb.acq_classifier_params().
+
+        Returns:
+
+        """
+
+        # check if single qubit provided
+        if np.ndim(qubits) == 0:
+            clf_params = {qubits.name: deepcopy(clf_params)}
+            qubits = [qubits]
+
+        if clf_params is None:
+            clf_params = {qb.name: qb.acq_classifier_params() for qb in qubits}
+
+        for qb in qubits:
+            # perpare correspondance between integration unit (key)
+            # and uhf channel
+            channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            # set thresholds
+            for unit, thresh in clf_params[qb.name]['thresholds'].items():
+                qb.instr_acq.get_instr().set(
+                    f'qas_0_thresholds_{channels[unit]}_level', thresh)
+
+    @staticmethod
+    def _get_thresholds(qubits, from_clf_params=False, all_qb_channels=False):
+        """
+        Gets the UHF channel thresholds for each qubit in qubits.
+        Args:
+            qubits (list, QuDevTransmon): (list of) qubit(s)
+            from_clf_params (bool): whether thresholds should be retrieved
+                from the classifier parameters (when True) or from the UHF
+                channel directly (when False).
+            all_qb_channels (bool): whether all thresholds should be retrieved
+                or only the ones in use for the current weight type of the qubit.
+        Returns:
+
+        """
+
+        # check if single qubit provided
+        if np.ndim(qubits) == 0:
+            qubits = [qubits]
+
+        thresholds = {}
+        for qb in qubits:
+            # perpare correspondance between integration unit (key)
+            # and uhf channel; check if only one channel is asked for
+            # (not asked for all qb channels and weight type uses only 1)
+            if not all_qb_channels and qb.acq_weights_type() \
+                    in ('square_root', 'optimal'):
+                chs = {0: qb.acq_I_channel()}
+            else:
+                # other weight types have 2 channels
+                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+
+            #get clf thresholds
+            if from_clf_params:
+                thresh_qb = deepcopy(
+                    qb.acq_classifier_params().get("thresholds", {}))
+                thresholds[qb.name] = {u: thr for u, thr in thresh_qb.items()
+                                       if u in chs}
+            # get UHF thresholds
+            else:
+                thresholds[qb.name] = \
+                    {u: qb.instr_acq.get_instr()
+                          .get(f'qas_0_thresholds_{ch}_level')
+                     for u, ch in chs.items()}
+
+        return thresholds
+
+
+class DriveAmpNonlinearityCurve(CalibBuilder):
+    """
+    Calibration measurement for the drive amplitude non-linearity curve.
+    This class runs DriveAmpCalib for several values of n_pulses_pi. See
+    docstring of DriveAmpCalib for information about input parameters.
+
+    Particular to this class: n_pulses_pi is a list or array of integers. If
+    None, it will default to [2,1,3,4,5,6,7].
+    The DriveAmpCalib will be run for 1/npp and 1-1/npp with npp in n_pulses_pi,
+    except for npp in [1, 2].
+
+    Important remarks:
+        - n_pulses_pi will be sorted from lowest to highest, making sure that
+         it starts with 2 (ex: [2,1,3,4,5..])
+        - if 1 or 2 in n_pulses_pi, the corrected amp180 and amp90_scale will
+        be set as temporary values for the remaining measurements.
+        The above are done for two reasons:
+            - DriveAmpCalib scales amplitudes with respect to amp180, and we
+            want to use the calibrated amp180 for n_pulses_pi > 1
+            - The first pulse in the DriveAmpCalib sequence is an X90, so we
+            start by calibrating the amp90_scale and use it for the remaining
+            measurements.
+
+    Keyword args particular to this class:
+        - run_complement (bool; default: True): whether to run DriveAmpCalib for
+            1-1/npp (True) or only for 1/npp (False).
+    """
+    default_experiment_name = 'DriveAmpNonlinearityCurve'
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 n_repetitions=None, n_pulses_pi=None,  **kw):
+
+        try:
+            if task_list is None:
+                if qubits is None:
+                    raise ValueError('Please provide either "qubits" or '
+                                     '"task_list"')
+                # Create task_list from qubits
+                task_list = [{'qb': qb.name} for qb in qubits]
+
+            for task in task_list:
+                if 'qb' in task and not isinstance(task['qb'], str):
+                    task['qb'] = task['qb'].name
+
+            self.n_repetitions = n_repetitions
+            self.n_pulses_pi = n_pulses_pi
+            self.init_kwargs = {}  # for passing to the DriveAmpCalib msmts
+            self.init_kwargs.update(kw)
+            self.init_kwargs['update'] = False  # never update in DriveAmpCalib
+
+            # we measure the non-linearity of the control electronics; it
+            # doesn't matter which quantum transition we use for it, so we use
+            # the lowest
+            self.init_kwargs['transition_name'] = 'ge'
+
+            if self.n_pulses_pi is None:
+                # the pi pulse amplitude is assumed to be calibrated and its
+                # correction is not part of the calibration curve
+                # (see DriveAmpNonlinearityCurveAnalysis)
+                self.n_pulses_pi = np.arange(2, 8)
+            # sort lowest to highest: see docstring for reason
+            self.n_pulses_pi = np.sort(self.n_pulses_pi)
+            try:
+                # If 2 in n_pulses_pi, we want to start by calibrating the
+                # amp90_scale and use it for the remaining measurements since
+                # the pulse sequence in the DriveAmpCalib experiment starts
+                # with X90.
+                idx = list(self.n_pulses_pi).index(2)
+                if idx == 1:
+                    # means first two entries are 1, 2: flip them
+                    self.n_pulses_pi = np.concatenate([
+                        [2, 1], self.n_pulses_pi[idx+1:]])
+            except ValueError:
+                # 2 is not in self.n_pulses_pi
+                pass
+            self.measurements = []  # for collecting instance of DriveAmpCalib
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points, **kw)
+
+            self.autorun(**kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def run_measurement(self, **kw):
+        """
+        Overwrites the base method to run a DriveAmpCalib experiment for each
+        entry in self.n_pulses_pi. See class docstring for more details.
+        """
+        run_complement = kw.get('run_complement', True)
+
+        # get qubits for setting temporary values
+        qb_in_exp = self.find_qubits_in_tasks(self.qubits, self.task_list)
+        temp_vals = []
+
+        # analysis_kwargs to be passed to the DriveAmpCalib measurements
+        ana_kw = self.init_kwargs.pop('analysis_kwargs_da_calib', {})
+        opt_dict = ana_kw.pop('options_dict', {})
+        for i, npp in enumerate(self.n_pulses_pi):
+            if npp in [1, 2]:
+                with temporary_value(*temp_vals):
+                    od = {}
+                    if npp == 1 and 'fit_t2_r' not in opt_dict:
+                        # do not fit T2 in this case
+                        od['fit_t2_r'] = False
+                    od.update(opt_dict)
+                    analysis_kwargs = {'options_dict': od}
+                    analysis_kwargs.update(ana_kw)
+                    DACalib = DriveAmpCalib(task_list=self.task_list,
+                                            sweep_points=self.sweep_points,
+                                            qubits=self.qubits,
+                                            n_repetitions=self.n_repetitions,
+                                            n_pulses_pi=npp,
+                                            analysis_kwargs=analysis_kwargs,
+                                            **self.init_kwargs)
+                self.measurements += [DACalib]
+
+                # set the corrections from this measurement as temporary values
+                # for the next measurements
+                if npp == 1:
+                    temp_vals = []
+                    for qb in qb_in_exp:
+                        amp180 = qb.ge_amp180()  # current amp180
+                        # we need to adjust the amp90_scale as well since the
+                        # previously calibrated value is with respect to the
+                        # current amp180
+                        amp90_sc = qb.ge_amp90_scale()  # current amp90_scale
+                        amp90 = amp180 * amp90_sc  # calibrated amp90
+                        # calibrated amp180
+                        corr_amp180 = DACalib.analysis.proc_data_dict[
+                                'analysis_params_dict'][qb.name][
+                                'correct_scalings_mean'] * amp180
+                        # adjust amp90_scale based on the calibrated amp180
+                        corr_amp90_sc = amp90 / corr_amp180
+                        temp_vals.extend([(qb.ge_amp180, corr_amp180),
+                                          (qb.ge_amp90_scale, corr_amp90_sc)])
+                else:
+                    temp_vals = [
+                        (qb.ge_amp90_scale, DACalib.analysis.proc_data_dict[
+                            'analysis_params_dict'][qb.name][
+                            'correct_scalings_mean'])
+                        for qb in qb_in_exp]
+            else:
+                od = {}
+                if 'fit_t2_r' not in opt_dict:
+                    # do not fit T2 in this case
+                    od['fit_t2_r'] = False
+                od.update(opt_dict)
+                analysis_kwargs = {'options_dict': od}
+                analysis_kwargs.update(ana_kw)
+                with temporary_value(*temp_vals):
+                    # measure for 1/npp
+                    DACalib = DriveAmpCalib(task_list=self.task_list,
+                                            sweep_points=self.sweep_points,
+                                            qubits=self.qubits,
+                                            n_repetitions=self.n_repetitions,
+                                            n_pulses_pi=npp,
+                                            analysis_kwargs=analysis_kwargs,
+                                            **self.init_kwargs)
+                    self.measurements += [DACalib]
+
+                if run_complement:
+                    # measure for 1 - 1/npp
+                    tl = []
+                    for j, task in enumerate(self.task_list):
+                        # set the fixed_scaling to the calibrated value of
+                        # 1/npp from the previous measurement
+                        fixed_scaling = DACalib.analysis.proc_data_dict[
+                            'analysis_params_dict'][task['qb']][
+                            'correct_scalings_mean']
+                        tl_dict = {'fixed_scaling': fixed_scaling}
+                        tl_dict.update(task)
+                        tl += [tl_dict]
+                    with temporary_value(*temp_vals):
+                        DACalib = DriveAmpCalib(task_list=tl,
+                                                sweep_points=self.sweep_points,
+                                                qubits=self.qubits,
+                                                n_repetitions=self.n_repetitions,
+                                                n_pulses_pi=npp,
+                                                analysis_kwargs=ana_kw,
+                                                **self.init_kwargs)
+                        self.measurements += [DACalib]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs DriveAmpNonlinearityCurve and stores analysis instance in
+        self.analysis.
+
+        Args:
+            analysis_kwargs (dict; default: None): keyword arguments for
+                analysis class
+
+        Keyword args:
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.DriveAmpNonlinearityCurveAnalysis(
+            qb_names=self.meas_obj_names,
+            t_start=self.measurements[0].timestamp,
+            t_stop=self.measurements[-1].timestamp,
+            **analysis_kwargs)
+
+    def run_update(self, **kw):
+        """
+        Updates the amp_scaling_correction_coeffs of the qubit in each task
+        with the coefficients extracted by the analysis.
+
+        Keyword args:
+         to allow pass through kw even though they are not needed
+        """
+
+        for mobjn in self.meas_obj_names:
+            qubit = [qb for qb in self.meas_objs if qb.name == mobjn][0]
+            nl_fit_pars = self.analysis.proc_data_dict['nonlinearity_fit_pars'][
+                qubit.name]
+            qubit.set('amp_scaling_correction_coeffs',
+                      [nl_fit_pars['a'], nl_fit_pars['b']])

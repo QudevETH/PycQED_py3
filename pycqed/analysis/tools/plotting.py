@@ -290,14 +290,35 @@ def flex_color_plot_vs_x(xvals, yvals, zvals, ax=None,
 
 
 def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
-                              normalize=False, log=False,
-                              save_name=None, **kw):
-    """
-    Add a rectangular block to a color plot using pcolormesh.
-    xvals and yvals should be single vectors with values for the
-    two sweep points.
-    zvals should be a list of arrays with the measured values with shape
-    (len(yvals), len(xvals)).
+                              normalize=False, log=False, **kw):
+    """Add rectangular blocks to a color plot using
+    :meth:`pcolormesh <matplotlib.axes.Axes.pcolormesh>`.
+
+    The vertices of the blocks lie in the middle between the values specified
+    in ``xvals`` and ``yvals``. Blocks on the edges have vertices that are
+    symmetric with respect to their data point.
+
+    Args:
+        xvals (list/array): 1d list/array of 1st dimension of data points.
+        yvals (list/array): 1d list/array of 2st dimension of data points.
+        zvals (list/array): 2d list of arrays holding the measured values
+            with shape ``(len(yvals), len(xvals))``.
+        ax (:class:`Axes <matplotlib.axes.Axes>`, optional): Axis the plot is added to.
+            Defaults to ``None``.
+        normalize (bool, optional): Normalize ``zvals`` along ``axis=0`` to
+            have mean 1. Defaults to ``False``.
+        log (bool, optional): Plot log10 of ``zvals``. Defaults to ``False``.
+
+    Keyword Arguments:
+        plotsize (tuple): The figsize used in case ``ax`` is ``None``.
+            Defaults to ``(12, 7)``.
+        cmap (:class:`Colormap <matplotlib.colors.Colormap>`): Colormap passed to
+            :meth:`pcolormesh <matplotlib.axes.Axes.pcolormesh>`. Defaults to ``'viridis'``.
+        clim: Colormap limits. Defaults to ``[None, None]``.
+        transpose (bool): Plot transpose of data. Defaults to ``False``.
+
+    Returns:
+        dict: Dictionary with keys ``fig``, ``ax`` and ``cmap``
     """
 
     xvals = np.array(xvals)
@@ -315,7 +336,8 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
 
     # create a figure and set of axes
     if ax is None:
-        fig = plt.figure(figsize=(12, 7))
+        figsize = kw.get('plotsize', (12, 7))
+        fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
 
     # convert xvals and yvals to single dimension arrays
@@ -345,8 +367,7 @@ def flex_colormesh_plot_vs_xy(xvals, yvals, zvals, ax=None,
         zvals /= np.mean(zvals, axis=0)
     # logarithmic plot
     if log:
-        for xx in range(len(xvals)):
-            zvals[xx] = np.log(zvals[xx])/np.log(10)
+        zvals = np.log10(zvals)
 
     # add blocks to plot
     do_transpose = kw.pop('transpose', False)
@@ -375,7 +396,11 @@ def contourf_plot(xvals, yvals, zvals, ax=None,
         fig = plt.figure(figsize=(12, 7))
         ax = fig.add_subplot(111)
 
-    colormap = ax.contourf(xvals, yvals, zvals, levels=levels, cmap=cmap)
+    # various plot options
+    clim = kw.pop('clim', [None, None])
+
+    colormap = ax.contourf(xvals, yvals, zvals, levels=levels, cmap=cmap, 
+                           vmin=clim[0], vmax=clim[1])
 
     return {'fig': ax.figure, 'ax': ax, 'cmap': colormap}
 

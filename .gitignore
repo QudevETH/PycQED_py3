@@ -54,6 +54,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/build/
+docs/awg/
 docs/source/_autosummary
 
 # PyBuilder
