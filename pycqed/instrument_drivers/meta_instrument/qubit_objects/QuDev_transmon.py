@@ -412,7 +412,8 @@ class QuDev_transmon(Qubit):
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_Q_channel',
                                          'Q_channel',
                                          initial_value=None,
-                                         vals=vals.Strings())
+                                         vals=vals.MultiType(
+                                             vals.Enum(None), vals.Strings()))
                 self.add_pulse_parameter(
                     f'X180{tn}', f'{tr_name}_mod_freq',
                     'mod_frequency', initial_value=-100e6,
@@ -3062,8 +3063,9 @@ class QuDev_transmon(Qubit):
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
-                offset_list += [('ge_I_channel', 'ge_I_offset'),
-                                ('ge_Q_channel', 'ge_Q_offset')]
+                offset_list += [('ge_I_channel', 'ge_I_offset')]
+                if self.ge_Q_channel() is not None:
+                    offset_list += [('ge_Q_channel', 'ge_Q_offset')]
                 if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
