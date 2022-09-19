@@ -672,6 +672,7 @@ class ZIGeneratorModule:
         self._command_table_lookup = {}
         """Dict that records mapping element, codeword (keys) and command 
         table entry index (value)."""
+
         self._playback_strings = []
         """Playback strings to be added to the sequencer code."""
 
@@ -699,6 +700,7 @@ class ZIGeneratorModule:
 
         self._use_command_table = False
         """Whether to use command table for pulse sequencing."""
+
         self._use_filter = False
         # TODO: check if this docstring is correct
         """Whether to use filter programmed to the device."""
@@ -750,6 +752,7 @@ class ZIGeneratorModule:
         if reset_command_table:
             self._command_table = []
             self._command_table_lookup = {}
+
         if reset_playback_strings:
             self._playback_strings = []
 
@@ -1222,6 +1225,7 @@ class ZIGeneratorModule:
         entry2_copy["index"] = 0
 
         return entry1_copy == entry2_copy
+
     def _compile_awg_program(
             self,
             program
