@@ -611,9 +611,24 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
                 else str(self._sine_config.get('osc', '0'))
             self._playback_strings.append(f'const SWEEP_OSC = {osc_id};\n')
 
-
-
-
+    def _generate_playback_string(
+            self,
+            wave,
+            codeword,
+            use_placeholder_waves,
+            metadata,
+            first_element_of_segment
+    ):
+        prepend_zeros = 0
+        self._playback_strings += self._awg_interface._zi_playback_string(
+            name=self._awg.name,
+            device='shfsg',
+            wave=wave,
+            codeword=codeword,
+            prepend_zeros=prepend_zeros,
+            placeholder_wave=use_placeholder_waves,
+            allow_filter=metadata.get('allow_filter', False)
+        )
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

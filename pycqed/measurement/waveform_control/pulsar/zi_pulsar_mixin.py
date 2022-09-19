@@ -874,10 +874,12 @@ class ZIDriveAWGChannel:
                         self._with_divisor(h, chid)
                         if h is not None else None
                         for h, chid in zip(wave, self.channel_ids)
+                    )
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
+                        )
 
                 if not upload:
                     # _program_awg was called only to decide which
@@ -889,7 +891,6 @@ class ZIDriveAWGChannel:
                     wave=wave,
                     codeword=(nr_cw != 0),
                     use_placeholder_waves=self._use_placeholder_waves,
-                    command_table_index=self._command_table_lookup[element][cw],
                     metadata=metadata,
                     first_element_of_segment=first_element_of_segment,
                 )
