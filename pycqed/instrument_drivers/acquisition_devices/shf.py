@@ -105,6 +105,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                       'units for consistency.',
             vals=validators.Numbers())
 
+        self.add_parameter(
+           'timeout',
+           unit='s',
+           initial_value=30,
+           parameter_class=ManualParameter,
+           docstring='Timeout when waiting for scope data.',
+           vals=validators.Ints())
+
     @property
     def devname(self):
         return self.serial
