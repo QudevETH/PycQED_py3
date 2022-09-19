@@ -659,7 +659,7 @@ class Step:
         # create an empty SettingsDictionary
         default_settings = self.dev.autocalib_settings.copy(
         ) if self.routine is None else self.routine.settings.copy({})
-        self.settings = kw.pop("settings", default_settings)
+        self.settings: SettingsDictionary = kw.pop("settings", default_settings)
         self.qubits: List[QuDev_transmon] = kw.pop("qubits",
                                                    self.dev.get_qubits())
 
@@ -1375,11 +1375,11 @@ class AutomaticCalibrationRoutine(Step):
         qubits = step_settings.pop('qubits', self.qubits)
         dev = step_settings.pop('dev', self.dev)
         autocalib_settings = self.settings.copy(
-            step_settings.pop('settings', {}))
+            overwrite_dict=step_settings.pop('settings', {}))
         # Executing the step with corresponding settings
         if issubclass(step_class,
                       qbcal.SingleQubitGateCalibExperiment) or issubclass(
-            step_class, QuantumExperiment):
+                step_class, QuantumExperiment):
             step = step_class(qubits=qubits,
                               routine=self,
                               dev=dev,
