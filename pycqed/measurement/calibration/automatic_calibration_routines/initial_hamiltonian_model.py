@@ -9,7 +9,7 @@ from typing import List, Any, Dict, Tuple, Literal
 from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 log = logging.getLogger('Routines')
 
@@ -41,8 +41,8 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     Following Koch et al. 2017 (DOI: 10.1103/PhysRevA.76.042319), eqs. 2.11 and
     2.18, the following equations are used:
     .. math::
-        \Phi=0: \ &hf_{ge} = -E_c + \sqrt{8E_c  E_{J,max}} \\
-        \Phi=\pm \frac{1}{2} \Phi_0: \ &hf_{ge} = -E_c + \sqrt{8dE_c E_{J,max} }
+        \Phi = 0:                     \ &hf_{ge} = -E_c + \sqrt{8 E_c  E_{J,max}} \\
+        \Phi = \pm \frac{1}{2} \Phi_0: \ &hf_{ge} = -E_c + \sqrt{8 d E_c E_{J,max} }
     """
 
     def __init__(self,
@@ -51,14 +51,25 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                  fluxlines_dict: Dict[str, Any],
                  **kw,
                  ):
+
         super().__init__(
             dev=dev,
             qubits=qubits,
             fluxlines_dict=fluxlines_dict,
             **kw,
         )
+
         self.fluxlines_dict = fluxlines_dict
+        # Retrieve the DCSources from the fluxlines_dict. These are necessary
+        # to reload the pre-routine settings when update=False
+        self.DCSources = []
+        for qb in self.qubits:
+            dc_source = self.fluxlines_dict[qb.name].instrument
+            if dc_source not in self.DCSources:
+                self.DCSources.append(dc_source)
+
         self.hamiltonian_parameters: Dict[str, QubitHamiltonianParameters] = {}
+        self.qubits_to_skip = []
         for qubit in self.qubits:
             existing_hamiltonian_params = qubit.fit_ge_freq_from_dc_offset()
             if 'E_c' not in existing_hamiltonian_params:
@@ -69,6 +80,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                 log.info(f"Ej_max and asymmetry values already exist in the "
                          f"attributes of qubit {qubit}. The routine will skip "
                          f"it.")
+                self.qubits_to_skip.append(qubit)
 
             self.hamiltonian_parameters[
                 qubit.name] = QubitHamiltonianParameters(
@@ -91,17 +103,15 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
         for flux in [USS_flux, LSS_flux]:
             # Add park and spectroscopy step
             step_label = f'park_and_qubit_spectroscopy_flux_{flux}'
-            step_settings = {'settings': {
-                step_label: {'General': {'flux': flux,
-                                         'fluxlines_dict': self.fluxlines_dict}
-                             }}}
+            step_settings = {'fluxlines_dict': self.fluxlines_dict,
+                             'settings': {step_label: {'General': {'flux': flux}}}}
             self.add_step(ParkAndQubitSpectroscopy,
                           step_label=step_label,
                           step_settings=step_settings)
 
             # Add model update step
             step_label = f'update_hamiltonian_model_flux_{flux}'
-            step_settings = {step_label: {'flux': flux}}
+            step_settings = {'flux': flux}
             self.add_step(self.UpdateHamiltonianModel,
                           step_label=step_label,
                           step_settings=step_settings)
@@ -112,12 +122,16 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
         """
 
         def __init__(self,
+                     flux: float,
                      **kw):
             super().__init__(**kw)
-            self.flux = self.get_param_value('flux')
+            self.flux = flux
 
         def run(self):
             for qubit in self.qubits:
+                if qubit in self.routine.qubits_to_skip:
+                    continue
+
                 qubit_parameters: QubitHamiltonianParameters = \
                     self.routine.hamiltonian_parameters[qubit.name]
                 qubit_park_and_spec = self.routine.routine_steps[-1]
@@ -129,6 +143,9 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                 else:
                     assert (Ej_max := qubit_parameters.Ej_max) is not None, (
                         f'The calculation of the asymmetry (d) relies on '
-                        f'Ej_max,which should be evaluated at Phi=0.')
+                        f'Ej_max, which should be evaluated at Phi=0.')
                     d = np.square(ge_freq + E_c) / (8 * E_c * Ej_max)
                     qubit_parameters.asymmetry = d
+
+                # Update the qubit with the final parameters
+                qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))
