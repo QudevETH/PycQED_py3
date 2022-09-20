@@ -658,6 +658,17 @@ class ZIDriveAWGChannel:
             upload,
             program,
     ):
+        """ Programs this AWG channel/channel pair.
+
+        Args:
+            awg_sequence (List): A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+            waveforms (Dict): A dictionary of waveforms, keyed by their hash.
+            upload (Bool): A boolean value that specifies whether the
+                waveforms should be uploaded to the device.
+            program (Bool): A boolean value that indicates whether the
+                sequencer program should be uploaded to the device.
+        """
         # Collects settings from pulsar. Uploads sine wave generation
         # and internal modulation settings to the device.
         self._reset_has_waveform_flags()
@@ -667,7 +678,6 @@ class ZIDriveAWGChannel:
 
         # Generates sequencer code according to channel settings and
         # waveforms specified in awg_sequence.
-
         self._generate_filter_seq_code()
         self._generate_oscillator_seq_code()
         self._generate_wave_seq_code(
@@ -678,8 +688,8 @@ class ZIDriveAWGChannel:
 
         if not any(self.has_waveforms.values()):
             # If no waveform is assigned to this AWG channel/channel pair,
-            # prevent ZI_base_instrument.start() from starting this sub and
-            # return.
+            # AWG instrument driver will be notified that this
+            # channel/channel pair doesn't need to be programmed.
             self._awg._awg_program[self._awg_nr] = None
             return
 
@@ -743,12 +753,26 @@ class ZIDriveAWGChannel:
             self,
             awg_sequence,
     ):
+        """Updates internal modulation configuration according to the settings
+        specified in awg_sequence.
+
+        Args:
+            awg_sequence (List): A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+        """
         pass
 
     def _update_sine_generation_config(
             self,
             awg_sequence,
     ):
+        """Updates sine wave generation according to the metadata specified
+        in awg_sequence.
+
+        Args:
+            awg_sequence (List): A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+        """
         pass
 
     def _update_awg_instrument_status(self):
@@ -762,6 +786,7 @@ class ZIDriveAWGChannel:
         self._awg._awg_program[self._awg_nr] = True
 
     def _generate_filter_seq_code(self):
+        """Generates sequencer code that is relevant to using filters."""
         if self._use_filter:
             self._playback_strings += ['var i_seg = -1;']
             self._wave_definitions += [
@@ -770,6 +795,8 @@ class ZIDriveAWGChannel:
             ]
 
     def _generate_oscillator_seq_code(self):
+        """Generates sequencer code that is relevant to oscillator
+        operations."""
         pass
 
     def _generate_wave_seq_code(
@@ -778,8 +805,23 @@ class ZIDriveAWGChannel:
             waveforms,
             upload,
     ):
+        """Generates sequencer code that is relevant to wave definition and
+        sequencing.
+
+        Args:
+            awg_sequence (List): A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+            waveforms (List): A dictionary of waveforms, keyed by their hash.
+            upload (Bool): A boolean value that specifies whether the
+                waveforms should be uploaded to the device.
+        """
+        # resets wave index lookup table and wave index counter. They are
+        # used when _use_placeholder_wave is enabled.
         self._wave_idx_lookup = {}
         next_wave_idx = 0
+
+        # Keeps track of the current segment. Some devices require taking
+        # care of prepending zeros at the first element of a segment.
         current_segment = 'no_segment'
         first_element_of_segment = True
 
@@ -806,7 +848,6 @@ class ZIDriveAWGChannel:
 
             nr_cw = len(set(awg_sequence_element.keys()) - \
                         {'no_codeword'})
-
             if nr_cw == 1:
                 log.warning(
                     f'Only one codeword has been set for {element}')
@@ -819,10 +860,25 @@ class ZIDriveAWGChannel:
                     if nr_cw != 0:
                         continue
                 chid_to_hash = awg_sequence_element[cw]
-                wave = tuple(chid_to_hash.get(ch, None)
-                             for ch in self.channel_ids)
+
+                # With current implementations, 'wave' has to be a tuple of
+                # length 4 in order to be unpacked and processed by other
+                # methods. Here we use 'None' as placeholders for undefined
+                # waveforms, and rewrites the elements if there is a
+                # definition. Note that .channel_ids can be shorter than 4
+                # for some devices. Please refer to ._generate_channel_ids
+                # methods of child classes.
+                wave = [None, None, None, None]
+                for i, chid in enumerate(self.channel_ids):
+                    wave[i] = chid_to_hash.get(chid, None)
+                wave = tuple(wave)
+
+                # Skip this element if it has no waves defined on this
+                # channel/channel pair.
                 if wave == (None, None, None, None):
                     continue
+
+                # Updates the codeword table if there exists codewords.
                 if nr_cw != 0:
                     w1, w2 = self._awg_interface._zi_waves_to_wavenames(wave)
                     if cw not in self._codeword_table:
@@ -836,8 +892,8 @@ class ZIDriveAWGChannel:
                                     'waveforms. Using first waveform. '
                                     f'Ignoring element {element}.')
 
-                # Update self.has_waveforms flag if there is a non-trivial wave
-                # defined under a channel ID.
+                # Update self.has_waveforms flag of the corresponding channel
+                # ID if there are waveforms defined.
                 for i, chid in enumerate(self.channel_ids):
                     self.has_waveforms[chid] |= wave[i] is not None
 
@@ -848,24 +904,29 @@ class ZIDriveAWGChannel:
                     continue
 
                 if self._use_placeholder_waves:
+                    # If the wave is already assigned an index, we will point
+                    # the wave to the existing index and skip the rest of wave
+                    # definition.
                     if wave in self._defined_waves[1].values():
                         self._wave_idx_lookup[element][cw] = [
                             i for i, v in self._defined_waves[1].items()
                             if v == wave][0]
-                    else:
-                        self._wave_idx_lookup[element][cw] = next_wave_idx
-                        next_wave_idx += 1
-                        # Check if the longest placeholder wave length equals to
-                        # the shorted one. If not, use the longest wave length to
-                        # fit all waveforms.
-                        placeholder_wave_lengths = \
-                            [waveforms[h].size for h in wave if h is not None]
-                        if max(placeholder_wave_lengths) != \
-                                min(placeholder_wave_lengths):
-                            log.warning(f"Waveforms of unequal length on"
-                                        f"{self._awg.name}, vawg{self._awg_nr}, "
-                                        f"{current_segment}, {element}.")
-                    # Append wave definition.
+                        continue
+                    self._wave_idx_lookup[element][cw] = next_wave_idx
+                    next_wave_idx += 1
+
+                    # Check if the longest placeholder wave length equals to
+                    # the shortest one. If not, use the longest wave
+                    # length to fit all waveforms.
+                    placeholder_wave_lengths = \
+                        [waveforms[h].size for h in wave if h is not None]
+                    if max(placeholder_wave_lengths) != \
+                            min(placeholder_wave_lengths):
+                        log.warning(f"Waveforms of unequal length on"
+                                    f"{self._awg.name}, vawg{self._awg_nr},"
+                                    f" {current_segment}, {element}.")
+
+                    # Add new wave definition and save wave index.
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
                             wave=wave,
@@ -874,6 +935,8 @@ class ZIDriveAWGChannel:
                             placeholder_wave_length=max(placeholder_wave_lengths),
                         )
                 else:
+                    # No indices will be assigned when not using placeholder
+                    # waves.
                     wave = tuple(
                         self._with_divisor(h, chid)
                         if h is not None else None
@@ -886,11 +949,11 @@ class ZIDriveAWGChannel:
                         )
 
             if not upload:
-                # _program_awg was called only to decide which
-                # sub-AWGs are active, and the rest of this loop
-                # can be skipped
+                # _program_awg was called only to decide which sub-AWGs are
+                # active, and the rest of this loop can be skipped.
                 continue
 
+            # Add the playback string for the current wave.
             self._generate_playback_string(
                 wave=wave,
                 codeword=(nr_cw != 0),
@@ -911,13 +974,36 @@ class ZIDriveAWGChannel:
             metadata,
             first_element_of_segment,
     ):
-        pass
+        """Generates a playback string for the given wave and settings.
+
+        Args:
+            wave (Tuple): A tuple of four that includes waveform hashes of
+                all programmable IDs.
+            codeword (Bool): A boolean value that specifies whether to
+                play waveforms conditioned on codewords.
+            use_placeholder_waves (Bool): A boolean value that specifies
+                whether placeholder waves are enabled.
+            metadata (Dict): A dict that specifies various device
+                configurations of the current element.
+            first_element_of_segment (Bool): A boolean value that indicates
+                whether this element is the first one in this segment.
+        """
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
 
     def _upload_csv_waveforms(
             self,
             waveforms,
             awg_sequence,
     ):
+        """Saves waveforms in .csv files and uploads them to ZI data server.
+        This method is used when placeholder waves are disabled.
+
+        Args:
+            waveforms (Dict): A dictionary of waveforms, keyed by their hash.
+            awg_sequence (List): A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+        """
         waves_to_upload = {
             self._with_divisor(h, chid):
                 self._divisor[chid] * waveforms[h][::self._divisor[chid]]
@@ -932,6 +1018,14 @@ class ZIDriveAWGChannel:
             self,
             program
     ):
+        """Compiles the sequencer code and programs the device.
+
+        Args:
+            program (Bool): a boolean value that specifies whether we want to
+                re-programs this channel/channel pair irrespective of the
+                necessity. If set to False, this channel/channel pair will
+                only be programmed when the previous waveforms cannot be reused.
+        """
         awg_str = self._sequence_string_template.format(
             wave_definitions='\n'.join(self._wave_definitions + self._interleaves),
             codeword_table_defs='\n'.join(self._codeword_table_defs),
@@ -976,6 +1070,12 @@ class ZIDriveAWGChannel:
             self,
             waveforms,
     ):
+        """Uploads binary waveforms via ZI Python API. This method is used
+        when placeholder waves are enabled.
+
+        Args:
+            waveforms (Dict): A dictionary of waveforms, keyed by their hash.
+        """
         for idx, wave_hashes in self._defined_waves[1].items():
             self._awg_interface._update_waveforms(
                 awg_nr=self._awg_nr,
@@ -985,6 +1085,8 @@ class ZIDriveAWGChannel:
             )
 
     def _set_signal_output_status(self):
+        """Turns on the output of this channel/channel pair if specified by
+        pulsar."""
         raise NotImplementedError("This method should be rewritten in child "
                                   "classes.")
 
