@@ -852,19 +852,19 @@ class ZIDriveAWGChannel:
                         self._wave_idx_lookup[element][cw] = [
                             i for i, v in self._defined_waves[1].items()
                             if v == wave][0]
-                        continue
-                    self._wave_idx_lookup[element][cw] = next_wave_idx
-                    next_wave_idx += 1
-                    # Check if the longest placeholder wave length equals to
-                    # the shortest one. If not, use the longest wave
-                    # length to fit all waveforms.
-                    placeholder_wave_lengths = \
-                        [waveforms[h].size for h in wave if h is not None]
-                    if max(placeholder_wave_lengths) != \
-                            min(placeholder_wave_lengths):
-                        log.warning(f"Waveforms of unequal length on"
-                                    f"{self._awg.name}, vawg{self._awg_nr},"
-                                    f" {current_segment}, {element}.")
+                    else:
+                        self._wave_idx_lookup[element][cw] = next_wave_idx
+                        next_wave_idx += 1
+                        # Check if the longest placeholder wave length equals to
+                        # the shorted one. If not, use the longest wave length to
+                        # fit all waveforms.
+                        placeholder_wave_lengths = \
+                            [waveforms[h].size for h in wave if h is not None]
+                        if max(placeholder_wave_lengths) != \
+                                min(placeholder_wave_lengths):
+                            log.warning(f"Waveforms of unequal length on"
+                                        f"{self._awg.name}, vawg{self._awg_nr}, "
+                                        f"{current_segment}, {element}.")
                     # Append wave definition.
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
