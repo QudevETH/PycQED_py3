@@ -140,8 +140,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                         f'{new_lo_freq/1e6:.6f} MHz. This does NOT '
                         f'automatically set the IF!')
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
