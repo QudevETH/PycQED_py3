@@ -605,15 +605,15 @@ class ZIDriveAWGChannel:
             self,
             awg_nr,
     ):
-        """Generates all programmable ids of this channel/channel pair (e.g.
-        I channel, Q channel, marker channels) and update the relevant class
-        attributes
+        """Generates all programmable ids (e.g. I channel, Q channel, marker
+        channels) of this channel/channel pair and update the relevant class
+        attributes.
         """
-        pass
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
 
     def _generate_divisor(self):
         self._divisor = {chid: 1 for chid in self.channel_ids}
-
 
     def _reset_sequence_strings(
             self,
@@ -623,7 +623,7 @@ class ZIDriveAWGChannel:
             reset_interleaves: bool = True,
             reset_counter: bool = True,
     ):
-        """Resets everything relates to populating sequence strings."""
+        """Resets everything relates to sequence code strings."""
         if reset_wave_definition:
             self._wave_definitions = []
 
@@ -641,11 +641,14 @@ class ZIDriveAWGChannel:
             self._counter = 1
 
     def _reset_has_waveform_flags(self):
+        """Resets flags saved in self.has_waveforms."""
         for chid in self.channel_ids:
             self.has_waveforms[chid] = False
 
     def _reset_defined_waves(self):
-        self._defined_waves = (set(), dict()) if self._use_placeholder_waves \
+        """Resets defined waves memory."""
+        self._defined_waves = (set(), dict()) \
+            if self._use_placeholder_waves \
             else set()
 
     def program_awg_channel(
@@ -757,6 +760,7 @@ class ZIDriveAWGChannel:
         # we set _awg_needs_configuration to False, we do not need to put the
         # actual program here, but anything different from None is sufficient.)
         self._awg._awg_program[self._awg_nr] = True
+
     def _generate_filter_seq_code(self):
         if self._use_filter:
             self._playback_strings += ['var i_seg = -1;']
@@ -866,7 +870,7 @@ class ZIDriveAWGChannel:
                         self._awg_interface._zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
-                            wave_index=self._wave_idx_lookup[element][cw],
+                            placeholder_wave_index=self._wave_idx_lookup[element][cw],
                             placeholder_wave_length=max(placeholder_wave_lengths),
                         )
                 else:
@@ -981,8 +985,8 @@ class ZIDriveAWGChannel:
             )
 
     def _set_signal_output_status(self):
-        raise NotImplementedError("This method should be rewritten in "
-                                  "children classes.")
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
 
     def _with_divisor(self, h, ch):
         return h if self._divisor[ch] == 1 else (h, self._divisor[ch])
