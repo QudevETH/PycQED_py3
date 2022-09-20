@@ -856,15 +856,15 @@ class ZIDriveAWGChannel:
                     self._wave_idx_lookup[element][cw] = next_wave_idx
                     next_wave_idx += 1
                     # Check if the longest placeholder wave length equals to
-                    # the shorted one. If not, use the longest wave length to
-                    # fit all waveforms.
+                    # the shortest one. If not, use the longest wave
+                    # length to fit all waveforms.
                     placeholder_wave_lengths = \
                         [waveforms[h].size for h in wave if h is not None]
                     if max(placeholder_wave_lengths) != \
                             min(placeholder_wave_lengths):
                         log.warning(f"Waveforms of unequal length on"
-                                    f"{self._awg.name}, vawg{self._awg_nr}, "
-                                    f"{current_segment}, {element}.")
+                                    f"{self._awg.name}, vawg{self._awg_nr},"
+                                    f" {current_segment}, {element}.")
                     # Append wave definition.
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
@@ -885,20 +885,20 @@ class ZIDriveAWGChannel:
                             defined_waves=self._defined_waves,
                         )
 
-                if not upload:
-                    # _program_awg was called only to decide which
-                    # sub-AWGs are active, and the rest of this loop
-                    # can be skipped
-                    continue
+            if not upload:
+                # _program_awg was called only to decide which
+                # sub-AWGs are active, and the rest of this loop
+                # can be skipped
+                continue
 
-                self._generate_playback_string(
-                    wave=wave,
-                    codeword=(nr_cw != 0),
-                    use_placeholder_waves=self._use_placeholder_waves,
-                    metadata=metadata,
-                    first_element_of_segment=first_element_of_segment,
-                )
-                first_element_of_segment = False
+            self._generate_playback_string(
+                wave=wave,
+                codeword=(nr_cw != 0),
+                use_placeholder_waves=self._use_placeholder_waves,
+                metadata=metadata,
+                first_element_of_segment=first_element_of_segment,
+            )
+            first_element_of_segment = False
 
             self._playback_strings += \
                 ZIPulsarMixin._zi_playback_string_loop_end(metadata)
