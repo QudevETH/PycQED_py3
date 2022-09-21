@@ -85,6 +85,7 @@ class Segment:
         self.resolved_pulses = []
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
+        self._init_end_name = None  # to detect end of init block in self.add
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
@@ -172,7 +173,12 @@ class Segment:
 
         if new_pulse.ref_pulse == 'previous_pulse':
             if self.previous_pulse != None:
-                new_pulse.ref_pulse = self.previous_pulse.pulse_obj.name
+                if self.previous_pulse.pulse_obj.name == self._init_end_name:
+                    # end of the init block detected, reference following
+                    # pulse to segment_start
+                    new_pulse.ref_pulse = 'segment_start'
+                else:
+                    new_pulse.ref_pulse = self.previous_pulse.pulse_obj.name
             # if the first pulse added to the segment has no ref_pulse
             # it is reference to segment_start by default
             elif self.previous_pulse == None and \
@@ -180,6 +186,11 @@ class Segment:
                 new_pulse.ref_pulse = 'segment_start'
             else:
                 raise ValueError('No previous pulse has been added!')
+        elif new_pulse.ref_pulse == 'init_start' and \
+                new_pulse.pulse_obj.name.endswith('-|-start'):
+            # generate name to automatically detect the end of the init block
+            self._init_end_name = new_pulse.pulse_obj.name[:-len('start')] + \
+                                   'end'
 
         self.unresolved_pulses.append(new_pulse)
 
@@ -1864,8 +1875,8 @@ class Segment:
 class UnresolvedPulse:
     """
     pulse_pars: dictionary containing pulse parameters
-    ref_pulse: 'segment_start', 'previous_pulse', pulse.name, or a list of
-        multiple pulse.name.
+    ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
+        or a list of multiple pulse.name.
     ref_point: 'start', 'end', 'middle', reference point of the reference pulse
     ref_point_new: 'start', 'end', 'middle', reference point of the new pulse
     ref_function: 'max', 'min', 'mean', specifies how timing is chosen if
