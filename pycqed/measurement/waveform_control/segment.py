@@ -301,29 +301,31 @@ class Segment:
             self.enforce_single_element()
 
         visited_pulses = []
-        ref_pulses_dict = {}
         i = 0
 
         pulses = self.gen_refpoint_dict()
 
-        # add pulses that refer to segment start
-        for pulse in pulses['segment_start']:
-            if pulse.pulse_obj.name in pulses:
-                ref_pulses_dict.update({pulse.pulse_obj.name: pulse})
-            t0 = pulse.delay - pulse.ref_point_new * pulse.pulse_obj.length
-            pulse.pulse_obj.algorithm_time(t0)
-            visited_pulses.append((t0, i, pulse))
-            i += 1
-
-        if len(visited_pulses) == 0:
-            raise ValueError('No pulse references to the segment start!')
-
+        # First resolve pulses referencing init_start (directly or indirectly).
+        # Pulses referencing segment_start (directly or indirectly) will get
+        # resolved afterwards (see end of following while loop).
+        # Note that the while loop below accepts either pulses or an int
+        # (interpreted as absolute time) as values in the dict. We set the
+        # init_start time to absolute time 0 for now, but will shift all
+        # pulses later on (at the end of the following while loop) so that
+        # finally 'segment_start' will become the zero point.
+        ref_pulses_dict = {'init_start': 0}
+        # the ..._dict_all will collect all reference pulses, while the
+        # ..._dict only contains the recently added ones.
         ref_pulses_dict_all = deepcopy(ref_pulses_dict)
-        # add remaining pulses
+        # resolve pulses referenced to those in ref_pulses_dict
         while len(ref_pulses_dict) > 0:
+            # the ..._dict_new will become the ..._dict of the next
+            # iteration, i.e., it collects the newly added pulses in the
+            # current iteration, and those will be considered as recently
+            # added pulses in the next iteration.
             ref_pulses_dict_new = {}
             for name, pulse in ref_pulses_dict.items():
-                for p in pulses[name]:
+                for p in pulses.get(name, []):
                     if isinstance(p.ref_pulse, list):
                         if p.pulse_obj.name in [vp[2].pulse_obj.name for vp
                                                 in visited_pulses]:
@@ -353,9 +355,15 @@ class Segment:
                                 'ref_function. Allowed values are: max, min, mean.' +
                                 ' Default value: max')
                     else:
-                        t0 = pulse.pulse_obj.algorithm_time() + p.delay - \
-                            p.ref_point_new * p.pulse_obj.length + \
-                            p.ref_point * pulse.pulse_obj.length
+                        if isinstance(pulse, int):
+                            # ref_pulses_dict provided an already resolved
+                            # timing instead of a pulse
+                            t_ref = pulse
+                        else:  # ref_pulses_dict provided a pulse
+                            t_ref = pulse.pulse_obj.algorithm_time() + \
+                                    p.ref_point * pulse.pulse_obj.length
+                        t0 = t_ref + p.delay - \
+                            p.ref_point_new * p.pulse_obj.length
 
                     p.pulse_obj.algorithm_time(t0)
 
@@ -367,6 +375,29 @@ class Segment:
                     visited_pulses.append((t0, i, p))
                     i += 1
 
+            if not len(ref_pulses_dict_new):  # Nothing further to do
+                if 'segment_start' not in ref_pulses_dict_all:
+                    # We have only resolved init pulses up to now, but we
+                    # still need to resolve the main part (referenced to
+                    # segment_start).
+                    # let the main part of the segment start after the end
+                    # of the last init pulse (or at time 0 if there is no init)
+                    t_init_end = max(
+                        [p.pulse_obj.algorithm_time() + p.pulse_obj.length
+                         for (_, _, p) in visited_pulses] or [0])
+                    # shift all init pulses so that segment_start is at time 0
+                    for ind, (t0, i_p, p) in enumerate(visited_pulses):
+                        p.pulse_obj.algorithm_time(
+                            p.pulse_obj.algorithm_time() - t_init_end)
+                        visited_pulses[ind] = (t0 - t_init_end, i_p, p)
+                    # resolve pulses referencing segment_start directly in
+                    # the next iteration and those referencing segment_start
+                    # indirectly in the following iterations
+                    ref_pulses_dict_new = {'segment_start': 0}
+                elif len(visited_pulses) == 0:
+                    # main part already resolved, but no pulses visited
+                    raise ValueError(
+                        'No pulse references to the segment start!')
             ref_pulses_dict = ref_pulses_dict_new
             ref_pulses_dict_all.update(ref_pulses_dict_new)
 
