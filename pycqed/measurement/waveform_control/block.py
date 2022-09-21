@@ -143,7 +143,7 @@ class Block:
             p_is_block_start = self._is_block_start(p, block_start)
 
             # rename ref pulse within the block if not a special name
-            escape_names = ("previous_pulse", "segment_start")
+            escape_names = ("previous_pulse", "segment_start", "init_start")
             if isinstance(ref_pulse, list):
                 p['ref_pulse'] = [name + "-|-" + rp for rp in p['ref_pulse']]
             else:
