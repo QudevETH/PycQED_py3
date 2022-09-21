@@ -826,6 +826,20 @@ class Segment:
             if awg not in self.elements_on_awg:
                 continue
             if len(self.pulsar.get('{}_trigger_channels'.format(awg))) == 0:
+                # master AWG directly triggered by main trigger
+                t_main_trig = self.pulsar.main_trigger_time()
+                if t_main_trig != 'auto':
+                    # find first element on AWG
+                    el = self.find_trigger_element(awg, -np.inf)
+                    start_end = self.element_start_end[el][awg]
+                    if start_end[0] < t_main_trig:
+                        raise ValueError(
+                            f'Fixed main trigger time {t_main_trig} is too '
+                            f'late for this segment, which starts at '
+                            f'{start_end[0]}.')
+                    # update element start such that the waveforms start at
+                    # the requested fixed main trigger time.
+                    self.element_start_length(el, awg, t_start=t_main_trig)
                 continue  # for master AWG no trigger_pulse has to be added
 
             trigger_pulses = []
@@ -1165,7 +1179,7 @@ class Segment:
                 pulse.pulse_obj.phase = pulse.original_phase - \
                                         basis_phases.get(pulse.basis, 0)
 
-    def element_start_length(self, element, awg):
+    def element_start_length(self, element, awg, t_start=np.inf):
         """
         Finds and saves the start and length of an element on AWG awg
         in self.element_start_end.
@@ -1174,7 +1188,6 @@ class Segment:
             self.element_start_end[element] = {}
 
         # find element start, end and length
-        t_start = np.inf
         t_end = -np.inf
 
         for pulse in self.elements[element]:
