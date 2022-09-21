@@ -93,7 +93,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
         # TODO Implement this method to give a meaningful value! (from the
         #  design DB?)
         log.warning("Implement this method to give a meaningful value!")
-        return 0.3
+        return 0.2e9
 
     def create_initial_routine(self, load_parameters=True):
         super().create_routine_template()  # Create empty routine template
@@ -147,5 +147,5 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                     d = np.square(ge_freq + E_c) / (8 * E_c * Ej_max)
                     qubit_parameters.asymmetry = d
 
-                # Update the qubit with the final parameters
-                qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))
+                    # Update the qubit with the final parameters
+                    qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))

@@ -14,7 +14,6 @@ from .single_qubit_routines import (ReparkingRamseyStep,
 from pycqed.utilities.general import temporary_value
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
-import pycqed.analysis.analysis_toolbox as a_tools
 import numpy as np
 from typing import List, Any, Dict, Tuple
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -27,6 +26,7 @@ log = logging.getLogger('Routines')
 @dataclass
 class ParkAndQubitSpectroscopyResults:
     # Store results for a single qubit
+    # TODO replace currently used dictionaries
     initial_ge_freq: float = None
     initial_flux: float = None
     initial_voltage: float = None

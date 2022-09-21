@@ -8,6 +8,7 @@ from .autocalib_framework import update_nested_dictionary
 from .autocalib_framework import (
     _device_db_client_module_missing
 )
+
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
@@ -266,7 +267,7 @@ class RamseyStep(qbcal.Ramsey, Step):
             ad_v = task_list_fields.get('artificial_detuning', None)
             if ad_v is not None:
                 task['artificial_detuning'] = value_params['n_periods'] / \
-                    value_params['delta_t']
+                                              value_params['delta_t']
             qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
@@ -449,7 +450,7 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
             ad_v = task_list_fields.get('artificial_detuning', None)
             if ad_v is not None:
                 task['artificial_detuning'] = value_params['n_periods'] / \
-                    value_params['delta_t']
+                                              value_params['delta_t']
             qb_v = task_list_fields.get('qb', None)
             if qb_v is not None:
                 task['qb'] = qb.name
@@ -1177,10 +1178,10 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     """
 
     def __init__(
-        self,
-        dev,
-        fluxlines_dict,
-        **kw,
+            self,
+            dev,
+            fluxlines_dict,
+            **kw,
     ):
         # FIXME: fluxlines_dict has to be passed as an argument because the
         #  fluxlines are not available directly from the qubit objects.
@@ -1197,35 +1198,11 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         Creates routine template.
         """
         super().create_routine_template()
-
-        # Replace the default steps of the routine by taking into account
-        # the parallel_groups in the settings files
-        detailed_routine_template = copy.copy(self.routine_template)
-        detailed_routine_template.clear()
-
-        for step in self.routine_template:
-            step_class = step[0]
-            settings = copy.deepcopy(step[2])
-            label = step[1]
-            lookups = [label, step_class.get_lookup_class().__name__, 'General']
-            for parallel_group in self.get_param_value('parallel_groups',
-                                                       sublookups=lookups,
-                                                       leaf=True):
-                qubits_filtered = [
-                    qb for qb in self.qubits if qb.name is parallel_group or
-                    parallel_group in self.get_qubit_groups(qb.name)
-                ]
-                if len(qubits_filtered) != 0:
-                    temp_settings = copy.deepcopy(settings)
-                    temp_settings['qubits'] = qubits_filtered
-                    qubit_label = label + "_"
-                    for qb in qubits_filtered:
-                        qubit_label += qb.name
-
-                    detailed_routine_template.add_step(step_class, qubit_label,
-                                                       temp_settings)
-
-        self.routine_template = detailed_routine_template
+        # Loop in reverse order so that the correspondence between the index
+        # of the loop and the index of the routine_template steps is preserved
+        # when new steps are added
+        for i, step in reversed(list(enumerate(self.routine_template))):
+            self.split_step_for_parallel_groups(index=i)
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [FeedlineSpectroscopyStep, 'feedline_spectroscopy', {}],
@@ -1286,10 +1263,10 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
     """
 
     def __init__(
-        self,
-        dev,
-        qubits,
-        **kw,
+            self,
+            dev,
+            qubits,
+            **kw,
     ):
         """
         Initialize the AdaptiveQubitSpectroscopy routine.
@@ -1407,14 +1384,14 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 n = len(data)
                 mean = np.mean(data)
                 std_err = np.std(data)
-                var = std_err**2
+                var = std_err ** 2
                 # FIXME Calculates the variance of the entire sweep.
                 #  This is basically a the noise and only works when the
                 #  majority of the data point are expected to have approximately
                 #  the same value.
                 #  See https://en.wikipedia.org/wiki/Variance#Distribution_of_the_sample_variance
                 var_of_var = 1 / n * (np.mean(
-                    (data - mean)**4) - (n - 3) / (n - 1) * var**2)
+                    (data - mean) ** 4) - (n - 3) / (n - 1) * var ** 2)
                 red_chi_upper_bound = var - np.sqrt(var_of_var)
 
                 # Check whether the fit was successful and store the qubits
@@ -1430,7 +1407,8 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                     "min_kappa_fraction_sweep_range", qubit=qb
                 )
                 sweep_points_freq = qb_spec.analysis.sp[f"{qb.name}_freq"]
-                sweep_range = np.max(sweep_points_freq)-np.min(sweep_points_freq)
+                sweep_range = np.max(sweep_points_freq) - np.min(
+                    sweep_points_freq)
 
                 max_kappa_absolute = self.get_param_value(
                     "max_kappa_absolute", qubit=qb
@@ -1443,13 +1421,13 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                     if kappa > max_kappa_absolute:
                         success = False
                 if max_kappa_fraction_sweep_range is not None:
-                    if kappa > max_kappa_fraction_sweep_range*sweep_range:
+                    if kappa > max_kappa_fraction_sweep_range * sweep_range:
                         success = False
                 if min_kappa_absolute is not None:
                     if kappa < min_kappa_absolute:
                         success = False
                 if min_kappa_fraction_sweep_range is not None:
-                    if kappa < min_kappa_fraction_sweep_range*sweep_range:
+                    if kappa < min_kappa_fraction_sweep_range * sweep_range:
                         success = False
 
                 if success:
@@ -1495,7 +1473,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                     # where index is greater the index of the current
                     # spectroscopy
                     if label == "qubit_spectroscopy"\
-                        and index > routine.index_spectroscopy:
+                            and index > routine.index_spectroscopy:
                         # Get the settings of such steps and remove all the
                         # qubits_failed from the qubits that are supposed to
                         # be measured again
@@ -1503,16 +1481,13 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                         for qb in qubits_failed:
                             if qb in qubits:
                                 qubits.remove(qb)
-                        # If there are no more qubits left to measure, store
-                        # the index of the spectroscopy and the following
-                        # decision step in order to remove them afterwards
-                        if qubits == []:
-                            indices_steps_to_remove.append(i)
-                            indices_steps_to_remove.append(i + 1)
+                        # If there are no more qubits left to measure, store the index of the spectroscopy and the
+                        # following decision step in order to remove them afterwards
+                        if not qubits:
+                            indices_steps_to_remove += [i, i + 1]
                             log.warning(
-                                f"All the qubits of step {step[1]} "
-                                "failed. It will be removed together with the "
-                                "following Decision step.")
+                                f"All the qubits of step {step[1]} failed."
+                                f"It will be removed together with the following Decision step.")
 
                 # Remove the steps with only qubits whose spectroscopy failed
                 # and exceeded the maximum number of iterations
@@ -1534,10 +1509,11 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         # Decision steps
         for i in range(self.get_param_value("n_spectroscopies", default=2)):
             qb_spec_settings = {'qubits': self.qubits}
-            self.add_step(QubitSpectroscopy1DStep, f'qubit_spectroscopy_{i+1}',
+            self.add_step(QubitSpectroscopy1DStep,
+                          f'qubit_spectroscopy_{i + 1}',
                           qb_spec_settings)
             decision_settings = {'qubits': self.qubits}
-            self.add_step(self.Decision, f'decision_spectroscopy_{i+1}',
+            self.add_step(self.Decision, f'decision_spectroscopy_{i + 1}',
                           decision_settings)
 
     def add_rerun_qubit_spectroscopy_step(self, index_spectroscopy,
@@ -1571,8 +1547,8 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         self.add_step(
             *[
                 QubitSpectroscopy1DStep,
-                f'qubit_spectroscopy_{index_spectroscopy}_'\
-                    f'repetition_{index_iteration}',
+                f'qubit_spectroscopy_{index_spectroscopy}_'
+                f'repetition_{index_iteration}',
                 {
                     'settings': settings,
                     'qubits': qubits
@@ -1583,7 +1559,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         self.add_step(
             *[
                 self.Decision,
-                f'decision_spectroscopy_{index_spectroscopy}_'\
+                f'decision_spectroscopy_{index_spectroscopy}_'
                 f'repetition_{index_iteration}',
                 {
                     'qubits': qubits
@@ -1603,9 +1579,9 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
     """
 
     def __init__(
-        self,
-        dev,
-        **kw,
+            self,
+            dev,
+            **kw,
     ):
         """Pi-pulse calibration routine consisting of one Rabi and one Ramsey.
 
@@ -1649,10 +1625,10 @@ class FindFrequency(AutomaticCalibrationRoutine):
     """
 
     def __init__(
-        self,
-        dev,
-        qubits,
-        **kw,
+            self,
+            dev,
+            qubits,
+            **kw,
     ):
         """Routine to find frequency of a given transmon transition.
 
@@ -1764,10 +1740,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
             for i in range(max_waiting_seconds):
                 try:
                     routine.delta_f = (
-                        ramsey.analysis.proc_data_dict["analysis_params_dict"][
-                            qubit.name]["exp_decay"]["new_qb_freq"] -
-                        ramsey.analysis.proc_data_dict["analysis_params_dict"][
-                            qubit.name]["exp_decay"]["old_qb_freq"])
+                            ramsey.analysis.proc_data_dict[
+                                "analysis_params_dict"][
+                                qubit.name]["exp_decay"]["new_qb_freq"] -
+                            ramsey.analysis.proc_data_dict[
+                                "analysis_params_dict"][
+                                qubit.name]["exp_decay"]["old_qb_freq"])
                     break
                 except KeyError:
                     log.warning(
@@ -1784,8 +1762,8 @@ class FindFrequency(AutomaticCalibrationRoutine):
             # Progress update
             if self.get_param_value('verbose'):
                 print(f"Iteration {routine.iteration}, {transition}-freq "
-                      f"{freq/f_factor} {f_unit}, frequency "
-                      f"difference = {routine.delta_f/delta_f_factor} "
+                      f"{freq / f_factor} {f_unit}, frequency "
+                      f"difference = {routine.delta_f / delta_f_factor} "
                       f"{delta_f_unit}")
 
             # Check if the absolute frequency difference is small enough
@@ -1793,15 +1771,15 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 # Success
                 if self.get_param_value('verbose'):
                     print(f"{transition}-frequency found to be"
-                          f"{freq/f_factor} {f_unit} within "
-                          f"{allowed_delta_f/delta_f_factor} "
+                          f"{freq / f_factor} {f_unit} within "
+                          f"{allowed_delta_f / delta_f_factor} "
                           f"{delta_f_unit} of previous value.")
 
             elif routine.iteration < max_iterations:
                 # No success yet, adding a new rabi-ramsey and decision step
                 if self.get_param_value('verbose'):
                     print(f"Allowed error ("
-                          f"{allowed_delta_f/delta_f_factor} "
+                          f"{allowed_delta_f / delta_f_factor} "
                           f"{delta_f_unit}) not yet achieved, adding new"
                           " round of PiPulse calibration...")
 
@@ -1832,14 +1810,24 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 # Printing termination update
                 print(f"FindFrequency routine finished: "
                       f"{transition}-frequencies for {qubit.name} "
-                      f"is {freq/f_factor} {f_unit}.")
+                      f"is {freq / f_factor} {f_unit}.")
 
     def create_routine_template(self):
         """Creates the routine template for the FindFrequency routine.
         """
         super().create_routine_template()
-
-        pipulse_settings = {'qubits': self.qubits}
+        transition_name = self.get_param_value("transition_name",
+                                               qubit=self.qubit)
+        pipulse_settings = {
+            "qubits": self.qubits,
+            "settings": {
+                "PiPulseCalibration": {
+                    "General": {
+                        "transition_name": transition_name,
+                    }
+                }
+            }
+        }
         self.add_step(PiPulseCalibration, 'pi_pulse_calibration',
                       pipulse_settings)
 
@@ -1875,7 +1863,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
             # 3) v_high based on default value
             # if rabi_amps is None:
             if amp180:
-                settings['Rabi']['v_max'] = amp180
+                rabi_settings = {
+                    'Rabi': {
+                        'v_max': amp180
+                    }
+                }
+                update_nested_dictionary(settings, rabi_settings)
 
             # Delays and artificial detuning for Ramsey
             # if ramsey_delays is None or artificial_detuning is None:
@@ -1884,7 +1877,23 @@ class FindFrequency(AutomaticCalibrationRoutine):
             # 2) based on T2_star
             # 3) based on default
             if self.get_param_value("use_T2_star"):
-                settings['Ramsey']['delta_t'] = T2_star
+                ramsey_settings = {
+                    'Ramsey': {
+                        'delta_t': T2_star
+                    }
+                }
+                update_nested_dictionary(settings, ramsey_settings)
+
+        transition_name = self.get_param_value("transition_name",
+                                               qubit=self.qubit)
+        pipulse_settings = {
+            "PiPulseCalibration": {
+                "General": {
+                    "transition_name": transition_name,
+                }
+            }
+        }
+        update_nested_dictionary(settings, pipulse_settings)
 
         self.add_step(
             *[
@@ -1909,11 +1918,11 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
     RamseyStep (ramsey_large_AD)
     RamseyStep (ramsey_small_AD)
     RabiStep (rabi_after_ramsey)
-    QScaleStep (qscale)
+    QScaleStep (qscale), only for ge transition
     RabiStep (rabi_after_qscale)
     T1Step (t1)
-    RamseyStep (echo_large_AD)
-    RamseyStep (echo_small_AD)
+    RamseyStep (echo_large_AD), only for ge transition
+    RamseyStep (echo_small_AD), only for ge transition
     InPhaseAmpCalibStep (in_phase_calib)
     """
 
@@ -2038,9 +2047,9 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         """
 
         def __init__(
-            self,
-            routine,
-            **kw,
+                self,
+                routine,
+                **kw,
         ):
             """Initialize the SQCPreparation step.
 

@@ -234,11 +234,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 self.ss1_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss1_flux),
                     qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss1_flux)),
+                                              flux=self.ss1_flux)[0]),
                 self.ss2_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss2_flux),
                     qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss2_flux)),
+                                              flux=self.ss2_flux)[0]),
             }
 
         # Validity of flux_to_voltage_and_freq_guess dictionary
@@ -288,7 +288,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         assert all([k in qubit_hamiltonian_params for k in
                     ['dac_sweet_spot', 'V_per_phi0', 'Ej_max', 'E_c',
                      'asymmetry']]), (
-            "To calculate the frequency of a transmon, a sufficient model"
+            "To calculate the frequency of a transmon, a sufficient model "
             "must be present in the qubit object")
 
         if all([k in qubit_hamiltonian_params for k in ['coupling', 'fr']]):
@@ -657,11 +657,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.flux = self.get_param_value('flux')
             self.voltage = self.get_param_value('voltage')
 
-            assert not (
-                    self.frequency is None and self.flux is None and
-                    self.voltage is None
-            ), "No transition, frequency or voltage specified. At least one of "
-            "these should be specified."
+            assert any([self.frequency, self.flux, self.voltage]
+                       ), "No transition, frequency or voltage specified. At " \
+                          "least one of these should be specified."
 
         def run(self):
             """Updates frequency of the qubit for a given transition. This can
@@ -786,8 +784,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 qubit=self.routine.qubit,
                 fluxlines_dict=self.routine.fluxlines_dict,
                 timestamp_start=self.routine.preroutine_timestamp,
-                include_reparkings=self.get_param_value(
-                    "include_reparkings"),
+                include_reparkings=self.get_param_value("include_reparkings"),
             )
 
             log.info(f"Experimental values: {self.experimental_values}")
