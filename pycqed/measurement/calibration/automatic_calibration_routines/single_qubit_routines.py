@@ -25,6 +25,8 @@ from pycqed.utilities.general import (
     configure_qubit_mux_drive,
     configure_qubit_mux_readout
 )
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon import \
+    QuDev_transmon
 
 import numpy as np
 import copy
@@ -964,13 +966,15 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         # default settings
         for qb in self.qubits:
             # Build frequency sweep points
-            current_ro_freq = qb.ro_freq()
             freq_range = self.get_param_value('freq_range', qubit=qb.name)
             freq_pts = self.get_param_value('freq_pts', qubit=qb.name)
             freq_center = self.get_param_value('freq_center', qubit=qb.name)
             if isinstance(freq_center, str):
                 freq_center = eval(
-                    freq_center.format(current=current_ro_freq))
+                    freq_center.format(current=qb.ro_freq(),
+                                       between_dips=self.get_freq_between_dips(
+                                           qb)))
+            log.debug(f'{freq_center=}, {freq_range=}, {freq_pts=}')
             freqs = np.linspace(freq_center - freq_range / 2,
                                 freq_center + freq_range / 2, freq_pts)
 
@@ -1009,6 +1013,19 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                 }
 
         return kwargs
+
+    def get_freq_between_dips(self, qubit: QuDev_transmon) -> float:
+        """Find the frequency between the RO-Purcell dips."""
+        try:
+            fit_res = self.routine.routine_steps[-1].analysis.fit_res
+            for feedline_results in fit_res.values():
+                for k in feedline_results.keys():
+                    if k.startswith(f'{qubit.name}'):
+                        ro_freq = feedline_results[f'{qubit.name}_RO_frequency']
+                        mode2_freq = feedline_results[f'{qubit.name}_mode2_frequency']
+                        return (ro_freq + mode2_freq) / 2
+        except (AttributeError, KeyError):
+            return qubit.ro_freq()
 
     def run(self):
         """Runs the ResonatorSpectroscopyFluxSweep experiment and the analysis
@@ -1207,7 +1224,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [FeedlineSpectroscopyStep, 'feedline_spectroscopy', {}],
         # TODO: add 2D resonator spectroscopy amplitude sweep to find the
-        # optimal RO amplitude
+        #  optimal RO amplitude
         [ResonatorSpectroscopyFluxSweepStep, 'resonator_spectroscopy_flux', {}]
     ])
 
@@ -1472,7 +1489,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                     # Retrieve the steps with label "qubits_spectroscopy_<index>",
                     # where index is greater the index of the current
                     # spectroscopy
-                    if label == "qubit_spectroscopy"\
+                    if label == "qubit_spectroscopy" \
                             and index > routine.index_spectroscopy:
                         # Get the settings of such steps and remove all the
                         # qubits_failed from the qubits that are supposed to
