@@ -402,12 +402,14 @@ class Segment:
             ref_pulses_dict_all.update(ref_pulses_dict_new)
 
         if len(visited_pulses) != len(self.resolved_pulses):
-            log.error(f"{len(visited_pulses), len(self.resolved_pulses)}")
-            for unpulse in visited_pulses:
-                if unpulse not in self.resolved_pulses:
-                    log.error(unpulse)
-            raise Exception(f'Not all pulses have been resolved: '
-                            f'{self.resolved_pulses}')
+            log.error(f"{len(self.resolved_pulses)} pulses to be resolved, "
+                      f"but only {len(visited_pulses)} pulses visited. "
+                      f"Pulses that have not been visited:")
+            vp = [p for _, _, p in visited_pulses]
+            for p in self.resolved_pulses:
+                if p not in vp:
+                    log.error(p)
+            raise Exception('Not all pulses have been resolved.')
 
         if resolve_block_align:
             re_resolve = False
