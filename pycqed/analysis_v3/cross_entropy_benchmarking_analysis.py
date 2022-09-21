@@ -577,16 +577,18 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 ## Calculation ##
 def translate(info):
     s_gates = ["RX", "RY", "RZ"]
-
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
         angle = np.pi / 2
     elif info[0][0] == 'X':
         gate_name = s_gates[0]
         angle = np.pi / 2
-    else:
+    elif info[0][0] == 'Z':
         gate_name = s_gates[2]
         angle = np.pi / 4
+    else:  # C-phase gate
+        gate_name = 'CPHASE'
+        angle = -info[0][2:]*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
@@ -598,11 +600,11 @@ def construct_from_op(op_lis):
     q = qt.qip.circuit.QubitCircuit(2, reverse_states=False)
     for op in op_lis:
         op_info = op.split(" ")
+        info = translate(op_info)
         if len(op_info) == 2:
-            info = translate(op_info)
             q.add_gate(info[0], info[1], None, info[2], r"\pi/4")
         else:
-            q.add_gate('CPHASE', 0, 1, np.pi)
+            q.add_gate(info[0], 0, 1, info[2])
     return q
 
 

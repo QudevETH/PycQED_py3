@@ -619,15 +619,17 @@ class TwoQubitXEB(MultiTaskingExperiment):
     """
     kw_for_sweep_points = {'cycles': dict(param_name='cycles', unit='',
                                           label='Nr. Cycles', dimension=0),
-                           'nr_seqs,cycles': dict(
+                           'nr_seqs,cycles,cphase': dict(
                                param_name='gateschoice', unit='',
                                label='cycles gates', dimension=1,
-                               values_func='paulis_gen_func')
+                               values_func='paulis_gen_func'),
                            }
+    kw_for_task_keys = ['cphase']
     default_experiment_name = 'TwoQubitXEB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, sweep_type=None, **kw):
+                 parametric=False, nr_seqs=None, cycles=None, sweep_type=None,
+                 **kw):
         """
         Init of the TwoQubitXEB class.
         The experiment consists of applying
@@ -646,6 +648,8 @@ class TwoQubitXEB(MultiTaskingExperiment):
                      {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
             qubits (list): QuDev_transmon class instances on which to run
                 measurement
+            parametric (bool): whether to do parametric C-phase gates, with
+                a random angle in each cycle
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
                 If nr_seqs is specified and it does not exist in the task_list,
@@ -659,17 +663,19 @@ class TwoQubitXEB(MultiTaskingExperiment):
 
         Keyword args:
             passed to CalibBuilder; see docstring there
+            cphase (float; default: 180): value of the C-phase gate angle
+                in degrees
 
         Assumptions:
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
         """
         try:
-
+            self.parametric = parametric
             self.sweep_type = sweep_type
             if self.sweep_type is None:
                 self.sweep_type = {'cycles': 0, 'seqs': 1}
-            self.kw_for_sweep_points['nr_seqs,cycles']['dimension'] = \
+            self.kw_for_sweep_points['nr_seqs,cycles,cphase']['dimension'] = \
                 self.sweep_type['seqs']
             self.kw_for_sweep_points['cycles']['dimension'] = \
                 self.sweep_type['cycles']
@@ -711,6 +717,15 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 else:
                     cycles = cycles_list[0]
 
+            # add cphase to kw if not already there such that it will be found
+            # by generate_kw_sweep_points and will be added to the tasks
+            # (the parameters is specified in kw_for_task_keys). Having cphase
+            # in kw ensures that it will be passed to paulis_gen_func when
+            # generate_kw_sweep_points is called, and hence that the
+            # sweep_points are created correctly.
+            if 'cphase' not in kw:
+                kw['cphase'] = 180
+
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
@@ -730,8 +745,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
             self.exception = x
             traceback.print_exc()
 
-    @staticmethod
-    def paulis_gen_func(nr_seqs, cycles):
+    def paulis_gen_func(self, nr_seqs, cycles, cphase=180):
         """
         Creates the list of random gates to be applied in each sequence of the
         experiment.
@@ -741,6 +755,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 length
             cycles (list/array): integers specifying the number of cycles of
                 random gates to apply in a sequence
+            cphase (float): value of the C-phase gate angle in degrees
 
         Returns:
              list of strings with op codes
@@ -749,7 +764,8 @@ class TwoQubitXEB(MultiTaskingExperiment):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
             for length in cycles:
-                i = 0
+                cphases = np.random.uniform(0, 1, length) * 180 \
+                    if self.parametric else np.repeat([cphase], length)
                 gates = []
                 gates.append(s_gates[1] + "qb_1")
                 sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
@@ -757,9 +773,9 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 gates.append(s_gates[2] + "qb_1")
                 sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
                 gates.append(s_gates[2][0:3] + sim_str + "qb_2")
-                gates.append("CZ " + "qb_1 qb_2")
+                gates.append(f"CZ{cphases[0]} " + "qb_1 qb_2")
                 if length > 0:
-                    while i < (length - 1):
+                    for i in range(length - 1):
                         last_1_gate1 = gates[-3][0:4]
 
                         choice1 = []
@@ -777,8 +793,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
                         gate2 = random.choice(choice2)
                         sim_str = ' ' if 'Z' in gate2[:3] else 's '
                         gates.append(gate2[:3] + sim_str + 'qb_2')
-                        gates.append("CZ " + 'qb_1 qb_2')
-                        i += 1
+                        gates.append(f"CZ{cphases[i+1]} " + 'qb_1 qb_2')
                 lis.append(gates)
             return lis
         return [gen_random(cycles) for _ in range(nr_seqs)]
@@ -807,11 +822,15 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 'values', self.sweep_type['seqs'], 'gateschoice')[seq_idx][nrcyc_idx]
             l = [gate_qb for gate_qb in gates_qb_info]
             sub_list = []
-            for ope in l:
-                if len(ope) < 11:
-                    op = ope[0:-4] + task[ope[-4::]]
+            for op in l:
+                op_split = op.split()
+                if len(op_split) == 2:
+                    # single qubit gate
+                    op = ' '.join([op_split[0], task[op_split[1]]])
                 else:
-                    op = 'CZ ' + task[ope[3:7]] + ' ' +  task[ope[8::]]
+                    # C-phase gate
+                    op = ' '.join([op_split[0], task[op_split[1]],
+                                   task[op_split[2]]])
                 sub_list.append(op)
             pulse_op_codes_list += [sub_list]
 
