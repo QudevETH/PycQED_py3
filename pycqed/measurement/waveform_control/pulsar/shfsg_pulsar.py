@@ -65,7 +65,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         super().__init__(*args, **kwargs)
         self._init_mcc()
         # dict for storing previously-uploaded waveforms
-        self._shfsg_waveform_cache = dict()
+        self.waveform_cache = dict()
+        self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
         """Determines the sgchannels for which the sine generator is turned on
         (off) in :meth:`start` (:meth:`stop`).
         """
@@ -313,12 +314,12 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
 
         # check if the waveform has been uploaded
         if self.pulsar.use_sequence_cache():
-            if wave_hashes == self._shfsg_waveform_cache[
+            if wave_hashes == self.waveform_cache[
                     f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
                 log.debug(f'{self.awg.name} awgs{awg_nr}: '
                           f'{wave_idx} same as in cache')
                 return
-            self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
+            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
         log.debug(
             f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
@@ -393,7 +394,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
             wave_hashes: waveforms hashes
         """
         if self.pulsar.use_sequence_cache():
-            self._shfsg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
+            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
 
     def _direct_mod_setter(self, ch):

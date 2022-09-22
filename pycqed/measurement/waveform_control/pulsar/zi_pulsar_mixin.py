@@ -1035,7 +1035,7 @@ class ZIDriveAWGChannel:
         if not self._use_placeholder_waves or program:
             run_compiler = True
         else:
-            cached_lookup = self._awg_interface._hdawg_waveform_cache.get(
+            cached_lookup = self._awg_interface.waveform_cache.get(
                 f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup', None)
             try:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
@@ -1060,9 +1060,9 @@ class ZIDriveAWGChannel:
             self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
                          prev_dio_valid_polarity)
             if self._use_placeholder_waves:
-                self._awg_interface._hdawg_waveform_cache[
+                self._awg_interface.waveform_cache[
                     f'{self._awg.name}_{self._awg_nr}'] = {}
-                self._awg_interface._hdawg_waveform_cache[
+                self._awg_interface.waveform_cache[
                     f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup'] = \
                     self._wave_idx_lookup
 

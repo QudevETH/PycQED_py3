@@ -79,7 +79,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         self._init_mcc()
 
         # dict for storing previously-uploaded waveforms
-        self._hdawg_waveform_cache = dict()
+        self.waveform_cache = dict()
 
         self._hdawg_channel_pairs = []
         for awg_nr in self._hdawg_active_awgs():
@@ -468,12 +468,12 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.pulsar.use_sequence_cache():
-            if wave_hashes == self._hdawg_waveform_cache[
+            if wave_hashes == self.waveform_cache[
                     f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
                 log.debug(
                     f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
                 return
-            self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
+            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
         log.debug(
             f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
@@ -534,7 +534,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             wave_hashes: waveforms hashes
         """
         if self.pulsar.use_sequence_cache():
-            self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
+            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
                 wave_idx] = wave_hashes
 
     def is_awg_running(self):
