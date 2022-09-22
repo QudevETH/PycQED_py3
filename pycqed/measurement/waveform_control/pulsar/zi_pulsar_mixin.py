@@ -969,7 +969,6 @@ class ZIGeneratorModule:
         first_element_of_segment = True
 
         for element in awg_sequence:
-            self._command_table_lookup[element] = {}
             awg_sequence_element = deepcopy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
@@ -978,6 +977,7 @@ class ZIGeneratorModule:
                     self._playback_strings.append('i_seg += 1;')
                 first_element_of_segment = True
                 continue
+            self._command_table_lookup[element] = None
             self._wave_idx_lookup[element] = {}
 
             metadata = awg_sequence_element.pop('metadata', {})
@@ -1074,7 +1074,6 @@ class ZIGeneratorModule:
                     # can be skipped
                     continue
 
-
                 self._wave_idx_lookup[element][cw] = None
                 reuse_definition = False
                 if self._use_placeholder_waves or self._use_command_table:
@@ -1089,10 +1088,6 @@ class ZIGeneratorModule:
                     else:
                         self._wave_idx_lookup[element][cw] = next_wave_idx
                         next_wave_idx += 1
-
-                # Command table will not be used when the lookup value is set
-                # to None.
-                self._command_table_lookup[element][cw] = None
 
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
@@ -1119,7 +1114,15 @@ class ZIGeneratorModule:
                             update_entry = False
 
                     # records mapping between element-codeword and entry index
-                    self._command_table_lookup[element][cw] = entry_index
+                    if (cw == 'no_codeword'):
+                        self._command_table_lookup[element] = entry_index
+                    else:
+                        raise RuntimeError(
+                            "DIO wave sequencing is not compatible with "
+                            "command table wave sequencing. Please enable "
+                            "only one of the two functionalities!"
+                        )
+
 
                     if update_entry:
                         self._command_table.append(entry)
@@ -1145,10 +1148,8 @@ class ZIGeneratorModule:
                         self._awg_interface.zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
-                            placeholder_wave_index=
-                            self._wave_idx_lookup[element][cw],
-                            placeholder_wave_length=
-                            max(placeholder_wave_lengths),
+                            wave_index=self._wave_idx_lookup[element][cw],
+                            placeholder_wave_length=max(placeholder_wave_lengths),
                         )
                 else:
                     # No indices will be assigned when not using placeholder
