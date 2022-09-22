@@ -154,6 +154,8 @@ class MockDAQServer(zibase.MockDAQServer):
                 return 0  # emulate that single run finishes after 0.1s
         if '/sgchannels/' in path and '/awg/ready' in path:
             return 1
+        if '/awgs/' in path and '/ready' in path:
+            return 1
 
         if 'Options' in self.nodes[path]:
             raw_val = self.nodes[path]['value']
@@ -267,25 +269,38 @@ class MockAwgModule(zibase.MockAwgModule):
         self._sequencertype = None
 
     def set(self, path, value):
+        if path[0] == '/':
+            path = path[1:]
         if not path.startswith('awgModule/'):
             path = 'awgModule/' + path
         if path == 'awgModule/sequencertype':
             self._sequencertype = value
-        elif path == 'awgModule/compiler/sourcestring' and \
-                self._sequencertype == "qa":
-            # The compiled program is stored in _sourcestring
-            self._sourcestring = value
-            if self._index not in self._compilation_count:
-                raise zibase.ziModuleError(
-                    'Trying to compile AWG program, but no AWG index has been configured!')
+        elif path == 'awgModule/compiler/sourcestring':
+            if self._sequencertype == "qa":
+                # The compiled program is stored in _sourcestring
+                self._sourcestring = value
+                if self._index not in self._compilation_count:
+                    raise zibase.ziModuleError(
+                        'Trying to compile AWG program, but no AWG index has been configured!')
 
-            if self._device is None:
-                raise zibase.ziModuleError(
-                    'Trying to compile AWG program, but no AWG device has been configured!')
+                if self._device is None:
+                    raise zibase.ziModuleError(
+                        'Trying to compile AWG program, but no AWG device has been configured!')
 
-            self._compilation_count[self._index] += 1
-            self._daq.setInt('/' + self._device + '/qachannels/'
-                             + str(self._index) + '/generator/ready', 1)
+                self._compilation_count[self._index] += 1
+                self._daq.setInt('/' + self._device + '/qachannels/'
+                                 + str(self._index) + '/generator/ready', 1)
+            else:
+                # create directories for dumping elf files
+                base_dir = self.getString('/directory')
+                base_dir = os.path.join(base_dir, "awg/elf")
+                os.makedirs(base_dir, exist_ok=True)
+                fn = os.path.join(base_dir, f'{self._device}_{self._index}_awg_default.elf')
+                with open(fn, "w") as f:
+                    f.write('')
+                path = f'/{self._device}/awgs/{self._index}/ready'
+                if path in self._daq.nodes:
+                    self._daq.setInt(path, 1)
         else:
             super().set(path, value)
 
@@ -300,6 +315,9 @@ class MockAwgModule(zibase.MockAwgModule):
     def getString(self, path):
         if path == 'compiler/statusstring':
             return 'File successfully uploaded'
+        elif path == '/directory':
+            from pycqed.utilities.general import get_pycqed_appdata_dir
+            return get_pycqed_appdata_dir()
         else:
             return ''
 
@@ -329,3 +347,6 @@ class MockAwgModule(zibase.MockAwgModule):
                 if k not in node:
                     node[k] = defaults[k]
         return json.dumps(dd)
+
+    def finish(self):
+        pass

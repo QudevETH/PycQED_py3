@@ -2427,6 +2427,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             'values', dimension=dimension, param_names=param_name)
         return label, unit, vals
 
+    @staticmethod
+    def get_qbs_from_task_list(task_list):
+    # TODO: there is a more elaborate method find_qubits_in_tasks in MultiTaskingExperiment.
+    #  We could consider moving it to a place where it can be used from both measurement and analysis classes and
+    #  then remove this function here
+        all_qubits = set()
+        for task in task_list:
+            all_qubits.update([v for k,v in task.items() if 'qb' in k])
+        return list(all_qubits)
 
 class StateTomographyAnalysis(ba.BaseDataAnalysis):
     """
@@ -10307,6 +10316,347 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                     'marker': ''}
 
 
+class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """ Class for automated chevron analysis
+
+    For this function a model for the Hamiltonian of the qubits is required. The function will use the fit_ge_from_...
+    parameters to calculate the frequencies for the given amplitudes.
+    Saves the fit parameters and the optimal CZ time in self.proc_data_dict['analysis_params_dict']:
+        J: coupling between |20> and |11> in Hz
+        offset_freq: frequency by which the two energy levels were off from the calculation in Hz
+    Options_dict options:
+        'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
+        'model': model used to calculate voltage to qubit frequency
+        'J_guess_boundary_scale': the limits for the fit of J are: (default: 2)
+            [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by the function J_fft
+        'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 2e8)
+        'steps': number of evaulations used for the fitting, default 1e8, dual_annealing default 1e7
+    """
+    def extract_data(self):
+        super().extract_data()
+        self.task_list = self.get_param_value('task_list')
+        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
+                  'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
+        for qbn in self.qb_names:
+            self.raw_data_dict.update({f"{p}_{qbn}":
+                                           self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
+                                       for p in params})
 
 
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+        self.proc_data_dict['Delta'] = OrderedDict()
 
+        def pe_function(t, Delta, J=10e6, offset_freq=0):
+            # From Nathan's master's thesis Eq. 2.6 - fitting function
+            t = t*1e9
+            J = 2*np.pi*J/1e9
+            offset_freq = offset_freq/1e9
+            Delta = Delta/1e9
+            Delta_off = 2 * np.pi * (
+                    Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
+                    4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
+
+        def J_fft(t, Delta, data):
+            # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
+            # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
+            J_min = None
+            for Delta_index in range(len(Delta)):
+                S = sp.fft.fft(data[Delta_index])
+                S[0] = 0 # Ignore DC component
+                xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
+                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
+                if J_min == None or J_min > J_fft:
+                    J_min = J_fft
+            return J_min
+
+        def calculate_voltage_from_flux(vfc, flux):
+            return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc,
+                                      model='transmon_res', bias = None):
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
+            if flux_amplitude_bias_ratio is None:
+                if np.ndim(amplitude) > 0:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+                else:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+
+
+            if model == 'approx':
+                ge_freq = fit_mods.Qubit_dac_to_freq(
+                    amplitude + (0 if bias is None or np.all(bias == 0) else
+                                 bias * flux_amplitude_bias_ratio), **vfc)
+            elif model == 'transmon':
+                kw = deepcopy(vfc)
+                kw.pop('coupling', None)
+                kw.pop('fr', None)
+                ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **kw)
+            elif model == 'transmon_res':
+                ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **vfc)
+            else:
+                raise NotImplementedError(
+                    "Currently, only the models 'approx', 'transmon', and"
+                    "'transmon_res' are implemented.")
+            return ge_freq
+
+        def add_fit_dict(qbH_name, qbL_name, data, key):
+            """ Creates the dictionary used for fitting
+
+             The dictionary includes the fitting-model, the function be fitted to, the x and y data, the method used for
+             fitting and the guess parameters. First extracts the relevant data from the raw_data_dict.
+             Converts the amplitude to frequencies and the swept frequency (amplitude) to a detuning (Delta) of the
+             qubits. Additionally removes all data points with NaN excited state population. The fit parameters are
+             the coupling of the qubits J and the frequency offset of the actual detuning compared to what was
+             calculated. J is obtained from doing a FFT on all measured detunings and taking the minimum of it, which
+             corresponds to the smallest detuning (ideally 0). Finally flattens the data for the fit.
+
+
+            Parameters
+            ----------
+            qbH_name: Higher-frequency qubit
+            qbL_name: Lower-frequency qubit
+            data: excited state population
+            key: key for the dictionary
+
+            Returns
+            -------
+            A fit-dictionary
+            """
+            model = self.get_param_value('model', 'transmon_res')
+            J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
+            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            hdf_file_index = self.get_param_value('hdf_file_index', 0)
+
+            qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
+            qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
+            qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
+            qbL_flux = self.raw_data_dict[f'flux_parking_{qbL_name}']
+
+            if model in ['transmon', 'transmon_res']:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
+                qbH_bias = calculate_voltage_from_flux(qbH_vfc, qbH_flux)
+                qbL_bias = calculate_voltage_from_flux(qbL_vfc, qbL_flux)
+            else:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
+                qbH_bias = None
+                qbL_bias = None
+
+            if self.num_cal_points != 0:
+                data = np.array([element[:-self.num_cal_points] for element in data])
+
+            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points']
+
+            # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
+            sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
+            if sweep_point_name in self.proc_data_dict['sweep_points_2D_dict'][qbL_name]:
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            else:
+                sweep_point_name = qbL_name + '_' + qbH_name + '_amplitude2'
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+
+            cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
+            device_name = self.get_param_value('device_name')
+            if device_name is None:
+                try:
+                    device_name = self.get_instruments_by_class(
+                        'pycqed.instrument_drivers.meta_instrument.device.Device',
+                        hdf_file_index)[0]
+                except KeyError:
+                    raise KeyError('For old data, the device name has to be given as an input "device_name" ')
+
+            amp = self.get_hdf_param_value("Instrument settings/" + device_name,
+                                           f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
+
+            qbL_tuned_freq_arr = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
+                vfc=qbL_vfc, model= model, bias=qbL_bias)
+            qbH_tuned_ef_freq = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
+                vfc=qbH_vfc, model= model, bias=qbH_bias) + self.raw_data_dict[f'anharmonicity_{qbH_name}']
+
+            Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
+
+            reduction_arr = np.invert(np.isnan(data))
+            indices = np.where(reduction_arr == False)
+            reduction_arr[indices[0]] = False # All columns with the faulty fields get set false
+            for element in reduction_arr:
+                element[indices[1]] = False # All rows with the faulty fields get set false
+
+            # Remove faulty fields
+            t_mod = np.delete(t, indices[1])
+            Delta_mod = np.delete(Delta, indices[0])
+            pe = data[reduction_arr].reshape(len(Delta_mod), len(t_mod))
+
+            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
+
+            J_guess = J_fft(t_mod, Delta_mod, pe)
+            pe_model.set_param_hint('J', value=J_guess, min=J_guess/J_guess_boundary_scale,
+                                    max=J_guess_boundary_scale*J_guess)
+            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
+                                    max=offset_guess_boundary)
+            guess_pars = pe_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            # Data needs to be flat for fitting
+            t_mod_flat = np.tile(t_mod, len(Delta_mod))
+            Delta_mod_flat = np.repeat(Delta_mod, len(t_mod))
+            pe_flat = pe.flatten()
+
+            self.proc_data_dict['Delta'][qbH_name] = Delta
+
+
+            self.fit_dicts[key] = {
+                'model' : pe_model, # if this is missing, Model is None and Delta is assigned as parameter..
+                'fit_fn': pe_model.func,
+                'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
+                'fit_yvals': {'data': pe_flat},
+                'method': 'dual_annealing',
+                'guess_pars': guess_pars,
+                'steps': self.get_param_value('steps', 1e8), # default for dual annealing is 1e7
+            }
+
+        for task in self.get_param_value('task_list'):
+            qbH_name, qbL_name = self._get_qbH_qbL(task)
+            if qbH_name is not None:
+                data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
+                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data, key= f'chevron_fit_{qbH_name}_{qbL_name}')
+
+    def _get_qbH_qbL(self, task):
+        qbH_name, qbL_name = task['qbc'], task['qbt']
+
+        if qbH_name not in self.qb_names or qbL_name not in self.qb_names:
+            return None, None
+
+        # Safety check on whether the above qbH/L assignment is correct
+        if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[
+                f'ge_freq_{qbL_name}']:
+            qbH_name, qbL_name = qbL_name, qbH_name
+
+        return qbH_name, qbL_name
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form chevron_fit_qbH_qbL
+            # Replace k with qbH_qbL
+            k = k.replace('chevron_fit_', '')
+            qbH = k.split('_')[0]
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][k] = \
+                fit_res.best_values
+            self.proc_data_dict['analysis_params_dict'][k]['t_CZ_'+self.measurement_strings[qbH].partition('_')[0]] = \
+                self.t_CARB(fit_res.best_values['J'], 0, 1) # could e.g. be changed to t_CZ_up with if statements
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        num_curves = self.options_dict.get('num_curves', 5)
+        steps = 500 # How many plotting points you want for the fit
+
+        if self.do_fitting:
+            for task in self.get_param_value('task_list'):
+                qbH, qbL = self._get_qbH_qbL(task)
+                if qbH is not None:
+                    for actual_detuning in [True, False]:
+                        base_plot_name = f'Chevron_{qbH}_{qbL}_pe_actual' if actual_detuning else \
+                            f'Chevron_{qbH}_{qbL}_pe_expected'
+                        xlabel, xunit = self.get_xaxis_label_unit(qbH)
+                        ylabel = r'Detuning $\Delta$' if actual_detuning else r'Expected detuning $\Delta_{exp}$'
+                        yunit = 'Hz'
+                        # ylabel = self.get_yaxis_label(qbH)
+                        xvals = self.proc_data_dict['sweep_points_dict'][qbH][
+                            'msmt_sweep_points']
+                        Delta = self.proc_data_dict['Delta'][qbH]
+                        offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
+                        Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
+                        J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
+                        offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
+                        t_CZ = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['t_CZ_Chevron']
+                        textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
+                        textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
+                        textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
+                        self.plot_dicts[f'{base_plot_name}_main'] = {
+                            'plotfn': self.plot_colorxy,
+                            'fig_id': base_plot_name,
+                            'xvals': xvals,
+                            'yvals': Delta+offset_freq if actual_detuning else Delta,
+                            'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': ylabel,
+                            'yunit': yunit,
+                            'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                      self.measurement_strings[qbH]),
+                            'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e'),}
+                        for n in range(num_curves+1):
+                            fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
+                                f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
+                            J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
+                            xvals_fit = self.t_CARB(J, Delta_fine, n)  if actual_detuning else \
+                                self.t_CARB(J, Delta_fine + offset_freq, n)
+                            self.plot_dicts[f'{fit_plot_name}_main'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': xvals_fit,
+                                'yvals': Delta_fine,
+                                'color': 'red',
+                                'marker': 'None',
+                                # 'datalabel': None,
+                                         }
+                        self.plot_dicts[f'text_msg_Chevron_{base_plot_name}]'] = {
+                            'fig_id': base_plot_name,
+                            'ypos': -0.2,
+                            'xpos': -0.025,
+                            'horizontalalignment': 'left',
+                            'verticalalignment': 'top',
+                            'color': 'k',
+                            'plotfn': self.plot_text,
+                            'text_string': textstr}
+
+                        for negative_J in [True, False]:
+                            self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': xvals,
+                                'yvals': J*np.ones(len(xvals)) * (-1) ** negative_J - offset_freq * (1-actual_detuning),
+                                'color': 'white',
+                                'marker': 'None',
+                                # 'setlabel': 'J',
+                                # 'do_legend': True, #FIXME: this also makes a legend for the fit lines
+                            }
+
+    @staticmethod
+    def t_CARB(J, Delta, n):
+        """
+        Function to calculate the time needed for an arbitrary C-Phase gate.
+
+        The mathemtical description of this function can be found in Nathan's master thesis for example.
+        Parameters
+        ----------
+        J: coupling of the 20 and 11 transition in Hz
+        Delta: Detuning of the qubits during the interaction in Hz
+        n: Number of oscillation for which the interaction time should be calculated (usually you want the shortest
+        (n=1)). This is mainly used to allow to plot the different traces in Delta-t-plane
+
+        Returns
+        -------
+        The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
+        """
+        return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)

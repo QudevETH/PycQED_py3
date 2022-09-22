@@ -969,6 +969,8 @@ class BaseDataAnalysis(object):
             guessfn_pars = fit_dict.get('guessfn_pars', {})
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
+            method = fit_dict.get('method', 'leastsq')
+            steps = fit_dict.get('steps', None)
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1000,8 +1002,8 @@ class BaseDataAnalysis(object):
                     for key, val in list(guess_dict.items()):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
-            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
-                                            params=guess_pars)
+            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
+                                            params=guess_pars, steps=steps)
 
             self.fit_res[key] = fit_dict['fit_res']
 
@@ -2268,6 +2270,36 @@ class BaseDataAnalysis(object):
             return 1.2e9
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
+
+    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+        """
+        Returns all attributes in a path. Path could also be e.g. a particular qubit
+        """
+        h5mode = 'r'
+        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
+        h5filepath = a_tools.measurement_filename(folder)
+        data_file = h5py.File(h5filepath, h5mode)
+
+        try:
+            attr_names = list(data_file[path]) + list(data_file[path].attrs)
+            data_file.close()
+            return attr_names
+        except Exception as e:
+            data_file.close()
+            raise e
+
+    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+        """
+        Returns all instruments of a given class
+        """
+        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
+        dev_names = []
+        for instrument in instruments:
+            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
+                                                        attribute='__class__', hdf_file_index=hdf_file_index)
+            if  instrument_class == instr_class:
+                dev_names.append(instrument)
+        return dev_names
 
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):
