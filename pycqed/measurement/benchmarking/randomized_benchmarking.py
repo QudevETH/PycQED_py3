@@ -689,7 +689,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     Implementation as in https://www.nature.com/articles/s41567-018-0124-x.
 
     Attributes in addition to the ones created by the base class:
-        randomize_cphases: Bool,
+        randomize_cphases: Bool, whether to do parametric C-phase gates,
+            with a random angle in each cycle
 
     """
     default_experiment_name = 'TwoQubitXEB'
@@ -734,6 +735,10 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
         Assumptions:
          - assumes there is one task for CZ gate.
+         - if cphase is different for each task, the XEB sequences will be
+         randomized between tasks even if nr_seqs is specified globally.
+         - cphase is ignored (both global and per task) if randomize_cphases
+         is True
         """
         try:
             self.kw_for_sweep_points.update({
