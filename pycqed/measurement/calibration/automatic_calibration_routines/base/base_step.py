@@ -39,7 +39,6 @@ class Step:
         self.routine: Optional[Step] = routine
         self.step_label = kw.pop('step_label', None)
         self.dev = dev
-        self.settings: Optional[SettingsDictionary] = None
         # Copy default settings from autocalib if this is the root routine, else
         # create an empty SettingsDictionary
         default_settings = self.dev.autocalib_settings.copy(
@@ -63,7 +62,7 @@ class Step:
         self.leaf = True
 
         # Store results with qubits as keys
-        self.step_results: Dict[Any, Union[Dict[Any, Any], Any]] = {}
+        self.results: Optional[Dict[Any, Dict[str, Any]]] = None
 
     class NotFound:
         """This class is used in get_param_value to identify the cases where

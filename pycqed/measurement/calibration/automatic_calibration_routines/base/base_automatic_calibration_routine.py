@@ -9,7 +9,7 @@ from pycqed.utilities.general import temporary_value
 from pycqed.utilities.reload_settings import reload_settings
 
 import pycqed.analysis.analysis_toolbox as a_tools
-from typing import List, Any, Tuple, Dict, Union
+from typing import List, Any, Tuple, Dict, Type, Optional
 from warnings import warn
 import numpy as np
 import copy
@@ -345,10 +345,10 @@ class AutomaticCalibrationRoutine(Step):
         self.routine_steps: List[Step] = []
         self.current_step_index = 0
 
-        self.routine_template: RoutineTemplate = None
-        self.current_step: Step = None
-        self.current_step_settings: Dict = None
-        self.current_step_tmp_vals: List[Tuple[Parameter, Any]] = None
+        self.routine_template: Optional[RoutineTemplate] = None
+        self.current_step: Optional[Step] = None
+        self.current_step_settings: Optional[Dict] = None
+        self.current_step_tmp_vals: Optional[List[Tuple[Parameter, Any]]] = None
 
         # MC - trying to get it from either the device or the qubits
         for source in [self.dev] + self.qubits:
@@ -877,6 +877,7 @@ class AutomaticCalibrationRoutine(Step):
             print_global_settings=True,
             print_general_settings=True,
             print_tmp_vals=False,
+            print_results=True,
             **kws
     ):
         """Prints a user-friendly representation of the routine template.
@@ -888,6 +889,8 @@ class AutomaticCalibrationRoutine(Step):
                 of the routine settings. Defaults to True.
             print_tmp_vals (bool): If True, prints the temporary values of the
                 routine. Defaults to False.
+            print_results (bool): If True, prints the results dicts of all the
+                steps of the routine.
         """
 
         print(self.name)
@@ -899,8 +902,7 @@ class AutomaticCalibrationRoutine(Step):
 
         if print_general_settings:
             print("General settings:")
-            pprint.pprint(
-                self.settings[self.name]['General'])
+            pprint.pprint(self.settings[self.name]['General'])
             print()
 
         for i, x in enumerate(self.routine_template):
@@ -915,6 +917,13 @@ class AutomaticCalibrationRoutine(Step):
                 except IndexError:
                     pass
             print()
+
+        if print_results:
+            for step in [self] + self.routine_steps:
+                if step.results is not None:
+                    print(f'Step {step.step_label or step.name} results:')
+                    pprint.pprint(step.results)
+                    print()
 
     def update_settings_at_index(self, settings: dict, index):
         """Updates the settings of the step at position 'index'. Wrapper of
@@ -998,7 +1007,7 @@ class AutomaticCalibrationRoutine(Step):
                                                             index=index)
 
     def add_step(self,
-                 step_class: Step,
+                 step_class: Type[Step],
                  step_label: str,
                  step_settings: Dict[str, Any],
                  step_tmp_vals=None,

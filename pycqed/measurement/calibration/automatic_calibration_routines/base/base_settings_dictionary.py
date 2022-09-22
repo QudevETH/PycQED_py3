@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import re
 from collections.abc import Mapping
+from typing import Union, Dict, Any
 
 log = logging.getLogger('Routines')
 # log.setLevel('INFO')
@@ -244,10 +245,11 @@ class SettingsDictionary(dict):
         return groups
 
     def load_settings_from_file(self,
-                                settings_default_folder=None,
-                                settings_setup_folder=None,
-                                settings_sample_folder=None,
-                                settings_user=None):
+                                settings_default_folder: Union[
+                                    Path, str] = None,
+                                settings_setup_folder: Union[Path, str] = None,
+                                settings_sample_folder: Union[Path, str] = None,
+                                settings_user: Dict[str, Any] = None):
         """Loads the device settings from the folders storing Default, Setup and
         Sample parameters and puts it into the configuration parameter
         dictionary as a nested dictionary. The folders should contain JSON files.

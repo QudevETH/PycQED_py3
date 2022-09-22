@@ -11,7 +11,7 @@ from .single_qubit_routines import AdaptiveQubitSpectroscopy
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
 import numpy as np
-from typing import List
+from typing import List, Dict
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass
@@ -36,17 +36,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
     """AutomaticRoutine that parks a qubit at the specified spot where it
     performs an AdaptiveQubitSpectroscopy routine to find its ge_freq.
 
-    The initial values for ge_freqs, fluxes, and voltages can be retrieved from
-    the following attributes
-    - initial_ge_freqs (dict).
-    - initial_fluxes (dict).
-    - initial_voltages (dict).
-
-    The measured ge_freq, the fluxes, and the voltages at which the measurement
-    is performed can be retrieved from the following attributes
-    - measured_ge_freqs (dict).
-    - measured_fluxes (dict).
-    - measured_voltages (dict).
+    The initial and measured values for ge_freqs, fluxes, and voltages can be
+    retrieved from the `results` attribute.
     """
 
     def __init__(
@@ -90,23 +81,16 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 self.DCSources.append(dc_source)
 
         # Store initial values so that the user can retrieve them if overwritten
-        self.initial_ge_freqs = {}
-        self.initial_fluxes = {}
-        self.initial_voltages = {}
+        self.results: Dict[str, ParkAndQubitSpectroscopyResults] = {}
         for qb in self.qubits:
-            self.initial_ge_freqs[qb.name] = qb.ge_freq()
-            self.initial_voltages[qb.name] = self.fluxlines_dict[qb.name]()
             uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
             V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
-            flux = (self.fluxlines_dict[qb.name]() - uss) / V_per_phi0
-            self.initial_fluxes[qb.name] = flux
+            self.results[qb.name] = ParkAndQubitSpectroscopyResults(**dict(
+                initial_ge_freq=qb.ge_freq(),
+                initial_voltage=self.fluxlines_dict[qb.name](),
+                initial_flux=(self.fluxlines_dict[qb.name]() - uss) / V_per_phi0
+            ))
 
-        # Prepare empty dictionary to store measured values
-        self.measured_ge_freqs = {}
-        self.measured_fluxes = {}
-        self.measured_voltages = {}
-        self.step_results = {qb.name: ParkAndQubitSpectroscopyResults for qb in
-                             self.qubits}
         self.final_init(**kw)
 
     def create_routine_template(self):
@@ -129,8 +113,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         in the qubit object.
 
         The fluxes and voltages at which the measurement are done can be
-        retrieved from the parent routine's dictionaries measured_fluxes and
-        measured_voltages.
+        retrieved from the parent routine's results attribute.
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
@@ -200,8 +183,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                                 qb.name]() - uss) / V_per_phi0
                 if voltage is None:
                     raise ValueError("No voltage or flux specified")
-                self.routine.measured_fluxes[qb.name] = flux
-                self.routine.measured_voltages[qb.name] = voltage
+                self.routine.results[qb.name].measured_flux = flux
+                self.routine.results[qb.name].measured_voltage = voltage
 
                 # Temporary values for ro
                 ro_tmp_vals = ro_flux_tmp_vals(qb, voltage, use_ro_flux=True)
@@ -221,7 +204,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         """
         def run(self):
             for qb in self.qubits:
-                self.routine.measured_ge_freqs[qb.name] = qb.ge_freq()
+                self.routine.results[qb.name].measured_ge_freq = qb.ge_freq()
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [SetBiasVoltageAndFluxPulseAssistedReadOut,
