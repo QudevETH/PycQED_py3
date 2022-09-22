@@ -725,9 +725,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         Args:
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
-                If nr_seqs is specified and it does not exist in the task_list,
-                THEN ALL TASKS WILL RECEIVE THE SAME PULSES provided they have
-                the same cycles array.
             cycles (list/array): integers specifying the number of
                 random cycles to apply in a sequence.
             randomize_cphases (bool): whether to do parametric C-phase gates,
