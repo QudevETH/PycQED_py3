@@ -215,15 +215,27 @@ class AcquisitionDevice():
         """
         return 0
 
-    def prepare_poll(self):
-        """Final preparations for an acquisition.
+    def prepare_poll_before_AWG_start(self):
+        """Final preparations for an acquisition before starting AWGs.
 
         This function is called by PollDetector.poll_data right before
         starting the AWGs (i.e., we can rely on that the AWGs have already
         been stopped in case this is needed) for final preparations. This is
         the place to arm the acquisition device (i.e., let it wait for
-        triggers). Unlike acquisition_initialize, this function is called
-        multiple times in a soft sweep.
+        triggers) if it does not rely on first-trigger detection. Unlike
+        acquisition_initialize, this function is called multiple times in a
+        soft sweep.
+        """
+        pass
+
+    def prepare_poll_after_AWG_start(self):
+        """Final preparations for an acquisition after starting AWGs.
+
+        This function is called by PollDetector.poll_data right after
+        starting the AWGs for final preparations. This is the place to arm
+        the acquisition device when starting it after the AWGs, relying on
+        first-trigger detection. Unlike acquisition_initialize,
+        this function is called multiple times in a soft sweep.
         """
         pass
 

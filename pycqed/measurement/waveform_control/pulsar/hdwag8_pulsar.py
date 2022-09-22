@@ -23,7 +23,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 
 log = logging.getLogger(__name__)
 
-class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
+class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [ZI_HDAWG_core]
@@ -63,23 +63,24 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
                                    host='localhost', interface=awg.interface,
                                    server=awg.server)
+            if getattr(self.awg.daq, 'server', None) == 'emulator':
+                # This is a hack for virtual setups to make sure that the
+                # ready node is in sync between the two mock DAQ servers.
+                for i in range(4):
+                    path = f'/{self.awg.devname}/awgs/{i}/ready'
+                    self._awg_mcc._session.daq_server.nodes[
+                        path] = self.awg.daq.nodes[path]
         except ImportError as e:
-            log.warning(f'Parallel elf compilation not supported for '
-                        f'{awg.name} ({awg.devname}):\n{e}')
+            log.debug(f'Error importing zhinst-qcodes: {e}.')
+            log.debug(f'Parallel elf compilation will not be available for '
+                      f'{awg.name} ({awg.devname}).')
             self._awg_mcc = None
-        # add awgs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
+        self._init_mcc()
 
         # dict for storing previously-uploaded waveforms
         self._hdawg_waveform_cache = dict()
 
-    @property
-    def awgs_mcc(self) -> list:
-        """
-        Returns list of the _awg_mcc cores.
-        If _awg_mcc was not defined, returns empty list.
-        """
+    def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:
@@ -316,7 +317,7 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
-        self.wfms_to_upload = {}  # store waveforms to upload and hashes
+        self.wfms_to_upload = {}  # reset waveform upload memory
         chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
         divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
         def with_divisor(h, ch):
@@ -327,7 +328,7 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
         use_placeholder_waves = self.pulsar.get(f"{self.awg.name}_use_placeholder_waves")
 
         if not use_placeholder_waves:
-            if not self.zi_waves_cleared:
+            if not self.zi_waves_clean():
                 self._zi_clear_waves()
 
         for awg_nr in self._hdawg_active_awgs():
@@ -556,6 +557,11 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
                     self.multi_core_compiler.load_sequencer_program(
                         self.awgs_mcc[awg_nr], awg_str)
                 else:
+                    if self.pulsar.use_mcc():
+                        log.warning(
+                            f'Parallel elf compilation not supported for '
+                            f'{self.awg.name} ({self.awg.devname}), see debug '
+                            f'log when adding the AWG to pulsar.')
                     # Sequential seqc string upload
                     self.awg.configure_awg_from_string(awg_nr, awg_str,
                                                        timeout=600)
@@ -669,4 +675,5 @@ class HDAWG8Pulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
 
     def sigout_on(self, ch, on=True):
         chid = self.pulsar.get(ch + '_id')
-        self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+        if chid[-1] != 'm':  # not a marker channel
+            self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)

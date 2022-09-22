@@ -31,11 +31,14 @@ class ZHInstMixin:
             from pycqed.instrument_drivers.physical_instruments \
                 .ZurichInstruments import ZI_base_qudev as zibase
             from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer.get_instance(
-                kwargs.get('host', 'localhost'),
-                port=kwargs.get('port', 8004))
+            # non-standard host to distinguish from real servers
+            host = kwargs.get('host', 'localhost') + '_virtual'
+            kwargs['host'] = host
+            port = kwargs.get('port', 8004)
+            kwargs['port'] = port
+            daq = zibase.MockDAQServer.get_instance(host, port=port)
             self._session = ziqcsess.ZISession(
-                server_host=kwargs.get('host', 'localhost'),
+                server_host=host, server_port=port,
                 connection=daq, new_session=False)
             return daq
 
@@ -178,6 +181,10 @@ class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
 
 class HDAWG8(HDAWG_core, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI HDAWG
+
+    This is not the driver currently used for general operation of PycQED,
+    but only used to enable parallel compilation, which required a driver
+    based on the zhinst-qcodes framework.
     """
 
     def __init__(self, *args, **kwargs):
@@ -187,6 +194,10 @@ class HDAWG8(HDAWG_core, ZHInstMixin):
 
 class UHFQA(UHFQA_core, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI UHFQA
+
+    This is not the driver currently used for general operation of PycQED,
+    but only used to enable parallel compilation, which required a driver
+    based on the zhinst-qcodes framework.
     """
 
     def __init__(self, *args, **kwargs):

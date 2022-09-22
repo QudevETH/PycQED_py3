@@ -152,7 +152,7 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
     Ec (Hz): charging energy of the qubit
     d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
     dac_sweet_spot (V): voltage at which the sweet-spot is found
-    V_per_phi0 (V): volt per phi0 (convert voltage to flux
+    V_per_phi0 (V): volt per phi0 (convert voltage to flux)
     '''
     if np.ndim(dac_voltage) == 0:
         dac_voltage = np.array([dac_voltage])
@@ -167,7 +167,7 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
         dac_sweet_spot = phi_park * V_per_phi0
 
     phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
-    Ej = 2 * np.pi * Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    Ej = 2 * np.pi * Ej_max * np.abs(np.cos(phi)) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
     E_c = 2 * np.pi * E_c
     freqs = []
     for ej in Ej:
@@ -178,7 +178,8 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
 def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
                               dac_sweet_spot=0.0, V_per_phi0=None,
                               dac_flux_coefficient=None,
-                              phi_park=None, dim_charge=31,
+                              phi_park=None, dim_charge=31, dim_resonator=3,
+                              return_ef = False
                               ):
     '''
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
@@ -188,8 +189,9 @@ def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
     d =  abs((EJ1-EJ2)/(EJ1+EJ2)))
     dac_sweet_spot (V): voltage at which the sweet-spot is found
     V_per_phi0 (V): volt per phi0 (convert voltage to flux)
-    phi_park
+    phi_park: ...
     '''
+
     return_float = False
     if np.ndim(dac_voltage) == 0:
         dac_voltage = np.array([dac_voltage])
@@ -205,19 +207,29 @@ def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
     if phi_park is not None:
         dac_sweet_spot = phi_park * V_per_phi0
 
-    phi = np.pi / V_per_phi0 * (dac_voltage - dac_sweet_spot)
-    Ej =  Ej_max * np.cos(phi) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+    phi = np.pi * (dac_voltage - dac_sweet_spot)/ V_per_phi0
+    Ej =  Ej_max * np.abs(np.cos(phi)) * np.sqrt(1 + asymmetry ** 2 * np.tan(phi) ** 2)
+
     with Timer('fitmod.loop', verbose=False):
-        freqs = [(transmon.transmon_resonator_levels(E_c,
+        freqs = [np.array(transmon.transmon_resonator_levels(E_c,
                                                      ej,
                                                      fr,
                                                      coupling,
                                                      states=[(1, 0), (2, 0)],
-                                                     dim_charge=dim_charge
-                                                         ))[0]
+                                                     dim_charge=dim_charge,
+                                                     dim_resonator=dim_resonator
+                                                         ))
                  for ej in Ej]
-    qubit_freq = np.array(freqs)
-    return qubit_freq[0] if return_float else qubit_freq
+
+    freqs = np.array(freqs)
+
+    ge_freq = freqs[:,0]
+    ef_freq = freqs[:,1]-freqs[:,0]
+
+    if return_ef:
+        return (ge_freq[0], ef_freq[0]) if return_float else (ge_freq, ef_freq)
+    else:
+        return ge_freq[0] if return_float else ge_freq
 
 def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                           dac_sweet_spot=0.0, V_per_phi0=None,

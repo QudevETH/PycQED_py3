@@ -16,7 +16,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
+class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA]
@@ -65,20 +65,21 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self._awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
                                   host='localhost', interface=awg.interface,
                                   **kw)
+            if getattr(self.awg.daq, 'server', None) == 'emulator':
+                # This is a hack for virtual setups to make sure that the
+                # ready node is in sync between the two mock DAQ servers.
+                path = f'/{self.awg.devname}/awgs/0/ready'
+                self._awg_mcc._session.daq_server.nodes[
+                    path] = self.awg.daq.nodes[path]
         except ImportError as e:
-            log.warning(f'Parallel elf compilation not supported for '
-                        f'{awg.name} ({awg.devname}):\n{e}')
+            log.debug(f'Error importing zhinst-qcodes: {e}.')
+            log.debug(f'Parallel elf compilation will not be available for '
+                      f'{awg.name} ({awg.devname}).')
             self._awg_mcc = None
-        # add awgs to multi_core_compiler class variable
-        for awg in self.awgs_mcc:
-            self.multi_core_compiler.add_awg(awg)
 
-    @property
-    def awgs_mcc(self) -> list:
-        """
-        Returns list of the _awg_mcc cores.
-        If _awg_mcc was not defined, returns empty list.
-        """
+        self._init_mcc()
+
+    def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
             return list(self._awg_mcc.awgs)
         else:
@@ -159,7 +160,7 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
 
-        if not self.zi_waves_cleared:
+        if not self.zi_waves_clean():
             self._zi_clear_waves()
 
         waves_to_upload = {h: waveforms[h]
@@ -378,6 +379,11 @@ class UHFQCPulsar(ZIMultiCoreCompilerMixin, PulsarAWGInterface, ZIPulsarMixin):
             self.multi_core_compiler.load_sequencer_program(
                 self.awgs_mcc[0], awg_str)
         else:
+            if self.pulsar.use_mcc():
+                log.warning(
+                    f'Parallel elf compilation not supported for '
+                    f'{self.awg.name} ({self.awg.devname}), see debug '
+                    f'log when adding the AWG to pulsar.')
             # Sequential seqc string upload
             self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,
                                                timeout=600)
