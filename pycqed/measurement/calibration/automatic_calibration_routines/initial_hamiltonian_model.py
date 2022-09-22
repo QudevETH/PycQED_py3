@@ -1,11 +1,11 @@
-from .autocalib_framework import IntermediateStep, RoutineTemplate
-from .autocalib_framework import AutomaticCalibrationRoutine
+from pycqed.measurement.calibration.automatic_calibration_routines.base import (
+    IntermediateStep, AutomaticCalibrationRoutine)
 
 from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
 
 import numpy as np
 import logging
-from typing import List, Any, Dict, Tuple, Literal
+from typing import List, Any, Dict
 from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon

@@ -1,13 +1,12 @@
-from .autocalib_framework import (
-    SettingsDictionary, 
-    AutomaticCalibrationRoutine
-) 
+from .base.base_automatic_calibration_routine import AutomaticCalibrationRoutine
+from .base.base_settings_dictionary import SettingsDictionary
+
 from .single_qubit_routines import (
     InitialQubitParking,
     AdaptiveQubitSpectroscopy,
     PiPulseCalibration,
     FindFrequency,
-    SingleQubitCalib    
+    SingleQubitCalib
 )
 from .hamiltonian_fitting_routines import (
     HamiltonianFitting

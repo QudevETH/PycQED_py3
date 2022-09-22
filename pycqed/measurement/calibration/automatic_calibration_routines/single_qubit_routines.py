@@ -1,13 +1,13 @@
-from .autocalib_framework import (
+from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     Step,
     IntermediateStep,
     RoutineTemplate,
     AutomaticCalibrationRoutine
 )
-from .autocalib_framework import update_nested_dictionary
-from .autocalib_framework import (
-    _device_db_client_module_missing
-)
+from pycqed.measurement.calibration.automatic_calibration_routines.base import \
+    update_nested_dictionary
+from pycqed.measurement.calibration.automatic_calibration_routines.base.\
+    base_automatic_calibration_routine import _device_db_client_module_missing
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -19,7 +19,6 @@ from pycqed.measurement.calibration.single_qubit_gates import (
 )
 from pycqed.measurement.spectroscopy import spectroscopy as spec
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
-from pycqed.utilities.state_and_transition_translation import *
 from pycqed.utilities.general import (
     temporary_value,
     configure_qubit_mux_drive,
@@ -1022,7 +1021,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                 for k in feedline_results.keys():
                     if k.startswith(f'{qubit.name}'):
                         ro_freq = feedline_results[f'{qubit.name}_RO_frequency']
-                        mode2_freq = feedline_results[f'{qubit.name}_mode2_frequency']
+                        mode2_freq = feedline_results[
+                            f'{qubit.name}_mode2_frequency']
                         return (ro_freq + mode2_freq) / 2
         except (AttributeError, KeyError):
             return qubit.ro_freq()

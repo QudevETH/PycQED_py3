@@ -1,21 +1,17 @@
-from .autocalib_framework import IntermediateStep, RoutineTemplate
-from .autocalib_framework import AutomaticCalibrationRoutine
-from .autocalib_framework import (keyword_subset_for_function,
-                                  update_nested_dictionary)
-from .autocalib_framework import (_device_db_client_module_missing)
+from pycqed.measurement.calibration.automatic_calibration_routines.base import (
+    IntermediateStep, RoutineTemplate, AutomaticCalibrationRoutine)
+from pycqed.measurement.calibration.automatic_calibration_routines.base.\
+    base_automatic_calibration_routine import (_device_db_client_module_missing)
 
 if not _device_db_client_module_missing:
-    from pycqed.utilities.devicedb import utils as db_utils
+    pass
 
-from .single_qubit_routines import (ReparkingRamseyStep,
-                                    FindFrequency,
-                                    AdaptiveQubitSpectroscopy)
+from .single_qubit_routines import AdaptiveQubitSpectroscopy
 
-from pycqed.utilities.general import temporary_value
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
 import numpy as np
-from typing import List, Any, Dict, Tuple
+from typing import List
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass
