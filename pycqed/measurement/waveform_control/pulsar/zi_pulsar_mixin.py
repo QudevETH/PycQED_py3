@@ -599,6 +599,7 @@ class ZIDriveAWGChannel:
 
         self._negate_q = False
         """Whether to flip the sign of the Q channel waveform."""
+
         self._generate_channel_ids(awg_nr=awg_nr)
         self._generate_divisor()
         self._reset_has_waveform_flags()
@@ -692,8 +693,9 @@ class ZIDriveAWGChannel:
             # If no waveform is assigned to this AWG channel/channel pair,
             # AWG instrument driver will be notified that this
             # channel/channel pair doesn't need to be programmed.
-            self._awg._awg_program[self._awg_nr] = None
+            self._awg._awg_program[self._upload_idx] = None
             return
+        self._awg._awg_program[self._upload_idx] = True
 
         # Instruct AWG instrument driver to start this channel/channel pair.
         self._update_awg_instrument_status()
@@ -742,6 +744,7 @@ class ZIDriveAWGChannel:
         Args:
             awg_sequence (Dict): AWG sequence data (not waveforms) as returned
                 from ``Sequence.generate_waveforms_sequences``.
+        """
 
         self._use_filter = any(
             [e is not None and
@@ -782,14 +785,7 @@ class ZIDriveAWGChannel:
         pass
 
     def _update_awg_instrument_status(self):
-        # tell ZI_base_instrument that it should not compile a program on
-        # this sub AWG (because we already do it here)
-        self._awg._awg_needs_configuration[self._awg_nr] = False
-        # tell ZI_base_instrument.start() to start this sub AWG (The base
-        # class will start sub AWGs for which _awg_program is not None. Since
-        # we set _awg_needs_configuration to False, we do not need to put the
-        # actual program here, but anything different from None is sufficient.)
-        self._awg._awg_program[self._awg_nr] = True
+        pass
 
     def _generate_filter_seq_code(self):
         """Generates sequencer code that is relevant to using filters."""
@@ -877,12 +873,14 @@ class ZIDriveAWGChannel:
                 wave = [None, None, None, None]
                 for i, chid in enumerate(self.channel_ids):
                     wave[i] = chid_to_hash.get(chid, None)
+
                 # Flipping the sign of the Q channel waveform if specified
                 if wave[2] is not None and self._negate_q:
                     h_pos = wave[2]
                     h_neg = tuple(list(h_pos) + ['negate'])
                     wave[2] = h_neg
                     waveforms[h_neg] = -waveforms[h_pos]
+
                 wave = tuple(wave)
 
                 # Skip this element if it has no waves defined on this
@@ -949,11 +947,12 @@ class ZIDriveAWGChannel:
                 else:
                     # No indices will be assigned when not using placeholder
                     # waves.
-                    wave = tuple(
-                        self._with_divisor(h, chid)
-                        if h is not None else None
-                        for h, chid in zip(wave, self.channel_ids)
-                    )
+                    wave = list(wave)
+                    for i, h in enumerate(wave):
+                        if h is not None:
+                            wave[i] = self._with_divisor(h, self.channel_ids[i])
+                    wave = tuple(wave)
+
                     self._wave_definitions += \
                         self._awg_interface._zi_wave_definition(
                             wave=wave,
@@ -1028,6 +1027,7 @@ class ZIDriveAWGChannel:
                             else:
                                 h_neg = tuple(list(h) + ['negate'])
                                 waves_to_upload[h_neg] = -waveforms[h]
+
         self._awg_interface._zi_write_waves(waves_to_upload)
 
     def _compile_awg_program(
@@ -1062,19 +1062,7 @@ class ZIDriveAWGChannel:
                 run_compiler = True
 
         if run_compiler:
-            # We have to retrieve the following parameter to set it
-            # again after programming the AWG.
-            prev_dio_valid_polarity = self._awg.get(
-                'awgs_{}_dio_valid_polarity'.format(self._awg_nr))
-
-            self._awg.configure_awg_from_string(
-                awg_nr=self._awg_nr,
-                program_string=awg_str,
-                timeout=600
-            )
-
-            self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
-                         prev_dio_valid_polarity)
+            self._execute_compiler(awg_str=awg_str)
             if self._use_placeholder_waves:
                 self._awg_interface.waveform_cache[
                     f'{self._awg.name}_{self._awg_nr}'] = {}
@@ -1099,6 +1087,51 @@ class ZIDriveAWGChannel:
                 wave_hashes=wave_hashes,
                 waveforms=waveforms,
             )
+
+    def _execute_compiler(
+            self,
+            awg_str,
+    ):
+        try:
+            prev_dio_valid_polarity = self._awg.get(
+                'awgs_{}_dio_valid_polarity'.format(self._awg_nr))
+        except KeyError:
+            prev_dio_valid_polarity = None
+
+        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
+            # Parallel seqc string compilation and upload
+            self._awg_interface.multi_core_compiler.add_active_awg(
+                self._awg_interface.awgs_mcc[self._awg_nr])
+            self._awg_interface.multi_core_compiler.load_sequencer_program(
+                self._awg_interface.awgs_mcc[self._awg_nr], awg_str)
+        else:
+            if self.pulsar.use_mcc():
+                log.warning(
+                    f'Parallel elf compilation not supported for '
+                    f'{self._awg.name} ({self._awg.devname}), see debug '
+                    f'log when adding the AWG to pulsar.')
+            self._save_awg_str(awg_str=awg_str)
+            self._configure_awg_str(awg_str=awg_str)
+
+        if prev_dio_valid_polarity is not None:
+            self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
+                          prev_dio_valid_polarity)
+
+    def _configure_awg_str(
+            self,
+            awg_str,
+    ):
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
+
+    def _save_awg_str(
+            self,
+            awg_str,
+    ):
+        # This method will be rewritten for the devices that requires
+        # explicitly saving AWG sequencer strings in the attribute
+        # self._awg._awg_source_strings.
+        pass
 
     def _set_signal_output_status(self):
         """Turns on the output of this channel/channel pair if specified by

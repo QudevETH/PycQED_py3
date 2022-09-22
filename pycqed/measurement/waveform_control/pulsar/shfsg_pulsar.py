@@ -486,6 +486,10 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # Q channel waveforms on the SG channels needs to be flipped due to
+        # its specific realization of modulation and up-conversion.
+        self._negate_q = True
+
     def _generate_channel_ids(
             self,
             awg_nr
@@ -494,10 +498,11 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         ch2id = f'sg{awg_nr+1}q'
         chmid = 'ch{}m'.format(awg_nr * 2 + 1)
 
+        first_sg_awg = len(getattr(self._awg, 'qachannels', []))
         self.channel_ids = [ch1id, chmid, ch2id]
         self.analog_channel_ids = [ch1id, ch2id]
         self.marker_channel_ids = [chmid]
-        self._upload_idx = awg_nr
+        self._upload_idx = awg_nr + first_sg_awg
 
     def _update_use_filter_flag(
             self,
@@ -519,7 +524,7 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
             waveform-hash for each codeword and each channel.
         """
         channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self._channel_ids]
+                    for chid in self.analog_channel_ids]
         channel_mod_config = {ch: {} for ch in channels}
 
         # Combine internal modulation configurations from all elements in
@@ -566,7 +571,7 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
             waveform-hash for each codeword and each channel.
         """
         channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self._channel_ids]
+                    for chid in self.analog_channel_ids]
         channel_sine_config = {ch: {} for ch in channels}
 
         # Combine sine generation configurations from all elements in
@@ -630,6 +635,26 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
             placeholder_wave=use_placeholder_waves,
             allow_filter=metadata.get('allow_filter', False)
         )
+
+    def _configure_awg_str(
+            self,
+            awg_str
+    ):
+        sgchannel = self._awg.sgchannels[self._awg_nr]
+        sgchannel.awg.load_sequencer_program(
+            sequencer_program=awg_str,
+            timeout=600
+        )
+
+    def _save_awg_str(
+            self,
+            awg_str,
+    ):
+        """Saves awg source string in attribute
+        self._awg._awg_source_strings."""
+        sgchannel = self._awg.sgchannels[self._awg_nr]
+        if hasattr(self._awg, 'store_awg_source_string'):
+            self._awg.store_awg_source_string(sgchannel, awg_str)
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

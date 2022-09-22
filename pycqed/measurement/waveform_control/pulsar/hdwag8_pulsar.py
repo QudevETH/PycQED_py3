@@ -611,6 +611,16 @@ class HDAWG8Channel(ZIDriveAWGChannel):
             raise NotImplementedError('Internal modulation can only be'
                                       'specified per sub AWG!')
 
+    def _update_awg_instrument_status(self):
+        # tell ZI_base_instrument that it should not compile a program on
+        # this sub AWG (because we already do it here)
+        self._awg._awg_needs_configuration[self._awg_nr] = False
+        # tell ZI_base_instrument.start() to start this sub AWG (The base
+        # class will start sub AWGs for which _awg_program is not None. Since
+        # we set _awg_needs_configuration to False, we do not need to put the
+        # actual program here, but anything different from None is sufficient.)
+        self._awg._awg_program[self._awg_nr] = True
+
     def _generate_playback_string(
             self,
             wave,
@@ -654,6 +664,16 @@ class HDAWG8Channel(ZIDriveAWGChannel):
             raise NotImplementedError("Placeholder waves in "
                                       "combination with internal "
                                       "modulation not implemented.")
+
+    def _configure_awg_str(
+            self,
+            awg_str
+    ):
+        self._awg.configure_awg_from_string(
+            self._awg_nr,
+            program_string=awg_str,
+            timeout=600
+        )
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():
