@@ -76,8 +76,12 @@ class RandomCircuitBenchmarkingMixin:
         """
         global_seq_lengths = kw.get(self.seq_lengths_name)
         nr_rand = f'nr_{self.randomizations_name}'
-        self.identical_pulses = kw.get(nr_rand) is not None and all([
-            task.get(nr_rand) is None for task in task_list])
+        nr_rand_not_in_tasks = all(
+            [task.get(nr_rand) is None for task in task_list])
+        cphase_not_in_taks = all(
+            [task.get('cphase') is None for task in task_list])
+        self.identical_pulses = kw.get(nr_rand) is not None and \
+                                nr_rand_not_in_tasks and cphase_not_in_taks
         # Check if we can apply identical pulses on all tasks:
         # can only do this if they have identical cliffords array.
         if self.identical_pulses and global_seq_lengths is None:
