@@ -597,8 +597,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
                 name=name_offset, parameter_name=name_offset),
             -mod_freq, name=name, parameter_name=name)
 
-<<<<<<< HEAD
-=======
     def get_centerfreq_generator(self, ch: str):
         """Return the generator of the center frequency associated with a given channel.
 
@@ -610,23 +608,6 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         chid = self.pulsar.get(ch + '_id')
         return self.awg.sgchannels[int(chid[2]) - 1].synthesizer() - 1
 
-    def start(self):
-        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
-        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
-            if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
-                sgchannel.awg.enable(1)
-            if self._sgchannel_sine_enable[awg_nr]:
-                sgchannel.sines[0].i.enable(1)
-                sgchannel.sines[0].q.enable(1)
-
-    def stop(self):
-        for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
-            sgchannel.awg.enable(0)
-            if self._sgchannel_sine_enable[awg_nr]:
-                sgchannel.sines[0].i.enable(0)
-                sgchannel.sines[0].q.enable(0)
-
->>>>>>> qudev_master
     def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         """upload waveforms with Zurich Instrument API
 
