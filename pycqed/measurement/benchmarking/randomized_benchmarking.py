@@ -742,7 +742,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             # generate_kw_sweep_points is called, and hence that the
             # sweep_points are created correctly.
             if 'cphase' not in kw:
-                kw['cphase'] = None
+                kw['cphase'] = ''
 
             self.randomize_cphases = randomize_cphases
             super().__init__(task_list, qubits=qubits,
@@ -753,7 +753,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             self.exception = x
             traceback.print_exc()
 
-    def paulis_gen_func(self, nr_seqs, cycles, cphase=None):
+    def paulis_gen_func(self, nr_seqs, cycles, cphase=''):
         """
         Creates the list of random gates to be applied in each sequence of the
         experiment.
@@ -771,11 +771,9 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         def gen_random(cycles):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
-            cphase_str = '' if cphase is None else cphase
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 180 \
-                    if self.randomize_cphases else np.repeat([cphase_str],
-                                                             length)
+                    if self.randomize_cphases else np.repeat([cphase], length)
                 gates = []
                 gates.append(s_gates[1] + "qb_1")
                 sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
