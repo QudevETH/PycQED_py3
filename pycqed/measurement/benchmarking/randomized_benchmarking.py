@@ -48,9 +48,12 @@ class RandomCircuitBenchmarkingMixin:
         kw_for_sweep_points based on the sweep_type attribute.
         """
         self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
-        self.kw_for_sweep_points[
-            f'nr_{self.randomizations_name},{self.seq_lengths_name}'][
-            'dimension'] = self.sweep_type[self.randomizations_name]
+        key = f'nr_{self.randomizations_name},{self.seq_lengths_name}'
+        if f'{key},cphase' in self.kw_for_sweep_points:
+            # TwoQubitXEB case
+            key = f'{key},cphase'
+        self.kw_for_sweep_points[key]['dimension'] = \
+            self.sweep_type[self.randomizations_name]
         self.kw_for_sweep_points[self.seq_lengths_name]['dimension'] = \
             self.sweep_type[self.seq_lengths_name]
 
