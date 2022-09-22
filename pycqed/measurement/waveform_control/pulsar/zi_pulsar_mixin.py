@@ -661,8 +661,8 @@ class ZIDriveAWGChannel:
         """ Programs this AWG channel/channel pair.
 
         Args:
-            awg_sequence (List): A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
             waveforms (Dict): A dictionary of waveforms, keyed by their hash.
             upload (Bool): A boolean value that specifies whether the
                 waveforms should be uploaded to the device.
@@ -735,7 +735,11 @@ class ZIDriveAWGChannel:
             awg_sequence,
     ):
         """Updates self._use_filter flag with the setting specified in
-        awg_sequence."""
+        awg_sequence.
+
+        Args:
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
 
         self._use_filter = any(
             [e is not None and
@@ -757,8 +761,8 @@ class ZIDriveAWGChannel:
         specified in awg_sequence.
 
         Args:
-            awg_sequence (List): A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
         """
         pass
 
@@ -770,8 +774,8 @@ class ZIDriveAWGChannel:
         in awg_sequence.
 
         Args:
-            awg_sequence (List): A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
         """
         pass
 
@@ -809,8 +813,8 @@ class ZIDriveAWGChannel:
         sequencing.
 
         Args:
-            awg_sequence (List): A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
             waveforms (List): A dictionary of waveforms, keyed by their hash.
             upload (Bool): A boolean value that specifies whether the
                 waveforms should be uploaded to the device.
@@ -1001,8 +1005,8 @@ class ZIDriveAWGChannel:
 
         Args:
             waveforms (Dict): A dictionary of waveforms, keyed by their hash.
-            awg_sequence (List): A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
+                from ``Sequence.generate_waveforms_sequences``.
         """
         waves_to_upload = {
             self._with_divisor(h, chid):
