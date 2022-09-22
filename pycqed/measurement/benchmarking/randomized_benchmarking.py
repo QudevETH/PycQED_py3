@@ -628,7 +628,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
     default_experiment_name = 'TwoQubitXEB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 parametric=False, nr_seqs=None, cycles=None, sweep_type=None,
+                 randomize_cphases=False, nr_seqs=None, cycles=None, sweep_type=None,
                  **kw):
         """
         Init of the TwoQubitXEB class.
@@ -648,8 +648,8 @@ class TwoQubitXEB(MultiTaskingExperiment):
                      {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
             qubits (list): QuDev_transmon class instances on which to run
                 measurement
-            parametric (bool): whether to do parametric C-phase gates, with
-                a random angle in each cycle
+            randomize_cphases (bool): whether to do parametric C-phase gates,
+                with a random angle in each cycle
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
                 If nr_seqs is specified and it does not exist in the task_list,
@@ -663,15 +663,16 @@ class TwoQubitXEB(MultiTaskingExperiment):
 
         Keyword args:
             passed to CalibBuilder; see docstring there
-            cphase (float; default: 180): value of the C-phase gate angle
-                in degrees
+            cphase (float; default: None): value of the C-phase gate angle
+                in degrees. If None, a standard CZ gate (180 deg) is done. See
+                NZTransitionControlledPulse
 
         Assumptions:
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
         """
         try:
-            self.parametric = parametric
+            self.randomize_cphases = randomize_cphases
             self.sweep_type = sweep_type
             if self.sweep_type is None:
                 self.sweep_type = {'cycles': 0, 'seqs': 1}
@@ -724,7 +725,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
             # generate_kw_sweep_points is called, and hence that the
             # sweep_points are created correctly.
             if 'cphase' not in kw:
-                kw['cphase'] = 180
+                kw['cphase'] = None
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -745,7 +746,7 @@ class TwoQubitXEB(MultiTaskingExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def paulis_gen_func(self, nr_seqs, cycles, cphase=180):
+    def paulis_gen_func(self, nr_seqs, cycles, cphase=None):
         """
         Creates the list of random gates to be applied in each sequence of the
         experiment.
@@ -763,9 +764,11 @@ class TwoQubitXEB(MultiTaskingExperiment):
         def gen_random(cycles):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
+            cphase_str = '' if cphase is None else cphase
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 180 \
-                    if self.parametric else np.repeat([cphase], length)
+                    if self.randomize_cphases else np.repeat([cphase_str],
+                                                             length)
                 gates = []
                 gates.append(s_gates[1] + "qb_1")
                 sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
