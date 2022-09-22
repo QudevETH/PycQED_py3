@@ -597,6 +597,8 @@ class ZIDriveAWGChannel:
         """A dictionary that records down-sampling ratio (divisor) for each 
         channel ID."""
 
+        self._negate_q = False
+        """Whether to flip the sign of the Q channel waveform."""
         self._generate_channel_ids(awg_nr=awg_nr)
         self._generate_divisor()
         self._reset_has_waveform_flags()
@@ -875,6 +877,12 @@ class ZIDriveAWGChannel:
                 wave = [None, None, None, None]
                 for i, chid in enumerate(self.channel_ids):
                     wave[i] = chid_to_hash.get(chid, None)
+                # Flipping the sign of the Q channel waveform if specified
+                if wave[2] is not None and self._negate_q:
+                    h_pos = wave[2]
+                    h_neg = tuple(list(h_pos) + ['negate'])
+                    wave[2] = h_neg
+                    waveforms[h_neg] = -waveforms[h_pos]
                 wave = tuple(wave)
 
                 # Skip this element if it has no waves defined on this
@@ -1008,14 +1016,18 @@ class ZIDriveAWGChannel:
             awg_sequence (Dict): AWG sequence data (not waveforms) as returned
                 from ``Sequence.generate_waveforms_sequences``.
         """
-        waves_to_upload = {
-            self._with_divisor(h, chid):
-                self._divisor[chid] * waveforms[h][::self._divisor[chid]]
-            for codewords in awg_sequence.values()
-            if codewords is not None
-            for cw, chids in codewords.items()
-            if cw != 'metadata'
-            for chid, h in chids.items()}
+        waves_to_upload = {}
+
+        for codewords in awg_sequence.values():
+            if codewords is not None:
+                for cw, chids in codewords.items():
+                    if cw != 'metadata':
+                        for chid, h in chids.items():
+                            if chid[-1] == 'i' or not self._negate_q:
+                                waves_to_upload[h] = waveforms[h]
+                            else:
+                                h_neg = tuple(list(h) + ['negate'])
+                                waves_to_upload[h_neg] = -waveforms[h]
         self._awg_interface._zi_write_waves(waves_to_upload)
 
     def _compile_awg_program(
