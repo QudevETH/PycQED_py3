@@ -91,8 +91,12 @@ class RandomCircuitBenchmarkingMixin:
             # that seq_lengths_name and randomizations_name are in the
             # task_list in order to create the sweep_points when calling
             # generate_kw_sweep_points inside preprocess_task.
-            self.kw_for_task_keys = [self.seq_lengths_name,
-                                     self.randomizations_name]
+
+            # make sure kw_for_task_keys is a list (instantiated as tuple in the
+            # base class)
+            self.kw_for_task_keys = list(self.kw_for_task_keys)
+            self.kw_for_task_keys += [self.seq_lengths_name,
+                                      self.randomizations_name]
 
 
 class RandomizedBenchmarking(MultiTaskingExperiment,
