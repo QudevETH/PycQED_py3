@@ -757,7 +757,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             # in kw ensures that it will be passed to paulis_gen_func when
             # generate_kw_sweep_points is called, and hence that the
             # sweep_points are created correctly.
-            if 'cphase' not in kw:
+            if kw.get('cphase', None) is None:
                 kw['cphase'] = ''
 
             self.randomize_cphases = randomize_cphases
