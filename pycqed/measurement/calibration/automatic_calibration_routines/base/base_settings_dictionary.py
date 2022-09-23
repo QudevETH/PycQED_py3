@@ -184,7 +184,7 @@ class SettingsDictionary(dict):
                 looked up.
             sublookups (list of str, optional): The subscopes to be looked up.
                 The parameter is then looked up in self[lookup][sublookup].
-            qubit (Qudev_transmon): The name of the qubit, if the parameter is
+            qubit (str): The name of the qubit, if the parameter is
                 qubit-specific.
             groups (set): The groups the qubit is in, as specified in
                 the dictionary.

@@ -61,8 +61,8 @@ class Step:
         self.parameter_sublookups = None
         self.leaf = True
 
-        # Store results with qubits as keys
-        self.results: Optional[Dict[Any, Dict[str, Any]]] = None
+        # Store results with qubit names as keys
+        self.results: Optional[Dict[str, Dict[str, Any]]] = None
 
     class NotFound:
         """This class is used in get_param_value to identify the cases where
@@ -79,7 +79,7 @@ class Step:
 
     def get_param_value(self,
                         param: str,
-                        qubit: QuDev_transmon = None,
+                        qubit: str = None,
                         sublookups=None,
                         default=None,
                         leaf=None,
@@ -102,7 +102,7 @@ class Step:
 
         Args:
             param (str): The name of the parameter to look up.
-            qubit (Qudev_transmon): Qubit instance to which the param is related
+            qubit (str): Qubit name to which the param is related
             sublookups (list of str): Optional subscopes to be looked up. The
                 sublookups will be assumed to be sorted by priority (highest
                 priority first).
