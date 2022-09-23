@@ -154,6 +154,10 @@ class MockDAQServer(zibase.MockDAQServer):
                 return 0  # emulate that single run finishes after 0.1s
         if '/sgchannels/' in path and '/awg/ready' in path:
             return 1
+        elif '/sgchannels/' in path:
+            m = re.match(r'/(\w+)/sgchannels/(\d+)/synthesizer', path)
+            if m:
+                return (1 + int(m.group(2)) // 2)
         if '/awgs/' in path and '/ready' in path:
             return 1
 
