@@ -175,7 +175,8 @@ class Step:
                     qubit=qubit,
                     groups=groups,
                     leaf=leaf,
-                    associated_component_type_hint=associated_component_type_hint
+                    associated_component_type_hint=
+                    associated_component_type_hint
                 )
 
         return val if success else default

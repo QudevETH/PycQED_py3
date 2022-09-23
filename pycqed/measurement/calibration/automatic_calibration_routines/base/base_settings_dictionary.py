@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import re
 from collections.abc import Mapping
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Tuple
 
 log = logging.getLogger('Routines')
 # log.setLevel('INFO')
@@ -22,7 +22,8 @@ else:
 class SettingsDictionary(dict):
     """This class represents the configuration parameters specified in default,
     setup, and sample folder as a dictionary.
-    The hierarchy (in descending significance) is User - Sample - Setup - Default
+    The hierarchy (in descending significance) is
+    User > Sample > Setup > Default.
     """
 
     _USE_DB_STRING = "USE_DB"
@@ -87,7 +88,8 @@ class SettingsDictionary(dict):
                                      qubit=None,
                                      groups=None,
                                      leaf=True,
-                                     associated_component_type_hint=None):
+                                     associated_component_type_hint=None) -> \
+            Tuple[Any, bool]:
         """Looks for the requested parameter recursively in the configuration
         parameter dictionary. It is used as a helper function for
         get_param_value, but the actual search in the nested dictionary is
@@ -101,7 +103,7 @@ class SettingsDictionary(dict):
                 parameter is then looked up in self[lookup][sublookup]
             qubit (str): The name of the qubit, if the parameter is
                 qubit-specific.
-            groups (list of str): The groups the qubit is in, as specified in
+            groups (set): The groups the qubit is in, as specified in
                 the dictionary.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
@@ -170,7 +172,8 @@ class SettingsDictionary(dict):
                         qubit=None,
                         groups=None,
                         leaf=True,
-                        associated_component_type_hint=None):
+                        associated_component_type_hint=None) -> Tuple[
+            Any, bool]:
         """Looks up the requested parameter in the configuration parameters.
         If the fetched value is a request to query the database, the queried
         value is returned.
@@ -179,11 +182,11 @@ class SettingsDictionary(dict):
             param (str): The name of the parameter to look up.
             lookups (list of str): The scopes in which the parameter should be
                 looked up.
-            sublookups (list of str): The subscopes to be looked up. The
-                parameter is then looked up in self[lookup][sublookup]
+            sublookups (list of str, optional): The subscopes to be looked up.
+                The parameter is then looked up in self[lookup][sublookup].
             qubit (Qudev_transmon): The name of the qubit, if the parameter is
                 qubit-specific.
-            groups (list of str): The groups the qubit is in, as specified in
+            groups (set): The groups the qubit is in, as specified in
                 the dictionary.
             leaf (boolean): True if the scope to search the parameter for is a
                 leaf node (e.g. a measurement or intermediate step, not a
@@ -224,7 +227,7 @@ class SettingsDictionary(dict):
 
         return val, success
 
-    def get_qubit_groups(self, qubit, lookups):
+    def get_qubit_groups(self, qubit, lookups) -> set:
         """Gets the groups the specified qubit belongs to out of the
         configuration parameter dictionary.
 
@@ -252,8 +255,10 @@ class SettingsDictionary(dict):
                                 settings_user: Dict[str, Any] = None):
         """Loads the device settings from the folders storing Default, Setup and
         Sample parameters and puts it into the configuration parameter
-        dictionary as a nested dictionary. The folders should contain JSON files.
-        Order in the hierarchy: Sample overwrites Setup overwrites Default values.
+        dictionary as a nested dictionary. The folders should contain JSON
+        files.
+        Order in the hierarchy: Sample overwrites Setup overwrites Default
+        values.
         Additionally, when settings_sample_folder is specified, it overwrites
         the dictionary loaded from the files.
 
@@ -274,6 +279,7 @@ class SettingsDictionary(dict):
         """
         if settings_default_folder is None:
             dirname = Path(__file__).parent.parent
+            # path to the directory `automatic_calibration_routines`
             settings_default_folder = Path(dirname,
                                            "autocalib_default_settings")
         if settings_setup_folder is None:
@@ -282,14 +288,15 @@ class SettingsDictionary(dict):
             log.warning("No settings_sample_folder specified.")
 
         for settings_folder in [
-            settings_default_folder, settings_setup_folder,
+            settings_default_folder,
+            settings_setup_folder,
             settings_sample_folder
         ]:
             if settings_folder is not None:
                 for file in Path.iterdir(settings_folder):
-                    with open(Path(settings_folder, file)) as f:
+                    with open(file) as f:
                         update_nested_dictionary(
-                            self, {Path(file).stem: json.load(f)})
+                            self, {file.stem: json.load(f)})
 
         if settings_user is not None:
             self.update_user_settings(settings_user)
@@ -305,7 +312,7 @@ class SettingsDictionary(dict):
         for k in list(self.keys()):
             if isinstance(self[k], Mapping):
                 SettingsDictionary._postprocess_settings_from_file(self[k])
-            if re.search('^\(.*\)$', k):  # represents a tuple
+            if re.search(r'^\(.*\)$', k):  # represents a tuple
                 self[eval(k)] = self.pop(k)
 
     def enable_use_database(self, db_client_config):
@@ -353,7 +360,7 @@ class SettingsDictionary(dict):
             dev_name=self.dev_name)
 
 
-def update_nested_dictionary(d, u: Mapping):
+def update_nested_dictionary(d, u: Mapping) -> dict:
     """Updates a nested dictionary. Each value of 'u' will update the
     corresponding entry of 'd'. If an entry of 'u' is a dictionary itself,
     then the function is called recursively, and the subdictionary of 'd' will
