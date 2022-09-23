@@ -517,7 +517,6 @@ class Segment:
 
             # If pulse lenght was smaller than min_length, the amplitude will
             # be reduced
-            # TODO: keep awg here
             length = abs(pulse_area[c][0] / amp)
             awg = self.pulsar.get('{}_awg'.format(c))
             min_length = self.pulsar.get(
@@ -680,12 +679,12 @@ class Segment:
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
 
-        For debugging, self.skip_trigger can be set to a list of trigger group TODO names
-        for which the triggering should be skipped (by using a 0-amplitude
+        For debugging, self.skip_trigger can be set to a list of trigger group
+        names for which the triggering should be skipped (by using a 0-amplitude
         trigger pulse).
 
         Note the Pulsar parameters {AWG}_trigger_channels and
-        trigger_pulse_parameters. TODO
+        trigger_pulse_parameters.
 
         :param allow_overlap: (bool, default: False) see _test_overlap
         """
@@ -870,8 +869,6 @@ class Segment:
         """
         Returns the start and end of the segment in algorithm_time
         """
-
-        # TODO: groups everywhere
         for i in range(2):
             start_end_times = np.array(
                 [[self.get_element_start(el, group),
@@ -1570,8 +1567,6 @@ class Segment:
             otherwise no return value.
         """
 
-        # FIXME: not yet implemented for groups
-
         import matplotlib.pyplot as plt
         if delays is None:
             delays = dict()
@@ -1606,7 +1601,7 @@ class Segment:
                     a.set_prop_cycle(**prop_cycle)
             sorted_keys = sorted(wfs.keys()) if instruments is None \
                 else [i for i in instruments if i in wfs]
-            for i, instr in enumerate(sorted_keys): # TODO: still plot per awg
+            for i, instr in enumerate(sorted_keys):
                 if instr not in delays and 'default' in delays:
                     delays[instr] = delays['default']
                 # plotting
