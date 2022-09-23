@@ -22,7 +22,6 @@ log = logging.getLogger('Routines')
 @dataclass
 class ParkAndQubitSpectroscopyResults:
     # Store results for a single qubit
-    # TODO replace currently used dictionaries
     initial_ge_freq: float = None
     initial_flux: float = None
     initial_voltage: float = None
@@ -62,6 +61,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 measured.
             fluxlines_dict (dict): fluxlines_dict object for accessing and
                 changing the dac voltages.
+            **kw: keyword arguments that will be passed to the `__init__()` and
+                `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
         """
         super().__init__(
             dev=dev,
@@ -94,8 +95,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """Creates routine template.
-        """
+        """Creates routine template."""
         super().create_routine_template()
         # Loop in reverse order so that the correspondence between the index
         # of the loop and the index of the routine_template steps is preserved

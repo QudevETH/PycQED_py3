@@ -438,7 +438,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
             analysis_kwargs['options_dict']['TwoD'] = True
-        self.analysis = spa.MultiQubit_Spectroscopy_Analysis(**analysis_kwargs)
+        self.analysis = spa.MultiQubitSpectroscopyAnalysis(**analysis_kwargs)
         return self.analysis
 
     def get_qubit(self, task):
@@ -1282,7 +1282,7 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        self.analysis = spa.MultiQubit_AvgRoCalib_Analysis(**analysis_kwargs)
+        self.analysis = spa.MultiQubitAvgRoCalibAnalysis(**analysis_kwargs)
         return self.analysis
 
     def run_update(self, **kw):

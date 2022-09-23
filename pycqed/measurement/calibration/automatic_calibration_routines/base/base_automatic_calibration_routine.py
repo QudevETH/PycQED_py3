@@ -1,6 +1,5 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import\
     update_nested_dictionary
-from qcodes import Parameter
 
 from .base_step import Step, IntermediateStep
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
@@ -16,7 +15,6 @@ import copy
 import logging
 import pprint
 import inspect
-
 
 log = logging.getLogger('Routines')
 log.setLevel('INFO')
@@ -51,17 +49,19 @@ class RoutineTemplate(list):
             steps (list of :obj:`Step`): List of steps that define the routine.
                 Each step consists of a list of three elements. Namely, the step
                 class, the step label (a string), and the step settings (a
-                dictionary).
+                dictionary). It can optionally also have a fourth element to
+                give the experiment temporary values.
                 For example:
                 steps = [
                     [StepClass1, step_label_1, step_settings_1],
-                    [StepClass2, step_label_2, step_settings_2],
+                    [StepClass2, step_label_2, step_settings_2,
+                    step_tmp_vals_2],
                 ]
             global_settings (dict, optional): Dictionary containing global
                 settings for each step of the routine (e.g., "dev", "update",
                 "delegate_plotting"). Defaults to None.
-            routine (AutomaticCalibrationRoutine, optional): Routine that the
-                RoutineTemplate defines. Defaults to None.
+            routine (:obj:`AutomaticCalibrationRoutine`, optional): Routine that
+                the RoutineTemplate defines. Defaults to None.
         """
         super().__init__(steps)
 
@@ -186,8 +186,7 @@ class RoutineTemplate(list):
             self,
             **kws
     ):
-        """DEPRECATED.
-        """
+        """DEPRECATED."""
         warn('This method is deprecated, use `Routine.view()` instead',
              DeprecationWarning, stacklevel=2)
 
@@ -254,9 +253,8 @@ class RoutineTemplate(list):
             step (list): Routine template step.
         """
         assert isinstance(step, list), "Step must be a list"
-        assert (
-                len(step) == 3 or len(step) == 4
-        ), "Step must be a list of length 3 or 4 (to include temporary values)"
+        assert (len(step) == 3 or len(step) == 4), \
+            "Step must be a list of length 3 or 4 (to include temporary values)"
         assert isinstance(step[0], type), (
             "The first element of the step "
             "must be a class (e.g. measurement or a calibration routine)")
@@ -348,7 +346,7 @@ class AutomaticCalibrationRoutine(Step):
         self.routine_template: Optional[RoutineTemplate] = None
         self.current_step: Optional[Step] = None
         self.current_step_settings: Optional[Dict] = None
-        self.current_step_tmp_vals: Optional[List[Tuple[Parameter, Any]]] = None
+        self.current_step_tmp_vals: Optional[List[Tuple[Any, Any]]] = None
 
         # MC - trying to get it from either the device or the qubits
         for source in [self.dev] + self.qubits:
@@ -406,9 +404,14 @@ class AutomaticCalibrationRoutine(Step):
 
             7) SubRoutine.settings["Experiment"]
             8) SubRoutine.settings["experiment_label"]
+            9) SubRoutine.settings["SubRoutine"]["Experiment"]
+            10) SubRoutine.settings["SubRoutine"]["experiment_label"]
+            11) SubRoutine.settings["subroutine_label"]["Experiment"]
+            12) SubRoutine.settings["subroutine_label"]["experiment_label"]
 
-        At the end, ExperimentStep.settings will be updated according to the
-        hierarchy specified in the lookups.
+        The dictionary of settings that were merged according to the
+        hierarchy specified in the lookups can be used to update 
+        :obj:`Step.settings`.
 
         Arguments:
             lookups (list): A list of all scopes for the parent routine
@@ -440,35 +443,24 @@ class AutomaticCalibrationRoutine(Step):
             if sublookup in self.settings:
                 update_nested_dictionary(settings, self.settings[sublookup])
 
-        # The control statement prevents looking for the step scopes inside
-        # the step settings. This is to avoid considering the following
-        # settings:
-        #       9) SubRoutine.settings["SubRoutine"]["Experiment"]
-        #       10) SubRoutine.settings["SubRoutine"]["experiment_label"]
-        #       11) SubRoutine.settings["subroutine_label"]["Experiment"]
-        #       12) SubRoutine.settings["subroutine_label"]["experiment_label"]
-
-        # The only exception is when self is the root routine, in this case
-        # the routine settings are whole configuration parameter dictionary.
-        # Hence, we need to look for the routine scopes within the routine
-        # settings (this is why it is included or self.routine is None).
-        if self.get_lookup_class(
-        ).__name__ not in lookups or self.routine is None:
-            for lookup in reversed(lookups):
-                if lookup in self.settings:
-                    if sublookups is not None:
-                        for sublookup in reversed(sublookups):
-                            if sublookup in self.settings[lookup]:
-                                update_nested_dictionary(
-                                    settings, self.settings[lookup][sublookup])
-                    else:
-                        update_nested_dictionary(settings,
-                                                 self.settings[lookup])
+        # Look for the entries settings[lookup][sublookup] (if both the lookup 
+        # and the sublookup entries exist) or settings[lookup] (if only the 
+        # lookup entry exist, but not the sublookup one)
+        for lookup in reversed(lookups):
+            if lookup in self.settings:
+                if sublookups is not None:
+                    for sublookup in reversed(sublookups):
+                        if sublookup in self.settings[lookup]:
+                            update_nested_dictionary(
+                                settings, self.settings[lookup][sublookup])
+                else:
+                    update_nested_dictionary(settings,
+                                                self.settings[lookup])
 
         return settings
 
     def extract_step_settings(self,
-                              step_class: Step,
+                              step_class: Type[Step],
                               step_label: str,
                               step_settings=None,
                               lookups=None,
@@ -594,9 +586,9 @@ class AutomaticCalibrationRoutine(Step):
             for parallel_group in parallel_groups:
                 # Find the qubits belonging to parallel_group
                 qubits_filtered = [
-                    qb for qb in self.qubits if qb.name is parallel_group or
-                                                parallel_group in self.get_qubit_groups(
-                        qb.name)
+                    qb for qb in self.qubits if
+                    (qb.name is parallel_group or
+                     parallel_group in self.get_qubit_groups(qb.name))
                 ]
                 # Create a new step for qubits_filtered only and add it to the
                 # routine template
@@ -639,9 +631,8 @@ class AutomaticCalibrationRoutine(Step):
         autocalib_settings = self.settings.copy(
             overwrite_dict=step_settings.pop('settings', {}))
         # Executing the step with corresponding settings
-        if issubclass(step_class,
-                      qbcal.SingleQubitGateCalibExperiment) or issubclass(
-                step_class, QuantumExperiment):
+        if issubclass(step_class, qbcal.SingleQubitGateCalibExperiment) or \
+                issubclass(step_class, QuantumExperiment):
             step = step_class(qubits=qubits,
                               routine=self,
                               dev=dev,
@@ -665,8 +656,8 @@ class AutomaticCalibrationRoutine(Step):
                               settings=autocalib_settings,
                               **step_settings)
         else:
-            log.error(f"automatic subroutine is not compatible (yet) with the "
-                      f"current step class {step_class}")
+            raise ValueError(f"automatic subroutine is not compatible (yet)"
+                             f"with the current step class {step_class}")
         self.current_step = step
         self.current_step_settings = step_settings
 
@@ -689,7 +680,8 @@ class AutomaticCalibrationRoutine(Step):
         """Runs the complete automatic calibration routine. In case the routine
         was already completed, the routine is reset and run again. In case the
         routine was interrupted, it will run from the last completed step, the
-        index of which is saved in the current_step_index attribute of the routine.
+        index of which is saved in the current_step_index attribute of the
+        routine.
         Additionally, it is possible to start the routine from a specific step.
 
         Args:
@@ -715,7 +707,7 @@ class AutomaticCalibrationRoutine(Step):
             # saving instrument settings before the routine
             self.MC.create_instrument_settings_file(
                 f"pre-{self.name}_routine-settings")
-            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1, )[0]
+            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1)[0]
         else:
             # Registering start of routine so all data in measurement period can
             # be retrieved later to determine the Hamiltonian model
@@ -833,7 +825,7 @@ class AutomaticCalibrationRoutine(Step):
                 self.run()
             except:
                 log.error(
-                    "Autorun failed to fully run, concluded routine steps"
+                    "Autorun failed to fully run, concluded routine steps "
                     "are stored in the routine_steps attribute.",
                     exc_info=True,
                 )
@@ -872,14 +864,13 @@ class AutomaticCalibrationRoutine(Step):
 
         return settings
 
-    def view(
-            self,
-            print_global_settings=True,
-            print_general_settings=True,
-            print_tmp_vals=False,
-            print_results=True,
-            **kws
-    ):
+    def view(self,
+             print_global_settings=True,
+             print_general_settings=True,
+             print_tmp_vals=False,
+             print_results=True,
+             **kws
+             ):
         """Prints a user-friendly representation of the routine template.
 
         Args:
@@ -1046,7 +1037,7 @@ class AutomaticCalibrationRoutine(Step):
                 {
                     'step_type': step_type,
                     'property_values': [],
-                    'timestamp': '20220101_161403', # from self.preroutine_timestamp
+                    'timestamp': '20220101_161403',
                 }
         Args:
             step_type (str, optional): The name of the step. Defaults to the
@@ -1078,10 +1069,6 @@ class AutomaticCalibrationRoutine(Step):
                 'qb4': 'lss',
                 'qb7': None,
             }
-
-        Args:
-            qubit_sweet_spots (dict, optional): a dictionary mapping qubits to
-                sweet-spots ('uss', 'lss', or None)
 
 
         An example of what is returned is given below.

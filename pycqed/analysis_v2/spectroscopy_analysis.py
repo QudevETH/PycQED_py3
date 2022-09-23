@@ -5,9 +5,8 @@ This file contains the Spectroscopy class that forms the basis analysis of all
 the spectroscopy measurement analyses.
 """
 
-from copy import copy,deepcopy
+from copy import deepcopy
 import logging
-import re
 from typing import Union
 import numpy as np
 import lmfit
@@ -150,7 +149,6 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                                                     for i in
                                                     range(len(self.raw_data_dict))]
 
-
     def prepare_plots(self):
         proc_data_dict = self.proc_data_dict
         plotsize = self.options_dict.get('plotsize')
@@ -230,10 +228,8 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                              ' simultan resonator spectroscopy in ground '
                              'and excited state as: t_start = [t_on, t_off]')
 
-
         if auto is True:
             self.run_analysis()
-
 
     def process_data(self):
         super(ResonatorSpectroscopy, self).process_data()
@@ -304,7 +300,6 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                 self.f_PF = self.sim_fit[0].params['omega_pf'].value
                 self.kappa = self.sim_fit[0].params['kappa_pf'].value
                 self.J_ = self.sim_fit[0].params['J'].value
-
 
             else:
                 fit_fn = fit_mods.hanger_with_pf
@@ -451,7 +446,6 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                                         'yrange': proc_data_dict['phase_range'],
                                         'plotsize': plotsize
                                         }
-
 
     def plot_fitting(self):
         if self.do_fitting:
@@ -1282,7 +1276,7 @@ class ResonatorSpectroscopy_v2(SpectroscopyOld):
                                                   f_max_area * 1e-9))
 
         return fig
-        # ax.set_ylim([0.9, 1])
+            # ax.set_ylim([0.9, 1])
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None, no_label=False):
         super(ResonatorSpectroscopy_v2, self).plot(key_list=key_list,
@@ -1679,7 +1673,7 @@ class QubitTrackerSpectroscopy(Spectroscopy):
         return v2d_next, f_next
 
 
-class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
+class MultiQubitSpectroscopyAnalysis(tda.MultiQubit_TimeDomain_Analysis):
     """Base class for the analysis of `MultiTaskingSpectroscopyExperiment`.
 
     Transforms the IQ data provided by the detector function into magnitude and
@@ -1715,7 +1709,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         return data_key
 
 
-class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
+class QubitSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
     """
     Analysis script for a regular (ge peak/dip only) or a high power
     (ge and gf/2 peaks/dips) Qubit Spectroscopy:
@@ -1743,7 +1737,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             analyze_ef (bool, optional):  whether to look for a second peak/dip,
                 which would be the at f_gf/2. Defaults to False.
 
-        Keyword arguments:
+        Keyword Args:
             percentile (int):  percentile of the  data that is considered
                 background noise when looking for peaks/dips. Defaults to 20.
             num_sigma_threshold (float): used to define the threshold above
@@ -1878,7 +1872,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                                                   params=self.params)
 
             else:  # fit a double Lorentzian and extract the 2nd peak as well
-                # extract second highest peak -> ef transition
+                # extract second-highest peak -> ef transition
 
                 f0, f0_gf_over_2, \
                 kappa_guess, kappa_guess_ef = a_tools.find_second_peak(
@@ -2121,7 +2115,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                               self.fit_res[qb_name].params['f0'].stderr * 1e-6))
 
 
-class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
+class ResonatorSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
     """
     Finds a specified number of dips in a 1D resonator spectroscopy and their
     widths. The most prominent dips are selected.
@@ -2129,7 +2123,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
 
     def __init__(self,
-                 ndips: Union[int,list[int]] = 1,
+                 ndips: Union[int, list[int]] = 1,
                  expected_dips_width: float = 25e6,
                  height: float = None,
                  threshold: float = None,
@@ -2194,7 +2188,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     def process_data(self):
         super().process_data()
 
-        # Collect all the relevants data of a measurement in this dict. Each
+        # Collect all the relevant data of a measurement in this dict. Each
         # entry of the dictionary corresponds to a measurement on a qubit
         # and it contains the sweep points for the frequency, the sweep points
         # for the voltage bias, and the projected data for the magnitude
@@ -2356,7 +2350,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
 
         for qb_name in self.qb_names:
             # Copy the original plots in order to have both the analyzed and the
@@ -2554,7 +2548,7 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
 
         for qb_name, feedline in zip(self.qb_names, self.sorted_feedlines):
             # Copy the original plots in order to have both the analyzed and the
@@ -2681,6 +2675,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
     def __init__(self, ndips: int = 2, **kwargs):
         """ Initializes the class by calling the parent class constructor.
         Args:
+
+        Ke
             kwargs: see ResonatorSpectroscopyAnalysis.
         """
         super().__init__(ndips=ndips,**kwargs)
@@ -2810,7 +2806,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                     self.fit_res[qb_name][
                         f'{qb_name}_sweet_spot_RO_frequency'] = left_lss_freq
                 else:
-                    log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
+                    log.warning((f"{qb_name}.flux_parking() is not 0, 0.5"
                                  "nor -0.5. No sweet spot was chosen."))
             else:
                 # Pick right dip
@@ -2844,7 +2840,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         spectroscopy.
         The algorithm works in the following way. First, the numerical
         derivative of the frequency of the dips with respect to the voltage bias
-        is calculated. Then the extrema are found are found by interpolating
+        is calculated. Then the extrema are found by interpolating
         the numerical derivative with a CubicSpline and finding its root.
         Afterwards, minima and maxima are distinguished by checking the sign
         of the second derivative.
@@ -2878,16 +2874,17 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                 window_length = len(biases) - 1
             else:
                 window_length = len(biases)
-            log.warning(f"The number of bias points is smaller than the default "
-            f"filter window length (= 7) to find the LSS and USS. Using "
-            f"window length of {window_length} instead.")
+            log.warning(
+                f"The number of bias points is smaller than the default "
+                f"filter window length (= 7) to find the LSS and USS. Using "
+                f"window length of {window_length} instead.")
 
         # Lists where the local extrema will be stored
         local_maxima = []
         local_minima = []
 
-        # Check whether the biases are in ascending order. If not, flip the arrays
-        # This is needed when interpolating the data
+        # Check whether the biases are in ascending order. If not, flip the
+        # arrays. This is needed when interpolating the data
         if biases[1]-biases[0] < 0:
             biases = np.flip(biases)
             frequency_dips = np.flip(frequency_dips)
@@ -2947,7 +2944,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
 
         for qb_name in self.qb_names:
 
@@ -3116,7 +3113,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
             }
 
 
-class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
+class MultiQubitAvgRoCalibAnalysis(MultiQubitSpectroscopyAnalysis):
     """Analysis to find the RO frequency that maximizes distance in IQ plane.
 
     Compatible with `MultiTaskingSpectroscopyExperiment`.

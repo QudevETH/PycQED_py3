@@ -275,7 +275,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             - 'V_per_phi0' (in V)
             - 'Ej_max' (in Hz)
             - 'E_c' (in Hz)
-            - 'asymmetry'
+            - 'asymmetry' (a.k.a d)
 
         Optional parameters for a more accurate frequency model:
             - 'coupling'
@@ -778,12 +778,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             kw = self.kw
 
             # Using all experimental values
-            self.experimental_values = HamiltonianFitting.get_experimental_values(
-                qubit=self.routine.qubit,
-                fluxlines_dict=self.routine.fluxlines_dict,
-                timestamp_start=self.routine.preroutine_timestamp,
-                include_reparkings=self.get_param_value("include_reparkings"),
-            )
+            self.experimental_values = (
+                HamiltonianFitting.get_experimental_values(
+                    qubit=self.routine.qubit,
+                    fluxlines_dict=self.routine.fluxlines_dict,
+                    timestamp_start=self.routine.preroutine_timestamp,
+                    include_reparkings=self.get_param_value(
+                        "include_reparkings"),
+                ))
 
             log.info(f"Experimental values: {self.experimental_values}")
 
@@ -833,9 +835,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             results = self.get_empty_device_properties_dict()
             sweet_spots = kwargs.get('qubit_sweet_spots', {})
             if _device_db_client_module_missing:
-                log.warning("Assemblying the dictionary of high-level device "
-                            "property values requires the module 'device-db-client', which "
-                            "was not imported successfully.")
+                log.warning("Assembling the dictionary of high-level device "
+                            "property values requires the module"
+                            "'device-db-client', which was not imported"
+                            "successfully.")
             elif self.__result_dict is not None:
                 # For DetermineModel, the results are in
                 # self.__result_dict from self.run()

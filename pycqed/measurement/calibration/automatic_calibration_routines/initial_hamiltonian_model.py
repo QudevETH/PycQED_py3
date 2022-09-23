@@ -34,9 +34,11 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
 
     It is meant to run after the `InitialQubitParking` routine and before the
     full `HamiltonianFitting` routine.
-    In practice, it measures the transmon frequency at the two sweet-spots,
+    In practice, it measures the transmon ge-frequency at the two sweet-spots,
     and uses these values together with the design E_c value to give a first
-    estimation of the EJ_max and asymmetry (d) values of the transmon.
+    estimation of the EJ_max and asymmetry (d) values of the transmon. These
+    values are updated in the qubit's `fit_ge_freq_from_dc_offset()` dictionary,
+    as well as in the `results` attribute of the routine.
 
     Following Koch et al. 2017 (DOI: 10.1103/PhysRevA.76.042319, Eqs. 2.11 and
     2.18), the following equations are used:
@@ -44,7 +46,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
         \Phi = 0:
             hf_{ge} = -E_c + \sqrt{8 E_c  E_{J,max}} \\
         \Phi = \pm \frac{1}{2} \Phi_0:
-            hf_{ge} = -E_c + \sqrt{8 d E_c E_{J,max} }
+            hf_{ge} = -E_c + \sqrt{8 d E_c E_{J,max}}
     """
 
     def __init__(self,
@@ -53,6 +55,16 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                  fluxlines_dict: Dict[str, Any],
                  **kw,
                  ):
+        """
+        Args:
+            dev: The device that is measured.
+            qubits: List of qubit instances that will be measured.
+            fluxlines_dict:  Dict with the qubit names as keys and a
+                `qcodes.Parameter` that sets the flux that is applied on the
+                corresponding qubit.
+            **kw: keyword arguments that will be passed to the `__init__()` and
+                `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
+        """
 
         super().__init__(
             dev=dev,
@@ -99,9 +111,9 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     def create_initial_routine(self, load_parameters=True):
         super().create_routine_template()  # Create empty routine template
         qubit: QuDev_transmon = self.qubit
-        USS_flux = 0
-        LSS_flux = -0.5 * np.sign(qubit.calculate_voltage_from_flux(flux=0.0))
-        for flux in [USS_flux, LSS_flux]:
+        uss_flux = 0
+        lss_flux = -0.5 * np.sign(qubit.calculate_voltage_from_flux(flux=0.0))
+        for flux in [uss_flux, lss_flux]:
             # Add park and spectroscopy step
             step_label = f'park_and_qubit_spectroscopy_flux_{flux}'
             step_settings = {'fluxlines_dict': self.fluxlines_dict,

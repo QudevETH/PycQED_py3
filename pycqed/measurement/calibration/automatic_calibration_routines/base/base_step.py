@@ -1,5 +1,5 @@
 from .base_settings_dictionary import SettingsDictionary
-from typing import List, Dict, Any, Union, Optional
+from typing import List, Dict, Any, Optional
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
     import QuDev_transmon
 from pycqed.measurement.quantum_experiment import QuantumExperiment
@@ -47,9 +47,8 @@ class Step:
         self.qubits: List[QuDev_transmon] = kw.pop("qubits",
                                                    self.dev.get_qubits())
 
-        # FIXME: this is there to make the current one-qubit-only implementation
-        #  of HamiltonianFitting work easily
-        # remove dependency on self.qubit
+        # FIXME: Remove dependency on self.qubit. This is there to make the
+        #  current one-qubit-only implementation of HamiltonianFitting work.
         self.qubit = self.qubits[0]
 
         settings_user = kw.pop('settings_user', None)
@@ -200,8 +199,7 @@ class Step:
         return groups
 
     def run(self):
-        """Run the Step. To be implemented by subclasses.
-        """
+        """Run the Step. To be implemented by subclasses."""
         pass
 
     def get_empty_device_properties_dict(self, step_type=None):
@@ -357,7 +355,8 @@ class Step:
         return None if self.parameter_sublookups is None else self._get_first_not_none(
             self.parameter_sublookups)
 
-    def _get_first_not_none(self, lookup_list):
+    @staticmethod
+    def _get_first_not_none(lookup_list):
         """Returns the first subscope in the lookup list that is not None.
 
         Args:

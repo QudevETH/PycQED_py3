@@ -790,9 +790,9 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
     Keyword Arguments (for the Step constructor):
         step_label (str): A unique label for this step to be used in the
             configuration parameters files.
-        settings (SettingsDictionary obj): The configuration parameters passed
-            down from its parent. if None, the dictionary is taken from the
-            Device object.
+        settings (:obj:`SettingsDictionary`): The configuration parameters
+            passed down from its parent. if None, the dictionary is taken from
+            the Device object.
         qubits (list): A list with the Qubit objects which should be part of
             the step.
         settings_user (dict): A dictionary from the user to update the
