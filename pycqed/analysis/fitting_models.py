@@ -1727,7 +1727,6 @@ def mixer_lo_leakage_guess(model, **kwargs):
     return model.make_params(**kwargs)
 
 
-
 #################################
 #     User defined Models       #
 #################################
