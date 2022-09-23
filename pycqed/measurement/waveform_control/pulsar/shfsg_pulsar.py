@@ -17,6 +17,9 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.measurement import mc_parameter_wrapper
 import zhinst
 
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
+    .ZI_base_instrument import MockDAQServer
+
 try:
     import zhinst.toolkit
     from zhinst.qcodes import SHFSG as SHFSG_core
@@ -739,9 +742,20 @@ class SHFGeneratorModule(ZIGeneratorModule):
                       f"/{self._awg_nr}/awg/commandtable/status"
         status = daq.getInt(status_node)
 
-        if status != 1:
-            log.warning(f"Failed to upload the command table to "
-                        f"{self._awg.name}, error index {status}")
+        if not isinstance(daq, MockDAQServer):
+            # This is a DAQ server for actual devices. We request upload
+            # status from the device and check if it is successful.
+            status_node = f"/{device_id}/awgs" \
+                          f"/{self._awg_nr}/commandtable/status"
+            status = daq.getInt(status_node)
+
+            if status != 1:
+                log.warning(f"Failed to upload the command table to "
+                            f"{self._awg.name}, error index {status}")
+        else:
+            # This is a DAQ server for virtual devices. We assume that upload
+            # is successful.
+            status = 1
 
         return status
 
