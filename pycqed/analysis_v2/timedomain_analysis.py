@@ -2054,15 +2054,59 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         with and without the data points corresponding to the active reset
         readouts.
         """
-        if self.get_param_value('plot_raw_data', default_value=True):
-            self._prepare_raw_data_plots(plot_filtered=False)
+        TwoD = self.get_param_value('TwoD', False)
+        slice_idxs_1d_raw_plot = self.get_param_value(
+            'slice_idxs_1d_raw_plot', {})
+        plot_raw_data = self.get_param_value('plot_raw_data', True)
+        for qb_name in self.qb_names:
+            slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
+            key = 'meas_results_per_qb_raw'
+            raw_data_dict = self.proc_data_dict[key][qb_name]
+            sweep_points = self.raw_data_dict['hard_sweep_points']
+            if plot_raw_data:
+                self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                             sweep_points=sweep_points)
+            if TwoD and len(slice_idxs_list) > 0:
+                self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
+                                                  slice_idxs_list)
+
             if 'preparation_params' in self.metadata:
                 if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait'):
+                        'preparation_type', 'wait') or \
+                        not self.data_with_reset:
+                    key = 'meas_results_per_qb'
+                    raw_data_dict = self.proc_data_dict[key][qb_name]
+                    fig_suffix = 'filtered' if self.data_with_reset else ''
+                    sweep_points = self.proc_data_dict[
+                        'sweep_points_dict'][qb_name]['sweep_points']
                     # plot raw data without the active reset readouts
-                    self._prepare_raw_data_plots(plot_filtered=True)
+                    if plot_raw_data:
+                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                     sweep_points=sweep_points,
+                                                     fig_suffix=fig_suffix)
+                    if TwoD and len(slice_idxs_list) > 0:
+                        self._prepare_raw_1d_slices_plots(qb_name,
+                                                          raw_data_dict,
+                                                          slice_idxs_list)
 
-    def _prepare_raw_data_plots(self, plot_filtered=False):
+    def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
+                                     slice_idxs_list):
+        for slice_idxs in slice_idxs_list:
+            idxs, axis, sweep_points, xlabel, xunit = \
+                self.get_1d_slice_params(qb_name, slice_idxs)
+            for idx in idxs:
+                fig_suffix = \
+                    f'{"_row" if axis == 0 else "_col"}_{idx}'
+                self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                             sweep_points, idx, axis,
+                                             fig_suffix=fig_suffix,
+                                             TwoD=False,
+                                             xlabel=xlabel, xunit=xunit)
+
+    def _prepare_raw_data_plots(self, qb_name, raw_data_dict, sweep_points,
+                                data_idx=None, data_axis=None,
+                                fig_name='raw_plot', fig_suffix='',
+                                xlabel=None, xunit=None, TwoD=None):
         """
         Prepares plots of the raw data stored in
         proc_data_dict['meas_results_per_qb'] or
@@ -2075,105 +2119,90 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 reset readouts, which will be not be shown in the plot if
                 plot_filtered == False.
         """
-        if plot_filtered or not self.data_with_reset:
-            key = 'meas_results_per_qb'
-            suffix = 'filtered' if self.data_with_reset else ''
-            func_for_swpts = lambda qb_name: self.proc_data_dict[
-                'sweep_points_dict'][qb_name]['sweep_points']
+        if len(raw_data_dict) == 1:
+            numplotsx = 1
+            numplotsy = 1
+        elif len(raw_data_dict) == 2:
+            numplotsx = 1
+            numplotsy = 2
         else:
-            key = 'meas_results_per_qb_raw'
-            suffix = ''
-            func_for_swpts = lambda qb_name: self.raw_data_dict[
-                'hard_sweep_points']
-        for qb_name, raw_data_dict in self.proc_data_dict[key].items():
-            if qb_name not in self.qb_names:
-                continue
-            sweep_points = func_for_swpts(qb_name)
-            if len(raw_data_dict) == 1:
-                numplotsx = 1
-                numplotsy = 1
-            elif len(raw_data_dict) == 2:
-                numplotsx = 1
-                numplotsy = 2
-            else:
-                numplotsx = 2
-                numplotsy = len(raw_data_dict) // 2 + len(raw_data_dict) % 2
+            numplotsx = 2
+            numplotsy = len(raw_data_dict) // 2 + len(raw_data_dict) % 2
 
-            plotsize = self.get_default_plot_params(set=False)['figure.figsize']
-            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
-                         self.raw_data_dict['measurementstring'] +
-                         '\nRaw data ' + suffix + ' ' + qb_name)
-            plot_name = 'raw_plot_' + qb_name + suffix
-            xlabel, xunit = self.get_xaxis_label_unit(qb_name)
+        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                     self.raw_data_dict['measurementstring'] +
+                     '\nRaw data ' + fig_suffix + ' ' + qb_name)
+        plot_name = f'{fig_name}_{qb_name}_{fig_suffix}'
+        xl, xu = self.get_xaxis_label_unit(qb_name)
+        if xlabel is None:
+            xlabel = xl
+        if xunit is None:
+            xunit = xu
 
-            prep_1d_plot = True
-            for ax_id, ro_channel in enumerate(raw_data_dict):
-                if self.get_param_value('TwoD', default_value=False):
-                    sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-                    if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                        # Only prepare 2D plots when there is more than one soft
-                        # sweep points. When there is only one soft sweep point
-                        # we want to do 1D plots which are more meaningful
-                        prep_1d_plot = False
-                        if self.sp is None:
-                            soft_sweep_params = self.get_param_value(
-                                'soft_sweep_params')
-                            if soft_sweep_params is not None:
-                                yunit = list(soft_sweep_params.values())[0]['unit']
-                            else:
-                                yunit = self.raw_data_dict[
-                                    'sweep_parameter_units'][1]
-                            if np.ndim(yunit) > 0:
-                                yunit = yunit[0]
-                        for pn, ssp in sp2dd.items():
-                            ylabel = pn
-                            if self.sp is not None:
-                                yunit = self.sp.get_sweep_params_property(
-                                    'unit', dimension=1, param_names=pn)
-                                ylabel = self.sp.get_sweep_params_property(
-                                    'label', dimension=1, param_names=pn)
-                            self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                                'fig_id': plot_name + '_' + pn,
-                                'ax_id': ax_id,
-                                'plotfn': self.plot_colorxy,
-                                'xvals': sweep_points,
-                                'yvals': ssp,
-                                'zvals': raw_data_dict[ro_channel].T,
-                                'xlabel': xlabel,
-                                'xunit': xunit,
-                                'ylabel': ylabel,
-                                'yunit': yunit,
-                                'numplotsx': numplotsx,
-                                'numplotsy': numplotsy,
-                                'plotsize': (plotsize[0]*numplotsx,
-                                             plotsize[1]*numplotsy),
-                                'title': fig_title,
-                                'clabel': '{} (Vpeak)'.format(ro_channel)}
+        if TwoD is None:
+            TwoD = self.get_param_value('TwoD', False)
+        prep_1d_plot = True
+        for ax_id, ro_channel in enumerate(raw_data_dict):
+            if TwoD:
+                sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+                if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                    # Only prepare 2D plots when there is more than one soft
+                    # sweep points. When there is only one soft sweep point
+                    # we want to do 1D plots which are more meaningful
+                    prep_1d_plot = False
+                    for pn, ssp in sp2dd.items():
+                        ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                            'fig_id': plot_name + '_' + pn,
+                            'ax_id': ax_id,
+                            'plotfn': self.plot_colorxy,
+                            'xvals': sweep_points,
+                            'yvals': ssp,
+                            'zvals': raw_data_dict[ro_channel].T,
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': ylabel,
+                            'yunit': yunit,
+                            'numplotsx': numplotsx,
+                            'numplotsy': numplotsy,
+                            'plotsize': (plotsize[0]*numplotsx,
+                                         plotsize[1]*numplotsy),
+                            'title': fig_title,
+                            'clabel': '{} (Vpeak)'.format(ro_channel)}
 
-                if prep_1d_plot:
-                    yvals = raw_data_dict[ro_channel]
-                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
-                        # only one soft sweep point: prepare 1D plot which is
-                        # more meaningful
-                        yvals = np.squeeze(yvals, axis=1)
-                    self.plot_dicts[plot_name + '_' + ro_channel] = {
-                        'fig_id': plot_name,
-                        'ax_id': ax_id,
-                        'plotfn': self.plot_line,
-                        'xvals': sweep_points,
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'yvals': yvals,
-                        'ylabel': '{} (Vpeak)'.format(ro_channel),
-                        'yunit': '',
-                        'numplotsx': numplotsx,
-                        'numplotsy': numplotsy,
-                        'plotsize': (plotsize[0]*numplotsx,
-                                     plotsize[1]*numplotsy),
-                        'title': fig_title}
-            if len(raw_data_dict) == 1:
-                self.plot_dicts[
-                    plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
+            if prep_1d_plot:
+                yvals = raw_data_dict[ro_channel]
+                if len(yvals.shape) > 1 and yvals.shape[1] == 1:
+                    # only one soft sweep point: prepare 1D plot which is
+                    # more meaningful
+                    yvals = np.squeeze(yvals, axis=1)
+                elif yvals.ndim == 2:
+                    # Plot 1D slice of raw data at data_idx along data_axis
+                    if data_idx is None or data_axis is None:
+                        raise ValueError('Both "data_idx" and "data_axis" must '
+                                         'be specified in order to plot 1D a '
+                                         'slice of the TwoD raw data.')
+                    yvals = np.take_along_axis(
+                        yvals.T, np.array([[data_idx]]), data_axis).flatten()
+                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    'fig_id': plot_name,
+                    'ax_id': ax_id,
+                    'plotfn': self.plot_line,
+                    'xvals': sweep_points,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': '{} (Vpeak)'.format(ro_channel),
+                    'yunit': '',
+                    'numplotsx': numplotsx,
+                    'numplotsy': numplotsy,
+                    'plotsize': (plotsize[0]*numplotsx,
+                                 plotsize[1]*numplotsy),
+                    'title': fig_title}
+        if len(raw_data_dict) == 1:
+            self.plot_dicts[
+                plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
 
     def prepare_projected_data_plots(self):
         """
