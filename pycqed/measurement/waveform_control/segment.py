@@ -909,7 +909,8 @@ class Segment:
             i = 0
             for el in self.elements_on_awg[group]:
                 # add element and or group to element_start_end
-                if el not in self.element_start_end:
+                if el not in self.element_start_end or group not in \
+                        self.element_start_end[el]:
                     self.element_start_length(el, group)
                 elif group not in self.element_start_end[el]:
                     self.element_start_length(el, group)

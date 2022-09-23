@@ -17,7 +17,6 @@ from pycqed.utilities.timer import WatchdogTimer, WatchdogException
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
-
 log = logging.getLogger(__name__)
 
 
@@ -95,6 +94,7 @@ class PulsarAWGInterface(ABC):
 
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
+
 
     def __init__(self, pulsar:'Pulsar', awg:Instrument):
         super().__init__()
@@ -431,6 +431,17 @@ class PulsarAWGInterface(ABC):
         """
         return []
 
+    def get_centerfreq_generator(self, ch:str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        return None
+
     def set_filter_segments(self, val):
         """TODO: Document"""
 
@@ -483,7 +494,7 @@ class PulsarAWGInterface(ABC):
                                   f"implemented by AWG interface "
                                   f"{self.__class__}.")
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         """Convenience method for retrieving SWF for sweeping a channels freq.
 
         Subclasses must override this. Subclasses should raise an error when a
@@ -550,6 +561,11 @@ class Pulsar(Instrument):
         self.add_parameter('use_sequence_cache', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool(),
                            set_parser=self._use_sequence_cache_parser)
+        self.add_parameter('use_mcc', initial_value=False,
+                           parameter_class=ManualParameter, vals=vals.Bool(),
+                           docstring='Flag determining whether to use '
+                                     'parallel compilation and upload of '
+                                     'SecQ strings.')
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
@@ -600,14 +616,17 @@ class Pulsar(Instrument):
 
 
         self._inter_element_spacing = 'auto'
-        self.channels = set() # channel names
-        self.awgs:Set[str] = set() # AWG names
+        self.channels = set()  # channel names
+        self.awgs:Set[str] = set()  # AWG names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
         self.num_channel_groups = {}
+        self.mcc_finalize_callbacks = {}
+        """A dict of methods which requires execution after multi-core 
+        compilation. Keys are AWG names, and values are methods to execute."""
 
         self._awgs_prequeried_state = False
 
@@ -1040,6 +1059,22 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
+    def get_unique_mccs(self):
+        """
+        Returns list of unique multi_core_compiler instances from
+        PulsarAWGInterface._pulsar_interfaces.
+        """
+        return set([awg_int.multi_core_compiler
+                    for awg_int in self.awg_interfaces.values()
+                    if hasattr(awg_int, 'multi_core_compiler')])
+
+    def reset_active_awgs_mcc(self):
+        """
+        Resets the active awgs on the unique multi_core_compilers.
+        """
+        for mcc in self.get_unique_mccs():
+            mcc.reset_active_awgs()
+
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
 
@@ -1063,6 +1098,9 @@ class Pulsar(Instrument):
 
         # Stores the last uploaded sequence for easy access and plotting
         self.last_sequence = sequence
+
+        # resets the parallel compilation active AWG list
+        self.reset_active_awgs_mcc()
 
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
@@ -1236,7 +1274,7 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        ZIPulsarMixin.zi_waves_cleared = False
+        ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
         for awg in awg_sequences.keys():
@@ -1269,6 +1307,20 @@ class Pulsar(Instrument):
             )
 
             log.info(f'Finished programming {awg} in {time.time() - t0}')
+
+        if self.use_mcc():
+            # Use parallel compilation and upload if the _awgs_with_waveforms
+            # support it.
+            for mcc in self.get_unique_mccs():
+                if mcc is not None and len(mcc._awgs) > 0:
+                    mcc.wait_compile()
+                    mcc.upload()
+
+            # Finalize callbacks allow individual AWG interfaces to do final
+            # upload steps (e.g., uploading waveforms).
+            for awg, callback in self.mcc_finalize_callbacks.items():
+                if awg in self._awgs_with_waveforms:
+                    callback()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.
@@ -1432,7 +1484,20 @@ class Pulsar(Instrument):
         return self.awg_interfaces[awg_name] \
             .get_params_for_spectrum(ch, requested_freqs)
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
-            .get_frequency_sweep_function(ch)
+            .get_frequency_sweep_function(ch, **kw)
+
+    def get_centerfreq_generator(self, ch: str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_centerfreq_generator(ch)

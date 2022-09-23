@@ -636,12 +636,16 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         for acq_dev in self.acq_devs:
             # Allow the acqusition device to store additional data
             acq_dev.extra_data_callback = self.extra_data_callback
-            # Final preparations for an acquisition.
-            acq_dev.prepare_poll()
+            # Final preparations for an acquisition before starting the AWGs.
+            acq_dev.prepare_poll_before_AWG_start()
 
         if self.AWG is not None:
             self.AWG.start(stop_first=False)
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.end")
+
+        for acq_dev in self.acq_devs:
+            # Final preparations for an acquisition after starting the AWGs.
+            acq_dev.prepare_poll_after_AWG_start()
 
         # Initialize dicts to store data and status
         acq_paths = {acq_dev.name: acq_dev.acquisition_nodes()
