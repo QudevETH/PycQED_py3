@@ -1035,6 +1035,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         # in order to use its autorun() function
         self.experiment_settings['measure'] = True
         self.experiment_settings['analyze'] = True
+        self.experiment_settings['update'] = True
         self._update_parameters(**self.experiment_settings)
         self.autorun(**self.experiment_settings)
 
