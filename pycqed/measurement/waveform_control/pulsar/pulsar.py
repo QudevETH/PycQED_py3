@@ -601,7 +601,10 @@ class Pulsar(Instrument):
                       "in which case the minimal possible delay between main "
                       "trigger and algorithm time 0 is determined "
                       "individually for each segement.")
-
+        self.add_parameter(
+            'algorithm_start', initial_value='segment_start',
+            parameter_class=ManualParameter, vals=vals.Strings(),
+            docstring="TODO")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names

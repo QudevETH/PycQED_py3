@@ -17,6 +17,7 @@ from copy import deepcopy
 import pycqed.measurement.waveform_control.pulse as bpl
 import pycqed.measurement.waveform_control.pulse_library as pl
 import pycqed.measurement.waveform_control.pulsar as ps
+import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
 
@@ -86,6 +87,11 @@ class Segment:
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self._init_end_name = None  # to detect end of init block in self.add
+        self._algo_start = {'search': self.pulsar.algorithm_start(),
+                            'name': None, 'occ_counter': [0]}
+        if self._algo_start['search'] in ['segment_start', 'init_start']:
+            self._algo_start['name'] = self._algo_start['search']
+            self._algo_start['search'] = None
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
@@ -191,6 +197,19 @@ class Segment:
             # generate name to automatically detect the end of the init block
             self._init_end_name = new_pulse.pulse_obj.name[:-len('start')] + \
                                    'end'
+        # print("adding", new_pulse.pulse_obj.name)
+        if self._algo_start['search'] is not None:
+            if block_mod.check_pulse_by_pattern(
+                    pars_copy, self._algo_start['search'],
+                    self._algo_start['occ_counter']):
+                if self._algo_start['name'] is not None:
+                    log.warning(
+                        f"{self.name}: The algorithm start search pattern "
+                        f"{self._algo_start['search']} had matched "
+                        f"{self._algo_start['name']} before, but also matches "
+                        f"{new_pulse.pulse_obj.name}.")
+                else:
+                    self._algo_start['name'] = new_pulse.pulse_obj.name
 
         self.unresolved_pulses.append(new_pulse)
 
@@ -312,6 +331,7 @@ class Segment:
             self.enforce_single_element()
 
         visited_pulses = []
+        t_shift = 0
         i = 0
 
         pulses = self.gen_refpoint_dict()
@@ -366,7 +386,7 @@ class Segment:
                                 'ref_function. Allowed values are: max, min, mean.' +
                                 ' Default value: max')
                     else:
-                        if isinstance(pulse, int):
+                        if isinstance(pulse, (float, int)):
                             # ref_pulses_dict provided an already resolved
                             # timing instead of a pulse
                             t_ref = pulse
@@ -396,15 +416,14 @@ class Segment:
                     t_init_end = max(
                         [p.pulse_obj.algorithm_time() + p.pulse_obj.length
                          for (_, _, p) in visited_pulses] or [0])
-                    # shift all init pulses so that segment_start is at time 0
-                    for ind, (t0, i_p, p) in enumerate(visited_pulses):
-                        p.pulse_obj.algorithm_time(
-                            p.pulse_obj.algorithm_time() - t_init_end)
-                        visited_pulses[ind] = (t0 - t_init_end, i_p, p)
+                    if self._algo_start['name'] == 'segment_start':
+                        # remember to shift all init pulses so that
+                        # segment_start will be at time 0
+                        t_shift = t_init_end
                     # resolve pulses referencing segment_start directly in
                     # the next iteration and those referencing segment_start
                     # indirectly in the following iterations
-                    ref_pulses_dict_new = {'segment_start': 0}
+                    ref_pulses_dict_new = {'segment_start': t_init_end}
                 elif len(visited_pulses) == 0:
                     # main part already resolved, but no pulses visited
                     raise ValueError(
@@ -421,6 +440,23 @@ class Segment:
                 if p not in vp:
                     log.error(p)
             raise Exception('Not all pulses have been resolved.')
+
+        if self._algo_start['search'] is not None:
+            if self._algo_start['name'] is None:
+                log.warning(
+                    f"{self.name}: The algorithm start search pattern "
+                    f"{self._algo_start['search']} did not match any pulse. "
+                    f"Using segment_start as start time.")
+                t_shift = t_init_end
+            else:
+                t_shift = [p.pulse_obj.algorithm_time()
+                           for _, _, p in (visited_pulses)
+                           if p.pulse_obj.name == self._algo_start['name']][0]
+        if t_shift:
+            for ind, (t0, i_p, p) in enumerate(visited_pulses):
+                p.pulse_obj.algorithm_time(
+                    p.pulse_obj.algorithm_time() - t_shift)
+                visited_pulses[ind] = (t0 - t_shift, i_p, p)
 
         if resolve_block_align:
             re_resolve = False
