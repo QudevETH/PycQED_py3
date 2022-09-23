@@ -6,7 +6,7 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
 )
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
-from pycqed.measurement.calibration.automatic_calibration_routines.base.\
+from pycqed.measurement.calibration.automatic_calibration_routines.base. \
     base_automatic_calibration_routine import _device_db_client_module_missing
 
 if not _device_db_client_module_missing:
@@ -31,6 +31,7 @@ import numpy as np
 import copy
 import logging
 import time
+from typing import Tuple, Dict
 
 log = logging.getLogger(__name__)
 
@@ -917,7 +918,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
     Configuration parameters (coming from the configuration parameter dictionary):
         freq_range (float): Range of the frequency sweep points. The center of
-            the sweep points is the RO frequency of the qubit.
+            the sweep points is the RO frequency of the qubit. It is possible to
+            specify "{adaptive}" to give a smart estimation of the good range.
         freq_pts (int): Number of points for the frequency sweep.
         freq_center (float): Center of the frequency sweep points. The sweep
             points will extend from freq_center - freq_range/2 to
@@ -944,6 +946,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         spec.ResonatorSpectroscopyFluxSweep.__init__(self,
                                                      dev=self.dev,
                                                      **self.experiment_settings)
+        self.DEFAULT_FREQ_RANGE = 150e6
 
     def parse_settings(self, requested_kwargs):
         """
@@ -965,14 +968,21 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         # default settings
         for qb in self.qubits:
             # Build frequency sweep points
-            freq_range = self.get_param_value('freq_range', qubit=qb.name)
             freq_pts = self.get_param_value('freq_pts', qubit=qb.name)
+
             freq_center = self.get_param_value('freq_center', qubit=qb.name)
             if isinstance(freq_center, str):
                 freq_center = eval(
                     freq_center.format(current=qb.ro_freq(),
                                        between_dips=self.get_freq_between_dips(
                                            qb)))
+
+            freq_range = self.get_param_value('freq_range', qubit=qb.name)
+            if isinstance(freq_range, str):
+                freq_range = eval(
+                    freq_range.format(
+                        adaptive=self.get_adaptive_freq_range(qb, freq_center)))
+
             log.debug(f'{freq_center=}, {freq_range=}, {freq_pts=}')
             freqs = np.linspace(freq_center - freq_range / 2,
                                 freq_center + freq_range / 2, freq_pts)
@@ -1013,19 +1023,54 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
         return kwargs
 
+    def _get_two_dips_freqs(self, qubit: QuDev_transmon) -> \
+            Tuple[float, float, Dict[str, float]]:
+        """Returns:
+            ro_frea (float): The designated frequency for the readout.
+            mode2_freq (float): The other mode of the RO-Purcell system.
+            feedline_results (Dict[str, float]): The full results dictionary
+                of the feedline of the qubit."""
+        fit_res = self.routine.routine_steps[-1].analysis.fit_res
+        for feedline_results in fit_res.values():
+            for k in feedline_results.keys():
+                if k.startswith(f'{qubit.name}'):
+                    ro_freq = feedline_results[f'{qubit.name}_RO_frequency']
+                    mode2_freq = feedline_results[
+                        f'{qubit.name}_mode2_frequency']
+                    return ro_freq, mode2_freq, feedline_results
+
     def get_freq_between_dips(self, qubit: QuDev_transmon) -> float:
         """Find the frequency between the RO-Purcell dips."""
         try:
-            fit_res = self.routine.routine_steps[-1].analysis.fit_res
-            for feedline_results in fit_res.values():
-                for k in feedline_results.keys():
-                    if k.startswith(f'{qubit.name}'):
-                        ro_freq = feedline_results[f'{qubit.name}_RO_frequency']
-                        mode2_freq = feedline_results[
-                            f'{qubit.name}_mode2_frequency']
-                        return (ro_freq + mode2_freq) / 2
-        except (AttributeError, KeyError):
+            ro_freq, mode2_freq, _ = self._get_two_dips_freqs(qubit)
+            return np.mean([ro_freq, mode2_freq])
+        except (AttributeError, KeyError, TypeError):
             return qubit.ro_freq()
+
+    def get_adaptive_freq_range(self, qubit: QuDev_transmon,
+                                freq_center: float) -> float:
+        """Calculates a reasonable freq_range such that two flux-oscillating
+        dips will be contained in it, but not neighboring dips.
+        The full range is determined as the minimum between this distance and
+        twice the distance between the two qubit's freqs.
+        """
+
+        try:
+            ro_freq, mode2_freq, feedline_results = self._get_two_dips_freqs(
+                qubit)
+            all_other_dips = [v for k, v in feedline_results.items() if
+                              all([k.endswith('frequency'),
+                                   k.startswith('qb'),
+                                   not k.startswith(qubit.name)])]
+            distance_from_nearest_dip = np.abs(np.array(all_other_dips) -
+                                               freq_center).min()
+            if distance_from_nearest_dip < (
+                    qubit_dips_distance := np.abs(ro_freq - mode2_freq)):
+                log.warning("The neighboring dip is very close to the two dips."
+                            "frequency range might not be appropriate.")
+            return np.min([distance_from_nearest_dip, 2 * qubit_dips_distance])
+        except (AttributeError, KeyError, TypeError):
+            return self.DEFAULT_FREQ_RANGE
 
     def run(self):
         """Runs the ResonatorSpectroscopyFluxSweep experiment and the analysis

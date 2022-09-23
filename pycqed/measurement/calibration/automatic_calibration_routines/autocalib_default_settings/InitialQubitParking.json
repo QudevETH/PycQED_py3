@@ -1,0 +1,5 @@
+{
+  "ResonatorSpectroscopyFluxSweep": {
+    "freq_range": "{adaptive}"
+  }
+}
