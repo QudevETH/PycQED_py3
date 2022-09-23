@@ -329,8 +329,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode("readout")
-        # FIXME should issue a warning if parallel measurements, since in this
-        #  case we can't ensure that scope and integration unit are synchronised
+        if len(self._acq_units_used)>1:
+            log.warning("Parallel measurements might lead to timing "
+                        "discrepancies, since the whole scope is triggered by "
+                        "a single acquisition unit.")
         trigger_channel = f'channel{acq_unit}_sequencer_monitor0'
         # FIXME are these different triggering schemes still needed?
         # if self.seqtrigger is None:
