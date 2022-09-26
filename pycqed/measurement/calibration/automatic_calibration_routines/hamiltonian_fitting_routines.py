@@ -3,6 +3,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
     base_automatic_calibration_routine import (_device_db_client_module_missing,
                                                keyword_subset_for_function)
+from pycqed.measurement.calibration.\
+    automatic_calibration_routines import routines_utils
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -18,7 +20,7 @@ from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import pycqed.analysis.analysis_toolbox as a_tools
 import numpy as np
 import logging
-from typing import Dict, Tuple, Literal
+from typing import Dict, Tuple
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 
@@ -228,7 +230,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # If `use_prior_model` is True, generate guess from prior Hamiltonian
         # model
         if use_prior_model:
-            freq_model = self.get_transmon_freq_model(qubit)
+            freq_model = routines_utils.get_transmon_freq_model(qubit)
             self.flux_to_voltage_and_freq_guess = {
                 self.ss1_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss1_flux),
@@ -260,43 +262,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 }})
 
         self.final_init(**kw)
-
-    @staticmethod
-    def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
-            'transmon', 'transmon_res']:
-        """
-        Determines which model will be used to calculate the frequency of a
-        qubit, depending on the parameters it has.
-
-        Arguments:
-            qubit (QuDev_transmon): Qubit instance.
-        The necessary parameters the qubit instance should have in its
-         `fit_ge_freq_from_dc_offset()` dict from previous experiments are:
-            - 'dac_sweet_spot' (in V)
-            - 'V_per_phi0' (in V)
-            - 'Ej_max' (in Hz)
-            - 'E_c' (in Hz)
-            - 'asymmetry' (a.k.a d)
-
-        Optional parameters for a more accurate frequency model:
-            - 'coupling'
-            - 'fr'
-
-        """
-        qubit_hamiltonian_params = qubit.fit_ge_freq_from_dc_offset()
-        assert all([k in qubit_hamiltonian_params for k in
-                    ['dac_sweet_spot', 'V_per_phi0', 'Ej_max', 'E_c',
-                     'asymmetry']]), (
-            "To calculate the frequency of a transmon, a sufficient model "
-            "must be present in the qubit object")
-
-        if all([k in qubit_hamiltonian_params for k in ['coupling', 'fr']]):
-            # Use the more accurate model, that takes the resonator into account
-            return 'transmon_res'
-
-        else:
-            # Use the model that takes only the transmon into account
-            return 'transmon'
 
     def create_routine_template(self):
         """Creates the routine template for the HamiltonianFitting routine using
