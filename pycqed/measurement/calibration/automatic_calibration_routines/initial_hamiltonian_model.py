@@ -105,7 +105,8 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     def extract_qubit_E_c(qubit: QuDev_transmon) -> float:
         # TODO Implement this method to give a meaningful value! (from the
         #  design DB?)
-        log.warning("Implement this method to give a meaningful value!")
+        log.warning("Implement the `extract_qubit_E_c()` method to give a"
+                    "meaningful value!")
         return 0.2e9
 
     def create_initial_routine(self, load_parameters=True):
