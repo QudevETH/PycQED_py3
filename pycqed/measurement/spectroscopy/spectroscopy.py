@@ -521,6 +521,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     passing a qubit on this feedline. FIXME: Part of refactoring to make
     compatible with more generic meas_objs (here: feedline might be a meas_obj)
 
+    The kwarg drive of the base class gets the default value None for this
+    class as this is the default for a resonator spectroscopy.
+
     Based on the hardware available and the configuration of the hardware the
     class decides to either...
         - ...use a soft sweep to sweep the RO LO MWG frequency. Here, if the
@@ -570,11 +573,12 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     default_experiment_name = 'ResonatorSpectroscopy'
 
     def __init__(self, task_list, sweep_points=None,
-                 trigger_separation=5e-6,
+                 trigger_separation=5e-6, drive=None,
                  **kw):
         try:
             super().__init__(task_list, sweep_points=sweep_points,
                              trigger_separation=trigger_separation,
+                             drive=drive,
                              segment_kwargs={'acquisition_mode':
                                              dict(sweeper='software')},
                              **kw)
@@ -975,6 +979,9 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     While the experiment support parallelization, it only allows to have the
     same initial states for all qubits.
 
+    The kwarg drive of the base class ResonatorSpectroscopy gets the default
+    value 'timedomain' for this class to enable qubit drive pulses.
+
     Arguments:
         states (list[str], optional): List of strings specifying the initial
             states to be measured. Defaults to `["g", "e"]`.
@@ -997,11 +1004,12 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     )
 
     def __init__(self, task_list, sweep_points=None,
-                 trigger_separation=None,
+                 trigger_separation=None, drive='timedomain',
                  states=("g", "e"), **kw):
         self.states = list(states)
         super().__init__(task_list, sweep_points=sweep_points,
-                         trigger_separation=trigger_separation, states=states,
+                         trigger_separation=trigger_separation, drive=drive,
+                         states=states,
                          **kw)
 
     def run_analysis(self, analysis_kwargs=None, **kw):
