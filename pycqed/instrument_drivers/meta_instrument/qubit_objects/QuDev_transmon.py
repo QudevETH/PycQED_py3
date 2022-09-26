@@ -1393,7 +1393,10 @@ class QuDev_transmon(Qubit):
                 parameter_name='Readout frequency')
         else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit(), self.ro_mod_freq())
+                self.acq_unit(),
+                0 if self.ro_fixed_lo_freq() else self.ro_mod_freq(),
+                get_closest_lo_freq=(lambda f, s=self:
+                                     s.get_closest_lo_freq(f, operation='ro')))
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
@@ -1430,7 +1433,10 @@ class QuDev_transmon(Qubit):
                            'use_hardware_sweeper') and \
                         self.instr_acq.get_instr().use_hardware_sweeper():
                     lo_freq, delta_f, _ = self.instr_acq.get_instr()\
-                        .get_params_for_spectrum(freqs)
+                        .get_params_for_spectrum(
+                            freqs, get_closest_lo_freq=(
+                                lambda f, s=self: s.get_closest_lo_freq(
+                                    f, operation='ro')))
                     self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
                                                            lo_freq)
                     seg.acquisition_mode = dict(
