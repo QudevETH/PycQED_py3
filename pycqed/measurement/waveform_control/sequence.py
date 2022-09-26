@@ -180,37 +180,37 @@ class Sequence:
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
         """
-        # TODO refactor awg to group and check whether everything makes sense
-        seq_awgs = [awgs] * len(sequences)
+        seq_groups = []
+        if awgs is None:
+            awgs = sequences[0].pulsar.awgs
         # collect element lengths
         lengths = odict()
         for i, seq in enumerate(sequences):
+            seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
                 seg.gen_elements_on_awg()
-            if awgs is None:
-                # find awgs for this sequence
-                seq_awgs[i] = set()
-                for seg in seq.segments.values():
-                    seq_awgs[i] |= set(seg.elements_on_awg)
-            for awg in seq_awgs[i]:
-                if awg not in lengths:
-                    lengths[awg] = odict()
+            seq_groups[i] |= set(
+                [group for group in seg.elements_on_awg
+                 if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
+            for group in seq_groups[i]:
+                if group not in lengths:
+                    lengths[group] = odict()
                 for segname, seg in seq.segments.items():
-                    elnames = seg.elements_on_awg.get(awg, [])
+                    elnames = seg.elements_on_awg.get(group, [])
                     for elname in elnames:
-                        if elname not in lengths[awg]:
-                            lengths[awg][elname] = []
-                        lengths[awg][elname].append(
-                            seg.element_start_end[elname][awg][1])
+                        if elname not in lengths[group]:
+                            lengths[group][elname] = []
+                        lengths[group][elname].append(
+                            seg.element_start_end[elname][group][1])
         # set element lengths to the maximum of the collected values
         for i, seq in enumerate(sequences):
-            for awg in seq_awgs[i]:
+            for group in seq_groups[i]:
                 for segname, seg in seq.segments.items():
-                    elnames = seg.elements_on_awg.get(awg, [])
+                    elnames = seg.elements_on_awg.get(group, [])
                     for elname in elnames:
-                        seg.element_start_end[elname][awg][1] = max(
-                            lengths[awg][elname])
+                        seg.element_start_end[elname][group][1] = max(
+                            lengths[group][elname])
             # test for overlaps
             for segname, seg in seq.segments.items():
                 seg._test_overlap()
