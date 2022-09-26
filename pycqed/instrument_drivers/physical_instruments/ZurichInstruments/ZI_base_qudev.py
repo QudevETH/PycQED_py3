@@ -6,6 +6,7 @@ import numpy as np
 import re
 import copy
 import fnmatch
+import types
 
 class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
     """
@@ -75,14 +76,24 @@ class MockDAQServer(zibase.MockDAQServer):
                 (default: False).
         """
         super().__init__(server, port, apilevel, verbose=verbose)
+        self.host = server
+        self.port = port
         self.devices = set()  # devices on the same server
         self.nodes['/zi/about/dataserver'] = {
             'type': 'String', 'value': self.__class__.__name__}
         self._device_types = {}
-        # create aliases syncSet...
+        # create syncSet methods
         for k in dir(self):
             if k.startswith('set') and len(k) > 3:
-                setattr(self, f'syncS{k[1:]}', getattr(self, k))
+                if not hasattr(self, 'get' + k[3:]):
+                    continue
+                def syncset(self, path, value,
+                            setter=getattr(self, k),
+                            getter=getattr(self, 'get' + k[3:])):
+                    setter(path, value)
+                    return getter(path)
+                setattr(self, f'syncS{k[1:]}',
+                        types.MethodType(syncset, self))
 
     def listNodes(self, path):
         return json.loads(self.listNodesJSON(path + "/*"))
@@ -154,6 +165,10 @@ class MockDAQServer(zibase.MockDAQServer):
                 return 0  # emulate that single run finishes after 0.1s
         if '/sgchannels/' in path and '/awg/ready' in path:
             return 1
+        elif '/sgchannels/' in path:
+            m = re.match(r'/(\w+)/sgchannels/(\d+)/synthesizer', path)
+            if m:
+                return (1 + int(m.group(2)) // 2)
         if '/awgs/' in path and '/ready' in path:
             return 1
 
