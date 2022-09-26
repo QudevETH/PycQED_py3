@@ -5,12 +5,13 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
 )
 
 from pycqed.measurement.spectroscopy import spectroscopy as spec
+from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 
 import numpy as np
 import logging
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Any
 
 log = logging.getLogger(__name__)
 
@@ -325,6 +326,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     """
     Routine to find the RO frequency of the qubits and park them at their sweet
     spot. It consists of two steps:
+
     1) FeedlineSpectroscopy, to find the frequency of the resonators. The
         feedlines to which the given qubits belong to will be measured.
         The RO frequency of all the qubits in the measured feedlines will be
@@ -342,14 +344,32 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
             keys and the flux lines QCoDeS parameters as values.
 
     Keyword Arguments:
-        qubits: qubits on which to perform the measurement
+        qubits (list(Qudev_transmon)): qubits on which to perform the
+            measurement.
+
+    Examples::
+
+        settings_user = {
+            'InitialQubitParking': {'General': {
+                                     'save_instrument_settings': True}},
+            'FeedlineSpectroscopy': {'pts': 1000},
+            'ResonatorSpectroscopyFluxSweep': {'freq_pts': 500},
+        }
+
+        initial_qubit_parking = InitialQubitParking(dev=dev,
+                                                fluxlines_dict=fluxlines_dict,
+                                                settings_user=settings_user,
+                                                qubits=[qb1, qb6],
+                                                autorun=False)
+        initial_qubit_parking.view()
+        initial_qubit_parking.run()
 
     """
 
     def __init__(
             self,
-            dev,
-            fluxlines_dict,
+            dev: Device,
+            fluxlines_dict: Dict[str, Any],
             **kw,
     ):
         # FIXME: fluxlines_dict has to be passed as an argument because the

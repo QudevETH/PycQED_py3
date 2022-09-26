@@ -31,13 +31,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         Hamiltonian model for a transmon qubit.
 
     Routine steps:
+
     1) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at either
         the USS or LSS
     2) UpdateFrequency (update_frequency_<tr_name>_<i>): updates the frequency
         of the qubit at current bias voltage. The bias voltage is calculated
         from the previous Hamiltonian model (if given), otherwise the guessed
         one will be used.
-    3) FindFrequency (find_frequency_<tr_name>_<i>): see corresponding routine
+    3) FindFrequency (find_frequency_<tr_name>_<i>): see corresponding routine.
     4) ReparkingRamsey (reparking_ramsey_<i>): see corresponding routine
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
     upper and the lower sweet spot.

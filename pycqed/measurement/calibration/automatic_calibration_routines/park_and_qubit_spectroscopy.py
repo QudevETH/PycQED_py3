@@ -37,6 +37,24 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
     The initial and measured values for ge_freqs, fluxes, and voltages can be
     retrieved from the `results` attribute.
+
+    Examples::
+
+        settings_user = {
+            'ParkAndQubitSpectroscopy': {'General': {
+                'flux': '{designated}'}},
+            'AdaptiveQubitSpectroscopy': {'General': {'n_spectroscopies': 1,
+                                                      'max_iterations': 2}},
+            'QubitSpectroscopy1D': {'pts': 500}
+        }
+
+        park_and_qubit_spectroscopy = ParkAndQubitSpectroscopy(dev=dev,
+                                            fluxlines_dict=fluxlines_dict,
+                                            settings_user=settings_user,
+                                            qubits=[qb1, qb6],
+                                            autorun=False)
+        park_and_qubit_spectroscopy.view()
+        park_and_qubit_spectroscopy.run()
     """
 
     def __init__(

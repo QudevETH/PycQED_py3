@@ -47,6 +47,24 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
             hf_{ge} = -E_c + \sqrt{8 E_c  E_{J,max}} \\
         \Phi = \pm \frac{1}{2} \Phi_0:
             hf_{ge} = -E_c + \sqrt{8 d E_c E_{J,max}}
+
+    Examples::
+
+        settings_user = {
+            'ParkAndQubitSpectroscopy': {'General': {
+                'flux': '{designated}'}},
+            'AdaptiveQubitSpectroscopy': {'General': {'n_spectroscopies': 1,
+                                                      'max_iterations': 2}},
+            'QubitSpectroscopy1D': {'pts': 500}
+        }
+
+        initial_hamiltonian_model = PopulateInitialHamiltonianModel(dev=dev,
+                                            fluxlines_dict=fluxlines_dict,
+                                            settings_user=settings_user,
+                                            qubits=[qb1, qb6],
+                                            autorun=False)
+        initial_hamiltonian_model.view()
+        initial_hamiltonian_model.run()
     """
 
     def __init__(self,
@@ -107,7 +125,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
         #  design DB?)
         log.warning("Implement the `extract_qubit_E_c()` method to give a"
                     "meaningful value!")
-        return 0.2e9
+        return 165e6
 
     def create_initial_routine(self, load_parameters=True):
         super().create_routine_template()  # Create empty routine template

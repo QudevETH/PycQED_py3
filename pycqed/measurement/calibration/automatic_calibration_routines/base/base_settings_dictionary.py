@@ -22,8 +22,67 @@ else:
 class SettingsDictionary(dict):
     """This class represents the configuration parameters specified in default,
     setup, and sample folder as a dictionary.
+
     The hierarchy (in descending significance) is
     User > Sample > Setup > Default.
+    Routine settings can contain separate dictionaries for each step and even
+    dictionaries with specific step-labels (whenever a step can repeat itself).
+    In addition, they can contain a 'General' dictionary with more settings.
+
+    Examples::
+
+        adaptive_qubit_spectroscopy_settings = {
+            "General":{
+                "n_spectroscopies": 2,
+                "max_iterations": 3,
+                "auto_repetition_settings": false,
+                "max_waiting_seconds": 60
+            },
+
+            "QubitSpectroscopy1D":{
+                "spec_power": -10,
+                "freq_range": 400e6,
+                "pts": 200,
+                "pulsed": false,
+                "modulated": false
+            },
+
+            "Decision": {
+                "max_kappa_fraction_sweep_range": 0.2,
+                "min_kappa_absolute": 0
+            },
+
+            "qubit_spectroscopy_1": {
+                "spec_power": -5,
+                "freq_range": 1.5e9,
+                "pts": 1000,
+                "freq_center": "{current}"
+            },
+
+            "qubit_spectroscopy_1_repetition_2": {
+                "spec_power": 0,
+                "freq_range": 2e9,
+                "pts": 1500,
+                "freq_center": "{current}"
+            },
+
+            "qubit_spectroscopy_1_repetition_3": {
+                "spec_power": 5,
+                "freq_range": 2.5e9,
+                "pts": 2500,
+                "freq_center": "{current}"
+            },
+
+            "qubit_spectroscopy_2": {
+                "spec_power": -15,
+                "freq_range": 50e6,
+                "pts": 200
+            },
+
+            "decision_spectroscopy_2": {
+                "max_kappa_absolute": 1e6
+            }
+        }
     """
 
     _USE_DB_STRING = "USE_DB"
