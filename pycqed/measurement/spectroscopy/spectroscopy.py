@@ -612,7 +612,10 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 qb = self.get_qubit(task)
                 acq_instr = qb.instr_acq.get_instr()
                 freqs = task['sweep_points']['freq']
-                lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(freqs)
+                lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(
+                    freqs, get_closest_lo_freq=(
+                        lambda f, qb=qb: qb.get_closest_lo_freq(
+                            f, operation='ro')))
                 # adjust ro_freq in tmp_vals such that qb.prepare will set the
                 # correct lo_freq.
                 self.temporary_values.append(
