@@ -34,11 +34,14 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
     """AutomaticRoutine that parks a qubit at the specified spot where it
     performs an AdaptiveQubitSpectroscopy routine to find its ge_freq.
 
-    The initial and measured values for ge_freqs, fluxes, and voltages can be
-    retrieved from the `results` attribute.
+    The flux and voltage, together with initial and measured values for ge_freq,
+    can be retrieved from the `results` attribute.
+    In the case where the requested parking point is different from the
+    designated one (`qubit.flux_parking()`):
+     1. The initial qubit frequency will be calculated according to the flux.
+     2. The measured qubit frequency will not be updated at the end of
+    the routine.
 
-    FIXME The routine does not update the frequency *before* the spectroscopy.
-     That way, the wrong freq_center is sometimes chosen.
 
     Examples::
 
@@ -107,19 +110,16 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
             V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
             flux, voltage = self.get_qubit_flux_and_voltage(qb=qb)
-            self.results[qb.name] = ParkAndQubitSpectroscopyResults(**dict(
-                voltage=self.fluxlines_dict[qb.name](),
-                flux=(self.fluxlines_dict[qb.name]() - uss) / V_per_phi0
-            ))
+            self.results[qb.name] = ParkAndQubitSpectroscopyResults(
+                **dict(voltage=voltage, flux=flux))
 
             if flux != qb.flux_parking():
                 transmon_freq_model = \
                     routines_utils.get_transmon_freq_model(qb)
-                frequency_center = qb.calculate_frequency(
+                updated_frequency = qb.calculate_frequency(
                     flux=flux, model=transmon_freq_model)[0]
-                log.setLevel('DEBUG')
-                log.debug(f'{frequency_center=}')
-                self.results[qb.name].initial_ge_freq = frequency_center
+                qb.ge_freq(updated_frequency)
+                self.results[qb.name].initial_ge_freq = updated_frequency
                 self.settings[type(self).__name__]['General']['update'] = False
             else:
                 self.results[qb.name].initial_ge_freq = qb.ge_freq()
