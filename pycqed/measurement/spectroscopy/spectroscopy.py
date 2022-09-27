@@ -319,8 +319,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             # frequency range of this LO
             lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
                               + np.min(freqs_all, axis=0))
-            lo_freq_key = (lo if isinstance(lo, str)
-                           else '_'.join([f'{s}' for s in lo])) + '_freq'
+            lo_freq_key = self._get_lo_freq_key(lo)
             self.sweep_points.add_sweep_parameter(param_name=lo_freq_key,
                                                   values=lo_freqs,
                                                   unit='Hz',
@@ -511,6 +510,10 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                     (not isinstance(qb, str) and qb.name == task['qb']):
                 return task
         return None
+
+    def _get_lo_freq_key(self, lo):
+        return (lo if isinstance(lo, str)
+                else '_'.join([f'{s}' for s in lo])) + '_freq'
 
 
 class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
