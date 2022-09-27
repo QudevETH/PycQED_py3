@@ -104,16 +104,15 @@ class Sequence:
             for group in trigger_groups:
                 awgs.add(self.pulsar.get_awg_from_trigger_group(group))
 
-        for group in trigger_groups:
-            awg = self.pulsar.get_awg_from_trigger_group(group)
-            if awg not in awgs:
-                continue
-            if awg not in sequences:
-                sequences[awg] = odict()
-            for segname, seg in self.segments.items():
+        for segname, seg in self.segments.items():
+            for group in trigger_groups:
+                awg = self.pulsar.get_awg_from_trigger_group(group)
+                if awg not in awgs:
+                    continue
+                sequences.setdefault(awg, odict())
                 # Store name of the segment as key and None as value.
                 # This is used when compiling docstrings in seqc.
-                sequences[awg].setdefault(segname)
+                sequences[awg].setdefault(segname, None)
                 elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
                     sequences[awg].setdefault(elname, {'metadata': {}})
