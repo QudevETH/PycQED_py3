@@ -374,9 +374,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def autorun(self, **kw):
         if self.measure:
             try:
-                log.setLevel('DEBUG')
-                log.debug([f'Freqs_{task["freqs"][0]/1e9}-{task["freqs"][-1]/1e9} '
-                           for task in self.task_list])
                 # Do not save timers here since they will be saved below.
                 self.run_measurement(save_timers=False, **kw)
             except (Exception, KeyboardInterrupt) as e:
