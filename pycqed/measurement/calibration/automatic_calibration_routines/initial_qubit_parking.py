@@ -299,13 +299,14 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                                    k.startswith('qb'),
                                    not k.startswith(qubit.name)])]
             if len(all_other_dips) == 0:  # No more qubits on the feedline
-                return 2 * qubit_dips_distance
+                return 3 * qubit_dips_distance
             distance_from_nearest_dip = np.abs(np.array(all_other_dips) -
                                                freq_center).min()
             if distance_from_nearest_dip < qubit_dips_distance:
                 log.warning("The neighboring dip is very close to the two dips."
                             "Frequency range might not be appropriate.")
-            return np.min([distance_from_nearest_dip, 2 * qubit_dips_distance])
+            return np.min([distance_from_nearest_dip,
+                           3 * qubit_dips_distance])
         except (AttributeError, KeyError, TypeError):
             return self.DEFAULT_FREQ_RANGE
 
