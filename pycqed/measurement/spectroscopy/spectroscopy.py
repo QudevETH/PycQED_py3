@@ -638,7 +638,20 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     )
                 # adapt df kwargs to hard sweep
                 self.df_kwargs['single_int_avg'] = False
-        return super().resolve_freq_sweep_points(**kw)
+        super().resolve_freq_sweep_points(**kw)
+        # enforce programming baseband pulses if the freq sweep is
+        # implemented as an IF sweep
+        for lo, tasks in self.grouped_tasks.items():
+            lo_freq_key = self._get_lo_freq_key(lo)
+            if lo_freq_key not in self.sweep_functions_dict:
+                assert len(tasks) == 1, (
+                    f"An entry {lo_freq_key} should exist in "
+                    f"self.sweep_functions_dict because tasks were grouped.")
+                lo_freq_key = tasks[0]['prefix'] + 'freq'
+            if getattr(self.sweep_functions_dict[lo_freq_key],
+                       'includes_IF_sweep', False):
+                for task in tasks:
+                    task['mod_freq'] = 0
 
     def sweep_block(self, sweep_points, qb, prepend_pulse_dicts=None,
                     mod_freq=None, **kw):
