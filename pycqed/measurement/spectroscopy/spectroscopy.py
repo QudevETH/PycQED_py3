@@ -637,7 +637,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 self.df_kwargs['single_int_avg'] = False
         return super().resolve_freq_sweep_points(**kw)
 
-    def sweep_block(self, sweep_points, qb, prepend_pulse_dicts=None , **kw):
+    def sweep_block(self, sweep_points, qb, prepend_pulse_dicts=None,
+                    mod_freq=None, **kw):
         """This function creates the blocks for a single transmission
         measurement task.
 
@@ -646,6 +647,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             qb (QuDev_transmon): target qubit
             prepend_pulse_dicts (dict): prepended pulses, see
                 CircuitBuilder.block_from_pulse_dicts. Defaults to None.
+            mod_freq (float or None): if not None, it overwrites the
+                mod_frequency of the RO pulse provided by the operation_dict
 
         Returns:
             list of :class:`~pycqed.measurement.waveform_control.block.Block`s:
@@ -657,6 +660,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         pulse_modifs = {'all': {'element_name': 'ro_el'}}
         # create ro pulses (ro)
         ro = self.block_from_ops('ro', [f"RO {qb}"], pulse_modifs=pulse_modifs)
+        if mod_freq is not None:
+            ro.pulses[0]['mod_frequency'] = mod_freq
 
         # create ParametricValues from param_name in sweep_points
         # (e.g. "amplitude", "length", etc.)
