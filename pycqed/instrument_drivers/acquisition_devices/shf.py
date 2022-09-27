@@ -541,10 +541,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                               get_closest_lo_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return swf.SpectroscopyHardSweep(parameter_name=name)
-        name_offset = 'Readout frequency with offset'
-        return swf.Offset_Sweep(
-            swf.MajorMinorSweep(
+            sf = swf.SpectroscopyHardSweep(parameter_name=name)
+        else:
+            name_offset = 'Readout frequency with offset'
+            sf = swf.Offset_Sweep(swf.MajorMinorSweep(
                 self.qachannels[acq_unit].centerfreq,
                 swf.Offset_Sweep(
                     self.qachannels[acq_unit].oscs[0].freq,
@@ -552,7 +552,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 np.unique([get_closest_lo_freq(f)
                            for f in self.allowed_lo_freqs()]),
                 name=name_offset, parameter_name=name_offset),
-            -ro_mod_freq, name=name, parameter_name=name)
+                -ro_mod_freq, name=name, parameter_name=name)
+        sf.includes_IF_sweep = True
+        return sf
 
     def stop(self):
         # Use a transaction since qcodes does not support wildcards

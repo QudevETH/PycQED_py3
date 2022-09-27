@@ -1422,9 +1422,10 @@ class QuDev_transmon(Qubit):
             else:
                 label = 'resonator_scan' + self.msmt_suffix
         self.prepare(drive=None)
+        sweep_function = self.swf_ro_freq_lo()
         if upload:
             ro_pars = self.get_ro_pars()
-            if self.instr_ro_lo() is None:
+            if getattr(sweep_function, 'includes_IF_sweep', False):
                 ro_pars['mod_frequency'] = 0
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
 
@@ -1453,7 +1454,7 @@ class QuDev_transmon(Qubit):
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.swf_ro_freq_lo())
+        MC.set_sweep_function(sweep_function)
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
