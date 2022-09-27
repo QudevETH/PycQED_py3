@@ -186,7 +186,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     """
     Base class for multi-qubit time-domain analyses.
 
-    Parameters that can be specified in the options dict:
+    Parameters that can be specified in the options_dict:
      - rotation_type: type of rotation to be done on the raw data.
        Types of rotations supported by this class:
         - 'cal_states' (default, no need to specify): rotation based on
@@ -215,6 +215,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             Stored in self.measurement_strings which specify the plot title.
             The selected parameter must also be part of the split_params for
             that qubit.
+     - functionality to plot 1d slices from a 2D plot:
+         - slice_idxs_1d_raw_plot (dict; default: None): slices indices of the
+            raw data. If None, no slices are plotted.
+         - slice_idxs_1d_proj_plot (dict; default: None): slices indices of the
+            projected data. If None, no slices are plotted.
+         The two dicts above are of the form {qb_name: [(idxs, axis)]}, where
+            - axis (str) can be either 'row' or 'col', specifying whether idxs
+                are row or column indices
+            - idxs can be an int (data index) or a str of the form
+                'idx_start:idx_end' interpreted as standard list/array indexing
+                arr[idx_start:idx_end]
+            Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
 
     If an instance of SweepPoints (or its repr) is provided, then the
     corresponding meas_obj_sweep_points_map must also be specified in
@@ -2062,14 +2074,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def prepare_raw_data_plots(self):
         """
-        Calls _prepare_raw_data_plots if plot_raw_data (passed in the
-        options_dict, metadata, or default_options) is True.
+        Prepares plots of the raw data for each qubit, stored in
+        proc_data_dict['meas_results_per_qb(_raw)'].
+
+        Calls
+            - _prepare_raw_data_plots if plot_raw_data (passed in the
+             options_dict, metadata, or default_options) is True.
+            - _prepare_raw_1d_slices_plots if the data is TwoD and
+             slice_idxs_1d_raw_plot was passed in options_dict, metadata, or
+             default_options
 
         If the measurement had active reset readouts (specified in
-        preparation_params), _prepare_raw_data_plots is called again with
-        plot_filtered=False (see docstring there) in order to create plots both
-        with and without the data points corresponding to the active reset
-        readouts.
+        preparation_params), the two functions above are called twice: once
+        for the data in meas_results_per_qb (data points corresponding to
+        active reset readouts are filtered out), and once for the data in
+        meas_results_per_qb_raw (active reset readouts included).
         """
         TwoD = self.get_param_value('TwoD', False)
         slice_idxs_1d_raw_plot = self.get_param_value(
@@ -2077,13 +2096,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         plot_raw_data = self.get_param_value('plot_raw_data', True)
         for qb_name in self.qb_names:
             slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
+            # Plot all raw data (including potential active reset readouts)
             key = 'meas_results_per_qb_raw'
             raw_data_dict = self.proc_data_dict[key][qb_name]
             sweep_points = self.raw_data_dict['hard_sweep_points']
             if plot_raw_data:
+                # standard raw data plot
                 self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             sweep_points=sweep_points)
+                                             xvals=sweep_points)
             if TwoD and len(slice_idxs_list) > 0:
+                # plot slices of the 2D raw data
                 self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
                                                   slice_idxs_list)
 
@@ -2091,50 +2113,83 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if 'active' in self.metadata['preparation_params'].get(
                         'preparation_type', 'wait') or \
                         not self.data_with_reset:
+                    # Plot raw data without the active reset readouts
                     key = 'meas_results_per_qb'
                     raw_data_dict = self.proc_data_dict[key][qb_name]
                     fig_suffix = 'filtered' if self.data_with_reset else ''
                     sweep_points = self.proc_data_dict[
                         'sweep_points_dict'][qb_name]['sweep_points']
-                    # plot raw data without the active reset readouts
                     if plot_raw_data:
+                        # standard raw data plot
                         self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                                     sweep_points=sweep_points,
+                                                     xvals=sweep_points,
                                                      fig_suffix=fig_suffix)
                     if TwoD and len(slice_idxs_list) > 0:
+                        # plot slices of the 2D raw data
                         self._prepare_raw_1d_slices_plots(qb_name,
                                                           raw_data_dict,
                                                           slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):
+        """
+        Prepares 1d plots of slices from a TwoD raw data plot.
+
+        Args:
+            qb_name (str): name of the qubit
+            raw_data_dict (dict): the dictionary containing the raw data, with
+                qubit names as keys.
+                Typically proc_data_dict['meas_results_per_qb(_raw)'].
+            slice_idxs_list (list): list of tuples of the form (idxs, axis)
+                (see class docstring).
+                Example: [('8:13', 'row'), (0, 'col')]
+        """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, sweep_points, xlabel, xunit = \
+            idxs, axis, xvals, xlabel, xunit = \
                 self.get_1d_slice_params(qb_name, slice_idxs)
             for idx in idxs:
                 fig_suffix = \
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
                 self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             sweep_points, idx, axis,
+                                             xvals, idx, axis,
                                              fig_suffix=fig_suffix,
                                              TwoD=False,
                                              xlabel=xlabel, xunit=xunit)
 
-    def _prepare_raw_data_plots(self, qb_name, raw_data_dict, sweep_points,
-                                data_idx=None, data_axis=None,
+    def _prepare_raw_data_plots(self, qb_name, raw_data_dict, xvals,
+                                twod_data_idx=None, twod_data_axis=None,
                                 fig_name='raw_plot', fig_suffix='',
                                 xlabel=None, xunit=None, TwoD=None):
         """
-        Prepares plots of the raw data stored in
-        proc_data_dict['meas_results_per_qb'] or
-        proc_data_dict['meas_results_per_qb_raw'].
+        Prepares plots of the raw data in raw_data_dict.
 
         Args:
-            plot_filtered: specifies whether to plot the raw data from
-                meas_results_per_qb (True) or meas_results_per_qb_raw (False)
-                The former case is useful for measurements that contain active
-                reset readouts, which will be not be shown in the plot if
-                plot_filtered == False.
+            qb_name (str): qubit name
+            raw_data_dict (dict): the dictionary containing the raw data, with
+                qubit names as keys.
+                Typically proc_data_dict['meas_results_per_qb(_raw)'].
+            xvals (list/array): x-axis values. Typically the hard/1d sweep
+                points
+            twod_data_idx (int): index of a slice in a 2D data array
+            twod_data_axis (int): axis of a 2D data array (0 for row, 1 for col)
+            fig_name (str): name of the figure
+            fig_suffix (str): suffix to the figure name. qb_name is
+                automatically inserted between fig_name and fig_suffix.
+            xlabel (str): x-axis label, typically corresponding to the hard/1d
+                sweep parameter
+            xunit (str): x-axis unit, typically corresponding to the hard/1d
+                sweep parameter
+            TwoD (bool): whether to prepare a 2D plot
+
+        If the data is TwoD, and twod_data_idx and twod_data_axis are passed,
+        this function will prepare a 1D plot of the slice in the 2D data
+        at index twod_data_idx along axis twod_data_axis. TwoD should be False
+        in this case in order to avoid preparing a 2D plot in addition.
+
+        If xlabel, xunit are None, they are taken from the SweepPoints or from
+        the metadata as the ones corresponding to the hard/1d sweep parameter.
+        They can also correspond to a soft sweep parameter if twod_data_idx and
+        twod_data_axis are passed, and twod_data_axis is 1 (column).
         """
         if len(raw_data_dict) == 1:
             numplotsx = 1
@@ -2174,7 +2229,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             'fig_id': plot_name + '_' + pn,
                             'ax_id': ax_id,
                             'plotfn': self.plot_colorxy,
-                            'xvals': sweep_points,
+                            'xvals': xvals,
                             'yvals': ssp,
                             'zvals': raw_data_dict[ro_channel].T,
                             'xlabel': xlabel,
@@ -2196,17 +2251,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     yvals = np.squeeze(yvals, axis=1)
                 elif yvals.ndim == 2:
                     # Plot 1D slice of raw data at data_idx along data_axis
-                    if data_idx is None or data_axis is None:
-                        raise ValueError('Both "data_idx" and "data_axis" must '
-                                         'be specified in order to plot 1D a '
-                                         'slice of the TwoD raw data.')
+                    if twod_data_idx is None or twod_data_axis is None:
+                        raise ValueError('Both "twod_data_idx" and '
+                                         '"twod_data_axis" must be specified '
+                                         'in order to plot 1D a slice of the '
+                                         'TwoD raw data.')
                     yvals = np.take_along_axis(
-                        yvals.T, np.array([[data_idx]]), data_axis).flatten()
+                        yvals.T,
+                        np.array([[twod_data_idx]]), twod_data_axis).flatten()
                 self.plot_dicts[plot_name + '_' + ro_channel] = {
                     'fig_id': plot_name,
                     'ax_id': ax_id,
                     'plotfn': self.plot_line,
-                    'xvals': sweep_points,
+                    'xvals': xvals,
                     'xlabel': xlabel,
                     'xunit': xunit,
                     'yvals': yvals,
@@ -2223,9 +2280,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def prepare_projected_data_plots(self):
         """
-        If plot_proj_data is True (passed in the options_dict, metadata, or
-        default_options), calls prepare_projected_data_plot with the correct
-        input parameters for each key in proc_data_dict['projected_data_dict'].
+        Prepares plots of the projected data for each qubit, stored in
+        proc_data_dict['projected_data_dict'].
+
+        Calls
+            - prepare_projected_data_plot if plot_proj_data (passed in the
+             options_dict, metadata, or default_options) is True.
+            - prepare_projected_1d_slices_plots if the data is TwoD and
+             slice_idxs_1d_proj_plot was passed in options_dict, metadata, or
+             default_options
         """
         plot_proj_data = self.get_param_value('plot_proj_data', True)
         select_split = self.get_param_value('select_split')
@@ -2250,7 +2313,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 title_suf = f'{suf}_{title_suf}' if \
                     len(title_suf) else suf
             if isinstance(corr_data, dict):
+                # the most typical case, where we have data for 'pg', 'pe'
+                # (and 'pf')
                 for data_key, data in corr_data.items():
+                    # data_key is usually 'pg', 'pe', 'pf'
                     fn = f'{fig_name}_{data_key}'
                     if not self.rotate:
                         data_label = ''
@@ -2266,6 +2332,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     tf = f'{data_key}_{title_suf}' if \
                         len(title_suf) else data_key
                     if plot_proj_data:
+                        # standard projected data plot
                         self.prepare_projected_data_plot(
                             fn, data, qb_name=qb_name,
                             data_label=data_label,
@@ -2275,6 +2342,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data_axis_label=data_axis_label,
                             plot_cal_points=plot_cal_points)
                     if TwoD and len(slice_idxs_list) > 0:
+                        # plot slices of the 2D projected data
                         self.prepare_projected_1d_slices_plots(
                             fn, data, qb_name, slice_idxs_list,
                             title_suffix=tf, data_label=data_label,
@@ -2283,18 +2351,34 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             else:
                 fig_name = 'projected_plot_' + qb_name
                 if plot_proj_data:
+                    # standard projected data plot
                     self.prepare_projected_data_plot(
                         fig_name, corr_data, qb_name=qb_name,
                         plot_cal_points=(not TwoD))
                 if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D projected data
                     self.prepare_projected_1d_slices_plots(
                         fig_name, qb_name, corr_data, slice_idxs_list)
 
     def prepare_projected_1d_slices_plots(self, fig_name, data, qb_name,
                                           slice_idxs_list, title_suffix='',
                                           **kw):
+        """
+        Prepares 1d plots of slices from a TwoD projected data plot.
+
+        Args:
+            fig_name (str): figure name
+            data (array): 2D array of the projected data
+            qb_name (str): qubit name
+            slice_idxs_list (list): list of tuples of the form (idxs, axis)
+                referring to slices of the 2D data array (see class docstring).
+                Example: [('8:13', 'row'), (0, 'col')]
+            title_suffix (str): suffix to add to the plot title which is created
+                automatically in prepare_projected_data_plot
+            **kw: passed to prepare_projected_data_plot
+        """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, sweep_points, xlabel, xunit = self.get_1d_slice_params(
+            idxs, axis, xvals, xlabel, xunit = self.get_1d_slice_params(
                 qb_name, slice_idxs)
             for idx in idxs:
                 data_slice = np.take_along_axis(
@@ -2305,7 +2389,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 ts_slice = f'{title_suffix}{plot_name_suffix}'
                 self.prepare_projected_data_plot(
                     fn_slice, data_slice, qb_name=qb_name,
-                    sweep_points=sweep_points,
+                    sweep_points=xvals,
                     title_suffix=ts_slice, TwoD=False,
                     plot_name_suffix=plot_name_suffix,
                     xlabel=xlabel, xunit=xunit,
@@ -2353,6 +2437,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             linestyle: string with recognised matplotlib linestyle. If not set,
                 only markers for the data points will be shows. Only has an
                 effects if TwoD is False.
+            xlabel: string with the x-axis label, typically corresponding to the
+                hard/1d sweep parameter
+            xunit: string with the x-axis unit, typically corresponding to the
+                hard/1d sweep parameter
         """
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -2486,6 +2574,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.plot_dicts[plot_name] = plot_dict_cal
 
     def get_1d_slice_params(self, qb_name, slice_idxs):
+        """
+        Translates the information in slice_idxs into the relevant plot
+        parameters used by the functions that prepare plots.
+
+        Args:
+            qb_name (str): qubit name
+            slice_idxs (tuple): of the form (idxs, axis) referring to slices
+                of a 2D data array (see class docstring).
+                Examples: ('8:13', 'row'), (0, 'col')
+
+        Returns:
+            idx (list): list of indices of the 2D data array
+            axis (int): axis along which to take indices (0 for row, 1 for col)
+            xvals (array): x-axis values
+            xlabel (str): x-axis label
+            xunit (str): x-axis unit
+        """
         idxs = slice_idxs[0]
         if isinstance(idxs, str):
             # idxs of the form 'int:int'
@@ -2496,21 +2601,21 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         axis = 0 if slice_idxs[1] == 'row' else 1
         if axis == 0:
-            sweep_points = self.proc_data_dict[
+            xvals = self.proc_data_dict[
                 'sweep_points_dict'][qb_name][
                 'sweep_points']
             xlabel, xunit = None, None
         else:
             param_name = list(self.proc_data_dict[
                                   'sweep_points_2D_dict'][qb_name])[0]
-            sweep_points = list(
+            xvals = list(
                 self.proc_data_dict[
                     'sweep_points_2D_dict'][
                     qb_name].values())[0]
             xlabel, xunit = \
                 self.get_soft_sweep_label_unit(
                     param_name)
-        return idxs, axis, sweep_points, xlabel, xunit
+        return idxs, axis, xvals, xlabel, xunit
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
         """
