@@ -873,12 +873,13 @@ class Pulsar(Instrument):
         awg = self.get_awg_from_trigger_group(group)
         gran = self.get(f"{awg}_element_start_granularity")
 
+        if isinstance(gran, dict):
+            gran = gran[group]
+
         if gran is None:
             return 0
         elif isinstance(gran, float) or isinstance(gran, int):
             return gran
-        else:
-            return gran[group]
 
     def get_trigger_channels(self, group:str) -> List[str]:
         """
@@ -1117,7 +1118,6 @@ class Pulsar(Instrument):
         t0 = time.time()
         if self.use_sequence_cache():
             self.invalid_cache_if_other_pulsar()
-            
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
                 sequence.generate_waveforms_sequences(
