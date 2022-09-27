@@ -2,6 +2,7 @@ from .base_settings_dictionary import SettingsDictionary
 from typing import List, Dict, Any, Optional
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
     import QuDev_transmon
+from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.measurement.quantum_experiment import QuantumExperiment
 from pycqed.measurement.calibration.single_qubit_gates import \
     SingleQubitGateCalibExperiment
@@ -15,15 +16,20 @@ class Step:
     which inherits from this class to give access to its functions.
     """
 
-    def __init__(self, dev, routine=None, **kw):
+    def __init__(self,
+                 dev: Device,
+                 routine: Optional[Any] = None,
+                 step_label: Optional[str] = None,
+                 settings: Optional[SettingsDictionary] = None,
+                 qubits: Optional[List[QuDev_transmon]] = None,
+                 settings_user: Optional[Dict[str, Any]] = None,
+                 **kw):
         """Initializes the Step class.
 
         Arguments:
             dev (Device): The device which is currently measured.
             routine (AutomaticCalibrationRoutine): The parent of the step. If
                 this step is the root routine, this should be None.
-
-        Keyword Arguments:
             step_label (str): A unique label for this step to be used in the
                 configuration parameters files.
             settings (SettingsDictionary): The configuration parameters
@@ -35,23 +41,24 @@ class Step:
                 configuration parameters. The structure of the dictionary must
                 be compatible with that of a general settings dictionary.
 
+        Keyword Arguments:
+            Shouldn't be any, this is here for backwards compatibility.
+
         """
-        self.routine: Optional[Step] = routine
-        self.step_label = kw.pop('step_label', None)
+        self.routine = routine
+        self.step_label = step_label
         self.dev = dev
         # Copy default settings from autocalib if this is the root routine, else
         # create an empty SettingsDictionary
         default_settings = self.dev.autocalib_settings.copy(
         ) if self.routine is None else self.routine.settings.copy({})
-        self.settings: SettingsDictionary = kw.pop("settings", default_settings)
-        self.qubits: List[QuDev_transmon] = kw.pop("qubits",
-                                                   self.dev.get_qubits())
+        self.settings = settings or default_settings
+        self.qubits = qubits or self.dev.get_qubits()
 
         # FIXME: Remove dependency on self.qubit. This is there to make the
         #  current one-qubit-only implementation of HamiltonianFitting work.
         self.qubit = self.qubits[0]
 
-        settings_user = kw.pop('settings_user', None)
         if settings_user:
             self.settings.update_user_settings(settings_user)
         self.parameter_lookups = [
