@@ -1,7 +1,8 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, AutomaticCalibrationRoutine)
 
-from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
+from .park_and_qubit_spectroscopy import (ParkAndQubitSpectroscopy,
+                                          ParkAndQubitSpectroscopyResults)
 
 import numpy as np
 import logging
@@ -20,7 +21,7 @@ class QubitHamiltonianParameters:
     dac_sweet_spot: float
     V_per_phi0: float
 
-    # Parameter that can be extracted from design
+    # Parameter that need to be extracted from design
     E_c: float = None
 
     # Parameters that will be estimated during the routine
@@ -100,23 +101,15 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
             if dc_source not in self.DCSources:
                 self.DCSources.append(dc_source)
 
-        self.qubits_to_skip = []
         self.results = {}
         for qubit in self.qubits:
             existing_hamiltonian_params = qubit.fit_ge_freq_from_dc_offset()
             if 'E_c' not in existing_hamiltonian_params:
                 existing_hamiltonian_params['E_c'] = self.extract_qubit_E_c(
                     qubit)
-            if all([k in existing_hamiltonian_params for k in
-                    ['Ej_max', 'asymmetry']]):
-                log.info(f"Ej_max and asymmetry values already exist in the "
-                         f"attributes of qubit {qubit}. The routine will skip "
-                         f"it.")
-                self.qubits_to_skip.append(qubit)
 
             self.results[qubit.name] = QubitHamiltonianParameters(
                 **existing_hamiltonian_params)
-
         self.final_init(**kw)
 
     @staticmethod
@@ -156,32 +149,54 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
 
         def __init__(self,
                      flux: float,
+                     park_qubit_post_measurement: bool = True,
                      **kw):
+            """
+
+            Args:
+                flux: The flux at which the qubit was measured, in Phi0 unit.
+                park_qubit_post_measurement: If True the qubit flux and
+                    frequency will be set to its parking sweet-spot.
+
+            Keyword Args:
+                Keyword arguments that will be passed to the `__init__` function
+                of :obj:`IntermediateStep`.
+            """
             self.routine: Optional[PopulateInitialHamiltonianModel] = None
             super().__init__(**kw)
             self.flux = flux
+            self.park_qubit_post_measurement = park_qubit_post_measurement
 
         def run(self):
             for qubit in self.qubits:
-                if qubit in self.routine.qubits_to_skip:
-                    continue
-
                 qubit_parameters: QubitHamiltonianParameters = \
                     self.routine.results[qubit.name]
-                qubit_park_and_spec: ParkAndQubitSpectroscopy = \
-                    self.routine.routine_steps[-1]
-                ge_freq = qubit_park_and_spec.results[
-                    qubit.name].measured_ge_freq
+                qb_results: ParkAndQubitSpectroscopyResults = \
+                    self.routine.routine_steps[-1].results[qubit.name]
                 E_c = qubit_parameters.E_c
                 if self.flux == 0:
-                    Ej_max = np.square(ge_freq + E_c) / (8 * E_c)
+                    Ej_max = (np.square(qb_results.measured_ge_freq + E_c) /
+                              (8 * E_c))
                     qubit_parameters.Ej_max = Ej_max
                 else:
                     assert (Ej_max := qubit_parameters.Ej_max) is not None, (
                         f'The calculation of the asymmetry (d) relies on '
-                        f'Ej_max, which should be evaluated at Phi=0.')
-                    d = np.square(ge_freq + E_c) / (8 * E_c * Ej_max)
+                        f'Ej_max.')
+                    d = (np.square(qb_results.measured_ge_freq + E_c) /
+                         (8 * E_c * Ej_max))
                     qubit_parameters.asymmetry = d
 
                     # Update the qubit with the final parameters
                     qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))
+
+                    if self.park_qubit_post_measurement:
+                        # Repark the qubit at its sweet-spot
+                        for i, step in enumerate(self.routine.routine_steps):
+                            if step.step_label == \
+                                    f'park_and_qubit_spectroscopy_' \
+                                    f'flux_{qubit.flux_parking()}':
+                                qb_results = step.results[qubit.name]
+                        self.routine.fluxlines_dict[qubit.name](
+                            qb_results.voltage)
+                        qubit.ge_freq(qb_results.measured_ge_freq)
+
