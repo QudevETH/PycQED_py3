@@ -1719,6 +1719,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.get_latex_prob_label(data_key))
 
     def get_soft_sweep_label_unit(self, param_name):
+        """
+        Finds the label and unit of a soft sweep parameter.
+
+        If a SweepPoints instance exists, takes the soft sweep parameter
+        corresponding to param_name. Otherwise, takes the first soft sweep
+        parameter.
+
+        Args:
+            param_name (str): name of a soft sweep parameter in SweepPoints
+
+        Returns:
+            label and unit of a soft sweep parameter
+        """
         if self.sp is not None:
             unit = self.sp.get_sweep_params_property(
                 'unit', dimension=1, param_names=param_name)
@@ -1728,9 +1741,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             soft_sweep_params = self.get_param_value(
                 'soft_sweep_params')
             if soft_sweep_params is not None:
+                label = list(soft_sweep_params.values())[0]['label']
                 unit = list(soft_sweep_params.values())[0]['unit']
             else:
+                label = self.raw_data_dict['sweep_parameter_names'][1]
                 unit = self.raw_data_dict['sweep_parameter_units'][1]
+            if np.ndim(label) > 0:
+                label = label[0]
             if np.ndim(unit) > 0:
                 unit = unit[0]
         return label, unit
