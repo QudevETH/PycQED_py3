@@ -700,10 +700,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     several pairs of qubits in parallel.
     Implementation as in https://www.nature.com/articles/s41567-018-0124-x.
 
-    Attributes in addition to the ones created by the base class:
-        randomize_cphases: Bool, whether to do parametric C-phase gates,
-            with a random angle in each cycle
-
     """
     default_experiment_name = 'TwoQubitXEB'
     kw_for_sweep_points = {
@@ -743,16 +739,19 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
         Keyword args:
             cphase (float; default: None): value of the C-phase gate angle
-                in degrees. If None, a standard CZ gate (180 deg) is done. See
-                NZTransitionControlledPulse
+                in degrees. If None,
+                Allowed values:
+                    float: angle of the CZ gates (deg)
+                    None: a standard CZ gate (180 deg) is done (see
+                    NZTransitionControlledPulse)
+                    'randomized': each CZ gate will be run with a different
+                    random angle
             See docstring of base class for further parameters.
 
         Assumptions:
          - assumes there is one task for CZ gate.
          - if cphase is different for each task, the XEB sequences will be
          randomized between tasks even if nr_seqs is specified globally.
-         - cphase is ignored (both global and per task) if randomize_cphases
-         is True
         """
         try:
             # add cphase to kw if not already there such that it will be found
@@ -764,7 +763,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             if kw.get('cphase', None) is None:
                 kw['cphase'] = ''
 
-            self.randomize_cphases = randomize_cphases
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
@@ -793,7 +791,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             lis = []
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 180 \
-                    if self.randomize_cphases else np.repeat([cphase], length)
+                    if cphase=='randomized' else np.repeat([cphase], length)
                 gates = []
                 gates.append(s_gates[1] + "qb_1")
                 sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
