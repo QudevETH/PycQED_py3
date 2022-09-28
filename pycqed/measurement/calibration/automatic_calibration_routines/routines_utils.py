@@ -1,3 +1,5 @@
+import numpy as np
+
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from typing import Literal
@@ -38,3 +40,13 @@ def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
     else:
         # Use the model that takes only the transmon into account
         return 'transmon'
+
+
+def get_transmon_anharmonicity(qubit: QuDev_transmon) -> float:
+    """Get the anharmonicity of a transmon or its estimation as the charging
+    energy (E_c) if no anharmonicity is found."""
+    if qubit.anharmonicity():  # Not None or 0
+        return qubit.anharmonicity()
+    else:
+        E_c = qubit.fit_ge_freq_from_dc_offset()["E_c"]
+        return -E_c

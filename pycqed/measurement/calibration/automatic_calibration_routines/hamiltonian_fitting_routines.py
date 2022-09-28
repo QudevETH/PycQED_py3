@@ -137,9 +137,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             delegate_plotting (bool): whether to delegate plotting to the
                 `plotting` module. The variable is stored in the global settings
                 and the default value is False.
-            anharmonicity (float): guess for the anharmonicity. Default -175
-                MHz. Note the sign convention, the anharmonicity alpha is
-                defined as alpha = f_ef - f_ge.
             method (str): optimization method to use. Default is Nelder-
                 Mead.
             include_mixer_calib_carrier (bool): If True, include mixer
@@ -169,6 +166,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
          for the current implementation of the ro_flux_tmp_vals. This is
          detrimental for the routine if use_prior_model = False and the qubit
          doesn't contain a prior model.
+
+        FIXME: Remove the dependence on `use_prior_model`, which should always
+         be True. The preliminary values before any measurement can be estimated
+         from the design values.
         """
 
         super().__init__(
@@ -236,6 +237,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     qubit.calculate_voltage_from_flux(flux=self.ss1_flux),
                     qubit.calculate_frequency(model=freq_model,
                                               flux=self.ss1_flux)[0]),
+                # FIXME the `calculate_frequency` function returns an array,
+                #  but is it just a bug?
                 self.ss2_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss2_flux),
                     qubit.calculate_frequency(model=freq_model,
@@ -621,9 +624,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.flux = self.get_param_value('flux')
             self.voltage = self.get_param_value('voltage')
 
-            assert any([self.frequency, self.flux, self.voltage]
-                       ), "No transition, frequency or voltage specified. At " \
-                          "least one of these should be specified."
+            if self.frequency is None:
+                assert any([self.flux is not None,
+                            self.voltage is not None]), \
+                    f"Could not calculate the frequency of transition " \
+                    f"{self.transition} without flux or voltage specified."
 
         def run(self):
             """Updates frequency of the qubit for a given transition. This can
@@ -640,11 +645,20 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     # A (possibly preliminary) Hamiltonian model exists
                     if (self.get_param_value('use_prior_model') and
                             len(qb.fit_ge_freq_from_dc_offset()) > 0):
-                        frequency = qb.calculate_frequency(
-                            flux=self.flux,
-                            bias=self.voltage,
-                            transition=self.transition,
-                        )
+                        freq_model = routines_utils.get_transmon_freq_model(qb)
+                        try:
+                            frequency = qb.calculate_frequency(
+                                model=freq_model,
+                                flux=self.flux,
+                                bias=self.voltage,
+                                transition=self.transition,
+                            )[0]
+                        except NotImplementedError:
+                            assert (self.transition == "ef")
+                            frequency = (
+                                    qb.ge_freq() +
+                                    routines_utils.get_transmon_anharmonicity(
+                                        qb))
 
                     # No Hamiltonian model exists, but we want to know the ef-
                     # frequency when the ge-frequency is known at this flux and
@@ -656,8 +670,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     #  preceded by the ge-measurement at the same voltage (and
                     #  thus flux).
                     elif self.transition == "ef":
-                        frequency = (qb.ge_freq() +
-                                     self.get_param_value("anharmonicity"))
+                        frequency = (
+                                qb.ge_freq() +
+                                routines_utils.get_transmon_anharmonicity(
+                                    qb))
 
                     # No Hamiltonian model exists
                     else:
