@@ -28,6 +28,9 @@ class RandomCircuitBenchmarkingMixin:
     'seeds' for RB, 'seqs' for XEB
     """
 
+    def update_kw_cal_states(self, kw):
+        kw['cal_states'] = kw.get('cal_states', '')
+
     def create_sweep_type(self, sweep_type=None):
         """
         Creates the sweep_type attribute.
@@ -198,6 +201,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
              lengths for different qubits
         """
         try:
+            self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
             if interleaved_gate is not None:
@@ -564,6 +568,7 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
          gates for each task, pass nr_seqs in the task_list.
         """
         try:
+            self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
 
