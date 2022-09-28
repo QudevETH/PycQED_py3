@@ -588,7 +588,8 @@ def translate(info):
         angle = np.pi / 4
     else:  # C-phase gate
         gate_name = 'CPHASE'
-        angle = -info[0][2:]*np.pi/180
+        angle = 180 if info[0][2:]=='' else float(info[0][2:])
+        angle = -angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
