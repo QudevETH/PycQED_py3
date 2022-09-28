@@ -757,8 +757,7 @@ class Pulsar(Instrument):
         new_trigger_group_map = {}
         specified_channels = set()
         for group_name, channels in trigger_group_map.items():
-            new_trigger_group_map[f"{awg_name}_{group_name}"] = \
-                trigger_group_map.get(group_name)
+            new_trigger_group_map[f"{awg_name}_{group_name}"] = channels
 
             # some sanity checks
             if not specified_channels.isdisjoint(set(channels)):
