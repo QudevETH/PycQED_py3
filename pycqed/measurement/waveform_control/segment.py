@@ -1571,8 +1571,14 @@ class Segment:
 
     def get_element_samples(self, element, channel):
         """
-        Returns the number of samples the element occupies for the channel or
-        AWG.
+        Returns the number of samples the element occupies for the channel.
+
+        Args:
+            element (str): name of element to get samples for
+            channel (str): name of channel for which to get number of
+                samples for
+        Returns:
+            number of samples
         """
         group = self.pulsar.get_trigger_group(channel)
         return self.element_start_end[element][group][1]
