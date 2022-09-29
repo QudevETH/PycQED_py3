@@ -679,7 +679,7 @@ class Segment:
             if len(self.pulsar.get_trigger_channels(group)) == 0}
 
         # generate dictionary triggering_groups (keys are trigger
-        # groups of triggering AWG and values are trigger groups 
+        # groups of triggering AWG and values are trigger groups
         # of triggered AWGs) and triggered_groups (keys are triggered
         # groups of AWGs and values are trigger groups of triggering AWGs)
         triggering_groups = {}
@@ -954,8 +954,6 @@ class Segment:
                 # add element and or group to element_start_end
                 if el not in self.element_start_end or group not in \
                         self.element_start_end[el]:
-                    self.element_start_length(el, group)
-                elif group not in self.element_start_end[el]:
                     self.element_start_length(el, group)
                 el_list.append([self.element_start_end[el][group][0], i, el])
                 i += 1
