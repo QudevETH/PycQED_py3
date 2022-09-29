@@ -118,7 +118,7 @@ class Sequence:
                     sequences[awg].setdefault(elname, {'metadata': {}})
                     for cw in seg.get_element_codewords(elname, trigger_group=group):
                         sequences[awg][elname].setdefault(cw, {})
-                        for ch in seg.get_element_channels(elname, group=group):
+                        for ch in seg.get_element_channels(elname, trigger_group=group):
                             h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
                             sequences[awg][elname][cw][chid] = h
