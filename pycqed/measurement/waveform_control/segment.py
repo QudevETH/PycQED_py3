@@ -678,9 +678,10 @@ class Segment:
         masters = {group for group in self.pulsar.trigger_groups
             if len(self.pulsar.get_trigger_channels(group)) == 0}
 
-        # generate dictionary triggering_groups (keys are trigger groups of triggering
-        # AWG and values triggered AWGs) and triggered_groups (keys are triggered groups of
-        # AWGs and values are trigger groups of triggering AWGs)
+        # generate dictionary triggering_groups (keys are trigger
+        # groups of triggering AWG and values are trigger groups 
+        # of triggered AWGs) and triggered_groups (keys are triggered
+        # groups of AWGs and values are trigger groups of triggering AWGs)
         triggering_groups = {}
         triggered_groups = {}
         groups = self.pulsar.trigger_groups - masters
