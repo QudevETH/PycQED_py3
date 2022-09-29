@@ -1237,7 +1237,7 @@ class Segment:
         return [t_start, samples]
 
     def waveforms(self, awgs=None, elements=None, channels=None,
-                        codewords=None, trigger_groups=None):
+                  codewords=None, trigger_groups=None):
         """
         After all the pulses have been added, the timing resolved and the 
         trigger pulses added, the waveforms of the segment can be compiled.
