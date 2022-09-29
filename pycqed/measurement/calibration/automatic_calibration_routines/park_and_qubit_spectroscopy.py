@@ -117,7 +117,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 transmon_freq_model = \
                     routines_utils.get_transmon_freq_model(qb)
                 updated_frequency = qb.calculate_frequency(
-                    flux=flux, model=transmon_freq_model)[0]
+                    flux=flux, model=transmon_freq_model)
                 qb.ge_freq(updated_frequency)
                 self.results[qb.name].initial_ge_freq = updated_frequency
                 self.settings[type(self).__name__]['General']['update'] = False

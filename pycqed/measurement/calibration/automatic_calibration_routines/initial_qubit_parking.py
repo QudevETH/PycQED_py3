@@ -347,12 +347,10 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                 continue
             else:
                 fit_results = self.results[qb.name]
-                # FIXME the [0] index seems like a bug in the
-                #  `calculate_frequency` function
                 uss_transmon_freq = qb.calculate_frequency(model='transmon',
-                                                           flux=0)[0]
+                                                           flux=0)
                 lss_transmon_freq = qb.calculate_frequency(model='transmon',
-                                                           flux=0.5)[0]
+                                                           flux=0.5)
                 sides = ('left', 'right')
                 uss_readout_freq = np.mean([fit_results[f'{side}_uss_freq'] for
                                             side in sides])

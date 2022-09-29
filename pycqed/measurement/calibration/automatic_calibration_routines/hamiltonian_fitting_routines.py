@@ -236,13 +236,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 self.ss1_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss1_flux),
                     qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss1_flux)[0]),
-                # FIXME the `calculate_frequency` function returns an array,
-                #  but is it just a bug?
+                                              flux=self.ss1_flux)),
                 self.ss2_flux: (
                     qubit.calculate_voltage_from_flux(flux=self.ss2_flux),
                     qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss2_flux)[0]),
+                                              flux=self.ss2_flux)),
             }
 
         # Validity of flux_to_voltage_and_freq_guess dictionary
@@ -652,7 +650,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                 flux=self.flux,
                                 bias=self.voltage,
                                 transition=self.transition,
-                            )[0]
+                            )
                         except NotImplementedError:
                             assert (self.transition == "ef")
                             frequency = (
