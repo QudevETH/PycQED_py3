@@ -969,7 +969,8 @@ class Segment:
                 # If element length is shorter than min length, 0s will be
                 # appended by pulsar. Test for elements with at least
                 # min_el_len if they overlap.
-                min_el_len = self.pulsar.get('{}_min_length'.format(self.pulsar.get_awg_from_trigger_group(group)))
+                min_el_len = self.pulsar.get('{}_min_length'.format(
+                    self.pulsar.get_awg_from_trigger_group(group)))
                 if el_length < min_el_len:
                     el_prev_end = el_prev_start + min_el_len
 
