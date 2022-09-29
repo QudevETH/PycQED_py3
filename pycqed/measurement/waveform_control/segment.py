@@ -1281,7 +1281,8 @@ class Segment:
             for i, element in enumerate(self.elements_on_awg[group]):
                 if element not in elements:
                     continue
-                if (i, element) not in awg_wfs[awg]: awg_wfs[awg][(i, element)] = {}
+                if (i, element) not in awg_wfs[awg]:
+                    awg_wfs[awg][(i, element)] = {}
 
                 tvals = self.tvals(channel_list, element)
                 wfs = {}
