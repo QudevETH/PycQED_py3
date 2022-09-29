@@ -1255,7 +1255,8 @@ class Segment:
             }
         """
         if awgs is None:
-            awgs = set(self.pulsar.get_awg_from_trigger_group(group) for group in self.elements_on_awg)
+            awgs = set(self.pulsar.get_awg_from_trigger_group(group)
+                       for group in self.elements_on_awg)
         if channels is None:
             channels = set(self.pulsar.channels)
         if elements is None:
