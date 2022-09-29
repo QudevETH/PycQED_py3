@@ -1417,25 +1417,35 @@ class Segment:
 
         return awg_wfs
 
-    def get_element_codewords(self, element, awg=None, group=None):
+    def get_element_codewords(self, element, awg=None, trigger_group=None):
         """
         Return all codewords for pulses in an element. Use awg or
         group to filter for specific awg or group.
+
+        Args:
+            element (str): name of element to get codewords for
+            awg (str): name of awg which to consider for finding codewords
+            trigger_group (str): name of trigger group which to consider
+                for finding codewords
+
+        Returns:
+            set of codewords
         """
         codewords = set()
         if awg is not None:
             awg_channels = set(self.pulsar.find_awg_channels(awg))
-        if group is not None:
+        if trigger_group is not None:
             group_channels = set(self.pulsar.get_trigger_group_channels(
-                group))
+                trigger_group))
 
         for pulse in self.elements[element]:
             channels = set(pulse.masked_channels())
             if awg is not None:
                 channels = channels & awg_channels
-            if group is not None:
+            if trigger_group is not None:
                 channels = channels & group_channels
-            if (awg is not None or group is not None) and len(channels) == 0:
+            if (awg is not None or trigger_group is not None) and \
+                    len(channels) == 0:
                 continue
             codewords.add(pulse.codeword)
         return codewords

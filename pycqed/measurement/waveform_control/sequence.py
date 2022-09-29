@@ -116,7 +116,7 @@ class Sequence:
                 elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
                     sequences[awg].setdefault(elname, {'metadata': {}})
-                    for cw in seg.get_element_codewords(elname, group=group):
+                    for cw in seg.get_element_codewords(elname, trigger_group=group):
                         sequences[awg][elname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname, group=group):
                             h = seg.calculate_hash(elname, cw, ch)
