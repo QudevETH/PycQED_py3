@@ -1044,7 +1044,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         def run(self):
             """Executes the decision step.
             """
-            routine = self.routine
+            routine: AdaptiveQubitSpectroscopy = self.routine
             qubits_to_rerun = []
             qubits_failed = []
             for qb in self.qubits:
@@ -1092,7 +1092,11 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
 
                 # Check whether the fit was successful and store the qubits
                 # in the corresponding list for further processing.
-                success = False if red_chi_upper_bound < red_chi else True
+                if red_chi_upper_bound < red_chi:
+                    fail_message = f'Fit error too high.'
+                    success = False
+                else:
+                    success = True
 
                 # Check whether the width of the resonance is within the
                 # specified limits
@@ -1115,15 +1119,23 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 kappa = qb_spec.analysis.fit_res[qb.name].values['kappa']
                 if max_kappa_absolute is not None:
                     if kappa > max_kappa_absolute:
+                        fail_message = f'f{kappa=}>{max_kappa_absolute}'
                         success = False
                 if max_kappa_fraction_sweep_range is not None:
                     if kappa > max_kappa_fraction_sweep_range * sweep_range:
+                        fail_message = (
+                            f'f{kappa=}>'
+                            f'{max_kappa_fraction_sweep_range * sweep_range}')
                         success = False
                 if min_kappa_absolute is not None:
                     if kappa < min_kappa_absolute:
+                        fail_message = f'f{kappa=}<{min_kappa_absolute}'
                         success = False
                 if min_kappa_fraction_sweep_range is not None:
                     if kappa < min_kappa_fraction_sweep_range * sweep_range:
+                        fail_message = (
+                            f'f{kappa=}<'
+                            f'{min_kappa_fraction_sweep_range * sweep_range}')
                         success = False
 
                 if success:
@@ -1133,8 +1145,8 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                     self.routine.previous_freqs[qb.name] = qb.ge_freq()
                 elif routine.index_iteration < max_iterations:
                     if self.get_param_value('verbose'):
-                        print(f"Lorentzian fit failed for {qb.name}. "
-                              "Trying again.")
+                        print(f"Lorentzian fit failed for {qb.name} since"
+                              f"{fail_message}. Trying again.")
                     qubits_to_rerun.append(qb)
                     # Restore the previous frequency
                     qb.ge_freq(self.routine.previous_freqs[qb.name])

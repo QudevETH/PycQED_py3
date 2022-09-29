@@ -42,15 +42,18 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         one will be used.
     3) FindFrequency (find_frequency_<tr_name>_<i>): see corresponding routine.
     4) ReparkingRamsey (reparking_ramsey_<i>): see corresponding routine
+
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
     upper and the lower sweet spot.
     Steps 2) and 3) are repeated also for the ef transition at the upper
     sweet spot.
+
     5) DetermineModel (determine_model_preliminary): fits a Hamiltonian
         model based on the three transition frequencies
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS).
+
     For the remaining fluxes and transitions specified in "measurements" the
     following step will be run:
         6) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
@@ -60,8 +63,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             model.
         8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
             sets temporary bias voltage for flux-pulse-assisted readout.
-        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine
-        ...
+        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine.
+
     Afterwards, the final model is determined:
     10) DetermineModel (determine_model_final): fits a Hamiltonian model based
         on the transition frequencies at the fluxes specified in "measurements".
