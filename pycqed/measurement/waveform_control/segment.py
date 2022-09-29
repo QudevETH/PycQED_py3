@@ -694,7 +694,7 @@ class Segment:
                     triggered_groups[group] = []
                 triggered_groups[group].append(trigger_group)
 
-        # implement Kahn's algorithm to sort the AWG by hierarchy
+        # implement Kahn's algorithm to sort the trigger groups by hierarchy
         trigger_groups = masters
         group_hierarchy = []
 
