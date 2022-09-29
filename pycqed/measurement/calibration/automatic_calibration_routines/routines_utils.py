@@ -50,3 +50,44 @@ def get_transmon_anharmonicity(qubit: QuDev_transmon) -> float:
     else:
         E_c = qubit.fit_ge_freq_from_dc_offset()["E_c"]
         return -E_c
+
+
+def get_transmon_resonator_coupling(qubit: QuDev_transmon,
+                                    uss_transmon_freq: float = None,
+                                    uss_readout_freq: float = None,
+                                    lss_transmon_freq: float = None,
+                                    lss_readout_freq: float = None,
+                                    update: bool = False) -> float:
+    r"""Get the transmon-readout coupling strength or its estimation if no
+    coupling is found in the qubit's attributes.
+
+    Arguments:
+        qubit: The qubit instance for which the coupling is returned.
+        uss_transmon_freq: transmon frequency at upper sweet spot.
+        uss_readout_freq: readout frequency at upper sweet spot.
+        lss_transmon_freq: transmon frequency at lower sweet spot.
+        lss_readout_freq: readout frequency at lower sweet spot.
+        update: whether to update the qubit attribute with the coupling.
+
+    The estimation equation is (see DOI: 10.1103/RevModPhys.93.025005 Eq. 45):
+    .. math::
+       f_r_{uss} - f_r_{lss} =
+        g^2 * (\frac{1}{E_c - Delta_uss} - \frac{1}{E_c - Delta_lss})
+    """
+
+    if "coupling" in qubit.fit_ge_freq_from_dc_offset().keys():
+        return qubit.fit_ge_freq_from_dc_offset()["coupling"]
+    else:
+        assert all([uss_transmon_freq, uss_readout_freq,
+                    lss_transmon_freq, lss_readout_freq])
+        E_c = qubit.fit_ge_freq_from_dc_offset()["E_c"]
+        readout_frequency_difference = uss_readout_freq - lss_readout_freq
+        Delta_uss = uss_transmon_freq - uss_readout_freq
+        Delta_lss = lss_transmon_freq - lss_readout_freq
+        coefficient = (1 / (E_c - Delta_uss)) - (1 / (E_c - Delta_lss))
+        g = np.sqrt(readout_frequency_difference / coefficient)
+
+        if update:
+            qubit.fit_ge_freq_from_dc_offset()["coupling"] = g
+
+        return g

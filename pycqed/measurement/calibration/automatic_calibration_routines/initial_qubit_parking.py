@@ -4,6 +4,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     AutomaticCalibrationRoutine
 )
 
+from pycqed.measurement.calibration.automatic_calibration_routines import \
+    routines_utils
 from pycqed.measurement.spectroscopy import spectroscopy as spec
 from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -130,6 +132,7 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         self.experiment_settings['update'] = True
         self._update_parameters(**self.experiment_settings)
         self.autorun(**self.experiment_settings)
+        self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
 
 
 class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
@@ -218,7 +221,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                     freq_range.format(
                         adaptive=self.get_adaptive_freq_range(qb, freq_center)))
 
-            log.debug(f'{freq_center=}, {freq_range=}, {freq_pts=}')
+            log.debug(f'{self.step_label}: '
+                      f'{freq_center=}, {freq_range=}, {freq_pts=}')
             freqs = np.linspace(freq_center - freq_range / 2,
                                 freq_center + freq_range / 2, freq_pts)
 
@@ -265,7 +269,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
             mode2_freq (float): The other mode of the RO-Purcell system.
             feedline_results (Dict[str, float]): The full results dictionary
                 of the feedline of the qubit."""
-        fit_res = self.routine.routine_steps[-1].analysis.fit_res
+        fit_res = self.routine.routine_steps[-1].results
         for feedline_results in fit_res.values():
             for k in feedline_results.keys():
                 if k.startswith(f'{qubit.name}'):
@@ -321,6 +325,50 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         self.experiment_settings['update'] = True
         self._update_parameters(**self.experiment_settings)
         self.autorun(**self.experiment_settings)
+        self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
+        self.update_qubits_fr_and_coupling()
+
+    def update_qubits_fr_and_coupling(self):
+        """Update the keys 'fr' and 'coupling' of the qubit Hamiltonian model.
+
+        Update the `fit_ge_freq_from_dc_offset()` dictionary with an estimation
+        from the step results.
+        Note that this estimation uses the qubit
+        frequencies at the sweet spots, which are estimated from the parameters
+        'E_c', 'Ej_max' and 'asymmetry' which might be only design values. """
+
+        for qb in self.qubits:
+            hamiltonian_fit_params = qb.fit_ge_freq_from_dc_offset()
+            if not all([k in hamiltonian_fit_params.keys() for k in [
+                    'E_c', 'Ej_max', 'asymmetry']]):
+                log.warning("Could not estimate 'coupling' and 'fr' for qubit"
+                            f"{qb.name} since not all required parameters were"
+                            f"provided.")
+                continue
+            else:
+                fit_results = self.results[qb.name]
+                # FIXME the [0] index seems like a bug in the
+                #  `calculate_frequency` function
+                uss_transmon_freq = qb.calculate_frequency(model='transmon',
+                                                           flux=0)[0]
+                lss_transmon_freq = qb.calculate_frequency(model='transmon',
+                                                           flux=0.5)[0]
+                sides = ('left', 'right')
+                uss_readout_freq = np.mean([fit_results[f'{side}_uss_freq'] for
+                                            side in sides])
+                lss_readout_freq = np.mean([fit_results[f'{side}_lss_freq'] for
+                                            side in sides])
+                coupling = routines_utils.get_transmon_resonator_coupling(
+                    qubit=qb,
+                    uss_transmon_freq=uss_transmon_freq,
+                    lss_transmon_freq=lss_transmon_freq,
+                    uss_readout_freq=uss_readout_freq,
+                    lss_readout_freq=lss_readout_freq
+                )
+                dips = ('left_uss', 'right_uss', 'left_lss', 'right_lss')
+                fr = np.mean([fit_results[f'{dip}_freq'] for dip in dips])
+                self.results[qb.name].update({'fr': fr, 'coupling': coupling})
+                hamiltonian_fit_params.update({'fr': fr, 'coupling': coupling})
 
 
 class InitialQubitParking(AutomaticCalibrationRoutine):
