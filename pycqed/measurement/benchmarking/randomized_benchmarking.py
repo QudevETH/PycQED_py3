@@ -28,6 +28,9 @@ class RandomCircuitBenchmarkingMixin:
     'seeds' for RB, 'seqs' for XEB
     """
 
+    def update_kw_cal_states(self, kw):
+        kw['cal_states'] = kw.get('cal_states', '')
+
     def create_sweep_type(self, sweep_type=None):
         """
         Creates the sweep_type attribute.
@@ -205,6 +208,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
              lengths for different qubits
         """
         try:
+            self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
             if interleaved_gate is not None:
@@ -530,10 +534,6 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
             run on all tasks (True), or have unique sequences per task (False)
     """
     default_experiment_name = 'XEB'
-    kw_for_sweep_points = {
-        'cycles': dict(param_name='cycles', unit='',
-                       label='Nr. Cycles', dimension=0),
-    }
     seq_lengths_name = 'cycles'
     randomizations_name = 'seqs'
 
@@ -571,6 +571,11 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
          gates for each task, pass nr_seqs in the task_list.
         """
         try:
+            self.kw_for_sweep_points.update({
+                'cycles': dict(param_name='cycles', unit='',
+                               label='Nr. Cycles', dimension=0),
+            })
+            self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
 
@@ -608,6 +613,13 @@ class SingleQubitXEB(CrossEntropyBenchmarking):
     several qubits in parallel.
     """
     default_experiment_name = 'SingleQubitXEB'
+    kw_for_sweep_points = {
+        'nr_seqs,cycles': dict(
+            param_name='z_rots', unit='',
+            label='$R_z$ angles, $\\phi$',
+            dimension=1, values_func=lambda ns, cycles: [[
+                list(np.random.uniform(0, 2, nc) * 180)
+                for nc in cycles] for _ in range(ns)])}
     task_mobj_keys = ['qb']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
@@ -636,13 +648,6 @@ class SingleQubitXEB(CrossEntropyBenchmarking):
          - assumes there is one task for each qubit.
         """
         try:
-            self.kw_for_sweep_points.update({
-                'nr_seqs,cycles': dict(
-                    param_name='z_rots', unit='',
-                    label='$R_z$ angles, $\\phi$',
-                    dimension=1, values_func=lambda ns, cycles: [[
-                        list(np.random.uniform(0, 2, nc) * 180)
-                        for nc in cycles] for _ in range(ns)])})
             self.init_rotation = init_rotation
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -701,6 +706,11 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
     """
     default_experiment_name = 'TwoQubitXEB'
+    kw_for_sweep_points = {
+        'nr_seqs,cycles,cphase': dict(
+            param_name='gateschoice', unit='',
+            label='cycles gates', dimension=1,
+            values_func='paulis_gen_func')}
     task_mobj_keys = ['qb_1', 'qb_2']
     kw_for_task_keys = ['cphase']
 
@@ -745,12 +755,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
          is True
         """
         try:
-            self.kw_for_sweep_points.update({
-                'nr_seqs,cycles,cphase': dict(
-                    param_name='gateschoice', unit='',
-                    label='cycles gates', dimension=1,
-                    values_func='paulis_gen_func')})
-
             # add cphase to kw if not already there such that it will be found
             # by generate_kw_sweep_points and will be added to the tasks
             # (the parameter is specified in kw_for_task_keys). Having cphase
