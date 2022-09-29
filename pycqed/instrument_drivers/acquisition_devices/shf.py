@@ -546,7 +546,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         for i, ch in enumerate(self.qachannels):
             if self.awg_active[i]:  # Outputs a waveform
                 if self._awg_program[i]:  # Using the sequencer
-                    ch.generator.enable_sequencer(single=True)
+                    # These 2 lines replace ...enable_sequencer(single=True)
+                    # which also checks that it started, but sometimes fails
+                    # (for short sequences?)
+                    ch.generator.single(True)
+                    ch.generator.enable(1, deep=True)
                 else:
                     # No AWG needs to be started if the acq unit has no program
                     pass
