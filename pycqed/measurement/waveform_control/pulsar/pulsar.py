@@ -157,14 +157,25 @@ class PulsarAWGInterface(ABC):
                                        "(eg. readout) passed in "
                                        "'repeat dictionary'.")
         pulsar.add_parameter(f"{name}_enforce_single_element",
-                             initial_value=False,
-                             vals=vals.MultiType(vals.Dict(),
-                                               vals.Bool()),
-                             parameter_class=ManualParameter,
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
                                        "sure the master AWG has only one "
-                                       "waveform per segment.")
+                                       "waveform per segment.",
+                             get_cmd=lambda s=self.pulsar:
+                             s.get(f'{name}_join_or_split_elements') == 'ese',
+                             set_cmd=lambda v, s=self.pulsar:
+                             (s.set(f'{name}_join_or_split_elements', 'ese')
+                              if v else None), )
+        pulsar.add_parameter(f"{name}_join_or_split_elements",
+                             initial_value="default",
+                             vals=vals.Enum("default", "split", "ese"),
+                             parameter_class=ManualParameter,
+                             docstring="If ese: Group all the pulses on this "
+                                       "AWG into a single element. Useful "
+                                       "for making sure the master AWG has "
+                                       "only one waveform per segment. If "
+                                       "split: Split all pulses into individual "
+                                       "elements.")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
