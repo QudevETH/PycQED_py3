@@ -28,6 +28,10 @@ class QubitHamiltonianParameters:
     Ej_max: float = None
     asymmetry: float = None
 
+    # Optional parameters that might exist for the qubit
+    fr: float = 0
+    coupling: float = 0
+
 
 class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     r"""This routine populates a first guess for the Hamiltonian model of a

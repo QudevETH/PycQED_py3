@@ -74,13 +74,14 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
        f_r_{uss} - f_r_{lss} =
         g^2 * (\frac{1}{E_c - Delta_uss} - \frac{1}{E_c - Delta_lss})
     """
-
-    if "coupling" in qubit.fit_ge_freq_from_dc_offset().keys():
-        return qubit.fit_ge_freq_from_dc_offset()["coupling"]
+    qubit_parameters = qubit.fit_ge_freq_from_dc_offset()
+    if "coupling" in qubit_parameters.keys():
+        if not qubit_parameters["coupling"] == 0:
+            return qubit_parameters["coupling"]
     else:
         assert all([uss_transmon_freq, uss_readout_freq,
                     lss_transmon_freq, lss_readout_freq])
-        E_c = qubit.fit_ge_freq_from_dc_offset()["E_c"]
+        E_c = qubit_parameters["E_c"]
         readout_frequency_difference = uss_readout_freq - lss_readout_freq
         Delta_uss = uss_transmon_freq - uss_readout_freq
         Delta_lss = lss_transmon_freq - lss_readout_freq
@@ -88,6 +89,6 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
         g = np.sqrt(readout_frequency_difference / coefficient)
 
         if update:
-            qubit.fit_ge_freq_from_dc_offset()["coupling"] = g
+            qubit_parameters["coupling"] = g
 
         return g

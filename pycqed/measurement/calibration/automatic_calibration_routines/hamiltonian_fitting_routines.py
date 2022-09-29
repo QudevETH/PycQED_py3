@@ -911,7 +911,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             if use_prior_model:
                 p_guess = self.qubit.fit_ge_freq_from_dc_offset()
 
-            # Using guess parameters instead
+                if "coupling" not in p_guess.keys():
+                    p_guess["coupling"] = self.get_param_value(
+                        "coupling") * include_resonator
+                if "fr" not in p_guess.keys():
+                    p_guess["fr"] = self.get_param_value(
+                        "fr", associated_component_type_hint="ro_res")
+
+            # Using new guess parameters instead
             else:
                 p_guess = {
                     "Ej_max":

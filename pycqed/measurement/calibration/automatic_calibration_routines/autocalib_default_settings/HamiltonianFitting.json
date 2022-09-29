@@ -31,12 +31,11 @@
     "DetermineModel": {
         "method": "Nelder-Mead",
         "include_reparkings": true,
-        "include_resonator": false,
+        "include_resonator": true,
         "use_prior_model": false
     },
     "determine_model_final":{
         "include_reparkings": false,
-        "include_resonator": true,
         "use_prior_model": true
     },
     "UpdateFrequency": {
