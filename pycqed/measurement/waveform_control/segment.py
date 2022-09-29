@@ -674,7 +674,7 @@ class Segment:
                     elif element not in self.elements_on_awg[group]:
                         self.elements_on_awg[group].append(element)
 
-    def find_awg_hierarchy(self):
+    def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
             if len(self.pulsar.get_trigger_channels(group)) == 0}
 
@@ -830,7 +830,7 @@ class Segment:
         # Find the AWG hierarchy. Needed to add the trigger pulses first to
         # the AWG that do not trigger any other AWGs, then the AWGs that
         # trigger these AWGs and so on.
-        trigger_group_hierarchy = self.find_awg_hierarchy()
+        trigger_group_hierarchy = self.find_trigger_group_hierarchy()
 
         for group in trigger_group_hierarchy:
             if group not in self.elements_on_awg:
