@@ -3,14 +3,13 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
     base_automatic_calibration_routine import (_device_db_client_module_missing,
                                                keyword_subset_for_function)
-from pycqed.measurement.calibration.\
-    automatic_calibration_routines import routines_utils
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    routines_utils, AdaptiveReparkingRamsey)
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
-from .single_qubit_routines import (ReparkingRamseyStep,
-                                    FindFrequency)
+from .single_qubit_routines import FindFrequency
 
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
@@ -327,10 +326,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     # relation stored in routine.
                     if flux in [self.ss1_flux, self.ss2_flux]:
                         self.add_step(
-                            ReparkingRamseyStep,
+                            AdaptiveReparkingRamsey,
                             'reparking_ramsey_' +
                             ('1' if flux == self.ss1_flux else '2'),
-                            {},
+                            {"fluxlines_dict": self.fluxlines_dict},
                             step_tmp_vals=ro_flux_tmp_vals(qubit,
                                                            v_park=voltage_guess,
                                                            use_ro_flux=True),
@@ -560,22 +559,15 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             # voltage found by reparking routine
             reparking_ramsey = self.routine.routine_steps[index_reparking]
             try:
-                apd = reparking_ramsey.analysis.proc_data_dict[
-                    "analysis_params_dict"]
-                voltage = apd["reparking_params"][
-                    qb.name]["new_ss_vals"]["ss_volt"]
-                frequency = apd["reparking_params"][
-                    qb.name]["new_ss_vals"]["ss_freq"]
+                voltage = reparking_ramsey.results[qb.name]["ss_volt"]
+                frequency = reparking_ramsey.results[qb.name]["ss_freq"]
             except KeyError:
                 log.error(
                     "Analysis reparking ramsey routine failed, flux to "
                     "voltage mapping can not be updated (guess values will be "
                     "used in the rest of the routine)")
-
-                (
-                    voltage,
-                    frequency,
-                ) = self.routine.flux_to_voltage_and_freq_guess[flux]
+                voltage, frequency = \
+                    self.routine.flux_to_voltage_and_freq_guess[flux]
 
             self.routine.flux_to_voltage_and_freq.update(
                 {flux: (voltage, frequency)})

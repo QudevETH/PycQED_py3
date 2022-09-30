@@ -17,6 +17,7 @@ from pycqed.utilities.general import (
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.instrument_drivers.meta_instrument.device import Device
+import time
 
 import numpy as np
 import logging
@@ -302,20 +303,20 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 qb_spec: QubitSpectroscopy1DStep = routine.routine_steps[-1]
 
                 # Retrieve the necessary data from the analysis results
-                # max_waiting_seconds = self.get_param_value(
-                #     "max_waiting_seconds")
-                # for i in range(max_waiting_seconds):
-                    # try:
-                data = qb_spec.analysis.proc_data_dict[
-                    'projected_data_dict'][qb.name]['PCA'][0]
-                red_chi = qb_spec.analysis.fit_res[qb.name].redchi
-                    # break
-                    # except AttributeError:
-                    #     # FIXME: Unsure if this can also happen on real set-up
-                    #     log.warning(
-                    #         "Analysis not yet run on last QubitSpectroscopy1D "
-                    #         "measurement, frequency difference not updated")
-                    #     time.sleep(1)
+                max_waiting_seconds = self.get_param_value(
+                    "max_waiting_seconds", default=5)
+                for i in range(max_waiting_seconds):
+                    try:
+                        data = qb_spec.analysis.proc_data_dict[
+                            'projected_data_dict'][qb.name]['PCA'][0]
+                        red_chi = qb_spec.analysis.fit_res[qb.name].redchi
+                        break
+                    except AttributeError:
+                        # FIXME: Unsure if this can also happen on real set-up
+                        log.warning(
+                            "Analysis not yet run on last QubitSpectroscopy1D "
+                            "measurement, frequency difference not updated")
+                        time.sleep(1)
 
                 # Calculate the upper bound of the reduced chi-squared, namely
                 # var(data) - std(var(data))

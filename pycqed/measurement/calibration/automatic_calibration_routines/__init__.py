@@ -15,6 +15,8 @@ from .park_and_qubit_spectroscopy import ParkAndQubitSpectroscopy
 
 from .initial_hamiltonian_model import PopulateInitialHamiltonianModel
 
+from .adaptive_reparking_ramsey import AdaptiveReparkingRamsey
+
 from .hamiltonian_fitting_routines import (
     HamiltonianFitting
 )
