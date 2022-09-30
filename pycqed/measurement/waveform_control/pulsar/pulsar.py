@@ -149,13 +149,6 @@ class PulsarAWGInterface(ABC):
                              initial_value=True,
                              vals=vals.Bool(),
                              parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter,
-                             docstring="Minimizes the sequencer memory by "
-                                       "repeating specific sequence patterns "
-                                       "(eg. readout) passed in "
-                                       "'repeat dictionary'.")
         pulsar.add_parameter(f"{name}_enforce_single_element",
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
@@ -342,6 +335,11 @@ class PulsarAWGInterface(ABC):
                      channels_to_program:Union[List[str], str]="all",
                      filter_segments=None):
         """Preprocess filter segments before programming actual hardware"""
+        # Switch of repeat_pattern if not supported or if disabled via
+        # _minimize_sequencer_memory parameter.
+        param = f'{self.awg.name}_minimize_sequencer_memory'
+        if param not in self.pulsar.parameters or not self.pulsar.get(param):
+            repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
             awg_sequence, waveforms, filter_segments, repeat_pattern,
             channels_to_upload=channels_to_upload,
@@ -422,7 +420,12 @@ class PulsarAWGInterface(ABC):
 
     @abstractmethod
     def is_awg_running(self) -> bool:
-        """Checks whether the sequencer of the AWG is running."""
+        """Checks whether the sequencer of the AWG is running.
+
+        Returns True if all required sub-AWGs are running. Note: this can
+        include the case where no sub-AWGs are running, but they are also not
+        needed.
+        """
 
     @abstractmethod
     def clock(self) -> float:
@@ -1150,6 +1153,7 @@ class Pulsar(Instrument):
             # to changed AWG settings or due to changed metadata
             awgs_to_program = []
             settings_to_check = ['{}_use_placeholder_waves',
+                                 '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
                                  'prepend_zeros']
             settings = {}
@@ -1468,6 +1472,11 @@ class Pulsar(Instrument):
         repeat_dict_per_awg = dict()
         for cname in repeat_dict_per_ch:
             awg = self.get(f"{cname}_awg")
+            param = f'{awg}_minimize_sequencer_memory'
+            if param not in self.parameters or not self.get(param):
+                # repeat_pattern is not supported or is disabled via
+                # _minimize_sequencer_memory parameter.
+                continue
             chid = self.get(f"{cname}_id")
 
             if not awg in awg_ch_repeat_dict.keys():

@@ -184,14 +184,12 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # otherwise SHFQA.USER_REG_... would crash on setups which do not
             # have an SHFQA object initialised
             shfqa_sequence_string_template = (
-                "var loop_cnt = "
-                f"getUserReg({SHF_AcquisitionDevice.USER_REG_LOOP_COUNT});\n"
                 "var acq_len = "
                 f"getUserReg({SHF_AcquisitionDevice.USER_REG_ACQ_LEN});"
                 f" // only needed in sweeper mode\n"
                 "{prep_string}"
                 "\n"
-                "repeat (loop_cnt) {{\n"
+                "while(1) {{\n"
                 "  {playback_string}\n"
                 "}}\n"
             )
@@ -348,14 +346,15 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def is_awg_running(self):
         is_running = []
         for awg_nr, qachannel in enumerate(self.awg.qachannels):
-            if qachannel.mode().name == 'readout':
+            if self.awg._awg_program[awg_nr]:
+                # hardware spec or 'readout' mode
                 is_running.append(qachannel.generator.enable())
-            else:  # spectroscopy
-                daq = self.awg.daq
-                path = f"/{self.awg.get_idn()['serial']}/qachannels/{awg_nr}/" \
-                       f"spectroscopy/result/enable"
-                is_running.append(daq.getInt(path) != 0)
-        return any(is_running)
+            elif self.awg.awg_active[awg_nr]:
+                # software spectroscopy
+                # No awg needs to be started, so we can pretend that it's always
+                # running for the check to pass
+                is_running.append(True)
+        return all(is_running)
 
     def clock(self):
         return 2.0e9
@@ -386,10 +385,6 @@ class SHFQAPulsar(SHFAcquisitionModulePulsar):
 
         pulsar = self.pulsar
         name = self.awg.name
-
-        # Repeat pattern support is not yet implemented for the SHFQA, thus we
-        # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
