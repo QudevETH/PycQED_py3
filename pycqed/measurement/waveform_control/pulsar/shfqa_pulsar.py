@@ -121,6 +121,8 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
+            channels = set(self.pulsar._id_channel(chid, self.awg.name)
+                        for chid in chids)
 
             playback_strings = []
 
@@ -277,9 +279,14 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     current_segment = element
                     playback_strings.append(f'// Segment {current_segment}')
                     return playback_strings
-                playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                trigger_groups = metadata['trigger_groups']
+                if not self.pulsar.check_channels_in_trigger_groups(
+                        channels, trigger_groups):
+                    return playback_strings
+                playback_strings.append(f'// Element {element}')
+
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_start(

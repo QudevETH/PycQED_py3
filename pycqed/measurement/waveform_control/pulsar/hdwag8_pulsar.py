@@ -382,9 +382,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     first_element_of_segment = True
                     continue
                 wave_idx_lookup[element] = {}
-                playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                trigger_groups = metadata['trigger_groups']
+                if not self.pulsar.check_channels_in_trigger_groups(
+                        set(channels), trigger_groups):
+                    continue
+                playback_strings.append(f'// Element {element}')
+
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_start(

@@ -292,8 +292,8 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
             ch1id = f'sg{awg_nr+1}i'
             ch2id = f'sg{awg_nr+1}q'
             chids = [ch1id, ch2id]
-            channels = [self.pulsar._id_channel(chid, self.awg.name)
-                        for chid in [ch1id, ch2id]]
+            channels = set(self.pulsar._id_channel(chid, self.awg.name)
+                        for chid in [ch1id, ch2id])
 
             
 
@@ -324,9 +324,13 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
                     first_element_of_segment = True
                     continue
                 wave_idx_lookup[element] = {}
-                playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                trigger_groups = metadata['trigger_groups']
+                if not self.pulsar.check_channels_in_trigger_groups(
+                        set(channels), trigger_groups):
+                    continue
+                playback_strings.append(f'// Element {element}')
 
                 # FIXME: manually deactivate until implemented for QA
                 metadata['allow_filter'] = False
