@@ -1444,8 +1444,7 @@ class Segment:
                 channels = channels & awg_channels
             if trigger_group is not None:
                 channels = channels & group_channels
-            if (awg is not None or trigger_group is not None) and \
-                    len(channels) == 0:
+            if len(channels) == 0:
                 continue
             codewords.add(pulse.codeword)
         return codewords
