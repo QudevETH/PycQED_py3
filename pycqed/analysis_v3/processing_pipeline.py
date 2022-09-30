@@ -531,9 +531,6 @@ class ProcessingPipeline(list):
                                            f'{self[node_idx-1]["node_name"]} '
                                            f'does not have the key "keys_out".')
                         keys_in += self[node_idx-1]['keys_out']
-                        # keys_in += hlp_mod.get_sublst_with_all_strings_of_list(
-                        #     lst_to_search=self[node_idx-1]['keys_out'],
-                        #     lst_to_match=mobj_value_names)
                 else:
                     raise ValueError('The first node in the pipeline cannot '
                                      'have "keys_in" = "previous".')
@@ -542,16 +539,10 @@ class ProcessingPipeline(list):
                 # just append it
                 keys_in += [keyi]
 
-        # if keys_in != keys_in_temp:
-        #     try:
-        #         keys_in.sort()
-        #     except AttributeError:
-        #         pass
-
         if len(keys_in) == 0 or keys_in is None:
             raise ValueError(f'No "keys_in" could be determined '
                              f'for {mobj_name} in the node with index '
-                             f'{node_idx} and raw "keys_in" {keys_in_temp}.')
+                             f'{node_idx-1} and raw "keys_in" {keys_in_temp}.')
         return keys_in
 
     def resolve_keys_out(self, keys_in, keys_out_container, mobj_name,
