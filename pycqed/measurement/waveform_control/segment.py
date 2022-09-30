@@ -1472,7 +1472,7 @@ class Segment:
                 trigger_group))
         return channels
 
-def calculate_hash(self, elname, codeword, channel):
+    def calculate_hash(self, elname, codeword, channel):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
