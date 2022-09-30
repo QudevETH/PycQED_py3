@@ -92,3 +92,13 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
             qubit_parameters["coupling"] = g
 
         return g
+
+
+def append_DCsources(routine):
+    """Append the DC_sources of a routine as an attribute. This is used when
+    the `reload_settings` function is called after the routine ends."""
+    routine.DCSources = []
+    for qb in routine.qubits:
+        dc_source = routine.fluxlines_dict[qb.name].instrument
+        if dc_source not in routine.DCSources:
+            routine.DCSources.append(dc_source)

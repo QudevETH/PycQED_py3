@@ -96,13 +96,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
         # Routine attributes
         self.fluxlines_dict = fluxlines_dict
-        # Retrieve the DCSources from the fluxlines_dict. These are necessary
-        # to reload the pre-routine settings when update=False
-        self.DCSources = []
-        for qb in self.qubits:
-            dc_source = self.fluxlines_dict[qb.name].instrument
-            if dc_source not in self.DCSources:
-                self.DCSources.append(dc_source)
+        routines_utils.append_DCsources(self)
 
         # Store initial values so that the user can retrieve them if overwritten
         self.results: Dict[str, ParkAndQubitSpectroscopyResults] = {}
