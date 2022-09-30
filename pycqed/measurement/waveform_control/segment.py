@@ -1463,22 +1463,16 @@ class Segment:
         Returns:
             set of channels
         """
-
-        channels = set()
+        channels = set([ch for pulse in self.elements[element] for ch in
+                        pulse.masked_channels()])
         if awg is not None:
-            awg_channels = set(self.pulsar.find_awg_channels(awg))
+            channels &= set(self.pulsar.find_awg_channels(awg))
         if trigger_group is not None:
-            group_channels = set(self.pulsar.get_trigger_group_channels(
+            channels &= set(self.pulsar.get_trigger_group_channels(
                 trigger_group))
-        for pulse in self.elements[element]:
-            channels |= set(pulse.masked_channels())
-            if awg is not None:
-                channels = channels & awg_channels
-            if trigger_group is not None:
-                channels = channels & group_channels
         return channels
 
-    def calculate_hash(self, elname, codeword, channel):
+def calculate_hash(self, elname, codeword, channel):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
