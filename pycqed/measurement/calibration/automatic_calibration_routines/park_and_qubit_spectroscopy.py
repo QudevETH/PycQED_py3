@@ -1,14 +1,14 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, RoutineTemplate, AutomaticCalibrationRoutine)
+from pycqed.measurement.calibration.automatic_calibration_routines import \
+    AdaptiveQubitSpectroscopy
 from pycqed.measurement.calibration.automatic_calibration_routines.base.\
-    base_automatic_calibration_routine import (_device_db_client_module_missing)
+    base_automatic_calibration_routine import _device_db_client_module_missing
 from pycqed.measurement.calibration.automatic_calibration_routines \
     import routines_utils
 
 if not _device_db_client_module_missing:
     pass
-
-from .single_qubit_routines import AdaptiveQubitSpectroscopy
 
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging

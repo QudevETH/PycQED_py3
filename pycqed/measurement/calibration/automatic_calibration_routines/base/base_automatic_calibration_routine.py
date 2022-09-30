@@ -911,7 +911,7 @@ class AutomaticCalibrationRoutine(Step):
 
         if print_results:
             for step in [self] + self.routine_steps:
-                if step.results is not None:
+                if step.results:  # Do not print None or empty dictionaries
                     print(f'Step {step.step_label or step.name} results:')
                     pprint.pprint(step.results)
                     print()

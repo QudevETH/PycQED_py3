@@ -40,7 +40,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         of the qubit at current bias voltage. The bias voltage is calculated
         from the previous Hamiltonian model (if given), otherwise the guessed
         one will be used.
-    3) FindFrequency (find_frequency_<tr_name>_<i>): see corresponding routine.
+    3) :obj:`FindFrequency` (find_frequency_<tr_name>_<i>): see corresponding
+        routine.
     4) ReparkingRamsey (reparking_ramsey_<i>): see corresponding routine
 
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
