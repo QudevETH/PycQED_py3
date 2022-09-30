@@ -889,10 +889,7 @@ class Pulsar(Instrument):
         if isinstance(gran, dict):
             gran = gran[group]
 
-        if gran is None:
-            return 0
-        elif isinstance(gran, float) or isinstance(gran, int):
-            return gran
+        return gran
 
     def get_trigger_channels(self, group:str) -> List[str]:
         """

@@ -1221,7 +1221,7 @@ class Segment:
         awg = self.pulsar.get_awg_from_trigger_group(trigger_group)
         start_gran = self.pulsar.get_element_start_granularity(trigger_group)
         sample_time = 1/self.pulsar.clock(awg=awg)
-        if start_gran != 0:
+        if start_gran is not None:
             t_start = math.floor((t_start + 0.5*sample_time) / start_gran) \
                       * start_gran
 
