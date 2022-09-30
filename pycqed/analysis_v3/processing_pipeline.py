@@ -622,17 +622,6 @@ class ProcessingPipeline(list):
                     suffix = ','.join(suffix)
                     if len(suffix):
                         keyo = f'{keyo} {suffix}'
-                    else:
-                        # len(suffix) will be 0 if the channel name(s) for the
-                        # meas_obj is a joined string of several channel names
-                        # corresponding to other meas_objs. For example,
-                        # if we use a correlation_object, its channel name
-                        # will be for example, UHF1_raw w2 UHF1,UHF1_raw w8 UHF1
-                        # corresponding to the channel names of the two
-                        # correlated qubits.
-                        # In this case, just append the joined channel names
-                        keyo = f'{keyo} ' \
-                               f'{",".join(meas_obj_value_names_map[mobj_name])}'
                 keys_out += [keyo]
 
             keyo_suff = node_params.get('keys_out_suffixes', [])
