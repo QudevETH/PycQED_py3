@@ -418,11 +418,7 @@ def get_data_to_process(data_dict, keys_in):
                 data = data_dict
                 for k in all_keys:
                     data = data[k]
-                if isinstance(data, dict):
-                    data_to_proc_dict = {f'{keyi}.{k}': deepcopy(data[k])
-                                         for k in data}
-                else:
-                    data_to_proc_dict[keyi] = deepcopy(data)
+                data_to_proc_dict[keyi] = deepcopy(data)
             except KeyError:
                 key_found = False
         if not key_found:
