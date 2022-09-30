@@ -38,10 +38,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # Repeat pattern support is not yet implemented for the SHFQC, thus we
-        # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
-
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
