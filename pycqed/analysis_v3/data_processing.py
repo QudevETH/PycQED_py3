@@ -1040,6 +1040,8 @@ def calculate_meas_ops_and_covariations_cal_points(
     Calculates the measurement operators corresponding to each observable and
         the expected covariance matrix between the operators from the
         observables and calibration points.
+    Applies readout correction based on calibration segments.
+
     :param data_dict: OrderedDict containing data to be processed and where
         processed data is to be stored
     :param keys_in: list of key names or dictionary keys paths in data_dict
@@ -1063,10 +1065,12 @@ def calculate_meas_ops_and_covariations_cal_points(
         - the measurement operators corresponding to each observable and the
             expected covariance matrix between the operators under keys_out
         - if keys_out is None, it will saves the aforementioned quantities
-            under  'measurement_ops' and 'cov_matrix_meas_obs'
+            under 'measurement_ops' and 'cov_matrix_meas_obs'
 
     Assumptions:
         - all qubits in CalibrationPoints have the same cal point indices
+        - There must be a calibration segment for each of the computational
+        basis states of the Hilbert space.
     """
     if keys_out is None:
         keys_out = ['measurement_ops', 'cov_matrix_meas_obs']
@@ -1105,7 +1109,7 @@ def calculate_meas_ops_and_covariations_cal_points(
 
     # find the means for all the products of the operators and the average
     # covariation of the operators
-    observables_data ={k: v for k, v in observables.items() if k != 'pre'}
+    observables_data = {k: v for k, v in observables.items() if k != 'pre'}
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
                                    **params)
     prod_obss = OrderedDict()
