@@ -368,6 +368,29 @@ class ProcessingPipeline(list):
             self.clear()
             self.extend(first_slice + second_slice)
 
+    def remove_nodes(self, indices):
+        """
+        Removes nodes from the pipeline at the specified indices.
+
+        Args:
+            indices (int/list/str): indices of the nodes to remove. Can be a
+                single int corresponding to an index, a list of ints
+                corresponding to indices, or a string of the form 'idx0:idx1,'
+                which will be interpreted as range(idx0, idx1).
+        """
+        if isinstance(indices, str):
+            # of the form 'idx0:idx1'
+            range_ends = [int(idx) for idx in indices.split(':')]
+            indices = list(range(
+                range_ends[0], 0 if range_ends[1] == -1 else range_ends[1]))
+        elif not hasattr(indices, '__iter__'):
+            # it is an int: convert to list
+            indices = [indices]
+
+        for idx in indices:
+            node = self[idx]
+            self.remove(node)
+
     def resolve(self, meas_obj_value_names_map):
         """
         Resolves the keys_in and keys_out of a raw ProcessingPipeline, if they
