@@ -1304,13 +1304,16 @@ def extract_leakage_classified_shots(data_dict, keys_in, keys_out=None,
     proba_f['any_leaked'] = np.sum(ps_mean_corr*(np.sum(
         list(masks_f.values()), axis=0) > 0), axis=-1)
 
+    keys_out_container = hlp_mod.get_param(
+        'keys_out_container', data_dict,
+        default_value='extract_leakage_classified_shots', **params)
     if keys_out is None:
         for mobjn in meas_obj_names:
             hlp_mod.add_param(
-                f'extract_leakage_classified_shots.{mobjn}_leaked',
+                f'{keys_out_container}.{mobjn}_leaked',
                 proba_f[f'{mobjn}_leaked'], data_dict, **params)
 
-        hlp_mod.add_param(f'extract_leakage_classified_shots.any_leaked',
+        hlp_mod.add_param(f'{keys_out_container}.any_leaked',
                           proba_f['any_leaked'], data_dict, **params)
     else:
         if len(keys_out) != 1:
