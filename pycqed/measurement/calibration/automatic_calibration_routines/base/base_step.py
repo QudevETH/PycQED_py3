@@ -68,7 +68,7 @@ class Step:
         self.leaf = True
 
         # Store results with qubit names as keys
-        self.results: Optional[Dict[str, Dict[str, Any]]] = None
+        self.results: Optional[Dict[str, Dict[str, Any]]] = {}
 
     class NotFound:
         """This class is used in get_param_value to identify the cases where

@@ -1000,7 +1000,7 @@ class AutomaticCalibrationRoutine(Step):
     def add_step(self,
                  step_class: Type[Step],
                  step_label: str,
-                 step_settings: Dict[str, Any],
+                 step_settings: Optional[Dict[str, Any]] = None,
                  step_tmp_vals=None,
                  index=None):
         """Adds a step to the routine template. The settings of the step are
@@ -1009,7 +1009,7 @@ class AutomaticCalibrationRoutine(Step):
         Args:
             step_class (Step): Class of the step
             step_label (str): Label of the step
-            step_settings (dict): Settings of the step. If any settings
+            step_settings (dict, optional): Settings of the step. If any settings
                 are found in step_settings['settings'], they will have priority
                 over those found in the configuration parameter dictionary.
             step_tmp_vals (list, optional): Temporary values for the step. Each
