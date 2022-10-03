@@ -82,14 +82,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = None
         self._init_mcc()
 
-        self._awg_modules = []
+        # dict for storing previously-uploaded waveforms
+        self.waveform_cache = dict()
+
+        # Each AWG module corresponds to an HDAWG channel pair.
+        self.awg_modules = []
         for awg_nr in self._hdawg_active_awgs():
             channel_pair = HDAWGGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._awg_modules.append(channel_pair)
+            self.awg_modules.append(channel_pair)
 
     def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:

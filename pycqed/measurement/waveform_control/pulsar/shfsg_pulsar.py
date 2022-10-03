@@ -73,14 +73,16 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         (off) in :meth:`start` (:meth:`stop`).
         """
 
-        self._awg_modules = []
+        # Each AWG channel corresponds to an SHF generator channel.
+        self.awg_modules = []
         for awg_nr in range(len(self.awg.sgchannels)):
             channel = SHFGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._awg_modules.append(channel)
+
+            self.awg_modules.append(channel)
 
     def _get_awgs_mcc(self) -> list:
         return [sgc.awg for sgc in self.awg.sgchannels]
