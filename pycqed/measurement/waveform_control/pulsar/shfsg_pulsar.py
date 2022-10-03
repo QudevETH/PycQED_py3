@@ -110,6 +110,16 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
 
         PulsarAWGInterface.create_channel_parameters(self, id, ch_name, ch_type)
 
+        param_name = f"{ch_name}_enable_internal_modulation"
+        self.pulsar.add_parameter(
+            param_name,
+            initial_value=True,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configure on/off stage of internal modulation "
+                      "on this channel."
+        )
+
         if id[-1] == 'i':
             param_name = f"{ch_name}_direct_mod_freq"
             self.pulsar.add_parameter(

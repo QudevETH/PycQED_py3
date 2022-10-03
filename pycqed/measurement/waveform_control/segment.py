@@ -19,6 +19,7 @@ import pycqed.measurement.waveform_control.pulse_library as pl
 import pycqed.measurement.waveform_control.pulsar as ps
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
+from pycqed.measurement.waveform_control.pulse_library import SSB_DRAG_pulse
 
 
 class Segment:
@@ -35,6 +36,17 @@ class Segment:
     trigger_pulse_length = 20e-9
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
+
+    # Pulse types in this list allows internal modulation in hardware.
+    internal_mod_allowed_pulse_types = [SSB_DRAG_pulse]
+
+    # When internal modulation of a channel is turned on, the following
+    # parameters should be the same for all pulses on this channel.
+    internal_mod_pulse_params_to_check = [
+        "mod_frequency",
+        "phi_skew",
+        "alpha"
+    ]
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
                  fast_mode=False, **kw):
@@ -88,6 +100,8 @@ class Segment:
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
+        self.elements_on_channel = {}
+        self.element_metadata = {}
         self.distortion_dicts = {}
         # The sweep_params dict is processed by generate_waveforms_sequences
         # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
@@ -219,6 +233,7 @@ class Segment:
         if self.resolve_overlapping_elements:
             self.resolve_overlap()
         self.extra_pulses = []
+        self.resolve_internal_modulation()
         self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
@@ -487,6 +502,252 @@ class Segment:
                     p.pulse_obj.crosstalk_cancellation_shift_mtx = \
                         p.pulse_obj.crosstalk_cancellation_shift_mtx\
                             .get(calibration_key, None)
+
+    def resolve_internal_modulation(self):
+
+        # Update dictionary {channel: element_name} to attribute
+        # self.elements_on_channel
+        self.update_channel_elements()
+        # Create metadata dictionary entries for all element in this segment
+        self._initialize_element_metadata()
+
+        for channel in self.elements_on_channel.keys():
+            # Only look at I channel internal modulation configurations. Q
+            # channel configurations will be the corresponding I channel
+            # configurations.
+            if not self.pulsar.is_i_channel(ch=channel):
+                continue
+
+            # Check if this channel supports internal modulation, and if
+            # internal modulation is turned on for this channel. If not,
+            # we will skip this channel.
+            enable_param = f"{channel}_enable_internal_modulation"
+            if not getattr(self.pulsar, enable_param, False):
+                continue
+
+            # check if all pulses types on this channel are compatible with
+            # internal modulation. If not, we will print a warning message
+            # and disable internal modulation on this channel.
+            if not self._internal_mod_check_pulse_type(channel=channel):
+                log.warning(f"Not all pulses supports internal modulation on "
+                            f"channel {channel}. Internal modulation of this "
+                            f"channel will be disabled.")
+                self.pulsar.set(enable_param, False)
+                continue
+
+            # Check if the configurations of all pulses are compatible with
+            # each other when we turn on internal modulation. If not, we will
+            # print a warning message and disable internal modulation on this
+            # channel.
+            if not self._internal_mod_check_pulse_params(channel=channel)[0]:
+                log.warning(f"Pulse parameters are not compatible with each "
+                            f"other when internal modulation is turned on. "
+                            f"Internal modulation on {channel} will be "
+                            f"disabled.")
+                self.pulsar.set(enable_param, False)
+                continue
+
+            # We have made sure that internal modulation is applicable to
+            # this channel. We will change pulse settings and pass modulation
+            # configuration to element metadata.
+            self._internal_mod_update_params(channel=channel)
+
+    def update_channel_elements(self):
+        """Updates attribute self.elements_on_channel to a dictionary {
+        channel: set(element_name on this channel)}"""
+        self.elements_on_channel = {}
+        for elname in self.elements:
+            channels = self.get_element_channels(elname)
+            for channel in channels:
+                if channel not in self.elements_on_channel.keys():
+                    self.elements_on_channel[channel] = set()
+                self.elements_on_channel[channel].add(elname)
+
+    def _internal_mod_check_pulse_type(
+            self,
+            channel: str,
+    ):
+        """Check if all pulse types on this channel are compatible with
+        internal modulation.
+
+        Args:
+            channel (str): name of the channel to check.
+
+        Returns:
+            pulse_type_allow_internal_mod (bool): Boolean value indication
+                whether all pulses on this channel falls within the category
+                where internal modulation is supported.
+        """
+        # Check all pulses in all elements on this channel.
+        for element_name in self.elements_on_channel[channel]:
+            for pulse in self.elements[element_name]:
+                # An element can include pulses that are played in different
+                # AWG channels. Here we only process the pulses that are
+                # played on the current channel.
+                if not self.pulsar.is_pulse_on_channel(
+                    pulse=pulse,
+                    awg_channel=channel,
+                ):
+                    continue
+                pulse_allow_internal_mod = False
+                for pulse_type in self.internal_mod_allowed_pulse_types:
+                    pulse_allow_internal_mod |= isinstance(pulse, pulse_type)
+                if not pulse_allow_internal_mod:
+                    return False
+        return True
+
+    def _internal_mod_check_pulse_params(
+            self,
+            channel: str,
+    ):
+        """Check if pulse parameters on this channel allows internal
+        modulation. This requires (1) I and Q channel of each pulse come
+        from the same channel pair, and the index of I channel is smaller.
+        (2) mod_frequency, alpha and phi_skew are the same for all pulses.
+
+        Args:
+            channel: name of the channel to check.
+
+        Returns:
+            pulse_parameter_allow_internal_mod (tuple): A tuple of 2. The
+                first value is a Boolean indicating whether all pulse
+                parameters are compatible with internal modulation. If the
+                first value is True, the second value will be a dictionary 
+                of check parameter values. If the first value is False,
+                the second value will be None.
+        """
+
+        # Create a dict with entries to record check parameter values for
+        # pulses on this channel.
+        check_values = {}
+        for param in self.internal_mod_pulse_params_to_check:
+            check_values[param] = None
+
+        # Check all pulses in all elements on this channel.
+        for element_name in self.elements_on_channel[channel]:
+            for pulse in self.elements[element_name]:
+                # An element can include pulses that are played in different
+                # AWG channels. Here we only process the pulses that are
+                # played on the current channel.
+                if not self.pulsar.is_pulse_on_channel(
+                    pulse=pulse,
+                    awg_channel=channel,
+                ):
+                    continue
+
+                # Records check parameter values of the first pulse on this
+                # channel, and compare the following pulse parameters with
+                # this value.
+                for param in self.internal_mod_pulse_params_to_check:
+                    if check_values[param] is None:
+                        check_values[param] = getattr(pulse, param)
+                    elif check_values[param] != getattr(pulse, param):
+                        return False, {}
+
+                # Check if I and Q channel of this pulse belong to the
+                # same channel pair and if they are in the correct order (the Q
+                # channel index being smaller than the I channel index).
+                if not self.pulsar.is_channel_pair(
+                        ch1=pulse.I_channel,
+                        ch2=pulse.Q_channel,
+                        require_ordered=True,
+                ):
+                    return False, {}
+        return True, check_values
+
+    def _internal_mod_update_params(
+            self,
+            channel: str,
+    ):
+        """Pass modulation-relevant pulse parameters to element metadata and
+        resets pulse parameters.
+
+        Args:
+            channel: name of the channel to check.
+        """
+        _, check_values = \
+            self._internal_mod_check_pulse_params(channel=channel)
+        if not (hasattr(self.mod_config, channel) or len(check_values)):
+            # No internal modulation configuration for this channel.
+            return
+
+        for elname in self.elements_on_channel[channel]:
+            channel_metadata = dict()
+
+            # Find the phase of the first pulse on this channel. Pass this
+            # channel initial phase to element metadata.
+            channel_metadata["phase"] = self._internal_mod_find_init_phase(
+                channel=channel,
+                elname=elname,
+            )
+
+            # Write internal modulation settings collected from pulses to
+            # element metadata.
+            for param in self.internal_mod_pulse_params_to_check:
+                if hasattr(check_values, param):
+                    channel_metadata[param] = check_values[param]
+
+            # Write internal modulation settings passed from segment
+            # initialization parameters to element metadata.
+            for param, value in self.mod_config.get(channel, {}).items():
+                if hasattr(channel_metadata, param):
+                    raise RuntimeError(
+                        f"In segment {self.name}: modulation configuration "
+                        f"'{param}' has repetitive definition from segment "
+                        f"initialization parameters and from pulse "
+                        f"parameters. This may be caused by enabling"
+                        f"'{channel}_enable_internal_modulation' "
+                        f"while doing spectroscopy measurement. Please "
+                        f"disable the parameter when doing spectroscopy "
+                        f"measurements."
+                    )
+                else:
+                    channel_metadata[param] = value
+
+            # Resets pulse parameters that are already passed to element
+            # metadata.
+            for pulse in self.elements[elname]:
+                if self.pulsar.is_pulse_on_channel(
+                    pulse=pulse,
+                    awg_channel=channel,
+                ):
+                    pulse.mod_frequency = 0
+                    pulse.alpha = 1
+                    pulse.phi_skew = 0
+
+            self.element_metadata[elname]["mod_config"] = {
+                channel: deepcopy(channel_metadata)}
+
+    def _internal_mod_find_init_phase(
+            self,
+            channel: str,
+            elname: str,
+    ):
+        """Find the phase of the first pulse on the give channel within the
+        given element.
+
+        Args:
+            channel (str): channel name.
+            elname (str): element name.
+
+        Return:
+            init_phase (float): initial phase of the first pulse. If there is no
+                actual pulse on the channel within this element, returns 0.
+        """
+        for pulse in self.elements[elname]:
+            if self.pulsar.is_pulse_on_channel(
+                    pulse=pulse,
+                    awg_channel=channel
+            ):
+                return pulse.phase
+        return 0.0
+
+    def _initialize_element_metadata(self):
+        """Create metadata dictionary entries for all elements in this
+        segment."""
+
+        for elname in self.elements.keys():
+            self.element_metadata[elname] = {"mod_config": {}}
 
     def add_charge_compensation(self):
         """
