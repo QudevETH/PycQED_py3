@@ -9,7 +9,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines import (
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
-from .single_qubit_routines import FindFrequency
+from pycqed.measurement.calibration.automatic_calibration_routines.\
+    single_qubit_routines import FindFrequency
 
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
