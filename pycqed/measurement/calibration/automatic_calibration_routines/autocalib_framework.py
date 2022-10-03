@@ -1171,9 +1171,14 @@ class AutomaticCalibrationRoutine(Step):
 
             7) SubRoutine.settings["Experiment"]
             8) SubRoutine.settings["experiment_label"]
+            9) SubRoutine.settings["SubRoutine"]["Experiment"]
+            10) SubRoutine.settings["SubRoutine"]["experiment_label"]
+            11) SubRoutine.settings["subroutine_label"]["Experiment"]
+            12) SubRoutine.settings["subroutine_label"]["experiment_label"]
 
-        At the end, ExperimentStep.settings will be updated according to the
-        hierarchy specified in the lookups.
+        The dictionary of settings that were merged according to the
+        hierarchy specified in the lookups can be used to update 
+        ExperimentStep.settings
 
         Arguements:
             lookups (list): A list of all scopes for the parent routine
@@ -1205,30 +1210,19 @@ class AutomaticCalibrationRoutine(Step):
             if sublookup in self.settings:
                 update_nested_dictionary(settings, self.settings[sublookup])
 
-        # The control statement prevents looking for the step scopes inside
-        # the step settings. This is to avoid considering the following
-        # settings:
-        #       9) SubRoutine.settings["SubRoutine"]["Experiment"]
-        #       10) SubRoutine.settings["SubRoutine"]["experiment_label"]
-        #       11) SubRoutine.settings["subroutine_label"]["Experiment"]
-        #       12) SubRoutine.settings["subroutine_label"]["experiment_label"]
-
-        # The only exception is when self is the root routine, in this case
-        # the routine settings are whole configuration parameter dictionary.
-        # Hence, we need to look for the routine scopes within the routine
-        # settings (this is why it is included or self.routine is None).
-        if self.get_lookup_class(
-        ).__name__ not in lookups or self.routine is None:
-            for lookup in reversed(lookups):
-                if lookup in self.settings:
-                    if sublookups is not None:
-                        for sublookup in reversed(sublookups):
-                            if sublookup in self.settings[lookup]:
-                                update_nested_dictionary(
-                                    settings, self.settings[lookup][sublookup])
-                    else:
-                        update_nested_dictionary(settings,
-                                                 self.settings[lookup])
+        # Look for the entries settings[lookup][sublookup] (if both the lookup 
+        # and the sublookup entries exist) or settings[lookup] (if only the 
+        # lookup entry exist, but not the sublookup one)
+        for lookup in reversed(lookups):
+            if lookup in self.settings:
+                if sublookups is not None:
+                    for sublookup in reversed(sublookups):
+                        if sublookup in self.settings[lookup]:
+                            update_nested_dictionary(
+                                settings, self.settings[lookup][sublookup])
+                else:
+                    update_nested_dictionary(settings,
+                                                self.settings[lookup])
 
         return settings
 

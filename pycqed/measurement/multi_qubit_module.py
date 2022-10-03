@@ -287,7 +287,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=uhf_instances[uhf],
+                acq_dev=uhf_instances[uhf],
+                AWG=uhf_instances[uhf].get_awg_control_object()[0],
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 real_imag=False, **kw)

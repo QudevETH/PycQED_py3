@@ -304,10 +304,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                   step_settings)
 
                     # Finding the ge-transition frequency at this voltage
-                    find_freq_settings = {
-                        "transition_name": transition,
-                    }
                     step_label = 'find_frequency_' + transition + '_' + str(i)
+                    find_freq_settings = {
+                        'settings':{
+                            step_label: {
+                                "General":{
+                                    "transition_name": transition,
+                                }
+                            }
+                        }
+                    }
                     self.add_step(
                         FindFrequency,
                         step_label,
@@ -361,11 +367,17 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     self.add_step(self.UpdateFrequency, step_label,
                                   step_settings)
 
-                    find_freq_settings = {
-                        "transition_name": transition,
-                    }
                     # Finding the ef-frequency
                     step_label = "find_frequency_" + transition
+                    find_freq_settings = {
+                        'settings':{
+                            step_label: {
+                                "General":{
+                                    "transition_name": transition,
+                                }
+                            }
+                        }
+                    }
                     self.add_step(
                         FindFrequency,
                         step_label,
