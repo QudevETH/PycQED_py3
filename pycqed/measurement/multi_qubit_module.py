@@ -292,7 +292,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
                 acq_dev=uhf_instances[uhf],
-                AWG=AWG if enforce_pulsar_restart else uhf_instances[uhf],
+                AWG=(AWG if enforce_pulsar_restart
+                     else uhf_instances[uhf].get_awg_control_object()[0]),
                 channels=int_channels[uhf],
                 prepare_and_finish_pulsar=(not enforce_pulsar_restart),
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,

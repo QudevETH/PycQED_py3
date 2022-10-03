@@ -981,6 +981,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             Dictionary containing the configuration options available in
                 the QuantumExperimentGUI.
         """
+        two_qb_gates = device.two_qb_gates()
         return {
             'kwargs': odict({
                 QuantumExperiment.__name__: {
@@ -992,8 +993,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     'analyze': (bool, True),
                     'delegate_plotting': (bool, False),
                     'compression_seg_lim': (int, None),
-                    'cz_pulse_name': (set(device.two_qb_gates()),
-                                      device.two_qb_gates()[0])
+                    'cz_pulse_name': (
+                        set(two_qb_gates),
+                        two_qb_gates[0] if len(two_qb_gates) else None)
                 },
             }),
             'task_list_fields': odict({}),
