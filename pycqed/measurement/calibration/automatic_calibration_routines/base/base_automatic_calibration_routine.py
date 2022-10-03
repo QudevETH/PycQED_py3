@@ -337,6 +337,7 @@ class AutomaticCalibrationRoutine(Step):
 
         self.parameter_sublookups = ['General']
         self.leaf = False
+        self.step_label = self.name
 
         self.DCSources = self.kw.pop("DCSources", None)
 
@@ -910,11 +911,7 @@ class AutomaticCalibrationRoutine(Step):
             print()
 
         if print_results:
-            for step in [self] + self.routine_steps:
-                if step.results:  # Do not print None or empty dictionaries
-                    print(f'Step {step.step_label or step.name} results:')
-                    pprint.pprint(step.results)
-                    print()
+            print_step_results(self)
 
     def update_settings_at_index(self, settings: dict, index):
         """Updates the settings of the step at position 'index'. Wrapper of
@@ -1193,3 +1190,16 @@ def keyword_subset_for_function(keyword_arguments, function):
     allowed_keywords = inspect.getfullargspec(function)[0]
 
     return keyword_subset(keyword_arguments, allowed_keywords)
+
+
+def print_step_results(step: Step):
+    """Recursively print the results of the step and its sub-steps."""
+    if step.results:  # Do not print None or empty dictionaries
+        print(f'Step {step.step_label} results:')
+        pprint.pprint(step.results)
+        print()
+    if hasattr(step, 'routine_steps'):  # A routine with sub-steps
+        for sub_step in step.routine_steps:
+            print_step_results(sub_step)
+    else:
+        pass
