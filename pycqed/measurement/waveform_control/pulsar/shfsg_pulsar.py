@@ -548,8 +548,8 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         for ch, config in channel_mod_config.items():
             if ch.endswith('q'):
                 continue
-            self._awg_interface.configure_internal_mod(
-                ch,
+            self._awg.configure_internal_mod(
+                chid=self.pulsar.get(ch + '_id'),
                 enable=config.get('internal_mod', False),
                 osc_index=config.get('osc', 0),
                 sine_generator_index=config.get('sine', 0),
@@ -594,8 +594,8 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
         for ch, config in channel_sine_config.items():
             if ch.endswith('q'):
                 continue
-            self._awg_interface.configure_sine_generation(
-                ch,
+            self._awg.configure_sine_generation(
+                chid=self.pulsar.get(ch + '_id'),
                 enable=config.get('continuous', False),
                 osc_index=config.get('osc', 0),
                 sine_generator_index=config.get('sine', 0),
