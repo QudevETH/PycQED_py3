@@ -243,7 +243,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Validity of flux_to_voltage_and_freq_guess dictionary
         x = set(self.flux_to_voltage_and_freq_guess.keys())
         y = set(self.measurements.keys())
-        z = set([self.ss1_flux, self.ss2_flux])
+        z = {self.ss1_flux, self.ss2_flux}  # A third set
 
         assert x.issubset(y), (
             "Fluxes in flux_to_voltage_and_freq_guess must be a subset of the "
@@ -252,7 +252,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         self.other_fluxes_with_guess = list(x - z)
         self.fluxes_without_guess = list(y - x)
 
-        if self.get_param_value("get_parameters_from_qubit_object", False):
+        if self.get_param_value("get_parameters_from_qubit_object",
+                                default=False):
             update_nested_dictionary(
                 self.settings,
                 {self.highest_lookup: {
