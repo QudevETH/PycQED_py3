@@ -587,6 +587,15 @@ class HDAWG8Channel(ZIDriveAWGChannel):
         self.marker_channel_ids = [ch1mid, ch2mid]
         self._upload_idx = awg_nr
 
+    def _generate_divisor(self):
+        """Generate divisors for all channels. Divisor is 2 for non-modulated
+        marker channels, 1 for every other channel."""
+        for chid in self.channel_ids:
+            self._divisor[chid] = self._awg_interface.get_divisor(
+                chid=chid,
+                awg=self._awg.name,
+            )
+
     def _update_internal_mod_config(
             self,
             awg_sequence,
