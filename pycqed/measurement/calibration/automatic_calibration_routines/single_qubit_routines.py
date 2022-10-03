@@ -185,6 +185,11 @@ class RabiStep(qbcal.Rabi, Step):
                         self.get_param_value('default_ef_amp180',
                                              qubit=qb.name))
 
+        for qb in self.qubits:
+            tr_name = self.get_param_value('transition_name', qubit=qb.name)
+            amp_str = f'{tr_name}_amp180'
+            self.results[qb.name] = {amp_str: getattr(qb, amp_str)()}
+
 
 class RamseyStep(qbcal.Ramsey, Step):
     """A wrapper class for the Ramsey experiment.
@@ -294,6 +299,7 @@ class RamseyStep(qbcal.Ramsey, Step):
         """
         self.run_measurement()
         self.run_analysis()
+        self.results = self.analysis.proc_data_dict['analysis_params_dict']
         if self.get_param_value('update'):
             self.run_update()
             self.dev.update_cancellation_params()
@@ -318,9 +324,9 @@ class RamseyStep(qbcal.Ramsey, Step):
         sweet_spots = kwargs.get('qubit_sweet_spots', {})
         if _device_db_client_module_missing:
             log.warning(
-                "Assemblying the dictionary of high-level device "
-                "property values requires the module 'device-db-client', which was "
-                "not imported successfully.")
+                "Assembling the dictionary of high-level device "
+                "property values requires the module 'device-db-client', which "
+                "was not imported successfully.")
         elif self.analysis:
             # Get the analysis parameters dictionary
             analysis_params_dict = self.analysis.proc_data_dict[

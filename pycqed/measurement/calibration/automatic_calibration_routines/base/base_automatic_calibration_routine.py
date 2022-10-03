@@ -337,7 +337,7 @@ class AutomaticCalibrationRoutine(Step):
 
         self.parameter_sublookups = ['General']
         self.leaf = False
-        self.step_label = self.name
+        self.step_label = self.step_label or self.name
 
         self.DCSources = self.kw.pop("DCSources", None)
 
@@ -1192,14 +1192,14 @@ def keyword_subset_for_function(keyword_arguments, function):
     return keyword_subset(keyword_arguments, allowed_keywords)
 
 
-def print_step_results(step: Step):
+def print_step_results(step: Step, routine_name: str = ''):
     """Recursively print the results of the step and its sub-steps."""
     if step.results:  # Do not print None or empty dictionaries
-        print(f'Step {step.step_label} results:')
+        print(f'{routine_name} Step {step.step_label} results:')
         pprint.pprint(step.results)
         print()
     if hasattr(step, 'routine_steps'):  # A routine with sub-steps
         for sub_step in step.routine_steps:
-            print_step_results(sub_step)
+            print_step_results(sub_step, routine_name=step.step_label)
     else:
         pass
