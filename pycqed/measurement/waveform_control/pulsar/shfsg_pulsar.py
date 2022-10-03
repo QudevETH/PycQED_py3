@@ -334,6 +334,50 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             wave_hashes=wave_hashes
         )
 
+    @staticmethod
+    def is_channel_pair(
+            ch1: str,
+            ch2: str,
+            require_ordered: bool,
+    ):
+        """Returns if the two input channels belongs to the same channel pair.
+
+        Args:
+            ch1 (str): channel of the AWG
+            ch2 (str): channel of the AWG
+            require_ordered (bool): whether ch1(ch2) is required to represent
+                I(Q) generator of this channel.
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        # Note that alphabetically 'i' is smaller than 'q'
+        if require_ordered and ch1 > ch2:
+            return False
+
+        channel_index_smaller = min(ch1, ch2)
+        channel_index_larger = max(ch1, ch2)
+        if channel_index_smaller[-1] == 'i' and \
+                channel_index_larger[-1] == 'q' and \
+                channel_index_smaller[0:-1] == channel_index_larger[0:-1]:
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def is_i_channel(ch: str):
+        """Returns if this channel is the I channel (AWG 1) of this signal
+        generator module.
+
+        Args:
+            ch: channel of an SHFSG.
+
+        Returns:
+            is_i_channel (str): whether this channel is the I channel.
+        """
+        return ch[-1] == 'i'
+
 
 class SHFSGPulsar(SHFGeneratorModulesPulsar):
     """ZI SHFSG specific Pulsar module"""

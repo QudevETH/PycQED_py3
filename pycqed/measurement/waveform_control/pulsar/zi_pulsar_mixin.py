@@ -1444,6 +1444,11 @@ class ZIGeneratorModule:
     def _with_divisor(self, h, ch):
         return h if self._divisor[ch] == 1 else (h, self._divisor[ch])
 
+    @property
+    def awg(self):
+        """Returns AWG instrument driver of this channel."""
+        return self._awg
+
 
 def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
     """Recursively adds entries in dict new to the combined dict and

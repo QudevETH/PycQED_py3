@@ -1518,3 +1518,108 @@ class Pulsar(Instrument):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
             .get_centerfreq_generator(ch)
+
+    def is_channel_pair(
+            self,
+            ch1: str,
+            ch2: str,
+            require_ordered: bool,
+    ):
+        """Returns if the two input channels belongs to the same channel
+        pair. Returns False if is_channel_pair method is not implemented in the
+        corresponding awg interface.
+
+        Args:
+            ch1 (str): channel of the AWG
+            ch2 (str): channel of the AWG
+            require_ordered (bool): whether (ch1, ch2) is required to be the
+                (first, second) analog generator of this channel pair.
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        awg_1 = self.get(f'{ch1}_awg')
+        awg_2 = self.get(f'{ch2}_awg')
+
+        if awg_1 != awg_2:
+            return False
+
+        if hasattr(self.awg_interfaces[awg_1], 'is_channel_pair'):
+            return self.awg_interfaces[awg_1].is_channel_pair(
+                ch1=ch1,
+                ch2=ch2,
+                require_ordered=require_ordered
+            )
+        else:
+            return False
+
+    def is_i_channel(
+            self,
+            ch: str,
+    ):
+        """Returns if this channel is the I (smaller number) channel in its
+        channel pair. Returns False if is_i_channel method is not implemented
+        in the corresponding awg interface.
+
+        Args:
+            ch (str): channel of an AWG.
+
+        Returns:
+            is_i_channel (bool): Boolean variable indicating if this channel
+                is the I channel in its channel pair.
+        """
+        awg = self.get(f'{ch}_awg')
+        if hasattr(self.awg_interfaces[awg], 'is_i_channel'):
+            return self.awg_interfaces[awg].is_i_channel(ch=ch)
+        else:
+            return False
+
+    def is_pulse_on_awg(
+            self,
+            pulse,
+            awg: str,
+    ):
+        """Returns if a pulse is played solely on the specified AWG
+
+        Args:
+            pulse (Pulse): an instance of
+                pycqed.measurement.waveform_control.pulse.Pulse class.
+            awg (str): name of an AWG
+
+        Return:
+            is_pulse_on_awg (bool): a boolean value indicating whether all
+                channels of this pulse are on the specified AWG.
+        """
+        for ch in pulse.channels:
+            if self.get(f'{ch}_awg') != awg:
+                return False
+        return True
+
+    @staticmethod
+    def is_pulse_on_channel(
+            pulse,
+            awg_channel: str,
+    ):
+        """Returns if this pulse is played on the specified channel.
+
+        Args:
+            pulse (Pulse): an instance of
+                pycqed.measurement.waveform_control.pulse.Pulse class.
+            awg_channel (str): channel name.
+
+        Return:
+            is_pulse_on_channel (bool): a boolean value indicating
+                whether this pulse is played on the specified channel.
+        """
+        for channel in pulse.channels:
+            if channel == awg_channel:
+                return True
+
+        # Note a special case here: a virtual pulse has an empty list for its
+        # 'channels' attribute. Consequently, the loop above will be skipped
+        # and this method will return False. This is usually desirable,
+        # since this method is used to select pulses related to specified
+        # channels for further processing, and we typically do not need to
+        # process virtual pulses.
+        return False

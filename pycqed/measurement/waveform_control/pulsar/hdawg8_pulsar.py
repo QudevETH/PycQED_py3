@@ -481,6 +481,54 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             wave_hashes=wave_hashes
         )
 
+    @staticmethod
+    def is_channel_pair(
+            ch1: str,
+            ch2: str,
+            require_ordered: bool,
+    ):
+        """Returns if the two input channels belongs to the same channel pair.
+
+        Args:
+            ch1 (str): channel of the AWG
+            ch2 (str): channel of the AWG
+            require_ordered (bool): whether ch1 is required to have a smaller
+                index than ch2
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        if require_ordered and ch1 > ch2:
+            return False
+
+        ch_idx_1 = int(ch1[-1])
+        ch_idx_2 = int(ch2[-1])
+        ch_idx_smaller = min(ch_idx_1, ch_idx_2)
+        ch_idx_larger = max(ch_idx_1, ch_idx_2)
+
+        if ch_idx_smaller % 2 != 1:
+            return False
+        elif ch_idx_larger == ch_idx_smaller + 1:
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def is_i_channel(ch: str):
+        """Returns if this channel has the smaller number in its channel
+        pair.
+
+        Args:
+            ch: channel of an HDAWG.
+
+        Returns:
+            is_i_channel (str): whether this channel has the smaller number
+            in its channel pair.
+        """
+        ch_idx = int(ch[-1])
+        return ch_idx <= 8 and ch_idx % 2 == 1
+
 
 class HDAWGGeneratorModule(ZIGeneratorModule):
     """Pulsar interface for ZI HDAWG AWG modules. Each AWG module consists of
