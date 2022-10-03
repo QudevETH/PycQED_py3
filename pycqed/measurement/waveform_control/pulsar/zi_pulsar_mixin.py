@@ -506,9 +506,11 @@ class ZIMultiCoreCompilerMixin:
 
 
 class ZIDriveAWGChannel:
-    """Interface for ZI drive AWG channels/channel pairs. Each instance of
-    this class saves configuration of this channel and handles communication
-    with the base instrument class when programming the channel.
+    """Interface for ZI drive AWG modules. Each instance of this class saves
+    configuration of this module and handles communication with the base
+    instrument class when programming the module. Implementation of an AWG
+    module varies for different ZI devices. Please refer to the docstring of
+    child classes for more information.
     """
 
     _sequence_string_template = (
@@ -528,16 +530,16 @@ class ZIDriveAWGChannel:
             awg_nr: int,
     ):
         self._awg = awg
-        """ZI-API Driver of the parent device."""
+        """Instrument driver of the parent device."""
 
         self._awg_interface = awg_interface
         """Pulsar interface of the parent device."""
 
         self.pulsar = awg_interface.pulsar
-        """A copy of pulsar instance for the current AWG channel."""
+        """Pulsar instance which saves global configurations for all devices."""
 
         self._awg_nr = awg_nr
-        """AWG channel/channel pair number of the current instance."""
+        """AWG module number of the current instance."""
 
         self.channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
@@ -590,7 +592,7 @@ class ZIDriveAWGChannel:
 
         self._use_filter = False
         # TODO: check if this docstring is correct
-        """Whether to use filter programmed to the device"""
+        """Whether to use filter programmed to the device."""
 
         self._divisor = {}
         # TODO: check if this docstring is correct
@@ -601,7 +603,6 @@ class ZIDriveAWGChannel:
         """Whether to flip the sign of the Q channel waveform."""
 
         self._generate_channel_ids(awg_nr=awg_nr)
-        self._generate_divisor()
         self._reset_has_waveform_flags()
 
     def _generate_channel_ids(
@@ -616,6 +617,8 @@ class ZIDriveAWGChannel:
                                   "classes.")
 
     def _generate_divisor(self):
+        """Generate dummy divisors, which corresponds to no down-samplig for
+        the output waveforms."""
         self._divisor = {chid: 1 for chid in self.channel_ids}
 
     def _reset_sequence_strings(
@@ -674,6 +677,7 @@ class ZIDriveAWGChannel:
         """
         # Collects settings from pulsar. Uploads sine wave generation
         # and internal modulation settings to the device.
+        self._generate_divisor()
         self._reset_has_waveform_flags()
         self._reset_sequence_strings()
         self._update_channel_config(awg_sequence=awg_sequence)

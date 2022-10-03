@@ -481,7 +481,12 @@ class SHFSGPulsar(SHFGeneratorModulePulsar):
 
 
 class SHFGeneratorChannel(ZIDriveAWGChannel):
-    """Pulsar interface for SHF drive channels."""
+    """Pulsar interface for ZI SHF Generator AWG modules. Each AWG module
+    consists of one analog channel and one marker channel. There are two AWGs
+    in each analog channel, one for generating in-phase (I-) signal and
+    the other generating quadrature (Q-) signal. Please refer to ZI user manual
+    https://docs.zhinst.com/shfsg_user_manual/overview.html
+    for details."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -521,7 +526,7 @@ class SHFGeneratorChannel(ZIDriveAWGChannel):
 
         Args:
             awg_sequence: A list of elements. Each element consists of a
-            waveform-hash for each codeword and each channel.
+                waveform-hash for each codeword and each channel.
         """
         channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
                     for chid in self.analog_channel_ids]

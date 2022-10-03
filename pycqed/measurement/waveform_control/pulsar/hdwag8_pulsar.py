@@ -561,7 +561,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
 
 class HDAWG8Channel(ZIDriveAWGChannel):
-    """Pulsar interface for ZI HDAWG channel pairs."""
+    """Pulsar interface for ZI HDAWG AWG modules. Each AWG module consists of
+    two analog channels and two marker channels. Please refer to ZI user manual
+    https://docs.zhinst.com/hdawg_user_manual/overview.html
+    for more details."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
