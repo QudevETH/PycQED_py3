@@ -2,7 +2,7 @@ import numpy as np
 
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
-from typing import Literal
+from typing import Literal, Dict, Any, Tuple, Union
 
 
 def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
@@ -102,3 +102,43 @@ def append_DCsources(routine):
         dc_source = routine.fluxlines_dict[qb.name].instrument
         if dc_source not in routine.DCSources:
             routine.DCSources.append(dc_source)
+
+
+def get_qubit_flux_and_voltage(qb: QuDev_transmon,
+                               fluxlines_dict: Dict[str, Any],
+                               flux: Union[float, Literal['designated',
+                                                          'opposite',
+                                                          'mid']] = None,
+                               voltage: float = None) -> Tuple[
+        float, float]:
+    """Get the flux and voltage values of a qubit"""
+
+    designated_ss_flux = qb.flux_parking()
+    designated_ss_volt = qb.calculate_voltage_from_flux(
+        designated_ss_flux)
+    if designated_ss_flux == 0:
+        # Qubit parked at the USS.
+        # LSS will be with opposite voltage sign
+        opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
+    elif np.abs(designated_ss_flux) == 0.5:
+        # Qubit parked at the LSS
+        opposite_ss_flux = 0
+    else:
+        raise ValueError("Only Sweet Spots are supported!")
+    mid_flux = (designated_ss_flux + opposite_ss_flux) / 2
+
+    if isinstance(flux, str):
+        flux = eval(
+            flux.format(designated=designated_ss_flux,
+                        opposite=opposite_ss_flux,
+                        mid=mid_flux))
+
+    if flux is not None:
+        voltage = qb.calculate_voltage_from_flux(flux)
+    else:
+        assert voltage is not None, "No voltage or flux specified"
+        uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
+        V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
+        flux = (fluxlines_dict[qb.name]() - uss) / V_per_phi0
+
+    return flux, voltage

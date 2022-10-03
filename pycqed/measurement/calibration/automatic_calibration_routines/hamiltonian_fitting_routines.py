@@ -42,7 +42,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         one will be used.
     3) :obj:`FindFrequency` (find_frequency_<tr_name>_<i>): see corresponding
         routine.
-    4) :obj:`ReparkingRamsey` (reparking_ramsey_<i>): see corresponding routine
+    4) :obj:`AdaptiveReparkingRamsey` (reparking_ramsey_<i>): see corresponding
+        routine
 
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
     upper and the lower sweet spot.

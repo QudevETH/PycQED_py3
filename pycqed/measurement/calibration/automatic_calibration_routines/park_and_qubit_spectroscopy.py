@@ -101,7 +101,12 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         # Store initial values so that the user can retrieve them if overwritten
         self.results: Dict[str, ParkAndQubitSpectroscopyResults] = {}
         for qb in self.qubits:
-            flux, voltage = self.get_qubit_flux_and_voltage(qb=qb)
+            flux, voltage = routines_utils.get_qubit_flux_and_voltage(
+                qb=qb,
+                fluxlines_dict=self.fluxlines_dict,
+                flux=self.get_param_value("flux", qubit=qb),
+                voltage=self.get_param_value("voltage", qubit=qb)
+            )
             self.results[qb.name] = ParkAndQubitSpectroscopyResults(
                 **dict(voltage=voltage, flux=flux))
 
@@ -117,47 +122,6 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                 self.results[qb.name].initial_ge_freq = qb.ge_freq()
 
         self.final_init(**kw)
-
-    def get_qubit_flux_and_voltage(self, qb: QuDev_transmon) -> Tuple[
-            float, float]:
-        """Get the flux and voltage values at which the qubit will be parked
-        during the spectroscopy."""
-
-        designated_ss_flux = qb.flux_parking()
-        designated_ss_volt = qb.calculate_voltage_from_flux(
-            designated_ss_flux)
-        if designated_ss_flux == 0:
-            # Qubit parked at the USS.
-            # LSS will be with opposite voltage sign
-            opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
-        elif np.abs(designated_ss_flux) == 0.5:
-            # Qubit parked at the LSS
-            opposite_ss_flux = 0
-        else:
-            raise ValueError("Only Sweet Spots are supported!")
-        mid_flux = (designated_ss_flux + opposite_ss_flux) / 2
-
-        # Allow user to specify flux using the following strings:
-        # "{designated}", "{opposite}", and "{mid}"
-        flux = self.get_param_value("flux", qubit=qb.name)
-        if isinstance(flux, str):
-            flux = eval(
-                flux.format(designated=designated_ss_flux,
-                            opposite=opposite_ss_flux,
-                            mid=mid_flux))
-
-        if flux is not None:
-            voltage = qb.calculate_voltage_from_flux(flux)
-        else:
-            voltage = self.get_param_value("voltage", qubit=qb.name)
-            uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
-            V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
-            flux = (self.routine.fluxlines_dict[
-                        qb.name]() - uss) / V_per_phi0
-        if voltage is None:
-            raise ValueError("No voltage or flux specified")
-
-        return flux, voltage
 
     def create_routine_template(self):
         """Creates routine template."""
@@ -215,7 +179,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
         def run(self):
             for qb in self.qubits:
-                flux, voltage = self.routine.get_qubit_flux_and_voltage(qb)
+                flux = self.routine.results[qb.name].flux
+                voltage = self.routine.results[qb.name].voltage
                 self.routine.results[qb.name].measured_flux = flux
                 self.routine.results[qb.name].measured_voltage = voltage
 
