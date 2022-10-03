@@ -1091,13 +1091,21 @@ class ZIGeneratorModule:
 
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
-                    # TODO: allow configuring amplitudes and phases from
-                    #  higher level codes.
+                    if cw != 'no_codeword':
+                        raise RuntimeError(
+                            f"On device: {self._awg.name}: Pulse sequencing "
+                            f"with DIO and with command table are turned on "
+                            f"at the same time. Please do not use them "
+                            f"simultaneously, as they conflicts with each "
+                            f"other in the sequencer code. "
+                        )
+
+                    scaling_factor = metadata.get("scaling_factor", 1.0)
                     entry_index = len(self._command_table)
                     entry = self._generate_command_table_entry(
                         entry_index=entry_index,
                         wave_index=self._wave_idx_lookup[element][cw],
-                        amplitude=1.0,
+                        amplitude=scaling_factor,
                         phase=0.0
                     )
                     update_entry = True
@@ -1114,16 +1122,7 @@ class ZIGeneratorModule:
                             update_entry = False
 
                     # records mapping between element-codeword and entry index
-                    if (cw == 'no_codeword'):
-                        self._command_table_lookup[element] = entry_index
-                    else:
-                        raise RuntimeError(
-                            "DIO wave sequencing is not compatible with "
-                            "command table wave sequencing. Please enable "
-                            "only one of the two functionalities!"
-                        )
-
-
+                    self._command_table_lookup[element] = entry_index
                     if update_entry:
                         self._command_table.append(entry)
 
