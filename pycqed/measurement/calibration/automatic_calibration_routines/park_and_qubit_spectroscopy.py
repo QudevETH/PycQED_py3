@@ -101,8 +101,6 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         # Store initial values so that the user can retrieve them if overwritten
         self.results: Dict[str, ParkAndQubitSpectroscopyResults] = {}
         for qb in self.qubits:
-            uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
-            V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
             flux, voltage = self.get_qubit_flux_and_voltage(qb=qb)
             self.results[qb.name] = ParkAndQubitSpectroscopyResults(
                 **dict(voltage=voltage, flux=flux))
@@ -230,6 +228,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                     log.info(f"Setting {qb.name} voltage bias to {voltage:.6f} "
                              f"V. Corresponding flux: {flux} Phi0")
 
+                # Set the voltage on the corresponding flux line
                 self.routine.fluxlines_dict[qb.name](voltage)
 
     class StoreMeasuredValues(IntermediateStep):
