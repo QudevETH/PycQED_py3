@@ -116,6 +116,7 @@ class Segment:
         self.trigger_pars['length'] = self.trigger_pars['pulse_length'] + \
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
+        self._acquisition_counter = {}
         self.acquisition_elements = set()
         self.acquisition_mode = acquisition_mode
         self.mod_config = kw.pop('mod_config', dict())
@@ -156,13 +157,24 @@ class Segment:
         # Makes sure that element name is unique within sequence of
         # segments by appending the segment name to the element name
         # and that RO pulses have their own elements if no element_name
-        # was provided
-        i = len(self.acquisition_elements) + 1
-
+        # was provided. Note that Readout elements are numbered by default
+        # by counting the number of acquisition that occur for each measurement
+        # object (obtained from op code). In that way, the first readout
+        # of two different qubits which are on the same acquisition unit
+        # will be in the same element. This assumes that the readout on these
+        # qubits happens simultaneously and that they have the same number of
+        # readouts! At the moment, this is a constraint
+        # of the ZI acquisition device in any case. To relax this constraint
+        # once the hardware is more flexible, we could name the elements
+        # by their starting time, see pycqed OneNote/DevNotes/221004
         if pars_copy.get('element_name', None) == None:
             if pars_copy.get('operation_type', None) == 'RO':
+                mobj = pars_copy['op_code'].split(' ')[-1]
+                self._acquisition_counter.setdefault(mobj, 0)
                 pars_copy['element_name'] = \
-                    'RO_element_{}_{}'.format(i, self.name)
+                    'RO_element_{}_{}'.format(
+                        self._acquisition_counter[mobj], self.name)
+                self._acquisition_counter[mobj] += 1
             else:
                 pars_copy['element_name'] = 'default_{}'.format(self.name)
         else:
