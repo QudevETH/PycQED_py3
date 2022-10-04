@@ -1056,7 +1056,7 @@ class QuDev_transmon(Qubit):
         if 'UHF' in self.instr_acq.get_instr().__class__.__name__ and hasattr(
                 self.instr_acq.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
-                UHFQC=awg_ctrl,
+                UHFQC=self.instr_acq.get_instr(),
                 AWG=self.instr_pulsar.get_instr(),
                 fft_mode='fft_power',
                 nr_averages=self.acq_averages(),
