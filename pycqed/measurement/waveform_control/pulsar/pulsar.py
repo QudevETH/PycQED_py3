@@ -591,8 +591,20 @@ class Pulsar(Instrument):
                                      '{channel}_first to provide different '
                                      'parameters for the first trigger pulse '
                                      'on that channel in a sequence.')
-
-
+        self.add_parameter(
+            'main_trigger_time', initial_value='auto',
+            parameter_class=ManualParameter, unit='s',
+            vals=vals.MultiType(vals.Numbers(), vals.Enum('auto')),
+            docstring="The time (relative to algorithm time) at which the "
+                      "first waveform (triggered by the main trigger) "
+                      "starts. Can be a float (in seconds) or 'auto', "
+                      "in which case the minimal possible delay between main "
+                      "trigger and algorithm time 0 is determined "
+                      "individually for each segement.")
+        self.add_parameter(
+            'algorithm_start', initial_value='segment_start',
+            parameter_class=ManualParameter, vals=vals.Strings(),
+            docstring="TODO")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names

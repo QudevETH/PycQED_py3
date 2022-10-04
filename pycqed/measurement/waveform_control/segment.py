@@ -17,6 +17,7 @@ from copy import deepcopy
 import pycqed.measurement.waveform_control.pulse as bpl
 import pycqed.measurement.waveform_control.pulse_library as pl
 import pycqed.measurement.waveform_control.pulsar as ps
+import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
 
@@ -85,6 +86,12 @@ class Segment:
         self.resolved_pulses = []
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
+        self._init_end_name = None  # to detect end of init block in self.add
+        self._algo_start = {'search': self.pulsar.algorithm_start(),
+                            'name': None, 'occ_counter': [0]}
+        if self._algo_start['search'] in ['segment_start', 'init_start']:
+            self._algo_start['name'] = self._algo_start['search']
+            self._algo_start['search'] = None
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
@@ -172,7 +179,12 @@ class Segment:
 
         if new_pulse.ref_pulse == 'previous_pulse':
             if self.previous_pulse != None:
-                new_pulse.ref_pulse = self.previous_pulse.pulse_obj.name
+                if self.previous_pulse.pulse_obj.name == self._init_end_name:
+                    # end of the init block detected, reference following
+                    # pulse to segment_start
+                    new_pulse.ref_pulse = 'segment_start'
+                else:
+                    new_pulse.ref_pulse = self.previous_pulse.pulse_obj.name
             # if the first pulse added to the segment has no ref_pulse
             # it is reference to segment_start by default
             elif self.previous_pulse == None and \
@@ -180,6 +192,24 @@ class Segment:
                 new_pulse.ref_pulse = 'segment_start'
             else:
                 raise ValueError('No previous pulse has been added!')
+        elif new_pulse.ref_pulse == 'init_start' and \
+                new_pulse.pulse_obj.name.endswith('-|-start'):
+            # generate name to automatically detect the end of the init block
+            self._init_end_name = new_pulse.pulse_obj.name[:-len('start')] + \
+                                   'end'
+        # print("adding", new_pulse.pulse_obj.name)
+        if self._algo_start['search'] is not None:
+            if block_mod.check_pulse_by_pattern(
+                    pars_copy, self._algo_start['search'],
+                    self._algo_start['occ_counter']):
+                if self._algo_start['name'] is not None:
+                    log.warning(
+                        f"{self.name}: The algorithm start search pattern "
+                        f"{self._algo_start['search']} had matched "
+                        f"{self._algo_start['name']} before, but also matches "
+                        f"{new_pulse.pulse_obj.name}.")
+                else:
+                    self._algo_start['name'] = new_pulse.pulse_obj.name
 
         self.unresolved_pulses.append(new_pulse)
 
@@ -301,29 +331,32 @@ class Segment:
             self.enforce_single_element()
 
         visited_pulses = []
-        ref_pulses_dict = {}
+        t_shift = 0
         i = 0
 
         pulses = self.gen_refpoint_dict()
 
-        # add pulses that refer to segment start
-        for pulse in pulses['segment_start']:
-            if pulse.pulse_obj.name in pulses:
-                ref_pulses_dict.update({pulse.pulse_obj.name: pulse})
-            t0 = pulse.delay - pulse.ref_point_new * pulse.pulse_obj.length
-            pulse.pulse_obj.algorithm_time(t0)
-            visited_pulses.append((t0, i, pulse))
-            i += 1
-
-        if len(visited_pulses) == 0:
-            raise ValueError('No pulse references to the segment start!')
-
+        # First resolve pulses referencing init_start (directly or indirectly).
+        # Pulses referencing segment_start (directly or indirectly) will get
+        # resolved afterwards (see end of following while loop).
+        # Note that the while loop below accepts either pulses or an int
+        # (interpreted as absolute time) as values in the dict. We set the
+        # init_start time to absolute time 0 for now, but will shift all
+        # pulses later on (at the end of the following while loop) so that
+        # finally 'segment_start' will become the zero point.
+        ref_pulses_dict = {'init_start': 0}
+        # the ..._dict_all will collect all reference pulses, while the
+        # ..._dict only contains the recently added ones.
         ref_pulses_dict_all = deepcopy(ref_pulses_dict)
-        # add remaining pulses
+        # resolve pulses referenced to those in ref_pulses_dict
         while len(ref_pulses_dict) > 0:
+            # the ..._dict_new will become the ..._dict of the next
+            # iteration, i.e., it collects the newly added pulses in the
+            # current iteration, and those will be considered as recently
+            # added pulses in the next iteration.
             ref_pulses_dict_new = {}
             for name, pulse in ref_pulses_dict.items():
-                for p in pulses[name]:
+                for p in pulses.get(name, []):
                     if isinstance(p.ref_pulse, list):
                         if p.pulse_obj.name in [vp[2].pulse_obj.name for vp
                                                 in visited_pulses]:
@@ -353,9 +386,15 @@ class Segment:
                                 'ref_function. Allowed values are: max, min, mean.' +
                                 ' Default value: max')
                     else:
-                        t0 = pulse.pulse_obj.algorithm_time() + p.delay - \
-                            p.ref_point_new * p.pulse_obj.length + \
-                            p.ref_point * pulse.pulse_obj.length
+                        if isinstance(pulse, (float, int)):
+                            # ref_pulses_dict provided an already resolved
+                            # timing instead of a pulse
+                            t_ref = pulse
+                        else:  # ref_pulses_dict provided a pulse
+                            t_ref = pulse.pulse_obj.algorithm_time() + \
+                                    p.ref_point * pulse.pulse_obj.length
+                        t0 = t_ref + p.delay - \
+                            p.ref_point_new * p.pulse_obj.length
 
                     p.pulse_obj.algorithm_time(t0)
 
@@ -367,16 +406,57 @@ class Segment:
                     visited_pulses.append((t0, i, p))
                     i += 1
 
+            if not len(ref_pulses_dict_new):  # Nothing further to do
+                if 'segment_start' not in ref_pulses_dict_all:
+                    # We have only resolved init pulses up to now, but we
+                    # still need to resolve the main part (referenced to
+                    # segment_start).
+                    # let the main part of the segment start after the end
+                    # of the last init pulse (or at time 0 if there is no init)
+                    t_init_end = max(
+                        [p.pulse_obj.algorithm_time() + p.pulse_obj.length
+                         for (_, _, p) in visited_pulses] or [0])
+                    if self._algo_start['name'] == 'segment_start':
+                        # remember to shift all init pulses so that
+                        # segment_start will be at time 0
+                        t_shift = t_init_end
+                    # resolve pulses referencing segment_start directly in
+                    # the next iteration and those referencing segment_start
+                    # indirectly in the following iterations
+                    ref_pulses_dict_new = {'segment_start': t_init_end}
+                elif len(visited_pulses) == 0:
+                    # main part already resolved, but no pulses visited
+                    raise ValueError(
+                        'No pulse references to the segment start!')
             ref_pulses_dict = ref_pulses_dict_new
             ref_pulses_dict_all.update(ref_pulses_dict_new)
 
         if len(visited_pulses) != len(self.resolved_pulses):
-            log.error(f"{len(visited_pulses), len(self.resolved_pulses)}")
-            for unpulse in visited_pulses:
-                if unpulse not in self.resolved_pulses:
-                    log.error(unpulse)
-            raise Exception(f'Not all pulses have been resolved: '
-                            f'{self.resolved_pulses}')
+            log.error(f"{len(self.resolved_pulses)} pulses to be resolved, "
+                      f"but only {len(visited_pulses)} pulses visited. "
+                      f"Pulses that have not been visited:")
+            vp = [p for _, _, p in visited_pulses]
+            for p in self.resolved_pulses:
+                if p not in vp:
+                    log.error(p)
+            raise Exception('Not all pulses have been resolved.')
+
+        if self._algo_start['search'] is not None:
+            if self._algo_start['name'] is None:
+                log.warning(
+                    f"{self.name}: The algorithm start search pattern "
+                    f"{self._algo_start['search']} did not match any pulse. "
+                    f"Using segment_start as start time.")
+                t_shift = t_init_end
+            else:
+                t_shift = [p.pulse_obj.algorithm_time()
+                           for _, _, p in (visited_pulses)
+                           if p.pulse_obj.name == self._algo_start['name']][0]
+        if t_shift:
+            for ind, (t0, i_p, p) in enumerate(visited_pulses):
+                p.pulse_obj.algorithm_time(
+                    p.pulse_obj.algorithm_time() - t_shift)
+                visited_pulses[ind] = (t0 - t_shift, i_p, p)
 
         if resolve_block_align:
             re_resolve = False
@@ -793,6 +873,20 @@ class Segment:
             if awg not in self.elements_on_awg:
                 continue
             if len(self.pulsar.get('{}_trigger_channels'.format(awg))) == 0:
+                # master AWG directly triggered by main trigger
+                t_main_trig = self.pulsar.main_trigger_time()
+                if t_main_trig != 'auto':
+                    # find first element on AWG
+                    el = self.find_trigger_element(awg, -np.inf)
+                    start_end = self.element_start_end[el][awg]
+                    if start_end[0] < t_main_trig:
+                        raise ValueError(
+                            f'Fixed main trigger time {t_main_trig} is too '
+                            f'late for this segment, which starts at '
+                            f'{start_end[0]}.')
+                    # update element start such that the waveforms start at
+                    # the requested fixed main trigger time.
+                    self.element_start_length(el, awg, t_start=t_main_trig)
                 continue  # for master AWG no trigger_pulse has to be added
 
             trigger_pulses = []
@@ -1132,7 +1226,7 @@ class Segment:
                 pulse.pulse_obj.phase = pulse.original_phase - \
                                         basis_phases.get(pulse.basis, 0)
 
-    def element_start_length(self, element, awg):
+    def element_start_length(self, element, awg, t_start=np.inf):
         """
         Finds and saves the start and length of an element on AWG awg
         in self.element_start_end.
@@ -1141,7 +1235,6 @@ class Segment:
             self.element_start_end[element] = {}
 
         # find element start, end and length
-        t_start = np.inf
         t_end = -np.inf
 
         for pulse in self.elements[element]:
@@ -1818,8 +1911,8 @@ class Segment:
 class UnresolvedPulse:
     """
     pulse_pars: dictionary containing pulse parameters
-    ref_pulse: 'segment_start', 'previous_pulse', pulse.name, or a list of
-        multiple pulse.name.
+    ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
+        or a list of multiple pulse.name.
     ref_point: 'start', 'end', 'middle', reference point of the reference pulse
     ref_point_new: 'start', 'end', 'middle', reference point of the new pulse
     ref_function: 'max', 'min', 'mean', specifies how timing is chosen if
