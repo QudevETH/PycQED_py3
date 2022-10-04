@@ -376,12 +376,13 @@ class multi_sweep_function(Soft_Sweep):
                 qcodes.Parameter object is passed it will be converted to a
                 Sweep_function beforehand.
         """
-        if self.sweep_functions and self.sweep_functions[0].sweep_control != \
-                sweep_function.sweep_control:
+        if not self.sweep_functions:
+            self.sweep_control = sweep_function.sweep_control
+        elif self.sweep_control != sweep_function.sweep_control:
             raise ValueError(f'Sweep control "{sweep_function.sweep_control}" '
                              f'of added sweep function does not match the '
                              f'sweep control of the previously added functions '
-                             f'("{self.sweep_functions[0].sweep_control}"). '
+                             f'("{self.sweep_control}"). '
                              f'All sweep functions must have the same '
                              f'sweep_control.')
 
