@@ -996,21 +996,19 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     (mod_freq, self.get_mod_freq_param(qb)()))
             elif self.modulated:
                 # HDAWG modulated spectroscopy settings:
-                if task.get('mod_freq', False):
-                    # FIXME: HDAWG specific code, should be moved to pulsar?
-                    mod_freq = qb.instr_pulsar.get_instr().parameters[
-                        f'{qb.ge_I_channel()}_direct_mod_freq'
-                    ]
-                    self.temporary_values.append((mod_freq,
-                                                  task['mod_freq']))
-                    amp = qb.instr_pulsar.get_instr().parameters[
-                        f'{qb.ge_I_channel()}_direct_output_amp'
-                    ]
-                    self.temporary_values.append((amp,
-                                                  dbm_to_vp(qb.spec_power())))
-                else:
-                    log.error('Task for modulated spectroscopy does not contain'
-                              'mod_freq.')
+                # FIXME: HDAWG specific code, should be moved to pulsar?
+                mod_freq = qb.instr_pulsar.get_instr().parameters[
+                    f'{qb.ge_I_channel()}_direct_mod_freq'
+                ]
+                self.temporary_values.append((
+                    mod_freq,
+                    task.get('mod_freq',
+                                self.get_mod_freq_param(qb)())))
+                amp = qb.instr_pulsar.get_instr().parameters[
+                    f'{qb.ge_I_channel()}_direct_output_amp'
+                ]
+                self.temporary_values.append((amp,
+                                              dbm_to_vp(qb.spec_power())))
 
 
 class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
