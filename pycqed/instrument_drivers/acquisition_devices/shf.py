@@ -6,7 +6,7 @@ from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
-    zhinst_qcodes_wrappers import ZHInstMixin, ZHInstSHFMixin
+    zhinst_qcodes_wrappers import ZHInstMixin, ZHInstSGMixin
 from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
@@ -585,7 +585,7 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
-class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSHFMixin):
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSGMixin):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
@@ -600,8 +600,8 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSHFMixin):
 
     def start(self, **kwargs):
         SHF_AcquisitionDevice.start(self, **kwargs)
-        ZHInstSHFMixin.start(self)
+        ZHInstSGMixin.start(self)
 
     def stop(self):
         SHF_AcquisitionDevice.stop(self)
-        ZHInstSHFMixin.stop(self)
+        ZHInstSGMixin.stop(self)

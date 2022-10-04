@@ -49,8 +49,9 @@ class ZHInstMixin:
             return daq
 
 
-class ZHInstSHFMixin:
-    """Mixin containing utility functions needed by ZI SHF instruments.
+class ZHInstSGMixin:
+    """Mixin containing utility functions needed by ZI instruments that have
+    SG channels.
 
     Classes deriving from this mixin must have the following attributes:
         - sg_channels (list): of ZI SGChannel instances.
@@ -156,7 +157,7 @@ class ZHInstSHFMixin:
                 sgchannel.sines[0].q.enable(0)
 
 
-class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
+class SHFSG(SHFSG_core, ZHInstSGMixin, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI SHFSG
     """
 
