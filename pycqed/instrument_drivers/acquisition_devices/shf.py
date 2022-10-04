@@ -107,6 +107,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                       'units for consistency.',
             vals=validators.Numbers())
 
+        self.add_parameter(
+           'timeout',
+           unit='s',
+           initial_value=30,
+           parameter_class=ManualParameter,
+           docstring='Timeout when waiting for scope data.',
+           vals=validators.Ints())
+
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
@@ -363,10 +371,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             else:
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
