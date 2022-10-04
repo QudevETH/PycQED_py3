@@ -7,7 +7,7 @@ from qcodes.utils import validators
 
 
 class InitializationScheme(InstrumentModule):
-    INIT_VALUE = "from parent"
+    DEFAULT_VALUE = "from parent"
 
     def __init__(self, parent, name, operations=(),
                  ref_instrument=None, **kwargs):
@@ -54,7 +54,8 @@ class InitializationScheme(InstrumentModule):
                            vals=validators.Dict(),
                            parameter_class=ManualParameter)
 
-        self.instr_ref = self.root_instrument if ref_instrument is None else ref_instrument
+        self.instr_ref = self.root_instrument if ref_instrument is None \
+            else ref_instrument
 
         self._operations = {}
         self.add_parameter('operations',
@@ -85,13 +86,14 @@ class InitializationScheme(InstrumentModule):
         for pulse_param_name, param_name in self._operations[operation_name].items():
             if self.instr_ref.parameters[param_name].vals is not None:
                 vals = validators.MultiType(self.instr_ref.parameters[param_name].vals,
-                                            validators.Enum(self.INIT_VALUE))
+                                            validators.Enum(self.DEFAULT_VALUE))
             else:
                 vals = None
             self.add_parameter(param_name,
-                initial_value=init_values.get(param_name, self.INIT_VALUE),
-                vals=vals,
-                parameter_class=ManualParameter)
+                               initial_value=init_values.get(param_name,
+                                                             self.DEFAULT_VALUE),
+                               vals=vals,
+                               parameter_class=ManualParameter)
 
     def _get_operations(self):
         return self._operations
@@ -127,7 +129,7 @@ class InitializationScheme(InstrumentModule):
 
         for op in init_specific_params:
             operation_dict[self.get_opcode(op)] = \
-                deepcopy(ref_instr_op_dict[self.get_opcode(op, self.instr_ref)])
+                deepcopy(ref_instr_op_dict[op + f" {self.instr_ref.name}"])
             operation_dict[self.get_opcode(op)].update(init_specific_params[op])
             operation_dict[self.get_opcode(op)].update(
                 {"op_code": self.get_opcode(op)})
@@ -150,14 +152,14 @@ class InitializationScheme(InstrumentModule):
         params = {}
         for op in operations:
             params[op] = {k: v for k, v in
-                          self._get_operation_dict()[op + f" " + self.name].items()
-                          if v != self.INIT_VALUE}
-        return params
+                          self._get_operation_dict()[self.get_opcode(op)].items()
+                          if v != self.DEFAULT_VALUE}
+        return deepcopy(params)
 
     def get_opcode(self, operation, instr=None):
         if instr is None:
-            instr = self
-        return operation + f" {instr.name}"
+            instr = self.instr_ref
+        return operation + f"_{self.short_name} {instr.name}"
 
 
 class Preselection(InitializationScheme):
@@ -177,7 +179,6 @@ class Preselection(InitializationScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         # additional changes
-        preselection_ro['element_name'] = f'{name}_element'
         return Block(name, [preselection_ro])
 
 
@@ -205,6 +206,14 @@ class ActiveReset(InitializationScheme):
                            parameter_class=ManualParameter,
                            get_parser=self._validate_ro_feedback_delay)
 
+    def get_operation_dict(self, operation_dict=None):
+        operation_dict = super().get_operation_dict()
+
+        operation_dict[self.get_opcode("I")] = \
+            deepcopy(operation_dict[self.get_opcode("X180")])
+        operation_dict[self.get_opcode("I")]['amplitude'] = 0
+        return operation_dict
+
     def _init_block(self, name):
         op_dict = self.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
@@ -212,7 +221,6 @@ class ActiveReset(InitializationScheme):
         active_reset_ro = deepcopy(op_dict[self.get_opcode("RO")])
 
         # additional changes
-        active_reset_ro['element_name'] = f'element_{name}'
         active_reset_ro['name'] = f'ro_{name}'
         reset_pulses = [active_reset_ro]
         for j, (codeword, state) in enumerate(self.codeword_state_map().items()):
@@ -223,8 +231,8 @@ class ActiveReset(InitializationScheme):
                 reset_pulses[-1]['element_name'] = f'reset_pulses_element_{name}'
                 if i == 0:
                     reset_pulses[-1]['ref_pulse'] = active_reset_ro['name']
-                    print(active_reset_ro['name'])
                     reset_pulses[-1]['pulse_delay'] = self.ro_feedback_delay()
+                    reset_pulses[-1]['ref_point'] = "start"
         return Block(name, reset_pulses)
 
     def _validate_ro_feedback_delay(self, ro_feedback_delay):
@@ -247,6 +255,7 @@ class ActiveReset(InitializationScheme):
             raise ValueError(msg)
 
         return codeword_state_map
+
 
 class ParametricFluxReset(InitializationScheme):
 
