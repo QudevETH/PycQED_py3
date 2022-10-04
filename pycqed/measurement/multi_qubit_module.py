@@ -470,7 +470,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
 def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                  preselection=True, all_states_combinations=False, upload=True,
                  exp_metadata=None, analyze=True, analysis_kwargs=None,
-                 delegate_plotting=False, update=True):
+                 delegate_plotting=False, update=True, df_name='int_log_det'):
     """
     Measures in single shot readout the specified states and performs
     a Gaussian mixture fit to calibrate the state classfier and provide the
@@ -506,6 +506,9 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
             and skip the plotting during the analysis.
         update (bool): update readout classifier parameters (qb.acq_classifier_params)
             and the acquisition state probability matrix (qb.acq_state_prob_mtx).
+        df_name (str): name of the detector function to be used,
+            see docstring of get_multiplexed_readout_detector_functions
+            (default: 'int_log_det')
 
     Returns:
 
@@ -555,7 +558,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
-            'int_log_det', qubits, nr_shots=n_shots)
+            df_name, qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
