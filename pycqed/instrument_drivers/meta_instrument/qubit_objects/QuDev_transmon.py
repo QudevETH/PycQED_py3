@@ -1381,7 +1381,7 @@ class QuDev_transmon(Qubit):
             return pulsar.get_frequency_sweep_function(
                 self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
 
-    def swf_ro_freq_lo(self):
+    def swf_ro_freq_lo(self, bare=False):
         """Create a sweep function for sweeping the readout frequency.
 
         The sweep is implemented as an LO sweep in case of an acquisition
@@ -1390,18 +1390,26 @@ class QuDev_transmon(Qubit):
         internal LO (note that it might be an IF sweep or a combined LO and
         IF sweep in that case.)
 
+        Args:
+            bare (bool): return the bare LO freq swf without any automatic
+                offsets applied. Defaults to False.
+
         Returns: the Sweep_function object
         """
         if self.instr_ro_lo() is not None:  # external LO
-            return swf.Offset_Sweep(
-                self.instr_ro_lo.get_instr().frequency,
-                -self.ro_mod_freq(),
-                name='Readout frequency',
-                parameter_name='Readout frequency')
+            if bare:
+                return swf.mc_parameter_wrapper.wrap_par_to_swf(
+                    self.instr_ro_lo.get_instr().frequency)
+            else:
+                return swf.Offset_Sweep(
+                    self.instr_ro_lo.get_instr().frequency,
+                    -self.ro_mod_freq(),
+                    name='Readout frequency',
+                    parameter_name='Readout frequency')
         else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
                 self.acq_unit(),
-                0 if self.ro_fixed_lo_freq() else self.ro_mod_freq(),
+                0 if (self.ro_fixed_lo_freq() or bare) else self.ro_mod_freq(),
                 get_closest_lo_freq=(lambda f, s=self:
                                      s.get_closest_lo_freq(f, operation='ro')))
 

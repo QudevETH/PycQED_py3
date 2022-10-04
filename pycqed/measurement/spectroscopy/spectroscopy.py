@@ -343,7 +343,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                                                   dimension=dim)
             # Add the sweep function for the joint LO sweep.
             self.sweep_functions_dict[lo_freq_key] = self.get_lo_swf(
-                self.get_qubit(tasks[0]))
+                self.get_qubit(tasks[0]), bare=True)
             # Indicate that no individual sweep functions are needed.
             self.sweep_functions_dict.update({
                 task['prefix'] + 'freq': None for task in tasks})
@@ -458,7 +458,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         raise NotImplementedError('Child class has to implement'
                                   ' get_mod_freq_param.')
 
-    def get_lo_swf(self, qb):
+    def get_lo_swf(self, qb, bare=False):
         """Returns a sweep function for a frequency sweep for the qubit.
 
         Child classes have to implement this method and should not call this
@@ -467,6 +467,9 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         Args:
             qb (QuDev_transmon): Qubit for which the sweep function is
             returned.
+
+            bare (bool): return the bare lo freq swf without any automatic
+                offsets applied. Defaults to False.
 
         Raises:
             NotImplementedError: In case the child class did not implement the
@@ -713,8 +716,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_mod_freq_param(self, qb, **kw):
         return qb.ro_mod_freq
 
-    def get_lo_swf(self, qb):
-        return qb.swf_ro_freq_lo()
+    def get_lo_swf(self, qb, bare=False):
+        return qb.swf_ro_freq_lo(bare)
 
     def run_update(self, **kw):
         """
@@ -943,15 +946,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def get_mod_freq_param(self, qb, **kw):
         return qb.ge_mod_freq
 
-    def get_lo_swf(self, qb):
-        if getattr(self, 'modulated', True):
+    def get_lo_swf(self, qb, bare=False):
+        if getattr(self, 'modulated', True) and not bare:
             return swf.Offset_Sweep(
                 sweep_function=qb.swf_drive_lo_freq(allow_IF_sweep=False),
                 offset=-self.get_mod_freq_param(qb)(),
                 name='Drive frequency',
                 parameter_name='Drive frequency')
         else:
-            return qb.swf_drive_lo_freq()
+            return qb.swf_drive_lo_freq(allow_IF_sweep=(not bare))
 
     def _get_power_param(self, qb, get_swf=False):
         if qb.instr_ge_lo() is not None:
