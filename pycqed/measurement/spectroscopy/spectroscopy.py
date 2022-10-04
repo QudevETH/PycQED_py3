@@ -43,6 +43,14 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             calibration points.
         segment_kwargs (dict, optional): Defaults to `dict()`. Passed to
             `sweep_n_dim`.
+        optimize_mod_freqs: (bool, default: False) Ignored for hard_sweeps or
+            LOs supplying only one qb. If False, the mod_freq setting of the
+            first qb on an LO (according to the ordering of the task_list)
+            determines the LO frequency for all qubits on that LO. If True, the
+            LO will be placed in the center of the band of frequencies of all
+            qubits on that LO (minimizing the maximum absolute value of mod_freq
+            over all qubits). Do not use in case of two qubits per LO, as it
+            would lead to overlapping sidebands.
     """
     task_mobj_keys = ['qb']
 
@@ -280,13 +288,16 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                         self.sweep_points[i][param]
                     sw_ctrl = 'hard'
 
-    def resolve_freq_sweep_points(self, **kw):
+    def resolve_freq_sweep_points(self, optimize_mod_freqs=False, **kw):
         """
         This function is called from the init of the class to resolve the
         frequency sweep points. The results are stored in properties of
         the object, which are then used in run_measurement. Aspects to be
         resolved include (if applicable):
         - (shared) LO freqs and (fixed or swept) IFs
+
+        Args:
+            optimize_mod_freqs: (bool, default: False) See class docstring.
 
         FIXME: add feature to support only a specific range of LO frequencies,
         e.g for SHF center frequencies.
@@ -305,8 +316,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 continue
 
             # We resolve the LO frequency.
-            # For LOs supplying several qubits, the LO is set to the value
-            # minimizing the maximum absolut modulation frequency.
+            # For LOs supplying several qubits, the LO is set according to the
+            # optimize_mod_freqs parameter, see docstring.
             sp_all = [task['sweep_points'] for task in tasks]
             dim_all = [sp.find_parameter('freq') for sp in sp_all]
             if any([dim != dim_all[0] for dim in dim_all]):
@@ -314,11 +325,17 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                     'All frequency sweeps must be in the same dimension.')
             dim = dim_all[0]
             freqs_all = np.array([sp['freq'] for sp in sp_all])
-
-            # optimize the mod freq to lie in the middle of the overall
-            # frequency range of this LO
-            lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
-                              + np.min(freqs_all, axis=0))
+            if optimize_mod_freqs:
+                # optimize the mod freq to lie in the middle of the overall
+                # frequency range of this LO
+                lo_freqs = 0.5 * (np.max(freqs_all, axis=0)
+                                + np.min(freqs_all, axis=0))
+            else:
+                # The mod freq of the qb of the first task in the list tasks
+                # determines the LO freqs and thereby also the mod freqs of all
+                # other qbs using the same LO.
+                lo_freqs = sp_all[0]['freq'] - self.get_mod_freq_param(
+                    self.get_qubit(tasks[0]))()
             lo_freq_key = self._get_lo_freq_key(lo)
             self.sweep_points.add_sweep_parameter(param_name=lo_freq_key,
                                                   values=lo_freqs,
