@@ -706,6 +706,9 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 for pulse_dict in ro.pulses:
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
+                        # Here, we know that we have different RO pulses. We
+                        # therefore turn of repeat_ro:
+                        self.repeat_ro = False # TODO: test
 
         # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ro]
