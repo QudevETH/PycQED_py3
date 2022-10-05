@@ -282,30 +282,24 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 flux]
 
             # Setting bias voltage to the guess voltage
-            step_label = 'set_bias_voltage_' + str(i)
-            settings = {step_label: {"voltage": voltage_guess}}
-            step_settings = {'settings': settings}
+            step_label = f'set_bias_voltage_{i}'
+            step_settings = {"qubit": qubit,
+                             "voltage": voltage_guess}
             self.add_step(SetBiasVoltage, step_label, step_settings)
 
             for transition in self.measurements[flux]:
                 # ge-transitions
                 if transition == "ge":
 
-                    step_label = 'update_frequency_' + \
-                                 transition + '_' + str(i)
+                    step_label = f'update_frequency_{transition}_{i}'
                     # Updating ge-frequency at this voltage to guess value
-                    settings = {
-                        step_label: {
-                            "frequency": ge_freq_guess,
-                            "transition_name": transition,
-                        }
-                    }
-                    step_settings = {'settings': settings}
-                    self.add_step(UpdateFrequency, step_label,
-                                  step_settings)
+                    step_settings = {"qubit": qubit,
+                                     "frequency": ge_freq_guess,
+                                     "transition": transition}
+                    self.add_step(UpdateFrequency, step_label, step_settings)
 
                     # Finding the ge-transition frequency at this voltage
-                    step_label = 'find_frequency_' + transition + '_' + str(i)
+                    step_label = f'find_frequency_{transition}_{i}'
                     find_freq_settings = {
                         'settings': {
                             step_label: {
@@ -356,19 +350,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
                 elif transition == "ef":
                     # Updating ef-frequency at this voltage to guess value
-                    step_label = 'update_frequency_' + transition
-                    settings = {
-                        step_label: {
-                            "flux": flux,
-                            "transition_name": transition,
-                        }
-                    }
-                    step_settings = {'settings': settings}
-                    self.add_step(UpdateFrequency, step_label,
-                                  step_settings)
+                    step_label = f'update_frequency_{transition}'
+                    step_settings = {"qubit": qubit,
+                                     "flux": flux,
+                                     "transition": transition}
+                    self.add_step(UpdateFrequency, step_label, step_settings)
 
                     # Finding the ef-frequency
-                    step_label = "find_frequency_" + transition
+                    step_label = f"find_frequency_{transition}"
                     find_freq_settings = {
                         'settings': {
                             step_label: {
@@ -404,29 +393,20 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         for i, flux in enumerate(self.fluxes_without_guess,
                                  len(self.other_fluxes_with_guess) + 2):
             # Updating bias voltage using earlier reparking measurements
-            step_label = 'set_bias_voltage_' + str(i)
+            step_label = f'set_bias_voltage_{i}'
             self.add_step(SetBiasVoltage, step_label,
-                          {'settings': {
-                              step_label: {
-                                  "flux": flux
-                              }
-                          }})
+                          step_settings={"qubit": qubit,
+                                         "flux": flux})
 
             # Looping over all transitions
             for transition in self.measurements[flux]:
                 # Updating transition frequency of the qubit object to the value
                 # calculated by prior or preliminary model
-                step_label = 'update_frequency_' + transition + '_' + str(i)
-                settings = {
-                    'settings': {
-                        step_label: {
-                            "flux": flux,
-                            "transition": transition,
-                            "use_prior_model": True
-                        }
-                    }
-                }
-                self.add_step(UpdateFrequency, step_label, settings)
+                step_label = f'update_frequency_{transition}_{i}'
+                step_settings = {"qubit": qubit,
+                                 "flux": flux,
+                                 "transition": transition}
+                self.add_step(UpdateFrequency, step_label, step_settings)
 
                 # Set temporary values for Find Frequency
                 step_label = 'set_tmp_values_flux_pulse_ro_' + \
