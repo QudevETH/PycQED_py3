@@ -104,13 +104,13 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             flux, voltage = routines_utils.get_qubit_flux_and_voltage(
                 qb=qb,
                 fluxlines_dict=self.fluxlines_dict,
-                flux=self.get_param_value("flux", qubit=qb),
-                voltage=self.get_param_value("voltage", qubit=qb)
+                flux=self.get_param_value("flux", qubit=qb.name),
+                voltage=self.get_param_value("voltage", qubit=qb.name)
             )
             self.results[qb.name] = ParkAndQubitSpectroscopyResults(
                 **dict(voltage=voltage, flux=flux))
 
-            if flux != qb.flux_parking():
+            if flux != qb.flux_parking() or not qb.ge_freq():
                 transmon_freq_model = \
                     routines_utils.get_transmon_freq_model(qb)
                 updated_frequency = qb.calculate_frequency(
