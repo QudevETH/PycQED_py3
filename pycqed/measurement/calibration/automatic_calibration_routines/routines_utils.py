@@ -105,13 +105,14 @@ def append_DCsources(routine):
 
 
 def get_qubit_flux_and_voltage(qb: QuDev_transmon,
-                               fluxlines_dict: Dict[str, Any],
+                               fluxlines_dict: Dict[str, Any] = None,
                                flux: Union[float, Literal['designated',
                                                           'opposite',
                                                           'mid']] = None,
                                voltage: float = None) -> Tuple[
         float, float]:
-    """Get the flux and voltage values of a qubit"""
+    """Get the flux and voltage values of a qubit. One of the three values
+    [flux, voltage, fluxlines_dict must be passed"""
 
     designated_ss_flux = qb.flux_parking()
     designated_ss_volt = qb.calculate_voltage_from_flux(
@@ -136,9 +137,24 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
     if flux is not None:
         voltage = qb.calculate_voltage_from_flux(flux)
     else:
-        assert voltage is not None, "No voltage or flux specified"
+        voltage = voltage or fluxlines_dict[qb.name]()
         uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
         V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
-        flux = (fluxlines_dict[qb.name]() - uss) / V_per_phi0
+        flux = (voltage - uss) / V_per_phi0
 
     return flux, voltage
+
+
+def qb_is_at_designated_sweet_spot(qb: QuDev_transmon,
+                                   flux: float = None,
+                                   voltage: float = None,
+                                   fluxlines_dict: Dict[str, Any] = None,
+                                   small_flux: float = 0.1) -> bool:
+    """Helps when only the voltage is known, not the flux."""
+    if flux is None:
+        if voltage is None:
+            voltage = fluxlines_dict[qb.name]()
+        flux, _ = get_qubit_flux_and_voltage(
+            qb=qb,
+            voltage=voltage)
+    return np.abs(flux - qb.flux_parking()) < small_flux
