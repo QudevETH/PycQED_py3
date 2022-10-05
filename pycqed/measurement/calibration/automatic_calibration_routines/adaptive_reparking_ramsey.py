@@ -31,7 +31,8 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
 
     def __init__(self, routine,
                  fluxlines_dict: Dict[str, Any],
-                 *args, **kwargs):
+                 qubits: List[QuDev_transmon] = None,
+                 **kwargs):
         """Initializes the ReparkingRamseyStep class, which also includes
         initialization of the ReparkingRamsey experiment.
 
@@ -39,9 +40,8 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
             routine (AdaptiveReparkingRamsey): The parent routine.
             fluxlines_dict (dict): dictionary containing the qubits names as
                 keys and the flux lines QCoDeS parameters as values.
-
-        Keyword Arguments:
-            qubits (list): List of qubits to be used in the routine.
+            qubits (list): List of qubits to be used in the routine. If None is
+                given the step will acquire the qubits of the parent routine.
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
@@ -57,9 +57,11 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
                 The total points for the sweep range are n_periods*pts_per_period+1,
                 the artificial detuning is n_periods/delta_t.
     """
-        self.fluxlines_dict = fluxlines_dict
         self.kw = kwargs
-        Step.__init__(self, routine=routine, *args, **kwargs)
+        self.qubits = qubits or self.routine.qubits
+        Step.__init__(self, routine=routine, qubits=self.qubits, **kwargs)
+        self.fluxlines_dict = fluxlines_dict
+
         settings = self.parse_settings(self.get_requested_settings())
         qbcal.ReparkingRamsey.__init__(self, dev=self.dev, **settings)
 
@@ -151,7 +153,7 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
 
 
 class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
-    """Routine to finds the sweet-spot of a qubit using Ramsey experiments at
+    """Routine to find the sweet-spot of a qubit using Ramsey experiments at
     different voltages.
     A series of Ramsey experiments is performed. A Decision step decides
     whether the found sweet spot is outside the swept voltages range, and if so
@@ -185,6 +187,11 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
         The settings of these additional steps can be set manually by specifying
         the settings for each step in the configuration parameter dictionary
         (using the unique label of each step)
+
+    Notes:
+        When the `dc_voltage_offsets` are specified, the center voltage will be
+        the current one, so the user must make sure that it is indeed
+        corresponding to the aimed flux point.
     """
 
     def __init__(
