@@ -720,6 +720,7 @@ class AutomaticCalibrationRoutine(Step):
                                                   len(self.routine_template)):
             self.create_initial_routine(load_parameters=False)
             self.run()
+            self.post_run()
             return
 
         # Start and stop indices
@@ -825,6 +826,7 @@ class AutomaticCalibrationRoutine(Step):
             #  the routine results are not accessible
             try:
                 self.run()
+                self.post_run()
             except:
                 log.error(
                     "Autorun failed to fully run, concluded routine steps "
