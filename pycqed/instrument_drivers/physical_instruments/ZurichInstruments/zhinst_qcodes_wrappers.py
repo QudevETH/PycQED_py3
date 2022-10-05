@@ -14,6 +14,12 @@ from qcodes.instrument.parameter import ManualParameter
 
 
 class ZHInstMixin:
+    """Mixin containing utility functions needed by ZI instruments.
+
+    Classes deriving from this mixin must have the following attributes:
+     - serial (str): typically devname
+     - session: ZI Session instance
+    """
 
     @property
     def devname(self):
@@ -43,8 +49,18 @@ class ZHInstMixin:
             return daq
 
 
-class ZHInstSHFMixin:
+class ZHInstSGMixin:
+    """Mixin containing utility functions needed by ZI instruments that have
+    SG channels.
 
+    Classes deriving from this mixin must have the following attributes:
+        - sg_channels (list): of ZI SGChannel instances.
+        - _sgchannel_sine_enable (list): with length len(self.sg_channels)
+            containing bools specifying whether the sine generators are to be
+            used in the current experiment.
+        - _awg_program (list): with length len(self.sg_channels) storing the
+            AWG SeqC string that was last programmed.
+    """
     def configure_sine_generation(self, chid, enable=True, osc_index=0, freq=None,
                                   phase=0.0, gains=(0.0, 1.0, 1.0, 0.0),
                                   sine_generator_index=0,
@@ -56,7 +72,9 @@ class ZHInstSHFMixin:
         'self._sgchannel_sine_enable' which is used in :meth:`self.start`.
 
         Args:
-            chid (str): Name of the SGChannel to configure
+            chid (str): Name of the SGChannel to configure, as used in pycqed,
+                i.e. f'sg{ch_idx}i' or f'sg{ch_idx}q' where ch_idx is an in
+                specifying the channel index
             enable (bool, optional): Enable of the sine generator. Also see
                 comment above and parameter description of `force_enable`.
                 Defaults to True.
@@ -96,7 +114,9 @@ class ZHInstSHFMixin:
         """Configure the internal modulation of the SG channel.
 
         Args:
-            chid (str): Name of the SGChannel to configure
+            chid (str): Name of the SGChannel to configure, as used in pycqed,
+                i.e. f'sg{ch_idx}i' or f'sg{ch_idx}q' where ch_idx is an in
+                specifying the channel index
             enable (bool, optional): Enable of the digital modulation.
                 Defaults to True.
             osc_index (int, optional): Index of the digital oscillator to be
@@ -141,7 +161,7 @@ class ZHInstSHFMixin:
                 sgchannel.sines[0].q.enable(0)
 
 
-class SHFSG(SHFSG_core, ZHInstSHFMixin, ZHInstMixin):
+class SHFSG(SHFSG_core, ZHInstSGMixin, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI SHFSG
     """
 

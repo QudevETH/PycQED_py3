@@ -179,13 +179,6 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         return n_acq + self._n_acquisition_progress_add
 
     def get_awg_control_object(self):
-        """
-        Returns the AWG control object and its name. See docstring in
-        AcquisitionDevice for more details.
-
-        Returns:
-            itself, its own name
-        """
         return self, self.name
 
     def _check_hardware_limitations(self):
