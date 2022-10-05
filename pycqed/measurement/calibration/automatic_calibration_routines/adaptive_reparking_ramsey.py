@@ -194,6 +194,8 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
         corresponding to the aimed flux point.
     """
 
+    SMALL_FLUX = 0.1  # Help to define the vicinity of a sweet spot
+
     def __init__(
             self,
             dev: Device,
@@ -281,12 +283,6 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                 if success:
                     if self.get_param_value('verbose'):
                         print(f"Reparking Ramsey for {qb.name} was successful.")
-                    # Update the frequency in the dictionary for next steps
-                    self.routine.results[qb.name].update({
-                        "ss_freq": qb.ge_freq(),
-                        "ss_volt": fit_voltage,
-                        "iterations_needed": routine.index_iteration
-                    })
                 elif routine.index_iteration < max_iterations:
                     if self.get_param_value('verbose'):
                         print(f"Reparking Ramsey failed for {qb.name} since "
@@ -356,3 +352,22 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
             },
             index=self.current_step_index + 2
         )
+
+    def post_run(self):
+        for qb in self.qubits:
+            self.results[qb.name].update({
+                "ss_freq": qb.ge_freq(),
+                "ss_volt": self.fluxlines_dict[qb.name](),
+                "iterations_needed": self.index_iteration
+            })
+
+            flux, _ = routines_utils.get_qubit_flux_and_voltage(
+                qb=qb,
+                fluxlines_dict=self.fluxlines_dict,
+                voltage=self.fluxlines_dict[qb.name]())
+            if np.abs(flux - qb.flux_parking()) > self.SMALL_FLUX:
+                # This is not the sweet spot!
+                log.warning("The AdaptiveReparkingRamsey routine results will "
+                            "not update since this is not the designated sweet "
+                            "spot")
+                self.settings[self.name]["General"]["update"] = False
