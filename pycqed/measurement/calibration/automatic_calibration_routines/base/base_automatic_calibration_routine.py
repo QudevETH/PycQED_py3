@@ -373,7 +373,7 @@ class AutomaticCalibrationRoutine(Step):
         a) Initialization of Routine's steps. This will extract the settings
         of SubRoutine from the configuration parameter dictionary.
 
-        Call: Routine.merge_settings(lookups=[None,"Routine"],
+        Call: Routine.merge_settings(lookups=[None, "Routine"],
                                sublookups=["subroutine_label", "SubRoutine"])
 
             Look for the relevant settings in this order:
@@ -673,6 +673,7 @@ class AutomaticCalibrationRoutine(Step):
                   f"({self.routine_template.step_name(index=j)}), executing...")
 
         self.current_step.run()
+        self.current_step.post_run()  # optional. Update results for example.
 
         self.routine_steps.append(self.current_step)
         self.current_step_index += 1

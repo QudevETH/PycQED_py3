@@ -209,6 +209,10 @@ class Step:
         """Run the Step. To be implemented by subclasses."""
         pass
 
+    def post_run(self):
+        """Do something after the run. Update results, for example."""
+        pass
+
     def get_empty_device_properties_dict(self, step_type=None):
         """Returns an empty dictionary of the following structure, for use with
         `get_device_property_values`
