@@ -598,12 +598,16 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     def __init__(self, task_list, sweep_points=None,
                  trigger_separation=5e-6, drive=None,
                  **kw):
+        # We turn of repeat_ro (used by sweep_n_dim) by default. This ensures
+        # all RO pulses that are different are programmed to the AWG.
+        repeat_ro = kw.pop('repeat_ro', False)
         try:
             super().__init__(task_list, sweep_points=sweep_points,
                              trigger_separation=trigger_separation,
                              drive=drive,
                              segment_kwargs={'acquisition_mode':
                                              dict(sweeper='software')},
+                             repeat_ro=repeat_ro,
                              **kw)
             self.autorun(**kw)
         except Exception as x:
@@ -706,9 +710,6 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 for pulse_dict in ro.pulses:
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
-                        # Here, we know that we have different RO pulses. We
-                        # therefore turn of repeat_ro:
-                        self.repeat_ro = False # TODO: test
 
         # return all generated blocks (parallel_sweep will arrange them)
         return [pb, ro]
