@@ -1,0 +1,8 @@
+{
+  "General": {
+    "update": true,
+    "flux": "{designated}",
+    "max_delta": 0.1e6,
+    "max_iterations": 4
+  }
+}
