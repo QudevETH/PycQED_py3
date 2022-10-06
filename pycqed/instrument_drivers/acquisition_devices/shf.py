@@ -5,6 +5,8 @@ from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
+    zhinst_qcodes_wrappers import ZHInstMixin, ZHInstSGMixin
 from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
@@ -13,7 +15,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
+class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
 
     This is not meant to be instantiated directly, but should be inherited
@@ -105,15 +107,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                       'units for consistency.',
             vals=validators.Numbers())
 
-    @property
-    def devname(self):
-        return self.serial
-
-    @property
-    def daq(self):
-        """Returns the ZI data server (DAQ).
-        """
-        return self.session.daq_server
+        self.add_parameter(
+           'timeout',
+           unit='s',
+           initial_value=30,
+           parameter_class=ManualParameter,
+           docstring='Timeout when waiting for scope data.',
+           vals=validators.Ints())
 
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
@@ -362,10 +362,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             else:
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
@@ -582,20 +582,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
-    def _check_server(self, kwargs):
-        # Note: kwargs are passed without ** in order to allow modifying them.
-        if kwargs.pop('server', None) == 'emulator':
-            from pycqed.instrument_drivers.physical_instruments \
-                .ZurichInstruments import ZI_base_qudev as zibase
-            from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer.get_instance(
-                kwargs.get('host', 'localhost'),
-                port=kwargs.get('port', 8004))
-            self._session = ziqcsess.ZISession(
-                server_host=kwargs.get('host', 'localhost'),
-                connection=daq, new_session=False)
-            return daq
-
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
@@ -607,7 +593,7 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
-class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSGMixin):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
@@ -618,3 +604,12 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
         super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)
+        self._sgchannel_sine_enable = [False] * len(self.sgchannels)
+
+    def start(self, **kwargs):
+        SHF_AcquisitionDevice.start(self, **kwargs)
+        ZHInstSGMixin.start(self)
+
+    def stop(self):
+        SHF_AcquisitionDevice.stop(self)
+        ZHInstSGMixin.stop(self)

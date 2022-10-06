@@ -1044,9 +1044,10 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             data_type='digitized')
 
+        awg_ctrl = self.instr_acq.get_instr().get_awg_control_object()[0]
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
-            AWG=self.instr_acq.get_instr(),
+            AWG=awg_ctrl,
             channels=self.get_acq_int_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
@@ -1064,7 +1065,7 @@ class QuDev_transmon(Qubit):
         else:
             self.scope_fft_det = det.ScopePollDetector(
                 acq_dev=self.instr_acq.get_instr(),
-                AWG=self.instr_acq.get_instr(),
+                AWG=awg_ctrl,
                 channels=self.get_acq_inp_channels(),
                 data_type='fft_power',
                 nr_averages=self.acq_averages(),
@@ -1463,7 +1464,8 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
             self.instr_pulsar.get_instr().stop()
 
@@ -1579,7 +1581,8 @@ class QuDev_transmon(Qubit):
         temp_vals += [(self.instr_trigger.get_instr().pulse_period,
                        trigger_separation)]
         with temporary_value(*temp_vals):
-            pulsar.start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            pulsar.start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
             pulsar.stop()
 
@@ -1825,7 +1828,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(detector_generator())
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -1933,8 +1937,8 @@ class QuDev_transmon(Qubit):
             other_qb.prepare(drive=None)
             MC.set_detector_function(det.IndexDetector(
                 other_qb.int_avg_det_spec, 0))
-            other_qb.instr_pulsar.get_instr().start(
-                exclude=[other_qb.instr_uhf()])
+            awg_n = other_qb.instr_acq().get_instr().get_awg_control_object()[1]
+            other_qb.instr_pulsar.get_instr().start(exclude=[awg_n])
             MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -2058,7 +2062,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det_spec)
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
 
@@ -2598,7 +2603,8 @@ class QuDev_transmon(Qubit):
             MC.set_sweep_points(freqs)
             MC.set_detector_function(self.int_avg_det_spec)
 
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=f"{state}-spec" + self.msmt_suffix)
             self.instr_pulsar.get_instr().stop()
 
