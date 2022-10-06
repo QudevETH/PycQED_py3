@@ -970,8 +970,9 @@ class NDimQuantumExperiment():
         if kwargs.get('measure') and kwargs.get('analyze', True):
             self.run_ndim_analysis()
 
-    def _generate_sweep_lengths(self):
-        self.sweep_lengths = self.sweep_points.length()
+    def _generate_sweep_lengths(self, sweep_points=None):
+        sp = self.sweep_points if sweep_points is None else sweep_points
+        self.sweep_lengths = sp.length()
 
     def get_experiment_indices(self):
         idxs = itertools.product(
@@ -994,8 +995,13 @@ class NDimQuantumExperiment():
 
     def create_experiment(self, idxs):
         current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+        exp_metadata = dict(
+            ndim_sweep_points=self.sweep_points,
+            ndim_current_idxs=idxs,
+        )
         self.experiments[idxs] = self.QuantumExperiment(
-            *self.args, sweep_points=current_sp, **self.kwargs)
+            *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
+            **self.kwargs)
 
     def run_measurement(self, **kw):
         for qe in self.experiments.values():
@@ -1017,20 +1023,28 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         super().__init__(*args, sweep_points=sweep_points,
                          QuantumExperiment=QuantumExperiment, **kwargs)
 
-    def _generate_sweep_lengths(self):
-        super()._generate_sweep_lengths()
+    # def _generate_sweep_lengths(self):
+    #     super()._generate_sweep_lengths()
+    #     for task in self.task_list:
+    #         tsp = SweepPoints(task.get('sweep_points', []))
+    #         self.sweep_lengths += [0 for i in
+    #                                range(len(self.sweep_lengths), len(tsp))]
+    #         for dim in range(len(tsp)):
+    #             current_len = tsp.length(dim)
+    #             if current_len:
+    #                 if not self.sweep_lengths[dim]:
+    #                     self.sweep_lengths[dim] = current_len
+    #                 elif self.sweep_lengths[dim] != current_len:
+    #                     raise ValueError(
+    #                         f'Incompatible number of sweep points in dim {dim}.')
+
+    def _generate_sweep_lengths(self, sweep_points=None):
+        sp = self.sweep_points if sweep_points is None else sweep_points
+        sp = copy(sp)
         for task in self.task_list:
-            tsp = SweepPoints(task.get('sweep_points', []))
-            self.sweep_lengths += [0 for i in
-                                   range(len(self.sweep_lengths), len(tsp))]
-            for dim in range(len(tsp)):
-                current_len = tsp.length(dim)
-                if current_len:
-                    if not self.sweep_lengths[dim]:
-                        self.sweep_lengths[dim] = current_len
-                    elif self.sweep_lengths[dim] != current_len:
-                        raise ValueError(
-                            f'Incompatible number of sweep points in dim {dim}.')
+            sp.update(SweepPoints(task.get('sweep_points', [])))
+        super()._generate_sweep_lengths(sp)
+
 
     def create_experiment(self, idxs):
         current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
@@ -1038,6 +1052,10 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         for task in current_tl:
             task['sweep_points'] = self.make_2d_sweep_points(
                 task.get('sweep_points', []), idxs)
+        exp_metadata = dict(
+            ndim_sweep_points=self.sweep_points,  # FIXME
+            ndim_current_idxs=idxs,
+        )
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp,
             task_list=current_tl, **self.kwargs)
