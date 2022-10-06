@@ -471,6 +471,68 @@ class SweepPoints(list):
         dim = self.find_parameter(param_name)
         return self.get_sweep_params_property('values', dim, param_names=param_name)
 
+    @staticmethod
+    def get_slice(data, sp, sliceat):
+        """
+        Slices an N-dim numpy array indexed by SweepPoints, based on a list
+        of values to give to the SweepPoints. For example:
+            data: a 3-D array
+            sp: SweepPoints([
+                {"RO_freq": ...},
+                {"TWPA_pump_freq": ...},
+                {"TWPA_pump_power": ...},
+            ])
+            sliceat: {"RO_freq": 7.1e9, "TWPA_pump_power": 3.2}
+            -> returns 1-D data sliced at these values of the SweepPoints, and
+            remaining SweepPoints([{"RO_freq": ...}]) that index the data
+        If sliceat doesn't exactly match one value of the SweepPoints,
+        the closest row of data is returned
+
+        Args:
+            data (np.array): data to slice, with same dimensions as sp
+            sp (SweepPoints): sweep points indexing the data array
+            sliceat (list of tuples: (str, float)): list of sp names and
+            corresponding values at which to slice the data
+
+        Returns:
+            sliced data (with len(sliceat) less dimensions) and corresponding sp
+        """
+
+        data = deepcopy(data)
+        sp = deepcopy(sp)
+
+        for key, val in sliceat.items():
+            # Determine in which dimension to slice
+            id_of_slice = sp.find_parameter(key)
+            # Determine at what value to slice
+            sp_vals = sp.get_values(key)
+            id_in_slice = (np.abs(sp_vals - val)).argmin()
+            # Slice data, and prune sp accordingly
+            data = np.take(data, [id_in_slice],
+                                    axis=id_of_slice)
+            sp.remove_sweep_parameter(key)
+            # Clean up unused dimensions, TODO how to do that more nicely?
+            shape = np.array(data.shape)
+            useless_dims = np.where(shape == 1)
+            shape = np.delete(shape, useless_dims)
+            #         print(shape)
+            data = np.reshape(data, shape)
+
+        return data, sp
+
+    def prune_constant_values(self):
+        """
+        Removes constant sweep parameters (Note: does not delete the
+        corresponding dimensions if they are left empty)
+
+        """
+
+        param_names = [p for dim in self for p in dim]
+        for p in param_names:
+            vals = self.get_values(p)
+            if not any(vals - np.min(vals)):  # If constant
+                self.remove_sweep_parameter(p)
+
     def subset(self, i, dimension=0):
         """
         Returns a new SweepPoints object with one of the dimensions reduced
