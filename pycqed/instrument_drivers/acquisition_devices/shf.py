@@ -194,7 +194,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 id_closest = id_closest + (-1 if id_closest != 0 else +1)
         else:
             diff_f = np.diff(requested_freqs)
-            if not all(diff_f-diff_f[0] < 1e-3):
+            if not all(np.abs(diff_f-diff_f[0]) < 1e-3):
                 # not equally spaced (arbitrary 1 mHz)
                 log.warning(f'Unequal frequency spacing not supported, '
                             f'the measurement will return equally spaced values.')
