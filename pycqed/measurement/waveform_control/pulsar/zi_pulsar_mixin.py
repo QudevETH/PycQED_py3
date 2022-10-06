@@ -7,6 +7,14 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
+try:
+    from pycqed.measurement.waveform_control.pulsar.zi_multi_core_compiler. \
+        multi_core_compiler import MultiCoreCompiler
+except ImportError:
+    log.debug('Could not import MultiCoreCompiler, parallel programming of ZI devices will not work.')
+    class MultiCoreCompiler():
+        def __init__(self):
+            self._awgs = {}
 
 class ZIPulsarMixin:
     """Mixin containing utility functions needed by ZI AWG pulsar interfaces.
@@ -14,9 +22,10 @@ class ZIPulsarMixin:
     Classes deriving from this mixin must have a ``pulsar`` attribute.
     """
 
-    zi_waves_cleared = False
-    """Flag set when waves are cleared."""
+    _status_ZIPulsarMixin = dict(zi_waves_clean=False)
+    """Dict keeping the status of the class
 
+    key zi_waves_clean: Flag indicating whether the waves dir is clean."""
 
     @staticmethod
     def _zi_wave_dir():
@@ -36,6 +45,23 @@ class ZIPulsarMixin:
         return wave_dir
 
     @classmethod
+    def zi_waves_clean(cls, val=None):
+        """Get or set whether the waves dir is clean
+
+        Args:
+            val (bool or None): if not None, sets the flag zi_waves_clean in
+                _status_ZIPulsarMixin to val.
+
+        Returns:
+            The current value of the flag zi_waves_clean in
+            _status_ZIPulsarMixin if val is None, and None otherwise.
+        """
+        if val is None:
+            return cls._status_ZIPulsarMixin['zi_waves_clean']
+        else:
+            cls._status_ZIPulsarMixin['zi_waves_clean'] = val
+
+    @classmethod
     def _zi_clear_waves(cls):
         wave_dir = cls._zi_wave_dir()
         for f in os.listdir(wave_dir):
@@ -43,7 +69,7 @@ class ZIPulsarMixin:
                 os.remove(os.path.join(wave_dir, f))
             elif f.endswith(".cache"):
                 shutil.rmtree(os.path.join(wave_dir, f))
-        cls.zi_waves_cleared = True
+        cls.zi_waves_clean(True)
 
     @staticmethod
     def _zi_wavename_pair_to_argument(w1, w2):
@@ -200,13 +226,19 @@ class ZIPulsarMixin:
         for h, wf in waveforms.items():
             filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
             if os.path.exists(filename):
+                # Skip writing the CSV file. This happens if reuse_waveforms
+                # is True and the same hash appears on multiple sub-awgs.
+                # Note that it does not happen in cases where
+                # use_sequence_cache is True and the same hash had appeared in
+                # earlier experiments (because we clear the waves dir before
+                # starting programming the AWGs).
                 continue
             fmt = "%.18e" if wf.dtype == np.float else "%d"
             np.savetxt(filename, wf, delimiter=",", fmt=fmt)
 
     def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                             prepend_zeros=0, placeholder_wave=False,
-                            allow_filter=False, negate_q=False):
+                            allow_filter=False):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -214,8 +246,6 @@ class ZIPulsarMixin:
         if prepend_zeros:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self._zi_waves_to_wavenames(wave)
-        if w2 is not None and negate_q:
-            w2 = f"(-({w2}))"
         use_hack = True # set this to false once the bugs with HDAWG are fixed
         playback_string += self._zi_wait_trigger(name, device)
 
@@ -287,3 +317,187 @@ class ZIPulsarMixin:
         else:
             playback_string.append(f"wait{trig_source}Trigger();")
         return playback_string
+
+
+class MultiCoreCompilerQudevZI(MultiCoreCompiler):
+    """
+    A child of MultiCoreCompiler, which compiles and uploads sequences using
+    multiple threads.
+    This class enables compilation on a subset of the added awgs, referred to
+    as "active awgs" and stored in self._awgs.
+
+    Args:
+        awgs (AWG): A list of the AWG Nodes that are target for parallel
+            compilation
+        use_tempdir (bool, optional): Use a temporary directory to store the
+            generated sequences
+    """
+    _instances = []
+    """A list that records all multi-core compilers instantiated from this 
+    class (MultiCoreCompilerQudevZI).
+    """
+
+    @classmethod
+    def get_instance(cls, session=None):
+        """Get a multi-core compiler working on the specified session. For
+        details regarding the sessions and ZI data server, please refer to
+        the docstring of class zhinst.qcodes.ZISession
+
+        Args:
+            session (ZISession): a ZI server client session
+
+        Returns:
+            mcc (MultiCoreCompilerQudevZI): a multi-core compiler
+                corresponding to the specified session.
+        """
+        for mcc in cls._instances:
+            if mcc._session == session or session is None:
+                return mcc
+        mcc = cls()
+        mcc._session = session
+        cls._instances.append(mcc)
+        return mcc
+
+    def __init__(self, *awgs, **kwargs):
+        super().__init__(*awgs, **kwargs)
+        self._awgs_all = {}
+        # Move existing AWGs to the full AWG dict self._awgs_all. Remove AWGs
+        # in the active AWG dict self._awgs to prevent processing all AWGs in
+        # the multi-core compiler. Active AWGs will be added when programming
+        # individual AWGs.
+        self._awgs_all.update(self._awgs)
+        self.reset_active_awgs()
+
+    def add_awg(self, awg):
+        """
+        Add a AWG core to self._awgs_all and reset self._awgs.
+
+        Args:
+            awg (AWG): The AWG Nodes that is target for parallel compilation
+        """
+        super().add_awg(awg)
+        self._awgs_all[awg] = self._awgs[awg]
+        self.reset_active_awgs()
+
+    def add_active_awg(self, awg):
+        """
+        Add a AWG core to the active awgs (self._awgs), which are the ones
+        that will be programmed.
+
+        Args:
+            awg (AWG): The AWG Nodes that is target for parallel compilation
+        """
+        self._awgs[awg] = self._awgs_all[awg]
+
+    def reset_active_awgs(self):
+        """
+        Reset the active awgs (self._awgs)
+        """
+        self._awgs = {}
+
+
+class ZIMultiCoreCompilerMixin:
+    """
+    Mixin for creating an instance of MultiCoreCompilerQudevZI for parallel
+    compilation and upload of SeqC strings.
+    """
+    multi_core_compilers = {}
+    _disable_mcc = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.wfms_to_upload = {}
+        """Stores hashes and waveforms to be uploaded after parallel
+        compilation. This attribute is only used when self.pulsar.use_mcc() is
+        set to True.
+        """
+
+    @property
+    def multi_core_compiler(self):
+        """Getter of the ZI multi-core compiler. If the compiler does not
+        exist, a new one will be created and added to the class attribute
+        self.multi_core_compilers to keep track of all existing compilers.
+
+        Returns:
+            multi_core_compiler (MultiCoreCompilerQudevZI): ZI multi-core
+            compiler for the current instance.
+        """
+        if self not in self.multi_core_compilers:
+            awgs = self.awgs_mcc
+            session = awgs[0].parent._tk_object._session if len(awgs) else None
+            self.multi_core_compilers[self] = \
+                MultiCoreCompilerQudevZI.get_instance(session)
+        return self.multi_core_compilers[self]
+
+    def _init_mcc(self):
+        if not len(self.awgs_mcc):
+            return  # no sub-AWG supports MCC
+        try:
+            # add sub-AWGs to multi_core_compiler class variable
+            for awg in self.awgs_mcc:
+                self.multi_core_compiler.add_awg(awg)
+        except Exception as e:
+            log.error(f'Failed to initialize MCC for AWG {self.awg.name}: '
+                      f'{e}.')
+            self._disable_mcc = True
+            return
+        # register a finalized callback in the main pulsar
+        self.pulsar.mcc_finalize_callbacks[self.awg.name] = \
+            self.finalize_upload_after_mcc
+
+    def finalize_upload_after_mcc(self):
+        """Finalize the upload after the MCC has finished
+
+        The base method uploads waveforms stored in wfms_to_upload. Child
+        classes could implement further actions if needed.
+
+        ZI devices currently only support parallel compilation + upload
+        of SeqC strings, so we must upload waveforms separately here
+        after parallel upload is finished.
+        """
+        for k, v in self.wfms_to_upload.items():
+            awg_nr, wave_idx = k
+            waveforms, wave_hashes = v
+            # awg_interface that populate wfms_to_upload must implement the
+            # method upload_waveforms
+            self.upload_waveforms(
+                awg_nr=awg_nr, wave_idx=wave_idx,
+                waveforms=waveforms, wave_hashes=wave_hashes)
+
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+        """
+        Upload waveforms to an awg core (awg_nr).
+
+        Args:
+            awg_nr (int): index of awg core (0, 1, 2, or 3)
+            wave_idx (int): index of wave upload (0 or 1)
+            waveforms (array): waveforms to upload
+            wave_hashes: waveforms hashes
+        """
+        raise NotImplementedError('Method "upload_waveforms" is not '
+                                  'implemented for parent class '
+                                  '"ZIMultiCoreCompilerMixin". \n'
+                                  'Please rewrite this method in children '
+                                  'classes with device-specific '
+                                  'implementations.')
+
+    @property
+    def awgs_mcc(self) -> list:
+        """List of AWG cores that support parallel compilation.
+
+        If self._disable_mcc is set to True, returns empty list.
+        """
+        if self._disable_mcc:
+            return []
+        else:
+            return self._get_awgs_mcc()
+
+    def _get_awgs_mcc(self) -> list:
+        """Returns the list of the AWG cores that support parallel compilation.
+        """
+        raise NotImplementedError('Method "_get_awgs_mcc" is not '
+                                  'implemented for parent class '
+                                  '"ZIMultiCoreCompilerMixin". \n'
+                                  'Please rewrite this method in children '
+                                  'classes with device-specific '
+                                  'implementations.')

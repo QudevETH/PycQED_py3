@@ -76,15 +76,6 @@ class AcquisitionDevice():
         self._acq_units_used = []
         self.timer = None
         self.extra_data_callback = None
-        if 'timeout' not in self.parameters:
-            # The underlying qcodes driver has not created a parameter
-            # timeout. In that case, we add the parameter here.
-            self.add_parameter(
-                'timeout',
-                unit='s',
-                initial_value=30,
-                parameter_class=ManualParameter,
-                vals=validators.Ints())
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
@@ -208,22 +199,34 @@ class AcquisitionDevice():
         repetitions for averaging), i.e., 100% progress corresponds to the
         this method reporting self._acq_n_results * self._acq_loop_cnt.
 
-        The method always returns 0 indicating that no intermediate progress
+        The method always returns None indicating that no intermediate progress
         information is available. If the child class does not overwrite the
         method with a concrete implementation, progress will be stuck during
         hard sweeps and will only be updated by MC after the hard sweep.
         """
-        return 0
+        return None
 
-    def prepare_poll(self):
-        """Final preparations for an acquisition.
+    def prepare_poll_before_AWG_start(self):
+        """Final preparations for an acquisition before starting AWGs.
 
         This function is called by PollDetector.poll_data right before
         starting the AWGs (i.e., we can rely on that the AWGs have already
         been stopped in case this is needed) for final preparations. This is
         the place to arm the acquisition device (i.e., let it wait for
-        triggers). Unlike acquisition_initialize, this function is called
-        multiple times in a soft sweep.
+        triggers) if it does not rely on first-trigger detection. Unlike
+        acquisition_initialize, this function is called multiple times in a
+        soft sweep.
+        """
+        pass
+
+    def prepare_poll_after_AWG_start(self):
+        """Final preparations for an acquisition after starting AWGs.
+
+        This function is called by PollDetector.poll_data right after
+        starting the AWGs for final preparations. This is the place to arm
+        the acquisition device when starting it after the AWGs, relying on
+        first-trigger detection. Unlike acquisition_initialize,
+        this function is called multiple times in a soft sweep.
         """
         pass
 
@@ -427,6 +430,19 @@ class AcquisitionDevice():
                         f'were provided. Ignoring additional pairs.')
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
+
+    def get_awg_control_object(self):
+        """
+        To be overloaded by children to return the AWG control object and its
+        name. The AWG control object will be passed as the AWG parameters of
+        the PollingDetector functions, and it will be called in poll to start
+        and stop acquisition.
+
+        Returns:
+            class instance, name of class instance (or None, None if no
+            awg control is needed for the acquisition device)
+        """
+        return None, None
 
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,

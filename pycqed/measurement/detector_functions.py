@@ -636,12 +636,16 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         for acq_dev in self.acq_devs:
             # Allow the acqusition device to store additional data
             acq_dev.extra_data_callback = self.extra_data_callback
-            # Final preparations for an acquisition.
-            acq_dev.prepare_poll()
+            # Final preparations for an acquisition before starting the AWGs.
+            acq_dev.prepare_poll_before_AWG_start()
 
         if self.AWG is not None:
             self.AWG.start(stop_first=False)
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.end")
+
+        for acq_dev in self.acq_devs:
+            # Final preparations for an acquisition after starting the AWGs.
+            acq_dev.prepare_poll_after_AWG_start()
 
         # Initialize dicts to store data and status
         acq_paths = {acq_dev.name: acq_dev.acquisition_nodes()
@@ -658,9 +662,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         # Acquire data
         accumulated_time = 0
         self.timer.checkpoint("PollDetector.poll_data.loop.start")
-        # FIXME: why only check acq_devs[0].timeout()?
-        while accumulated_time < self.acq_devs[0].timeout() and \
-                not all(np.concatenate(list(gotem.values()))):
+        while not all(np.concatenate(list(gotem.values()))):
             dataset = {}
             for acq_dev in self.acq_devs:
                 if not all(gotem[acq_dev.name]):
@@ -689,34 +691,31 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     try:
                         n_acq = [acq_dev.acquisition_progress()
                                  for acq_dev in self.acq_devs]
-                        if any([n > 0 for n in n_acq]):
+                        if any([n is None for n in n_acq]):
+                            progress = None
+                        else:
                             # the following calculation works both if
                             # self.progress_scaling is a vector/list or a scalar
                             progress = np.mean(np.multiply(
                                 n_acq, 1 / np.array(self.progress_scaling)))
+                    except Exception as e:
+                        # np.nan indicates that progress reporting is in
+                        # principle supported, but failed
+                        progress = np.nan
+                        log.debug(f'poll_data: Could not determine progress: '
+                                  f'{e}')
+                    try:
+                        if progress is not None:
+                            # progress reporting is supported by AcqDevs
                             self.progress_callback(progress)
                     except NoProgressError:
                         raise
                     except Exception as e:
-                        # printing progress is optional
+                        # Just log it since printing progress is optional.
                         log.debug(f'poll_data: Could not print progress: {e}')
                     t_callback = t_now
 
         self.timer.checkpoint("PollDetector.poll_data.loop.end")
-
-        if not all(np.concatenate(list(gotem.values()))):
-            if self.AWG is not None:
-                self.AWG.stop()
-            for acq_dev in self.acq_devs:
-                acq_dev.acquisition_finalize()
-                for n, c in enumerate(acq_paths[acq_dev.name]):
-                    if n in data[acq_dev.name]:
-                        n_swp = len(data[acq_dev.name][n])
-                        tot_swp = self.det_from_acq_dev[
-                            acq_dev.name].nr_sweep_points
-                        log.info(f"\t: Channel {n}: Got {n_swp} of {tot_swp} "
-                                 f"samples")
-            raise TimeoutError("Error: Didn't get all results!")
 
         data_raw = {acq_dev.name: np.array([data[acq_dev.name][key]
                     for key in sorted(data[acq_dev.name].keys())])
