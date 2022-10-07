@@ -129,8 +129,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                  'set_bias_voltage_and_fp_assisted_ro', {}],
                 [UpdateFrequency, 'update_frequency',
                  {'transition': 'ge', 'frequencies': self.qubits_frequencies}],
-                [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}],
-                [self.StoreMeasuredValues, 'store_measured_values', {}]
+                [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}]
             ])
 
         self.final_init(**kw)
@@ -145,11 +144,16 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             self.split_step_for_parallel_groups(index=i)
 
     def post_run(self):
+        # Save the results of the routine
+        for qb in self.qubits:
+            self.results[qb.name].measured_ge_freq = qb.ge_freq()
+
+        # Do not update if the qubit is not at its designated sweet
+        # spot and the routine is not a step of a bigger routine
         if self.routine is None:
             for qb in self.qubits:
                 if qb.flux_parking() != self.results[qb.name].flux:
-                    # Do not update if the qubit is not at its designated sweet
-                    # spot and the routine is not a step of a bigger routine
+
                     log.warning(f"The routine results will not update qubit "
                                 f"{qb.name} since this is not the designated "
                                 f"sweet spot")
@@ -218,12 +222,3 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
                 # Set the voltage on the corresponding flux line
                 self.routine.fluxlines_dict[qb.name](voltage)
-
-    class StoreMeasuredValues(IntermediateStep):
-        """Stores the current ge_freq of the measured qubits in a dictionary of
-        the parent routine, so that the user can retrieve them even if the
-        initial values are restored.
-        """
-        def run(self):
-            for qb in self.qubits:
-                self.routine.results[qb.name].measured_ge_freq = qb.ge_freq()
