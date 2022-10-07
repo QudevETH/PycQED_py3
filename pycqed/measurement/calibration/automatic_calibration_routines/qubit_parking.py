@@ -170,6 +170,8 @@ class QubitParking(AutomaticCalibrationRoutine):
                             " is not the designated sweet spot")
                 self.settings[self.step_label]["General"]["update"] = False
 
+        super().post_run()
+
 
 class MultiQubitParking(AutomaticCalibrationRoutine):
     """Routine to park several (or one) qubits at a sweet spot.

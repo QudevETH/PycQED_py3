@@ -132,6 +132,19 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
 
+    def post_run(self):
+        if self.routine is None:
+            for qb in self.qubits:
+                if qb.flux_parking() != self.results[qb.name].flux:
+                    # Do not update if the qubit is not at its designated sweet
+                    # spot and the routine is not a step of a bigger routine
+                    log.warning(f"The routine results will not update qubit "
+                                f"{qb.name} since this is not the designated "
+                                f"sweet spot")
+                    self.settings[self.step_label]["General"]["update"] = False
+
+        super().post_run()
+
     class SetBiasVoltageAndFluxPulseAssistedReadOut(IntermediateStep):
         """Intermediate step that updates the bias voltage of the qubit and the
         temporary values of the following AdaptiveQubitSpectroscopy for
@@ -181,8 +194,6 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             for qb in self.qubits:
                 flux = self.routine.results[qb.name].flux
                 voltage = self.routine.results[qb.name].voltage
-                self.routine.results[qb.name].measured_flux = flux
-                self.routine.results[qb.name].measured_voltage = voltage
 
                 # Temporary values for ro
                 ro_tmp_vals = ro_flux_tmp_vals(qb, voltage, use_ro_flux=True)

@@ -757,6 +757,9 @@ class AutomaticCalibrationRoutine(Step):
         if self.get_param_value('verbose'):
             print(f"Routine {routine_name} finished!")
 
+    def post_run(self):
+        routine_name = self.name
+
         # Saving instrument settings post-routine
         if (self.get_param_value('save_instrument_settings') or
                 not self.get_param_value("update")):

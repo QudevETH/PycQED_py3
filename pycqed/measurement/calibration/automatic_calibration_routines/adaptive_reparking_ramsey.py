@@ -368,3 +368,5 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                     log.warning("The routine results will not update since this"
                                 " is not the designated sweet spot")
                     self.settings[self.step_label]["General"]["update"] = False
+
+        super().post_run()
