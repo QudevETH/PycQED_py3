@@ -1,7 +1,7 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, RoutineTemplate, AutomaticCalibrationRoutine)
 from pycqed.measurement.calibration.automatic_calibration_routines import \
-    AdaptiveQubitSpectroscopy
+    AdaptiveQubitSpectroscopy, UpdateFrequency
 from pycqed.measurement.calibration.automatic_calibration_routines.base.\
     base_automatic_calibration_routine import _device_db_client_module_missing
 from pycqed.measurement.calibration.automatic_calibration_routines \
@@ -110,16 +110,28 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             self.results[qb.name] = ParkAndQubitSpectroscopyResults(
                 **dict(voltage=voltage, flux=flux))
 
+            self.qubits_frequencies = []
+
             if flux != qb.flux_parking() or not qb.ge_freq():
                 transmon_freq_model = \
                     routines_utils.get_transmon_freq_model(qb)
                 updated_frequency = qb.calculate_frequency(
                     flux=flux, model=transmon_freq_model)
-                qb.ge_freq(updated_frequency)
-                self.results[qb.name].initial_ge_freq = updated_frequency
                 self.settings[type(self).__name__]['General']['update'] = False
             else:
-                self.results[qb.name].initial_ge_freq = qb.ge_freq()
+                updated_frequency = qb.ge_freq()
+
+            self.results[qb.name].initial_ge_freq = updated_frequency
+            self.qubits_frequencies.append(updated_frequency)
+
+            self._DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
+                [self.SetBiasVoltageAndFluxPulseAssistedReadOut,
+                 'set_bias_voltage_and_fp_assisted_ro', {}],
+                [UpdateFrequency, 'update_frequency',
+                 {'transition': 'ge', 'frequencies': self.qubits_frequencies}],
+                [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}],
+                [self.StoreMeasuredValues, 'store_measured_values', {}]
+            ])
 
         self.final_init(**kw)
 
@@ -215,10 +227,3 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         def run(self):
             for qb in self.qubits:
                 self.routine.results[qb.name].measured_ge_freq = qb.ge_freq()
-
-    _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
-        [SetBiasVoltageAndFluxPulseAssistedReadOut,
-         'set_bias_voltage_and_fp_assisted_ro', {}],
-        [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}],
-        [StoreMeasuredValues, 'store_measured_values', {}]
-    ])
