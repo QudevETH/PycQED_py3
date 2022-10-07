@@ -674,15 +674,20 @@ class CircuitBuilder:
             corresponding to the splitted string.
         :param fill_values (dict): optional fill values for operations.
         :param pulse_modifs (dict): Modification of pulses parameters.
-            keys:
-             -indices of the pulses on  which the pulse modifications should be
-             made (backwards compatible)
-             -
-             values: dictionaries of modifications
-            E.g. ops = ["X180 qb1", "Y90 qb2"],
-            pulse_modifs = {1: {"ref_point": "start"}}
-            This will modify the pulse "Y90 qb2" and reference it to the start
-            of the first one.
+            - Format 1:
+              keys: indices of the pulses on  which the pulse modifications
+                should be made
+              values: dictionaries of modifications
+              E.g. ops = ["X180 qb1", "Y90 qb2"],
+              pulse_modifs = {1: {"ref_point": "start"}}
+              This will modify the pulse "Y90 qb2" and reference it to the start
+              of the first one.
+            - Format 2:
+              keys: strings in the format specified for the param
+                sweep_dicts_list in the docstring of Block.build to identify
+                an attribute in a pulse
+              values: the value to be set for the attribute identified by the
+                corresponding key
         :return: The created block
         """
         if pulse_modifs is None:
