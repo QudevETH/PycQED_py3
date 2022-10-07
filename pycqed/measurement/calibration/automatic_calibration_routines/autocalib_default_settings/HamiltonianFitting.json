@@ -39,9 +39,9 @@
         "use_prior_model": true
     },
     "UpdateFrequency": {
-        "frequency": null,
-        "flux": null,
-        "voltage": null
+        "frequencies": null,
+        "fluxes": null,
+        "voltages": null
     },
     "UpdateFluxToVoltage": {
         "flux": null

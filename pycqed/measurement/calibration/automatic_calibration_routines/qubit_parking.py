@@ -128,9 +128,9 @@ class QubitParking(AutomaticCalibrationRoutine):
 
         # Updating ge-frequency at this voltage to guess value
         step_label = f'update_frequency'
-        step_settings = {"qubit": self.qubit,
+        step_settings = {"qubits": [self.qubit],
                          "transition": 'ge',
-                         "frequency": self.results[qb.name].initial_ge_freq}
+                         "frequencies": [self.results[qb.name].initial_ge_freq]}
         self.add_step(UpdateFrequency, step_label, step_settings)
 
         # Finding the ge-transition frequency at this voltage

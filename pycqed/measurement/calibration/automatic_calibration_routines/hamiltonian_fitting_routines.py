@@ -293,8 +293,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
                     step_label = f'update_frequency_{transition}_{i}'
                     # Updating ge-frequency at this voltage to guess value
-                    step_settings = {"qubit": qubit,
-                                     "frequency": ge_freq_guess,
+                    step_settings = {"qubits": [qubit],
+                                     "frequencies": [ge_freq_guess],
                                      "transition": transition}
                     self.add_step(UpdateFrequency, step_label, step_settings)
 
@@ -351,8 +351,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 elif transition == "ef":
                     # Updating ef-frequency at this voltage to guess value
                     step_label = f'update_frequency_{transition}'
-                    step_settings = {"qubit": qubit,
-                                     "flux": flux,
+                    step_settings = {"qubits": [qubit],
+                                     "fluxes": [flux],
                                      "transition": transition}
                     self.add_step(UpdateFrequency, step_label, step_settings)
 
@@ -403,8 +403,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 # Updating transition frequency of the qubit object to the value
                 # calculated by prior or preliminary model
                 step_label = f'update_frequency_{transition}_{i}'
-                step_settings = {"qubit": qubit,
-                                 "flux": flux,
+                step_settings = {"qubits": [qubit],
+                                 "fluxes": [flux],
                                  "transition": transition}
                 self.add_step(UpdateFrequency, step_label, step_settings)
 
