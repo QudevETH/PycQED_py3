@@ -510,7 +510,7 @@ class SweepPoints(list):
             # Slice data, and prune sp accordingly
             data = np.take(data, [id_in_slice],
                                     axis=id_of_slice)
-            sp.remove_sweep_parameter(key)
+            sp.pop(sp.find_parameter(key))
             # Clean up unused dimensions, TODO how to do that more nicely?
             shape = np.array(data.shape)
             useless_dims = np.where(shape == 1)
