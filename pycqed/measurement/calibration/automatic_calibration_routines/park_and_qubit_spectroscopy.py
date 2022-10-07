@@ -124,13 +124,13 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             self.results[qb.name].initial_ge_freq = updated_frequency
             self.qubits_frequencies.append(updated_frequency)
 
-            self._DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
-                [self.SetBiasVoltageAndFluxPulseAssistedReadOut,
-                 'set_bias_voltage_and_fp_assisted_ro', {}],
-                [UpdateFrequency, 'update_frequency',
-                 {'transition': 'ge', 'frequencies': self.qubits_frequencies}],
-                [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}]
-            ])
+        self._DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
+            [self.SetBiasVoltageAndFluxPulseAssistedReadOut,
+             'set_bias_voltage_and_fp_assisted_ro', {}],
+            [UpdateFrequency, 'update_frequency',
+             {'transition': 'ge', 'frequencies': self.qubits_frequencies}],
+            [AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy', {}]
+        ])
 
         self.final_init(**kw)
 
