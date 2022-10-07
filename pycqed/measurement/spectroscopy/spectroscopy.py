@@ -662,6 +662,10 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     )
                 # adapt df kwargs to hard sweep
                 self.df_kwargs['single_int_avg'] = False
+                # FIXME: Set `enforce_pulsar_restart` to `True` to ensure that
+                # RO AWG is restarted after each acquisition. Think
+                # about a solution that only restarts the RO AWG.
+                self.df_kwargs['enforce_pulsar_restart'] = True
         super().resolve_freq_sweep_points(**kw)
         # enforce programming baseband pulses if the freq sweep is
         # implemented as an IF sweep
