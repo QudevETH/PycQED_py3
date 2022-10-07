@@ -25,6 +25,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
+from pycqed.measurement import sweep_points as sp_mod
 import traceback
 import logging
 
@@ -10660,3 +10661,195 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
+    """
+    TODO
+    """
+
+    def __init__(self, mobj_names=None, slicing_plotting_list=None, auto=True,
+                 **kwargs):
+        """
+        TODO
+
+        """
+
+        self.slicing_plotting_list = slicing_plotting_list
+        self.mobj_names = mobj_names
+        super().__init__(**kwargs)
+        if auto:
+            self.run_analysis()
+
+    def extract_data(self):
+        super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict,)
+
+    def process_data(self):
+        super().process_data()
+        pdd = self.proc_data_dict
+        pdd['group_sweep_points'] = {}
+        measurement_groups = self.get_measurement_groups()
+        for group, kwargs in measurement_groups.items():
+            pdd[group], pdd['group_sweep_points'][group] = self.tile_data_ndim(
+                **kwargs)
+        pdd['sweep_points'] = pdd['group_sweep_points'][
+            list(measurement_groups)[0]]  # default
+        self.save_processed_data()
+
+    def get_measurement_groups(self):
+        default_proc = lambda data_dict, ch_map: np.sqrt(
+            data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2)
+        # We have a set of num_QEs experiments in total
+        num_QEs = len(self.raw_data_dict)
+        measurement_groups = {
+            'ndim_data': dict(
+                ana_ids=range(0, num_QEs),
+                post_proc_func=default_proc,
+            ),
+        }
+        return measurement_groups
+
+    def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+        # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
+        #  Once spectroscopies can be done without a qb, we can remove on_qb
+        #  and clean up the interleaved list of mobjs and qb to a proper list of mobj
+
+        data_ndim = {}
+        sweep_points_ndim = {}
+
+        for mobj_id in range(len(self.mobj_names) // 2):
+            mobjn = self.mobj_names[
+                2 * mobj_id]  # FIXME after removing qb objects
+            data_ndim[mobjn] = {}
+            sweep_points_ndim[
+                mobjn] = self.get_ndim_sweep_points_from_mobj_name(ana_ids,
+                                                                   self.mobj_names[
+                                                                       2 * mobj_id + on_qb])
+            sweep_lengths = sweep_points_ndim[mobjn].length()
+            data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
+            for ana_id in ana_ids:
+                # idxs are for now the same for all tasks, they are just stored in the task list for convenience
+                idxs = \
+                self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
+                    'ndim_current_idxs']
+                ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
+                    'meas_obj_value_names_map'][
+                    self.mobj_names[2 * mobj_id + on_qb]]
+                ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
+                spectrum = post_proc_func(ana_data_dict, ch_map)
+                for i in range(sweep_lengths[0]):
+                    for j in range(sweep_lengths[1]):
+                        data_ndim[mobjn][(i, j, *idxs)] = spectrum[i, j]
+        return data_ndim, sweep_points_ndim
+
+    def get_meas_objs_from_task(self, task):
+        # FIXME similar to twpacal_mod, qe_mod, twoqbcal_mod
+        return [task.get('mobj', task.get('qb'))]
+
+    def get_ndim_sweep_points_from_mobj_name(self, ana_ids, mobjn):
+
+        # Assumes sp are the same in all sub-experiments indexed by ana_ids
+        # TODO: these lines could be replaced by something to re-expand the sp from all experiments into a big n-dim sp object
+
+        task_list = self.raw_data_dict[ana_ids[0]]['exp_metadata']['task_list']
+        # Find task containing this mobj
+        task = \
+        [t for t in task_list if mobjn in self.get_meas_objs_from_task(t)][0]
+        sweep_points_ndim = sp_mod.SweepPoints(task['sweep_points'],
+                                               min_length=2)
+        sweep_points_ndim.prune_constant_values()
+        sweep_points_ndim.update(task['ndim_sweep_points'])
+        return sweep_points_ndim
+
+    def plot(self, *args, **kwargs):
+        # FIXME
+        self.plot_slice()
+
+    def plot_slice(self, slicing_plotting_list=None):
+        print(self.proc_data_dict.keys())
+        slicing_plotting_list = self.slicing_plotting_list if slicing_plotting_list is None else slicing_plotting_list
+        if self.slicing_plotting_list is not None:
+            for d in slicing_plotting_list:
+                data_2D, sp_2D = sp_mod.SweepPoints.get_slice(
+                    self.proc_data_dict[d['data_key']][d['mobjn']],
+                    self.proc_data_dict['sweep_points'][d['mobjn']],
+                    d['sliceat']
+                )
+                if not d[
+                    'flip']:  # 'not' is just to match the orientation of plt.pcolor
+                    data_2D = data_2D.T
+                xlabel = list(sp_2D[d['flip']])[0]
+                ylabel = list(sp_2D[1 - d['flip']])[0]
+                X, Y = np.meshgrid(sp_2D.get_values(xlabel),
+                                   sp_2D.get_values(ylabel))
+                plt.figure()
+                plt.pcolor(X, Y, data_2D)
+                # plt.pcolor(X, Y, data_2D, vmin=0)
+                plt.xlabel(xlabel)
+                plt.ylabel(ylabel)
+                plt.title(f"{d['mobjn']}: {d['data_key']}")
+                plt.colorbar()
+
+
+class MultiTWPA_SNR_Analysis(NDim_BaseDataAnalysis):
+    """
+    Analysis class for SNR (gain + noise) measurements,
+    used for the TWPA measurement object.
+
+    FIXME for now mobj_names must be of the form
+    [TWPA1.name, qb1.name, TWPA2.name...]
+    where each characterized TWPA is followed by a qubit pertaining to the same feedline.
+    This is because the spectroscopy (gain) measurements are for now only feasible with qubits.
+    """
+
+    def get_measurement_groups(self):
+        post_proc_noise = lambda data_dict, ch_map: data_dict[ch_map[0]]
+        post_proc_gain = lambda data_dict, ch_map: 20 * np.log10(
+            np.sqrt(data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2))
+
+        # We have a set of num_QEs+num_QEs+1+1 experiments
+        num_QEs = len(self.raw_data_dict) // 2 - 1
+
+        # Assumes that all experiments are ordered as follows:
+        # num_QEs for PSD, num_QEs for gain, plus two reference
+        # measurements with TWPA off
+        measurement_groups = {
+            'noise_on': dict(
+                ana_ids=range(0, num_QEs),
+                post_proc_func=post_proc_noise,
+            ),
+            'gain_on': dict(
+                ana_ids=range(num_QEs, 2 * num_QEs),
+                post_proc_func=post_proc_gain,
+                on_qb=True,
+            ),
+            'noise_off': dict(
+                ana_ids=[-2],
+                post_proc_func=post_proc_noise,
+            ),
+            'gain_off': dict(
+                ana_ids=[-1],
+                post_proc_func=post_proc_gain,
+                on_qb=True,
+            ),
+        }
+        return measurement_groups
+
+    def process_data(self):
+        super().process_data()
+        pdd = self.proc_data_dict
+        pdd['SNR_rise'] = {}
+        pdd['sweep_points'] = pdd['group_sweep_points']['noise_on']
+        for mobj_id in range(len(self.mobj_names) // 2):
+            mobjn = self.mobj_names[
+                2 * mobj_id]  # FIXME after removing qb objects
+            reshape_1d = [-1] + [1] * (
+                        len(pdd['sweep_points'][mobjn].length()) - 1)
+            pdd['noise_off'][mobjn] = pdd['noise_off'][mobjn].reshape(
+                *reshape_1d)
+            pdd['gain_off'][mobjn] = pdd['gain_off'][mobjn].reshape(*reshape_1d)
+            pdd['SNR_rise'][mobjn] = pdd['gain_on'][mobjn] - pdd['gain_off'][
+                mobjn] - (pdd['noise_on'][mobjn] - pdd['noise_off'][mobjn])
+        self.save_processed_data()
