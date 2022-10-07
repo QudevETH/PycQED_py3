@@ -691,8 +691,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
     def prepare_pulsar(self):
         if self.prepare_and_finish_pulsar:
-            ps.Pulsar.get_instance().start(
-                exclude=[awg.name for awg in self.get_awgs()])
+            awgs_exclude = []
+            for awg in self.get_awgs():
+                if awg is not None:
+                    # AWG can be an awg_control_object which can be None
+                    awgs_exclude += [awg.name]
+            ps.Pulsar.get_instance().start(exclude=awgs_exclude)
 
     def get_awgs(self):
         return [self.AWG]
