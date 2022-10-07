@@ -219,7 +219,7 @@ class SegmentSoftSweep(swf.Soft_Sweep):
         self.upload_next = upload_first
 
     def set_parameter(self, val, **kw):
-        self.hard_sweep.sequence = self.sequence_list[val]
+        self.hard_sweep.sequence = self.sequence_list[int(val)]
         if self.upload_next:
             self.hard_sweep.prepare(awgs_to_upload=self.awgs_to_upload)
         self.upload_next = True

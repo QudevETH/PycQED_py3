@@ -298,7 +298,7 @@ class Indexed_Sweep(Transformed_Sweep):
                  unit=''):
         self.values = values
         super().__init__(sweep_function,
-                 transformation=lambda i, v=self.values : v[i],
+                 transformation=lambda i, v=self.values : v[int(i)],
                  name=name, parameter_name=parameter_name, unit=unit)
 
     def default_param_name(self):
