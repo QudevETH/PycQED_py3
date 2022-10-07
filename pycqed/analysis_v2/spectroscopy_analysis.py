@@ -1673,7 +1673,7 @@ class QubitTrackerSpectroscopy(Spectroscopy):
         return v2d_next, f_next
 
 
-class MultiQubitSpectroscopyAnalysis(tda.MultiQubit_TimeDomain_Analysis):
+class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
     """Base class for the analysis of `MultiTaskingSpectroscopyExperiment`.
 
     Transforms the IQ data provided by the detector function into magnitude and
@@ -1709,7 +1709,7 @@ class MultiQubitSpectroscopyAnalysis(tda.MultiQubit_TimeDomain_Analysis):
         return data_key
 
 
-class QubitSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
+class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
     Analysis script for a regular (ge peak/dip only) or a high power
     (ge and gf/2 peaks/dips) Qubit Spectroscopy:
@@ -2115,7 +2115,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
                               self.fit_res[qb_name].params['f0'].stderr * 1e-6))
 
 
-class ResonatorSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
+class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
     Finds a specified number of dips in a 1D resonator spectroscopy and their
     widths. The most prominent dips are selected.
@@ -2350,7 +2350,7 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubitSpectroscopyAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
 
         for qb_name in self.qb_names:
             # Copy the original plots in order to have both the analyzed and the
@@ -2548,7 +2548,7 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
 
         for qb_name, feedline in zip(self.qb_names, self.sorted_feedlines):
             # Copy the original plots in order to have both the analyzed and the
@@ -2580,7 +2580,7 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                 dip2_freq = self.fit_res[qb_name][f'{qb.name}_mode2_frequency']
                 dip1_magn = self.fit_res[qb_name][f'{qb.name}_RO_magnitude']
                 dip2_magn = self.fit_res[qb_name][f'{qb.name}_mode2_magnitude']
-                                                                             
+
                 self.plot_dicts[f"{fig_id_analyzed}_dips_{qb.name}"] = {
                     'fig_id': fig_id_analyzed,
                     'plotfn': self.plot_line,
@@ -2944,7 +2944,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         """Plots the projected data with the additional information found with
         the analysis.
         """
-        MultiQubitSpectroscopyAnalysis.prepare_plots(self)
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
 
         for qb_name in self.qb_names:
 
@@ -3113,7 +3113,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
             }
 
 
-class MultiQubitAvgRoCalibAnalysis(MultiQubitSpectroscopyAnalysis):
+class MultiQubitAvgRoCalibAnalysis(MultiQubit_Spectroscopy_Analysis):
     """Analysis to find the RO frequency that maximizes distance in IQ plane.
 
     Compatible with `MultiTaskingSpectroscopyExperiment`.
