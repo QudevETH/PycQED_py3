@@ -1362,6 +1362,7 @@ class ScopePollDetector(PollDetector):
         elif self.data_type == 'fft_power':
             # Multiple shots aren't implemented for power spectrum measurements
             self.acq_data_len_scaling = 1
+        self.value_units = [''] * len(self.channels)
 
     def prepare(self, sweep_points=None):
 
