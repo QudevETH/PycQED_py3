@@ -2591,19 +2591,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             xlabel (str): x-axis label
             xunit (str): x-axis unit
         """
-        idxs = slice_idxs[0]
-        if isinstance(idxs, str):
-            # idxs of the form 'int:int'
-            idxs = np.arange(int(idxs.split(':')[0]),
-                             int(idxs.split(':')[-1]))
-        else:
-            idxs = [idxs]
-
         axis = 0 if slice_idxs[1] == 'row' else 1
         if axis == 0:
             xvals = self.proc_data_dict[
                 'sweep_points_dict'][qb_name][
                 'sweep_points']
+            yvals = list(
+                self.proc_data_dict[
+                    'sweep_points_2D_dict'][
+                    qb_name].values())[0]
             xlabel, xunit = None, None
         else:
             param_name = list(self.proc_data_dict[
@@ -2612,9 +2608,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.proc_data_dict[
                     'sweep_points_2D_dict'][
                     qb_name].values())[0]
+            yvals = self.proc_data_dict[
+                'sweep_points_dict'][qb_name][
+                'sweep_points']
             xlabel, xunit = \
                 self.get_soft_sweep_label_unit(
                     param_name)
+
+        idxs = slice_idxs[0]
+        if isinstance(idxs, str):
+            if idxs == ':':
+                # take all slices along axis
+                idxs = np.arange(len(yvals))
+            else:
+                # idxs of the form 'int:int' or ':'
+                idxs = np.arange(int(idxs.split(':')[0]),
+                                 int(idxs.split(':')[-1]))
+        else:
+            idxs = [idxs]
+
         return idxs, axis, xvals, xlabel, xunit
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
