@@ -357,6 +357,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                 mod_freqs = freqs - lo_freqs
                 if all(mod_freqs - mod_freqs[0] == 0):
                     # mod freq is the same for all acquisitions
+
+                    # We need to take control over the ro mod freq and therefore
+                    # need to diable the `ro_fixed_lo_freq` in the qb.
+                    if qb.ro_fixed_lo_freq() is not None:
+                        self.temporary_values.append(
+                            (qb.ro_fixed_lo_freq, None))
                     # As we require the step size between frequencies to be
                     # equal between all tasks sharing an LO, the modulation
                     # frequency is the same for every sweep point
@@ -647,6 +653,11 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     freqs, get_closest_lo_freq=(
                         lambda f, qb=qb: qb.get_closest_lo_freq(
                             f, operation='ro')))
+                # We need to disable the fixed lo feature in order to set the
+                # ro/mod frequency independently in the temporary values.
+                if qb.ro_fixed_lo_freq() is not None:
+                    self.temporary_values.append(
+                        (qb.ro_fixed_lo_freq, None))
                 # adjust ro_freq in tmp_vals such that qb.prepare will set the
                 # correct lo_freq.
                 self.temporary_values.append(
@@ -884,6 +895,11 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                     qb.ge_I_channel(), freqs)
                 self.segment_kwargs['sweep_params'][f'{ch}_osc_sweep'] = \
                     mod_freqs
+                # We need to fix the ge lo frequency temporarily to a specific
+                # value to ensure it is not changed by qb.prepare before the
+                # measurement.
+                self.temporary_values.append(
+                    (qb.ge_fixed_lo_freq, center_freq))
                 pulsar.set(f'{ch}_centerfreq', center_freq)
                 # adapt df kwargs to hard sweep
                 self.df_name = 'int_avg_det'
