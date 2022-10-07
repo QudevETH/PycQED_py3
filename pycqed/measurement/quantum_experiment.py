@@ -224,6 +224,16 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                   'data_type': data_type})
         self.waveform_viewer = None
 
+    def get_mobjs(self, mobj_names, strict=True):
+        if self.qubits:
+            return self.get_qubits(qb_names=mobj_names, strict=strict)
+        else:
+            mobjs = [mo for mo in self.meas_objs if mo.name in mobj_names]
+            if strict and len(mobjs) != len(mobj_names):
+                raise AssertionError(f"Some mobjs were not found.")
+            mobj_names = [mo.name for mo in mobjs]
+            return mobjs, mobj_names
+
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
         Creates a default list for self.meas_objs if meas_objs is not provided,
@@ -1017,6 +1027,7 @@ class NDimQuantumExperiment():
 
 
 class NDimMultiTaskingExperiment(NDimQuantumExperiment):
+    # FIXME should a MultiTasking-like experiment be listed in this module?
     def __init__(self, task_list, *args, sweep_points=None,
                  QuantumExperiment=None, **kwargs):
         self.task_list = list(task_list)
@@ -1040,7 +1051,7 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
 
     def _generate_sweep_lengths(self, sweep_points=None):
         sp = self.sweep_points if sweep_points is None else sweep_points
-        sp = copy(sp)
+        sp = deepcopy(sp)
         for task in self.task_list:
             sp.update(SweepPoints(task.get('sweep_points', [])))
         super()._generate_sweep_lengths(sp)
@@ -1050,12 +1061,12 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
         current_tl = [copy(t) for t in self.task_list]
         for task in current_tl:
+            # Just to ease recovering the full sp in the analysis
+            task['ndim_sweep_points'] = task['sweep_points']
+            task['ndim_current_idxs'] = idxs
+            # Make sp that will actually be used in the experiment
             task['sweep_points'] = self.make_2d_sweep_points(
                 task.get('sweep_points', []), idxs)
-        exp_metadata = dict(
-            ndim_sweep_points=self.sweep_points,  # FIXME
-            ndim_current_idxs=idxs,
-        )
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp,
             task_list=current_tl, **self.kwargs)

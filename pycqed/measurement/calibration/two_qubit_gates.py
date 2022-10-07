@@ -267,7 +267,12 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Create a prefix if it does not exist. Otherwise clean it up (add "_")
         prefix = task.get('prefix', None)
         if prefix is None:  # try to guess one based on contained qubits
-            prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names, [task]))
+            if self.qb_names:
+                prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names,
+                                                            [task]))
+            else:
+                prefix = '_'.join(self.find_qubits_in_tasks(self.meas_obj_names,
+                                                            [task]))
         prefix += ('_' if prefix[-1] != '_' else '')
         task['prefix'] = prefix
 
