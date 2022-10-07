@@ -239,7 +239,8 @@ class AWG5014Pulsar(PulsarAWGInterface):
                                   'constant', constant_values=0) for h in wave]
                 packed_waveforms[wfname] = self.awg.pack_waveform(*grp_wfs)
                 wfname_l[-1].append(wfname)
-                if any([wf[0] != 0 for wf in grp_wfs]):
+                # Exponentially small starting value is fine
+                if any([abs(wf[0]) > 1e-3 for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
                                 f'entry on {self.awg.name}.')
 
