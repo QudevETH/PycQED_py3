@@ -4,6 +4,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     RoutineTemplate,
     AutomaticCalibrationRoutine
 )
+from pycqed.measurement.calibration.automatic_calibration_routines.\
+    adaptive_qubit_spectroscopy import AdaptiveQubitSpectroscopy
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
@@ -718,8 +720,9 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
     Routine steps:
 
-    1) :obj:`PiPulseCalibration` (Rabi + Ramsey)
-    2) Decision: checks whether the new frequency of the qubit found after the
+    1) Short (maximum 2 repetitions) :obj:`AdaptiveQubitSpectroscopy`
+    2) :obj:`PiPulseCalibration` (Rabi + Ramsey)
+    3) Decision: checks whether the new frequency of the qubit found after the
         Ramsey experiment is within a specified threshold with respect to the
         previous one. If not, it adds another PiPulseCalibration and Decision
         step.
@@ -789,7 +792,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
     class Decision(IntermediateStep):
 
-        def __init__(self, routine, index, **kw):
+        def __init__(self, routine, **kw):
             """Decision step that decides to add another round of Rabi-Ramsey to
             the FindFrequency routine based on the difference between the
             results of the previous and current Ramsey experiments.
@@ -798,15 +801,13 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
             Args:
                 routine (Step): FindFrequency routine
-                index (int): Index of the decision step (necessary to find the
-                    position of the Ramsey measurement in the routine)
 
            Configuration parameters (coming from the configuration parameter
            dictionary):
                 max_waiting_seconds (float): maximum number of seconds to wait
                     for the results of the previous Ramsey experiment to arrive.
             """
-            super().__init__(routine=routine, index=index, **kw)
+            super().__init__(routine=routine, **kw)
             # FIXME: use general parameters from FindFrequency for now
             self.parameter_lookups = self.routine.parameter_lookups
             self.parameter_sublookups = self.routine.parameter_sublookups
@@ -818,7 +819,6 @@ class FindFrequency(AutomaticCalibrationRoutine):
             qubit = self.qubit
 
             routine = self.routine
-            index = self.kw.get("index")
 
             # Saving some typing for parameters that are only read ;)
             allowed_delta_f = self.get_param_value("allowed_delta_f")
@@ -830,7 +830,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             transition = self.get_param_value("transition_name")
 
             # Finding the ramsey experiment in the pipulse calibration
-            pipulse_calib = routine.routine_steps[index - 1]
+            pipulse_calib = routine.routine_steps[-1]
             ramsey = pipulse_calib.routine_steps[-1]
 
             # Transition frequency from last Ramsey
@@ -884,14 +884,13 @@ class FindFrequency(AutomaticCalibrationRoutine):
                           f"{delta_f_unit}) not yet achieved, adding new"
                           " round of PiPulse calibration...")
 
-                routine.add_next_pipulse_step(index=index + 1)
+                routine.add_next_pipulse_step()
 
-                step_settings = {'index': index + 2, 'qubits': self.qubits}
+                step_settings = {'qubits': self.qubits}
                 routine.add_step(
                     FindFrequency.Decision,
                     'decision',
                     step_settings,
-                    index=index + 2,
                 )
 
                 routine.iteration += 1
@@ -919,6 +918,33 @@ class FindFrequency(AutomaticCalibrationRoutine):
         super().create_routine_template()
         transition_name = self.get_param_value("transition_name",
                                                qubit=self.qubit)
+
+        # Adaptive qubit spectroscopy
+        aqs_settings = {
+            "qubits": self.qubits,
+            "settings": {
+                "AdaptiveQubitSpectroscopy": {
+                        "General": {
+                            "n_spectroscopies": 1,
+                            "max_iterations": 2
+                        },
+                        "qubit_spectroscopy_1": {
+                            "spec_power": -10,
+                            "freq_range": 200e6,
+                            "pts": 400
+                        },
+                        "qubit_spectroscopy_1_repetition_2": {
+                            "spec_power": -5,
+                            "freq_range": 500e6,
+                            "pts": 1500
+                        },
+                }
+            }
+        }
+        self.add_step(AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy',
+                      aqs_settings)
+
+        # Pi-Pulse calibration
         pipulse_settings = {
             "qubits": self.qubits,
             "settings": {
@@ -933,12 +959,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
                       pipulse_settings)
 
         # Decision step
-        decision_settings = {"index": 1}
+        decision_settings = {}
         self.add_step(self.Decision, 'decision', decision_settings)
 
-    def add_next_pipulse_step(self, index):
-        """Adds a next pipulse step at the specified index in the FindFrequency
-        routine.
+    def add_next_pipulse_step(self):
+        """Adds a next pipulse step
         """
         qubit = self.qubit
 
@@ -999,12 +1024,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
         self.add_step(
             *[
                 PiPulseCalibration,
-                'pi_pulse_calibration_' + str(index),
+                'pi_pulse_calibration',
                 {
                     'settings': settings
                 },
-            ],
-            index=index,
+            ]
         )
 
 
