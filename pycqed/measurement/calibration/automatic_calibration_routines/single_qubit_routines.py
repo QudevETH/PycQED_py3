@@ -1022,13 +1022,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
         update_nested_dictionary(settings, pipulse_settings)
 
         self.add_step(
-            *[
                 PiPulseCalibration,
                 'pi_pulse_calibration',
                 {
                     'settings': settings
-                },
-            ]
+                }
         )
 
 
