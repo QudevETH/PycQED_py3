@@ -7,7 +7,9 @@ from pycqed.measurement.calibration.automatic_calibration_routines import \
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from typing import Literal, List
+import logging
 
+logger = logging.getLogger('Routines')
 
 class UpdateFrequency(IntermediateStep):
     """Updates the frequency of the specified transition at a specified
@@ -123,6 +125,10 @@ class SetBiasVoltage(IntermediateStep):
         if self.flux is not None:
             self.voltage = qb.calculate_voltage_from_flux(self.flux)
         else:
-            if self.voltage is None:
-                raise ValueError("No voltage or flux specified")
-            self.routine.fluxlines_dict[qb.name](self.voltage)
+            assert(self.voltage is not None), "No voltage or flux specified"
+            self.flux, _ = routines_utils.get_qubit_flux_and_voltage(
+                qb=qb,
+                voltage=self.voltage)
+        self.routine.fluxlines_dict[qb.name](self.voltage)
+        logger.info(f"{qb.name} flux set to {round(self.flux, 3)} Phi0 "
+                    f"({self.voltage:.3f} V).")
