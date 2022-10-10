@@ -114,27 +114,8 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
     """Get the flux and voltage values of a qubit. One of the three values
     [flux, voltage, fluxlines_dict must be passed"""
 
-    designated_ss_flux = qb.flux_parking()
-    designated_ss_volt = qb.calculate_voltage_from_flux(
-        designated_ss_flux)
-    if designated_ss_flux == 0:
-        # Qubit parked at the USS.
-        # LSS will be with opposite voltage sign
-        opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
-    elif np.abs(designated_ss_flux) == 0.5:
-        # Qubit parked at the LSS
-        opposite_ss_flux = 0
-    else:
-        raise ValueError("Only Sweet Spots are supported!")
-    mid_flux = (designated_ss_flux + opposite_ss_flux) / 2
-
-    if isinstance(flux, str):
-        flux = eval(
-            flux.format(designated=designated_ss_flux,
-                        opposite=opposite_ss_flux,
-                        mid=mid_flux))
-
     if flux is not None:
+        flux = flux_to_float(qb=qb, flux=flux)
         voltage = qb.calculate_voltage_from_flux(flux)
     else:
         voltage = voltage or fluxlines_dict[qb.name]()
@@ -158,3 +139,39 @@ def qb_is_at_designated_sweet_spot(qb: QuDev_transmon,
             qb=qb,
             voltage=voltage)
     return np.abs(flux - qb.flux_parking()) < small_flux
+
+
+def flux_to_float(qb: QuDev_transmon,
+                  flux: Union[float, Literal['{designated}',
+                                             '{opposite}',
+                                             '{mid}']]) -> float:
+    """
+    Return the specified flux as a float, useful with descriptive fluxes.
+    Args:
+        qb: Qubit element.
+        flux: float or literal.
+
+    Returns: flux as float.
+
+    """
+    designated_ss_flux = qb.flux_parking()
+    designated_ss_volt = qb.calculate_voltage_from_flux(
+        designated_ss_flux)
+    if designated_ss_flux == 0:
+        # Qubit parked at the USS.
+        # LSS will be with opposite voltage sign
+        opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
+    elif np.abs(designated_ss_flux) == 0.5:
+        # Qubit parked at the LSS
+        opposite_ss_flux = 0
+    else:
+        raise ValueError("Only Sweet Spots are supported!")
+    mid_flux = (designated_ss_flux + opposite_ss_flux) / 2
+
+    if isinstance(flux, str):
+        flux = eval(
+            flux.format(designated=designated_ss_flux,
+                        opposite=opposite_ss_flux,
+                        mid=mid_flux))
+
+    return float(flux)
