@@ -935,7 +935,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
                         },
                         "qubit_spectroscopy_1_repetition_2": {
                             "spec_power": -5,
-                            "freq_range": 500e6,
+                            "freq_range": 800e6,
                             "pts": 1500
                         },
                 }
