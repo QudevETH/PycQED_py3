@@ -265,7 +265,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
     def _get_two_dips_freqs(self, qubit: QuDev_transmon) -> \
             Tuple[float, float, Dict[str, float]]:
         """Returns:
-            ro_frea (float): The designated frequency for the readout.
+            ro_freq (float): The designated frequency for the readout.
             mode2_freq (float): The other mode of the RO-Purcell system.
             feedline_results (Dict[str, float]): The full results dictionary
                 of the feedline of the qubit."""
@@ -311,7 +311,10 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                             "Frequency range might not be appropriate.")
             return np.min([distance_from_nearest_dip,
                            3 * qubit_dips_distance])
-        except (AttributeError, KeyError, TypeError):
+        except (AttributeError, KeyError, TypeError) as err:
+            log.warning(f'Error in `get_adaptive_freq_range`: {err}. '
+                        f'Using default value {self.DEFAULT_FREQ_RANGE/1e6:.0f}'
+                        f' MHz instead.')
             return self.DEFAULT_FREQ_RANGE
 
     def run(self):
@@ -325,6 +328,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         self.experiment_settings['update'] = True
         self._update_parameters(**self.experiment_settings)
         self.autorun(**self.experiment_settings)
+
+    def post_run(self):
         self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
         self.update_qubits_fr_and_coupling()
 
