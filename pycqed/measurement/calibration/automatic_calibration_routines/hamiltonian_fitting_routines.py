@@ -206,8 +206,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         routines_utils.append_DCsources(self)
 
         self.measurements = {
-            float(k): tuple(transition_to_str(t) for t in v)
-            for k, v in measurements.items()
+            routines_utils.flux_to_float(qb=self.qubit, flux=k):
+                tuple(transition_to_str(t) for t in v) for k, v in
+            measurements.items()
         }
 
         # Validity of measurement dictionary

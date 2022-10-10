@@ -1,7 +1,7 @@
 {
     "General":{
         "update": true,
-        "use_prior_model": false,
+        "use_prior_model": true,
         "get_parameters_from_qubit_object": true,
         "include_mixer_calib_carrier": false,
         "autorun": false,
@@ -12,9 +12,9 @@
         "coupling": 250e6,
         "fr": 7e9,
         "measurements": {
-            "0": ["ge","ef"],
-            "-0.5": ["ge"],
-            "-0.25": ["ge"]
+            "{designated}": ["ge", "ef"],
+            "{opposite}": ["ge"],
+            "{mid}": ["ge"]
         }
     },
     "Ramsey": {
