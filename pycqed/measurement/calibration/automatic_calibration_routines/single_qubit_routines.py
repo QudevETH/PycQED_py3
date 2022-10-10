@@ -921,25 +921,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
         # Adaptive qubit spectroscopy
         aqs_settings = {
-            "qubits": self.qubits,
-            "settings": {
-                "AdaptiveQubitSpectroscopy": {
-                        "General": {
-                            "n_spectroscopies": 1,
-                            "max_iterations": 2
-                        },
-                        "qubit_spectroscopy_1": {
-                            "spec_power": -10,
-                            "freq_range": 200e6,
-                            "pts": 400
-                        },
-                        "qubit_spectroscopy_1_repetition_2": {
-                            "spec_power": -5,
-                            "freq_range": 800e6,
-                            "pts": 1500
-                        },
-                }
-            }
+            "qubits": self.qubits
         }
         self.add_step(AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy',
                       aqs_settings)
