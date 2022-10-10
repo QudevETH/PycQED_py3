@@ -10,7 +10,7 @@ if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
 from pycqed.measurement.calibration.automatic_calibration_routines.\
-    single_qubit_routines import FindFrequency
+    single_qubit_routines import FindFrequency, RabiStep
 
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
@@ -35,7 +35,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
     Routine steps:
 
     1) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at either
-        the USS or LSS
+        the USS or LSS.
     2) UpdateFrequency (update_frequency_<tr_name>_<i>): updates the frequency
         of the qubit at current bias voltage. The bias voltage is calculated
         from the previous Hamiltonian model (if given), otherwise the guessed
@@ -43,14 +43,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
     3) :obj:`FindFrequency` (find_frequency_<tr_name>_<i>): see corresponding
         routine.
     4) :obj:`AdaptiveReparkingRamsey` (reparking_ramsey_<i>): see corresponding
-        routine
+        routine.
+    5) :obj:`RabiStep` (rabi_step_ge): see corresponding step.
 
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
     upper and the lower sweet spot.
-    Steps 2) and 3) are repeated also for the ef transition at the upper
+    Step 5) is done only for the designated sweet spot.
+    Steps 2) and 3) are repeated also for the ef transition at the designated
     sweet spot.
 
-    5) DetermineModel (determine_model_preliminary): fits a Hamiltonian
+    6) DetermineModel (determine_model_preliminary): fits a Hamiltonian
         model based on the three transition frequencies
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
@@ -58,17 +60,17 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
     For the remaining fluxes and transitions specified in "measurements" the
     following step will be run:
-        6) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
+        7) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
             midpoint.
-        7) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
+        8) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
             the qubit at the midpoint by using the preliminary Hamiltonian
             model.
-        8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
+        9) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
             sets temporary bias voltage for flux-pulse-assisted readout.
-        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine.
+        10) FindFrequency (find_frequency_ge_<i>): see corresponding routine.
 
     Afterwards, the final model is determined:
-    10) DetermineModel (determine_model_final): fits a Hamiltonian model based
+    11) DetermineModel (determine_model_final): fits a Hamiltonian model based
         on the transition frequencies at the fluxes specified in "measurements".
         By default, they are:
         i) |g⟩ ↔ |e⟩ (USS)
@@ -350,6 +352,18 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         )
 
                 elif transition == "ef":
+                    # First run a ge-Rabi measurement
+                    step_label = f'rabi_step_ge'
+                    step_settings = {
+                        "qubits": [self.qubit],
+                        'settings': {
+                            step_label: {
+                                "transition_name": 'ge',
+                            }
+                        }
+                    }
+                    self.add_step(RabiStep, step_label, step_settings)
+
                     # Updating ef-frequency at this voltage to guess value
                     step_label = f'update_frequency_{transition}'
                     step_settings = {"qubits": [qubit],
