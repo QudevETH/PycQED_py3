@@ -35,7 +35,6 @@
         "use_prior_model": false
     },
     "determine_model_final":{
-        "include_reparkings": false,
         "use_prior_model": true
     },
     "UpdateFrequency": {

@@ -904,18 +904,15 @@ class HamiltonianFittingAnalysis:
                     timestamp_start, timestamp_end=timestamp_end, label=label
                 )
                 for timestamp in timestamps:
+                    fill_values_args = [experimental_values, timestamp, qubit,
+                                        fluxlines_dict]
                     if experiment == "Ramsey":
                         HamiltonianFittingAnalysis._fill_experimental_values_with_Ramsey(
-                            experimental_values,
-                            timestamp,
-                            qubit,
-                            fluxlines_dict,
-                        )
+                            *fill_values_args)
 
                     elif experiment == "ReparkingRamsey":
                         HamiltonianFittingAnalysis._fill_experimental_values_with_ReparkingRamsey(
-                            experimental_values, timestamp, qubit
-                        )
+                            *fill_values_args)
 
         a_tools.datadir = default_datadir
         return experimental_values
@@ -947,6 +944,8 @@ class HamiltonianFittingAnalysis:
 
         for timestamp in timestamps:
             path = a_tools.data_from_time(timestamp)
+            fill_values_args = [experimental_values, timestamp, qubit,
+                                fluxlines_dict]
 
             if "_Ramsey_" in path:
                 if fluxlines_dict is None:
@@ -955,27 +954,36 @@ class HamiltonianFittingAnalysis:
                         "read the experimental values from Ramsey experiments"
                     )
                 HamiltonianFittingAnalysis._fill_experimental_values_with_Ramsey(
-                    experimental_values, timestamp, qubit, fluxlines_dict
-                )
+                    *fill_values_args)
 
             elif ("_ReparkingRamsey_" in path) and include_reparkings:
                 HamiltonianFittingAnalysis._fill_experimental_values_with_ReparkingRamsey(
-                    experimental_values, timestamp, qubit
-                )
+                    *fill_values_args)
 
         a_tools.datadir = default_datadir
         return experimental_values
 
     @staticmethod
     def _fill_experimental_values(
-        experimental_values, voltage, transition, freq
+        experimental_values, voltage, transition, freq, old_voltage=None
     ):
         """
         Fills the experimental_values dictionary with the experimental values.
+        If an old_voltage is passed it will be removed to make place for the new
+        voltage (for example after a reparking ramsey routine).
 
-        Note that if there are multiple transitions at the same voltage, the last
-        one will be used and the other(s) overwritten.
+        Note that if there are multiple values for the same voltage and
+        transition, the last one will be used and the other(s) overwritten.
         """
+
+        # Remove old voltage results if exist
+        if (old_voltage in experimental_values and
+                transition in experimental_values[old_voltage]):
+            experimental_values[old_voltage].pop(transition)
+            if experimental_values[old_voltage] == {}:
+                experimental_values.pop(old_voltage)
+
+        # Update result in experimental values
         if voltage not in experimental_values:
             experimental_values[voltage] = {}
         if transition not in experimental_values[voltage]:
@@ -1042,7 +1050,7 @@ class HamiltonianFittingAnalysis:
 
     @staticmethod
     def _fill_experimental_values_with_ReparkingRamsey(
-        experimental_values, timestamp, qubit
+        experimental_values, timestamp, qubit, fluxlines_dict
     ):
         """
         Fills the experimental_values dictionary with the experimental values
@@ -1075,38 +1083,27 @@ class HamiltonianFittingAnalysis:
             qubit_name = qubit
         else:
             qubit_name = qubit.name
-        if not qubit_name in filepath:
+        if qubit_name not in filepath:
             return
 
         try:
-            dc_voltages = np.array(
-                data["Experimental Data"]["Experimental Metadata"][
-                    "dc_voltages"
+            ss_values = data["Analysis"]["Processed data"][
+                "analysis_params_dict"]['reparking_params'][qubit_name][
+                'new_ss_vals'].attrs
+            freq = ss_values['ss_freq']
+            voltage = ss_values['ss_volt']
+
+            # Remove results from pre-reparking if exists
+            dc_source_key = fluxlines_dict[qubit_name].instrument.name
+            old_voltage = float(
+                data["Instrument settings"][dc_source_key].attrs[
+                    fluxlines_dict[qubit_name].name
                 ]
             )
-            for i in range(len(dc_voltages)):
-                freq = float(
-                    np.array(
-                        data["Analysis"]["Processed data"][
-                            "analysis_params_dict"
-                        ][qubit_name + f"_" f"{i}"]["exp_decay"].attrs[
-                            "new_qb_freq"
-                        ]
-                    )
-                )
-                freq_std = float(
-                    np.array(
-                        data["Analysis"]["Processed data"][
-                            "analysis_params_dict"
-                        ][qubit_name + f"_" f"{i}"]["exp_decay"].attrs[
-                            "new_qb_freq"
-                        ]
-                    )
-                )
-                voltage = dc_voltages[i]
-                HamiltonianFittingAnalysis._fill_experimental_values(
-                    experimental_values, voltage, transition, freq
-                )
+
+            HamiltonianFittingAnalysis._fill_experimental_values(
+                experimental_values, voltage, transition, freq, old_voltage
+            )
         except:
             log.warning(
                 "Could not get reparking data from file {}".format(filepath)
