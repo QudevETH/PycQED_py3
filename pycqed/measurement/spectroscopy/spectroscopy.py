@@ -829,9 +829,9 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         """
 
         for qb in self.qubits:
-            if qb.flux_parking() != 0 and np.abs(qb.flux_parking())!=0.5:
+            if qb.flux_parking() != 0 and np.abs(qb.flux_parking()) != 0.5:
                 log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
-                                 "nor -0.5. Nothing will be updated."))
+                             "nor -0.5. Nothing will be updated."))
             else:
                 sweet_spot = self.analysis.fit_res[
                         qb.name][f'{qb.name}_sweet_spot']
@@ -842,17 +842,10 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
 
                 self.fluxlines_dict[qb.name](sweet_spot)
                 qb.ro_freq(sweet_spot_RO_freq)
-                # Update V_per_phi0 key in each qubit. From this, it is possible to
+                # Update V_per_phi0 key in each qubit. From this, it is possible
                 # to retrieve the opposite sweet spot
                 V_per_phi0 = np.abs(2 * (sweet_spot - opposite_sweet_spot))
                 qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
-
-                # Update the sign of flux_parking depending to be consistent
-                # with the positive sign V_per_phi0
-                if opposite_sweet_spot > sweet_spot and qb.flux_parking() == 0.5:
-                    qb.flux_parking(-0.5)
-                elif opposite_sweet_spot < sweet_spot and qb.flux_parking() == -0.5:
-                    qb.flux_parking(0.5)
 
                 # Store the USS in 'dac_sweet_spot'
                 if qb.flux_parking() == 0:

@@ -1,5 +1,7 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, AutomaticCalibrationRoutine)
+from pycqed.measurement.calibration.automatic_calibration_routines import \
+    routines_utils
 
 from .park_and_qubit_spectroscopy import (ParkAndQubitSpectroscopy,
                                           ParkAndQubitSpectroscopyResults)
@@ -127,9 +129,9 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     def create_initial_routine(self, load_parameters=True):
         super().create_routine_template()  # Create empty routine template
         qubit: QuDev_transmon = self.qubit
-        uss_flux = 0
-        lss_flux = -0.5 * np.sign(qubit.calculate_voltage_from_flux(flux=0.0))
-        for flux in [uss_flux, lss_flux]:
+        designated_flux = routines_utils.flux_to_float(qubit, '{designated}')
+        opposite_flux = routines_utils.flux_to_float(qubit, '{opposite}')
+        for flux in [designated_flux, opposite_flux]:
             # Add park and spectroscopy step
             step_label = f'park_and_qubit_spectroscopy_flux_{flux}'
             step_settings = {'fluxlines_dict': self.fluxlines_dict,

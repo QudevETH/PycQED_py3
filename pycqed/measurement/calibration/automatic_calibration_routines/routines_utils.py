@@ -155,12 +155,11 @@ def flux_to_float(qb: QuDev_transmon,
 
     """
     designated_ss_flux = qb.flux_parking()
-    designated_ss_volt = qb.calculate_voltage_from_flux(
-        designated_ss_flux)
     if designated_ss_flux == 0:
         # Qubit parked at the USS.
-        # LSS will be with opposite voltage sign
-        opposite_ss_flux = -0.5 * np.sign(designated_ss_volt)
+        # LSS will be negative in order to operate the qubit on a rising branch
+        # of the freq-over-flux curve
+        opposite_ss_flux = -0.5
     elif np.abs(designated_ss_flux) == 0.5:
         # Qubit parked at the LSS
         opposite_ss_flux = 0
