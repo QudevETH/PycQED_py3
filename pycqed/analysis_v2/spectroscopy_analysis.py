@@ -8,6 +8,8 @@ the spectroscopy measurement analyses.
 from copy import copy
 import logging
 import re
+from pprint import pprint
+
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
@@ -1707,6 +1709,79 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
             return 'Magnitude (Vpeak)'
         return data_key
+
+    def fit_and_plot_ro_params(self, qb_names=None, **guessvals):
+        def s21func(x, A, phi, kP, gR, wRg, chige, chigf, wP, J, k):
+            yg, ye, yf = [(A + k * (x - np.mean(x))) * np.abs(
+                np.cos(phi) - np.exp(1j * phi) * kP * (gR - 2j * (x - wR)) / (
+                            4 * J * J + (kP - 2j * (x - wP)) * (
+                                gR - 2j * (x - wR))))
+                          for wR in (wRg, wRg + 2 * chige, wRg + 2 * chigf)]
+            return np.concatenate((yg, ye, yf))
+
+        if qb_names is None:
+            qb_names = self.qb_names
+        fig, _ = plt.subplots(len(qb_names))
+        for qbn, ax in zip(qb_names, fig.axes):
+            s21s = self.proc_data_dict['projected_data_dict'][qbn][
+                               'Magnitude'] * np.exp(
+                1j * self.proc_data_dict['projected_data_dict'][qbn]['Phase'])
+            freq = self.proc_data_dict['sweep_points_dict'][qbn][
+                               'sweep_points'] / 1e6
+            s21s = s21s / np.max(np.abs(s21s))
+
+            model = lmfit.Model(s21func)
+            #     def_guessvals = {
+            #          'A': 0.9606869401888111,
+            #          'J': 26.39731046898196,
+            #          'gR': 0.45399780075641627,
+            #          'k': 7.896669302687555e-05,
+            #          'kP': 23.24117720383665,
+            #          'phi': 0.8357926392473737,
+            #          'chige': -1,
+            #          'chigf': -2,
+            #          'wRg': np.mean(freq),
+            #          'wP': np.mean(freq),
+            #     }
+            def_guessvals = {
+                'A': 1,
+                'J': 20,
+                'chige': -5,
+                'chigf': -5,
+                'gR': 5,
+                'k': 0,
+                'kP': 30,
+                'phi': 1,
+                'wRg': np.mean(freq),
+                'wP': np.mean(freq)+40,
+            }
+            def_guessvals.update(guessvals)
+            pars = model.make_params(**def_guessvals)
+            pars['kP'].min = 0
+            pars['gR'].min = 0
+            pars['J'].min = 0
+            pars['wP'].min = freq.min()
+            pars['wRg'].min = freq.min()
+            pars['wP'].max = freq.max()
+            pars['wRg'].max = freq.max()
+            fit = model.fit(
+                np.concatenate((np.abs(s21s[0]), np.abs(s21s[1]),
+                                np.abs(s21s[2]))), x=freq, params=pars)
+            s21fit = fit.best_fit
+            ax.plot(freq, np.abs(s21s[0]), '.', c='C0')
+            ax.plot(freq, np.abs(s21s[1]), '.', c='C1')
+            ax.plot(freq, np.abs(s21s[2]), '.', c='C2')
+            ax.plot(freq, np.abs(s21fit[:len(freq)]), '-', c='C0')
+            ax.plot(freq, np.abs(s21fit[len(freq):2 * len(freq)]), '-', c='C1')
+            ax.plot(freq, np.abs(s21fit[2 * len(freq):]), '-', c='C2')
+            ax.set_xlabel('Frequency, $f$ (MHz)')
+            ax.set_ylabel('Transmission amplitude, $|S_{21}|$')
+            print(qbn)
+            pprint(fit.best_values)
+            print()
+        fig.suptitle(' '.join(self.timestamps))
+        fig.subplots_adjust(0.113, 0.155, 0.99, 0.99)
+        return fit, (fig, ax)
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
