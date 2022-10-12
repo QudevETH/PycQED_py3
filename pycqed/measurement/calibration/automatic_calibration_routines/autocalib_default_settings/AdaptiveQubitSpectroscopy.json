@@ -40,8 +40,8 @@
 
     "qubit_spectroscopy_2": {
         "spec_power": -15,
-        "freq_range": 50e6,
-        "pts": 200
+        "freq_range": 100e6,
+        "pts": 300
     },
 
     "decision_spectroscopy_2": {
