@@ -234,9 +234,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
         for i in range(self.n_acq_units):
             # Set trigger delay to the same value for all modes. This is
-            # necessary e.g. to get consistent acquisition weights. The delay
-            # is set to a smaller value than for the scope, to compensate the
-            # higher hardware delay compared to the scope.
+            # necessary e.g. to get consistent acquisition weights.
             self.qachannels[i].readout.integration.delay(
                 self.acq_trigger_delay())
             self.qachannels[i].spectroscopy.delay(
@@ -345,6 +343,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
             trigger_input=trigger_channel,
             num_segments=num_segments,
             num_averages=num_hard_avg,
+            # trigger_delay for now defaults to 0 in this function...
             trigger_delay=self.scopes[0].trigger.delay(),
         )
 
@@ -570,7 +569,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()
-        # FIXME: add further checks
         n_samples = self.convert_time_to_n_samples(self._acq_length)
         if self._acq_mode == 'scope' and n_samples > self._acq_scope_memory:
             raise ValueError(
