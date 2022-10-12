@@ -1274,7 +1274,8 @@ class Segment:
                 continue
             if awg not in awg_wfs:
                 awg_wfs[awg] = {}
-            channel_list = set(self.pulsar.get_trigger_group_channels(group)) & channels
+            channel_list = set(self.pulsar.get_trigger_group_channels(
+                group)) & set(channels)
             if channel_list == set():
                 continue
             channel_list = list(channel_list)
