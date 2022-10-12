@@ -213,9 +213,12 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
                 # Temporary values for ro
                 ro_tmp_vals = ro_flux_tmp_vals(qb, voltage, use_ro_flux=True)
-                # Extending temporary values
+                # Extending temporary values for qubit spectroscopy
+                index = 2
+                assert (self.routine.routine_template[index][0].__name__ ==
+                        AdaptiveQubitSpectroscopy.__name__)
                 self.routine.extend_step_tmp_vals_at_index(tmp_vals=ro_tmp_vals,
-                                                           index=1)
+                                                           index=index)
                 if self.get_param_value("verbose"):
                     log.info(f"Setting {qb.name} voltage bias to {voltage:.6f} "
                              f"V. Corresponding flux: {flux} Phi0")
