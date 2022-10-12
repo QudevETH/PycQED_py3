@@ -1,4 +1,4 @@
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_PQSC as pqsc
 import qcodes.utils.validators as vals
 

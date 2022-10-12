@@ -287,7 +287,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=uhf_instances[uhf],
+                acq_dev=uhf_instances[uhf],
+                AWG=uhf_instances[uhf].get_awg_control_object()[0],
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 real_imag=False, **kw)
@@ -469,7 +470,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
 def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                  preselection=True, all_states_combinations=False, upload=True,
                  exp_metadata=None, analyze=True, analysis_kwargs=None,
-                 delegate_plotting=False, update=True):
+                 delegate_plotting=False, update=True, df_name='int_log_det'):
     """
     Measures in single shot readout the specified states and performs
     a Gaussian mixture fit to calibrate the state classfier and provide the
@@ -503,12 +504,11 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         analysis_kwargs (dict): arguments for the analysis. Defaults to all qb names
         delegate_plotting (bool): Whether or not to create a job for an analysisDaemon
             and skip the plotting during the analysis.
-        update (bool): update readout classifier parameters.
-            Does not update the readout correction matrix (i.e. qb.acq_state_prob_mtx),
-            as we ended up using this a lot less often than the update for readout
-            classifier params. The user can still access the state_prob_mtx through
-            the analysis object and set the corresponding parameter manually if desired.
-
+        update (bool): update readout classifier parameters (qb.acq_classifier_params)
+            and the acquisition state probability matrix (qb.acq_state_prob_mtx).
+        df_name (str): name of the detector function to be used,
+            see docstring of get_multiplexed_readout_detector_functions
+            (default: 'int_log_det')
 
     Returns:
 
@@ -558,7 +558,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
-            'int_log_det', qubits, nr_shots=n_shots)
+            df_name, qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
@@ -1302,6 +1302,10 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
         sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
 
     MC.set_sweep_points(sweep_points)
+    if qbm.instr_ge_lo is None:
+        raise NotImplementedError('measure_J_coupling is not implemented '
+                                  'for non-mixer based drive pulse '
+                                  'generation.')
     MC.set_sweep_function_2D(swf.Offset_Sweep(
         qbm.instr_ge_lo.get_instr().frequency,
         -qbm.ge_mod_freq(),

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Dict, List, Set, Tuple, Type, Union
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
@@ -17,11 +17,11 @@ from pycqed.utilities.timer import WatchdogTimer, WatchdogException
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
-
 log = logging.getLogger(__name__)
 
 
 _DEFAULT_SEGMENT = (0, 32767)
+_DEFAULT_TRG_GRP = 'def_trg_grp'
 
 
 class PulsarAWGInterface(ABC):
@@ -95,6 +95,7 @@ class PulsarAWGInterface(ABC):
     _pulsar_interfaces:List[Type['PulsarAWGInterface']] = []
     """Registered pulsar interfaces. See :meth:`__init_subclass__`."""
 
+
     def __init__(self, pulsar:'Pulsar', awg:Instrument):
         super().__init__()
 
@@ -148,28 +149,35 @@ class PulsarAWGInterface(ABC):
                              initial_value=True,
                              vals=vals.Bool(),
                              parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_reuse_waveforms",
-                             initial_value=True, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter,
-                             docstring="Minimizes the sequencer memory by "
-                                       "repeating specific sequence patterns "
-                                       "(eg. readout) passed in "
-                                       "'repeat dictionary'.")
         pulsar.add_parameter(f"{name}_enforce_single_element",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter,
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
                                        "sure the master AWG has only one "
-                                       "waveform per segment.")
+                                       "waveform per segment.",
+                             get_cmd=lambda s=self.pulsar:
+                             s.get(f'{name}_join_or_split_elements') == 'ese',
+                             set_cmd=lambda v, s=self.pulsar:
+                             (s.set(f'{name}_join_or_split_elements', 'ese')
+                              if v else None), )
+        pulsar.add_parameter(f"{name}_join_or_split_elements",
+                             initial_value="default",
+                             vals=vals.Enum("default", "split", "ese"),
+                             parameter_class=ManualParameter,
+                             docstring="If ese: Group all the pulses on this "
+                                       "AWG into a single element. Useful "
+                                       "for making sure the master AWG has "
+                                       "only one waveform per segment. If "
+                                       "split: Split all pulses into individual "
+                                       "elements.")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
                              initial_value=self.ELEMENT_START_GRANULARITY,
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Granularity in number of samples "
+                                       "with which elements can be tiggered."
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_min_length",
                              get_cmd=lambda: self.MIN_LENGTH)
         pulsar.add_parameter(f"{name}_inter_element_deadtime",
@@ -179,17 +187,32 @@ class PulsarAWGInterface(ABC):
                              label=f"{name} precompile segments",
                              parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_delay",
-                             initial_value=0, unit="s",
+                             initial_value=0,
+                             unit="s",
                              parameter_class=ManualParameter,
                              docstring="Global delay applied to this channel. "
                                        "Positive values move pulses on this "
-                                       "channel forward in time.")
+                                       "channel forward in time. "
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_trigger_channels",
                              initial_value=[],
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="List of channels triggering that awg."
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_compensation_pulse_min_length",
                              initial_value=0, unit='s',
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_trigger_groups",
+                             initial_value={},
+                             parameter_class=ManualParameter,
+                             docstring="Dictionary of group names as keys "
+                                       "and a list of channels within each "
+                                       "group as values. This allows "
+                                       "the user to specify triggered "
+                                       "sub groups of an AWG.",
+                             vals=vals.Dict())
 
     @abstractmethod
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
@@ -312,6 +335,11 @@ class PulsarAWGInterface(ABC):
                      channels_to_program:Union[List[str], str]="all",
                      filter_segments=None):
         """Preprocess filter segments before programming actual hardware"""
+        # Switch of repeat_pattern if not supported or if disabled via
+        # _minimize_sequencer_memory parameter.
+        param = f'{self.awg.name}_minimize_sequencer_memory'
+        if param not in self.pulsar.parameters or not self.pulsar.get(param):
+            repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
             awg_sequence, waveforms, filter_segments, repeat_pattern,
             channels_to_upload=channels_to_upload,
@@ -392,7 +420,12 @@ class PulsarAWGInterface(ABC):
 
     @abstractmethod
     def is_awg_running(self) -> bool:
-        """Checks whether the sequencer of the AWG is running."""
+        """Checks whether the sequencer of the AWG is running.
+
+        Returns True if all required sub-AWGs are running. Note: this can
+        include the case where no sub-AWGs are running, but they are also not
+        needed.
+        """
 
     @abstractmethod
     def clock(self) -> float:
@@ -411,6 +444,17 @@ class PulsarAWGInterface(ABC):
             formatted strings. TODO: More accurate description.
         """
         return []
+
+    def get_centerfreq_generator(self, ch:str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        return None
 
     def set_filter_segments(self, val):
         """TODO: Document"""
@@ -464,7 +508,7 @@ class PulsarAWGInterface(ABC):
                                   f"implemented by AWG interface "
                                   f"{self.__class__}.")
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         """Convenience method for retrieving SWF for sweeping a channels freq.
 
         Subclasses must override this. Subclasses should raise an error when a
@@ -531,6 +575,11 @@ class Pulsar(Instrument):
         self.add_parameter('use_sequence_cache', initial_value=False,
                            parameter_class=ManualParameter, vals=vals.Bool(),
                            set_parser=self._use_sequence_cache_parser)
+        self.add_parameter('use_mcc', initial_value=False,
+                           parameter_class=ManualParameter, vals=vals.Bool(),
+                           docstring='Flag determining whether to use '
+                                     'parallel compilation and upload of '
+                                     'SecQ strings.')
         self.add_parameter('prepend_zeros', initial_value=0, vals=vals.Ints(),
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
@@ -581,14 +630,17 @@ class Pulsar(Instrument):
 
 
         self._inter_element_spacing = 'auto'
-        self.channels = set() # channel names
-        self.awgs:Set[str] = set() # AWG names
+        self.channels = set()  # channel names
+        self.awgs:Set[str] = set()  # AWG names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
         self.last_elements = None
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
         self.num_channel_groups = {}
+        self.mcc_finalize_callbacks = {}
+        """A dict of methods which requires execution after multi-core 
+        compilation. Keys are AWG names, and values are methods to execute."""
 
         self._awgs_prequeried_state = False
 
@@ -611,6 +663,15 @@ class Pulsar(Instrument):
         if val and not self.use_sequence_cache():
             self.reset_sequence_cache()
         return val
+
+    @property
+    def trigger_groups(self):
+        """Returns a set of all trigger group names in pulsar.
+
+        Returns:
+            Set of all trigger group names.
+        """
+        return set([g for awg in self.awgs for g in self.get(f'{awg}_trigger_groups')])
 
     def reset_sequence_cache(self):
         """Resets the sequence cache.
@@ -649,7 +710,9 @@ class Pulsar(Instrument):
         with open(self._get_pulsar_id_file(), 'w') as f:
             f.write(str(id(self)))
 
-    def define_awg_channels(self, awg:Instrument, channel_name_map:dict=None):
+    def define_awg_channels(self, awg:Instrument,
+                            channel_name_map:dict=None,
+                            trigger_group_map:dict=None):
         """Add an AWG with a channel mapping to the pulsar.
 
         Args:
@@ -660,6 +723,8 @@ class Pulsar(Instrument):
 
         if channel_name_map is None:
             channel_name_map = {}
+        if trigger_group_map is None:
+            trigger_group_map = {}
 
         # Sanity checks
         for channel_name in channel_name_map.values():
@@ -685,6 +750,44 @@ class Pulsar(Instrument):
         self.awgs.add(awg.name)
         # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
+        # Define trigger groups of AWG
+        self.define_awg_trigger_groups(awg.name, trigger_group_map)
+
+    def define_awg_trigger_groups(self, awg_name: str,
+                                  trigger_group_map: dict = {}):
+        """Add the trigger group mapping to the pulsar for a given AWG.
+
+        Args:
+            awg: AWG object for which to add trigger groups.
+            trigger_group_map: dictionary defining the trigger groups
+            with group names as keys and list of AWG channel names as
+            values.
+        """
+
+        awg_channels = self.find_awg_channels(awg_name)
+
+        # prepend awg name to group name and add all non-specified
+        # channel names to default_trigger_group
+        new_trigger_group_map = {}
+        specified_channels = set()
+        for group_name, channels in trigger_group_map.items():
+            new_trigger_group_map[f"{awg_name}_{group_name}"] = channels
+
+            # some sanity checks
+            if not specified_channels.isdisjoint(set(channels)):
+                raise ValueError(f"Channel specified in more than "
+                                 f"a single trigger group on AWG "
+                                 f"{awg_name}.")
+            if not set(channels).issubset(set(awg_channels)):
+                raise ValueError(f"Non-existent channel specified "
+                                 f"on AWG {awg_name}.")
+
+            specified_channels.update(set(channels))
+
+        new_trigger_group_map[f"{awg_name}_{_DEFAULT_TRG_GRP}"] =\
+            list(set(awg_channels) - specified_channels)
+
+        self.set(f"{awg_name}_trigger_groups", new_trigger_group_map)
 
     def find_awg_channels(self, awg:str) -> List[str]:
         """Return a list of channels associated to an AWG."""
@@ -704,6 +807,149 @@ class Pulsar(Instrument):
         """
 
         return Instrument.find_instrument(self.get(f"{channel}_awg"))
+
+    def get_trigger_group(self, channel:str) -> str:
+        """Return the corresponding trigger group
+        name a channel is in.
+
+        Args:
+            channel: Name of the channel.
+        """
+
+        # currently we assume a trigger group to only
+        # span over a single AWG
+        awg_name = self.get_channel_awg(channel).name
+        trigger_groups = self.get(f"{awg_name}_trigger_groups")
+
+        found_group = f"{awg_name}_{_DEFAULT_TRG_GRP}"
+
+        for group, channels in trigger_groups.items():
+            if channel in channels:
+                found_group = group
+
+        return found_group
+
+    def get_awg_from_trigger_group(self, group:str) -> str:
+        """Given a trigger group, returns the AWG which the
+        trigger group is on.
+
+        Args:
+            group: Name of the trigger group.
+        """
+
+        if group not in self.trigger_groups:
+            raise ValueError(f"Provided group {group} not in "
+                             f"list of defined trigger groups.")
+
+        for awg_name in self.awgs:
+            if group in self.get(f"{awg_name}_trigger_groups"):
+                return awg_name
+
+    def get_trigger_group_channels(self, group:str)->List[str]:
+        """
+        Return all channels of the trigger group. If default return all
+        for which no trigger group was defined.
+
+        Args:
+            group: Name of group.
+        """
+
+        awg_name = self.get_awg_from_trigger_group(group)
+        trigger_groups = self.get(f"{awg_name}_trigger_groups")
+
+        return trigger_groups[group]
+
+    def get_trigger_delay(self, group:str):
+        """
+        Returns the delay of the global channel delay of
+        the specified group.
+
+        Args:
+            group: Name of the group.
+        """
+        awg = self.get_awg_from_trigger_group(group)
+        delay = self.get(f"{awg}_delay")
+
+        if isinstance(delay, float) or isinstance(delay, int):
+            return delay
+        else:
+            return delay[group]
+
+    def get_element_start_granularity(self, group:str):
+        """
+        Returns granularity of device for a given trigger group.
+
+        Args:
+            group: Name of the group.
+        """
+
+        awg = self.get_awg_from_trigger_group(group)
+        gran = self.get(f"{awg}_element_start_granularity")
+
+        if isinstance(gran, dict):
+            gran = gran[group]
+
+        return gran
+
+    def get_trigger_channels(self, group:str) -> List[str]:
+        """
+        Returns list of triggering channels for a given group.
+
+        Args:
+            group: Name of the group.
+
+        """
+
+        awg = self.get_awg_from_trigger_group(group)
+        trigger_channels = self.get(f"{awg}_trigger_channels")
+
+        # if trigger channels are list return that
+        # list for all groups
+        if isinstance(trigger_channels, list):
+            return trigger_channels
+        else:
+            return trigger_channels[group]
+
+    def check_channels_in_trigger_groups(self, channels:set[str],
+                                         trigger_groups:set[list[str]]):
+        """
+        Checks whether the set of channels has a none zero overlap with
+        channels in the trigger groups.
+
+        Args:
+            channels: set of channel names
+            trigger_groups: set of trigger group names
+
+        Returns:
+            True if at least one of the channels is in the trigger group,
+            else returns False.
+        """
+        group_channels = []
+        for group in trigger_groups:
+            group_channels += \
+                self.get_trigger_group_channels(group)
+
+        return len(set(group_channels) & channels) != 0
+
+
+    def get_enforce_single_element(self, ch:str) -> bool:
+        """
+        Wrapper function for {awg}_enforce_single_element. Returns a Bool
+        whether enforce single element is activated for channel ch.
+        Args:
+            ch (str): name of channel
+        Returns:
+             True if enforce single element is activated, else False.
+        """
+        awg = self.get_channel_awg(ch).name
+
+        enforce_single_element = self.get(f"{awg}_enforce_single_element")
+
+        if isinstance(enforce_single_element, bool):
+            return enforce_single_element
+        else:
+            group = self.get_trigger_group(ch)
+            return enforce_single_element[group]
 
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
@@ -824,6 +1070,22 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
+    def get_unique_mccs(self):
+        """
+        Returns list of unique multi_core_compiler instances from
+        PulsarAWGInterface._pulsar_interfaces.
+        """
+        return set([awg_int.multi_core_compiler
+                    for awg_int in self.awg_interfaces.values()
+                    if hasattr(awg_int, 'multi_core_compiler')])
+
+    def reset_active_awgs_mcc(self):
+        """
+        Resets the active awgs on the unique multi_core_compilers.
+        """
+        for mcc in self.get_unique_mccs():
+            mcc.reset_active_awgs()
+
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
 
@@ -848,6 +1110,9 @@ class Pulsar(Instrument):
         # Stores the last uploaded sequence for easy access and plotting
         self.last_sequence = sequence
 
+        # resets the parallel compilation active AWG list
+        self.reset_active_awgs_mcc()
+
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
 
@@ -863,7 +1128,6 @@ class Pulsar(Instrument):
         t0 = time.time()
         if self.use_sequence_cache():
             self.invalid_cache_if_other_pulsar()
-            
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
                 sequence.generate_waveforms_sequences(
@@ -886,6 +1150,7 @@ class Pulsar(Instrument):
             # to changed AWG settings or due to changed metadata
             awgs_to_program = []
             settings_to_check = ['{}_use_placeholder_waves',
+                                 '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
                                  'prepend_zeros']
             settings = {}
@@ -1020,7 +1285,7 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        ZIPulsarMixin.zi_waves_cleared = False
+        ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
         for awg in awg_sequences.keys():
@@ -1053,6 +1318,20 @@ class Pulsar(Instrument):
             )
 
             log.info(f'Finished programming {awg} in {time.time() - t0}')
+
+        if self.use_mcc():
+            # Use parallel compilation and upload if the _awgs_with_waveforms
+            # support it.
+            for mcc in self.get_unique_mccs():
+                if mcc is not None and len(mcc._awgs) > 0:
+                    mcc.wait_compile()
+                    mcc.upload()
+
+            # Finalize callbacks allow individual AWG interfaces to do final
+            # upload steps (e.g., uploading waveforms).
+            for awg, callback in self.mcc_finalize_callbacks.items():
+                if awg in self._awgs_with_waveforms:
+                    callback()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.
@@ -1190,6 +1469,11 @@ class Pulsar(Instrument):
         repeat_dict_per_awg = dict()
         for cname in repeat_dict_per_ch:
             awg = self.get(f"{cname}_awg")
+            param = f'{awg}_minimize_sequencer_memory'
+            if param not in self.parameters or not self.get(param):
+                # repeat_pattern is not supported or is disabled via
+                # _minimize_sequencer_memory parameter.
+                continue
             chid = self.get(f"{cname}_id")
 
             if not awg in awg_ch_repeat_dict.keys():
@@ -1216,7 +1500,20 @@ class Pulsar(Instrument):
         return self.awg_interfaces[awg_name] \
             .get_params_for_spectrum(ch, requested_freqs)
 
-    def get_frequency_sweep_function(self, ch:str):
+    def get_frequency_sweep_function(self, ch:str, **kw):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
-            .get_frequency_sweep_function(ch)
+            .get_frequency_sweep_function(ch, **kw)
+
+    def get_centerfreq_generator(self, ch: str):
+        """Return the generator of the center frequency associated with a given channel.
+
+        Args:
+            ch: channel of the AWG.
+        Returns:
+            center_freq_generator module
+        """
+
+        awg_name = self.get(f'{ch}_awg')
+        return self.awg_interfaces[awg_name] \
+            .get_centerfreq_generator(ch)
