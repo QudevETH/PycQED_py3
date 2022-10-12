@@ -963,12 +963,12 @@ class NDimQuantumExperiment():
     QuantumExperiment = QuantumExperiment
     DUMMY_DIM = 1
 
-    def __init__(self, *args, sweep_points=None,
+    def __init__(self, *args, sweep_points=None, clear_experiments=False,
                  QuantumExperiment=None, **kwargs):
         self.experiments = {}
         if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
-
+        self.clear_experiments = clear_experiments
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
         self.args = args
@@ -1012,6 +1012,8 @@ class NDimQuantumExperiment():
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
             **self.kwargs)
+        if self.clear_experiments:
+            del self.experiments[idxs]
 
     def run_measurement(self, **kw):
         for qe in self.experiments.values():
@@ -1070,4 +1072,6 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp,
             task_list=current_tl, **self.kwargs)
+        if self.clear_experiments:
+            del self.experiments[idxs]
 
