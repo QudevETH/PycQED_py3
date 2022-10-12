@@ -19,6 +19,8 @@ from .initial_hamiltonian_model import PopulateInitialHamiltonianModel
 
 from .adaptive_reparking_ramsey import AdaptiveReparkingRamsey
 
+from .qubit_parking import MultiQubitParking
+
 from .hamiltonian_fitting_routines import (
     HamiltonianFitting
 )
