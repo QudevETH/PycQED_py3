@@ -98,7 +98,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
 
         self.add_parameter(
             'acq_trigger_delay',
-            initial_value=300e-9,
+            initial_value=0,
             parameter_class=ManualParameter,
             docstring='Delay between the pulse generation and the acquisition.',
             vals=validators.Numbers(min_value=0))
