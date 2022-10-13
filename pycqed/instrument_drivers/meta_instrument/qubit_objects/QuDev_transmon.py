@@ -1448,6 +1448,7 @@ class QuDev_transmon(Qubit):
                 if hasattr(self.instr_acq.get_instr(),
                            'use_hardware_sweeper') and \
                         self.instr_acq.get_instr().use_hardware_sweeper():
+                    self.int_avg_det_spec.AWG = self.instr_pulsar.get_instr()
                     lo_freq, delta_f, _ = self.instr_acq.get_instr()\
                         .get_params_for_spectrum(
                             freqs, get_closest_lo_freq=(
@@ -1489,10 +1490,12 @@ class QuDev_transmon(Qubit):
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
-            self.instr_pulsar.get_instr().start(exclude=[awg_name])
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+                self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                self.instr_pulsar.get_instr().stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
