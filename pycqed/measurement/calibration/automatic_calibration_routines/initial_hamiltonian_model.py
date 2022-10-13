@@ -219,7 +219,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
 
                 if updated_qb_results is None:
                     log.warning(f"Could not find the correct step to load the"
-                                f"updated parameters for {qubit.name}")
+                                f" updated parameters for {qubit.name}")
                 else:
                     voltage = updated_qb_results.voltage
                     ge_freq = updated_qb_results.measured_ge_freq
@@ -227,3 +227,5 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                              f"Hz and voltage {voltage} V")
                     self.fluxlines_dict[qubit.name](voltage)
                     qubit.ge_freq(ge_freq)
+
+        super().post_run()
