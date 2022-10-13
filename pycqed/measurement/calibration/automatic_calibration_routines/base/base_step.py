@@ -341,6 +341,7 @@ class Step:
         kwargs['measure'] = False
         kwargs['analyze'] = False
         kwargs['qubits'] = self.qubits
+        kwargs['experiment_name'] = self.step_label
         return kwargs
 
     @property
