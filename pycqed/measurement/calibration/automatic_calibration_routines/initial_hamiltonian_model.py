@@ -89,6 +89,10 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                 corresponding qubit.
             **kw: keyword arguments that will be passed to the `__init__()` and
                 `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
+
+        Configuration parameters:
+            park_qubit_after_routine: If True the qubit flux and
+                frequency will be set to its parking sweet-spot.
         """
 
         super().__init__(
@@ -126,27 +130,35 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                     "meaningful value!")
         return 165e6
 
+    @staticmethod
+    def get_park_and_spectroscopy_step_label(qubit: QuDev_transmon,
+                                             flux: float):
+        return f'park_and_qubit_{qubit.name}_spectroscopy_flux_{float(flux)}'
+
     def create_initial_routine(self, load_parameters=True):
         super().create_routine_template()  # Create empty routine template
-        qubit: QuDev_transmon = self.qubit
-        designated_flux = routines_utils.flux_to_float(qubit, '{designated}')
-        opposite_flux = routines_utils.flux_to_float(qubit, '{opposite}')
-        for flux in [designated_flux, opposite_flux]:
-            # Add park and spectroscopy step
-            step_label = f'park_and_qubit_spectroscopy_flux_{flux}'
-            step_settings = {'fluxlines_dict': self.fluxlines_dict,
-                             'settings': {
-                                 step_label: {'General': {'flux': flux}}}}
-            self.add_step(ParkAndQubitSpectroscopy,
-                          step_label=step_label,
-                          step_settings=step_settings)
+        for qubit in self.qubits:
+            designated_flux = routines_utils.flux_to_float(
+                qubit, '{designated}')
+            opposite_flux = routines_utils.flux_to_float(qubit, '{opposite}')
+            for flux in [designated_flux, opposite_flux]:
+                # Add park and spectroscopy step
+                step_label = self.get_park_and_spectroscopy_step_label(
+                    qubit=qubit, flux=flux)
+                step_settings = {'fluxlines_dict': self.fluxlines_dict,
+                                 'settings': {
+                                     step_label: {'General': {'flux': flux}}}}
+                self.add_step(ParkAndQubitSpectroscopy,
+                              step_label=step_label,
+                              step_settings=step_settings)
 
-            # Add model update step
-            step_label = f'update_hamiltonian_model_flux_{flux}'
-            step_settings = {'flux': flux}
-            self.add_step(self.UpdateHamiltonianModel,
-                          step_label=step_label,
-                          step_settings=step_settings)
+                # Add model update step
+                step_label = f'update_hamiltonian_model_{qubit.name}_' \
+                             f'flux_{flux}'
+                step_settings = {'flux': flux}
+                self.add_step(self.UpdateHamiltonianModel,
+                              step_label=step_label,
+                              step_settings=step_settings)
 
     class UpdateHamiltonianModel(IntermediateStep):
         """Updates the parameters of the initial Hamiltonian with the values
@@ -155,14 +167,11 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
 
         def __init__(self,
                      flux: float,
-                     park_qubit_post_measurement: bool = True,
                      **kw):
             """
 
             Args:
                 flux: The flux at which the qubit was measured, in Phi0 unit.
-                park_qubit_post_measurement: If True the qubit flux and
-                    frequency will be set to its parking sweet-spot.
 
             Keyword Args:
                 Keyword arguments that will be passed to the `__init__` function
@@ -171,7 +180,6 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
             self.routine: Optional[PopulateInitialHamiltonianModel] = None
             super().__init__(**kw)
             self.flux = flux
-            self.park_qubit_post_measurement = park_qubit_post_measurement
 
         def run(self):
             for qubit in self.qubits:
@@ -195,14 +203,27 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                     # Update the qubit with the final parameters
                     qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))
 
-                    if self.park_qubit_post_measurement:
-                        # Repark the qubit at its sweet-spot
-                        for i, step in enumerate(self.routine.routine_steps):
-                            if step.step_label == \
-                                    f'park_and_qubit_spectroscopy_' \
-                                    f'flux_{qubit.flux_parking()}':
-                                qb_results = step.results[qubit.name]
-                        self.routine.fluxlines_dict[qubit.name](
-                            qb_results.voltage)
-                        qubit.ge_freq(qb_results.measured_ge_freq)
+    def post_run(self):
+        for qubit in self.qubits:
+            park_qubit_after_routine = self.get_param_value(
+                "park_qubit_after_routine", qubit=qubit.name)
+            if park_qubit_after_routine:
+                # Repark the qubit at its sweet-spot
+                updated_qb_results = None
+                for i, step in enumerate(self.routine_steps):
+                    if step.step_label == \
+                            self.get_park_and_spectroscopy_step_label(
+                                qubit=qubit, flux=qubit.flux_parking()):
+                        updated_qb_results = step.results[qubit.name]
+                        break
 
+                if updated_qb_results is None:
+                    log.warning(f"Could not find the correct step to load the"
+                                f"updated parameters for {qubit.name}")
+                else:
+                    voltage = updated_qb_results.voltage
+                    ge_freq = updated_qb_results.measured_ge_freq
+                    log.info(f"Updating {qubit.name} to ge_frequency {ge_freq} "
+                             f"Hz and voltage {voltage} V")
+                    self.fluxlines_dict[qubit.name](voltage)
+                    qubit.ge_freq(ge_freq)

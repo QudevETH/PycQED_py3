@@ -1,5 +1,6 @@
 {
   "General": {
-    "update": true
+    "update": true,
+    "park_qubit_after_routine": true
   }
 }
