@@ -134,6 +134,22 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         self.autorun(**self.experiment_settings)
         self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
 
+    def run_update(self, **kw):
+        """Updates the readout frequency of the qubits sent to the routine.
+
+        This function overrides the function in the experiment
+        :obj:`FeedlineSpectroscopy` which updates all the qubits of the
+        feedline.
+        """
+        for feedline in self.feedlines:
+            feedline_results = self.analysis.fit_res[feedline[0].name]
+            for qb in self.qubits:
+                try:
+                    ro_freq = feedline_results[f"{qb.name}_RO_frequency"]
+                    qb.ro_freq(ro_freq)
+                except KeyError:
+                    log.warning(f"RO frequency of {qb.name} was not updated")
+
 
 class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                                          Step):
