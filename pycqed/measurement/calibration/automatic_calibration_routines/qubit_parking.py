@@ -208,11 +208,13 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
         self.index_iteration = 1
 
         for qb in qubits:
+            current_ge_freq = qb.ge_freq()
+            current_voltage = fluxlines_dict[qb.name]()
             self.results[qb.name] = QubitParkingResults(**dict(
-                initial_ge_freq=qb.ge_freq(),
-                measured_ge_freq=qb.ge_freq(),
-                initial_voltage=fluxlines_dict[qb.name](),
-                measured_voltage=fluxlines_dict[qb.name]()
+                initial_ge_freq=current_ge_freq,
+                measured_ge_freq=current_ge_freq,
+                initial_voltage=current_voltage,
+                measured_voltage=current_voltage
             ))
 
         routines_utils.append_DCsources(self)

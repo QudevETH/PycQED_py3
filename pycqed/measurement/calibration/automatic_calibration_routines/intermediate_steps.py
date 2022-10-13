@@ -11,6 +11,7 @@ import logging
 
 logger = logging.getLogger('Routines')
 
+
 class UpdateFrequency(IntermediateStep):
     """Updates the frequency of the specified transition at a specified
         flux and voltage bias.
@@ -85,7 +86,8 @@ class UpdateFrequency(IntermediateStep):
                                     qb))
 
             if self.get_param_value('verbose'):
-                print(f"{self.transition}-frequency updated to {frequency:0f} Hz")
+                logger.info(f"{self.transition}-frequency updated to "
+                            f"{frequency:0f} Hz")
 
             qb[f"{self.transition}_freq"](frequency)
 
