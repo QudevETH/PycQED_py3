@@ -359,6 +359,10 @@ class AutomaticCalibrationRoutine(Step):
 
         self.create_initial_parameters()
 
+        # Registering start of routine so all data in measurement period can
+        # be retrieved later to determine the Hamiltonian model
+        self.preroutine_timestamp = self.MC.get_datetimestamp()
+
     def merge_settings(self, lookups, sublookups):
         """Merges all scopes relevant for a particular child step. The settings
         are retrieved and merged recursively to ensure that the priority
@@ -710,10 +714,6 @@ class AutomaticCalibrationRoutine(Step):
             self.MC.create_instrument_settings_file(
                 f"pre-{self.name}_routine-settings")
             self.preroutine_timestamp = a_tools.get_last_n_timestamps(1)[0]
-        else:
-            # Registering start of routine so all data in measurement period can
-            # be retrieved later to determine the Hamiltonian model
-            self.preroutine_timestamp = self.MC.get_datetimestamp()
 
         # Rerun routine if already finished
         if (len(self.routine_template) != 0) and (self.current_step_index >=
