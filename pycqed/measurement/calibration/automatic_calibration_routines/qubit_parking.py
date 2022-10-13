@@ -105,7 +105,7 @@ class QubitParking(AutomaticCalibrationRoutine):
                 flux=flux, model=transmon_freq_model)
             qubit.ge_freq(updated_frequency)
             self.results[qubit.name].initial_ge_freq = updated_frequency
-            self.settings[type(self).__name__]['General']['update'] = False
+            self.settings[self.step_label]['General']['update'] = False
         else:
             self.results[qubit.name].initial_ge_freq = qubit.ge_freq()
 

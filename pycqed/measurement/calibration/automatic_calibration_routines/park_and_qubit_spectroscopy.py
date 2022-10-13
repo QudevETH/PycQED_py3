@@ -117,7 +117,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                     routines_utils.get_transmon_freq_model(qb)
                 updated_frequency = qb.calculate_frequency(
                     flux=flux, model=transmon_freq_model)
-                self.settings[type(self).__name__]['General']['update'] = False
+                self.settings[self.step_label]['General']['update'] = False
             else:
                 updated_frequency = qb.ge_freq()
 
@@ -154,9 +154,9 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             for qb in self.qubits:
                 if qb.flux_parking() != self.results[qb.name].flux:
 
-                    log.warning(f"The routine results will not update qubit "
-                                f"{qb.name} since this is not the designated "
-                                f"sweet spot")
+                    log.warning(f"The routine results will not be updated since"
+                                f" {qb.name} was not measured at its "
+                                f"designated sweet spot")
                     self.settings[self.step_label]["General"]["update"] = False
 
         super().post_run()
