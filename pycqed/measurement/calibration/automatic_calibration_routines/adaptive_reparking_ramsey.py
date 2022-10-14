@@ -251,6 +251,7 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                 kw: Arguments that will be passes to :obj:`IntermediateStep`
             """
             super().__init__(routine=routine, **kw)
+            self.precision = 1e-4  # 0.1 mV. Used for comparing QDAC values.
 
         def run(self):
             """Executes the decision step.
@@ -273,13 +274,17 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
 
                 min_swept_voltage = np.min(swept_voltages)
                 max_swept_voltage = np.max(swept_voltages)
-                if fit_voltage in [min_swept_voltage, max_swept_voltage]:
+                if any([np.isclose(fit_voltage, range_edge, rtol=0,
+                                   atol=self.precision) for range_edge in
+                        [min_swept_voltage, max_swept_voltage]]):
                     fail_message = f'Extremum voltage of fit outside range.'
                     success = False
                 elif min_swept_voltage < fit_voltage < max_swept_voltage:
                     success = True
                 else:
-                    # Bug in the setting of voltage of the qubit
+                    # Bug in the setting of voltage of the qubit.
+                    # ReparkingRamsey should have set it to one of the range
+                    # edges.
                     log.warning("The set voltage value is outside the given"
                                 "voltage range")
                     success = False
