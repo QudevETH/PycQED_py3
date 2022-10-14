@@ -111,10 +111,11 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
                                                           'mid']] = None,
                                voltage: float = None) -> Tuple[
         float, float]:
-    """Get the flux and voltage values of a qubit. One of the three values
-    [flux, voltage, fluxlines_dict must be passed"""
+    """Get the flux and voltage values of a qubit.
+    One of the three values [voltage > flux > fluxlines_dict] must be passed,
+    and their hierarchy is according to this order."""
 
-    if flux is not None:
+    if voltage is None and flux is not None:
         flux = flux_to_float(qb=qb, flux=flux)
         voltage = qb.calculate_voltage_from_flux(flux)
     else:
