@@ -58,6 +58,7 @@ class QubitParking(AutomaticCalibrationRoutine):
             flux: Optional[Union[float, Literal['{designated}',
                                                 '{opposite}',
                                                 '{mid}']]] = None,
+            initial_voltage: float = None,
             **kw,
     ):
         """
@@ -66,6 +67,9 @@ class QubitParking(AutomaticCalibrationRoutine):
             qubit: qubit to be parked.
             fluxlines_dict: dictionary with the qubit names as keys and Qcodes
                 parameters of their flux line as value.
+            flux: The flux that will be used for the initial parking.
+            initial_voltage: The voltage that will be used for the initial
+                parking (center of the sweep range).
 
         Keyword Args:
             Additional keyword arguments that will be transferred to
@@ -89,12 +93,19 @@ class QubitParking(AutomaticCalibrationRoutine):
 
         # Store initial values so that the user can retrieve them if overwritten
         self.results: Dict[str, QubitParkingResults] = {}
-        flux, initial_voltage = routines_utils.get_qubit_flux_and_voltage(
-            qb=qubit,
-            fluxlines_dict=self.fluxlines_dict,
-            flux=flux or self.get_param_value("flux", qubit=qubit.name),
-            voltage=self.get_param_value("voltage", qubit=qubit.name)
-        )
+        if flux is None:
+            flux = routines_utils.flux_to_float(
+                qb=qubit, flux=self.get_param_value("flux", qubit=qubit.name))
+        if initial_voltage is None:
+            initial_voltage = self.get_param_value("voltage", qubit=qubit.name)
+        if initial_voltage is None or flux is None:
+            # The two values are needed
+            flux, initial_voltage = routines_utils.get_qubit_flux_and_voltage(
+                qb=qubit,
+                fluxlines_dict=self.fluxlines_dict,
+                flux=flux,
+                voltage=initial_voltage
+            )
         self.results[qubit.name] = QubitParkingResults(
             **dict(initial_voltage=initial_voltage, flux=flux))
 
@@ -211,6 +222,8 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
             current_ge_freq = qb.ge_freq()
             current_voltage = fluxlines_dict[qb.name]()
             self.results[qb.name] = QubitParkingResults(**dict(
+                flux=routines_utils.flux_to_float(
+                    qb=qb, flux=self.get_param_value("flux", qubit=qb)),
                 initial_ge_freq=current_ge_freq,
                 measured_ge_freq=current_ge_freq,
                 initial_voltage=current_voltage,
@@ -265,11 +278,19 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
                              f"{self.max_delta / 1e6:.2f} MHz).")
                     success = False
 
-            if not success:
-                if self.routine.index_iteration < self.max_iterations:
-                    self.routine.add_qubits_parkings_and_decision()
+                # Update the results dataclass with the most recent measurement
+                self.routine.results[qb.name].measured_ge_freq = \
+                    qb_res.measured_ge_freq
+                self.routine.results[qb.name].measured_voltage = \
+                    qb_res.measured_voltage
 
+            if not success:
                 self.routine.index_iteration += 1
+                if self.routine.index_iteration <= self.max_iterations:
+                    self.routine.add_qubits_parkings_and_decision()
+                    log.info(f"Another iteration (number "
+                             f"{self.routine.index_iteration}) is added to the "
+                             f"routine.")
 
     def create_routine_template(self):
         super().create_routine_template()  # Create empty routine template
@@ -279,17 +300,25 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
         """Add a series of qubit parkings for all the qubits"""
         # Add qubit parkings for all qubits
         for qb in self.qubits:
-            flux, _ = routines_utils.get_qubit_flux_and_voltage(
-                qb=qb,
-                fluxlines_dict=self.fluxlines_dict,
-                flux=self.get_param_value('flux', qubit=qb,
-                                          default='{designated}'),
-                voltage=self.get_param_value('voltage', qubit=qb)
-            )
+            if self.index_iteration == 1:
+                # At the first iteration evaluate the voltage according to flux
+                flux, voltage = routines_utils.get_qubit_flux_and_voltage(
+                    qb=qb,
+                    fluxlines_dict=self.fluxlines_dict,
+                    flux=self.results[qb.name].flux,
+                    voltage=self.get_param_value('voltage', qubit=qb)
+                )
+            else:
+                # Afterwards use the voltage found and set in the previous
+                # iteration
+                flux = self.results[qb.name].flux
+                voltage = self.fluxlines_dict[qb.name]()
+
             step_label = f'{qb.name}_parking_iteration_{self.index_iteration}'
             step_settings = {"qubit": qb,
                              "fluxlines_dict": self.fluxlines_dict,
-                             "flux": flux}
+                             "flux": flux,
+                             "initial_voltage": voltage}
             self.add_step(QubitParking, step_label, step_settings)
 
         # Add decision step
