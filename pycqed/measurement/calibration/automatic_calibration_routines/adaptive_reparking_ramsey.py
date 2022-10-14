@@ -271,12 +271,18 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                     'sweep_volts']
                 fit_voltage = self.routine.fluxlines_dict[qb.name]()
 
-                if fit_voltage in [np.min(swept_voltages),
-                                   np.max(swept_voltages)]:
+                min_swept_voltage = np.min(swept_voltages)
+                max_swept_voltage = np.max(swept_voltages)
+                if fit_voltage in [min_swept_voltage, max_swept_voltage]:
                     fail_message = f'Extremum voltage of fit outside range.'
                     success = False
-                else:
+                elif min_swept_voltage < fit_voltage < max_swept_voltage:
                     success = True
+                else:
+                    # Bug in the setting of voltage of the qubit
+                    log.warning("The set voltage value is outside the given"
+                                "voltage range")
+                    success = False
 
                 if success:
                     if self.get_param_value('verbose'):
