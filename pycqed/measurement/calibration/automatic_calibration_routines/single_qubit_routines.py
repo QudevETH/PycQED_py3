@@ -898,7 +898,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
             else:
                 # No success yet, reached max iterations
-                msg = (f"FindFrequency routine finished for {qubit.name}, "
+                msg = (f"{self.step_label} routine finished for {qubit.name}, "
                        "desired precision not necessarily achieved within the "
                        f"maximum number of iterations ({max_iterations}).")
                 log.warning(msg)
