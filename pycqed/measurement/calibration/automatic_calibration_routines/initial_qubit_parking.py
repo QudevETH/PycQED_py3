@@ -195,12 +195,13 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         self.kw = kwargs
 
         Step.__init__(self, routine=routine, **kwargs)
+
+        self.DEFAULT_FREQ_RANGE = 150e6
         self.experiment_settings = self.parse_settings(
             self.get_requested_settings())
         spec.ResonatorSpectroscopyFluxSweep.__init__(self,
                                                      dev=self.dev,
                                                      **self.experiment_settings)
-        self.DEFAULT_FREQ_RANGE = 150e6
 
     def parse_settings(self, requested_kwargs):
         """
