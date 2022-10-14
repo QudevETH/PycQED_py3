@@ -346,7 +346,7 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
         # Add the steps right after the current one
         self.add_step(
             ReparkingRamseyStep,
-            f'qubit_spectroscopy_repetition_{index_iteration}',
+            f'reparking_ramsey_repetition_{index_iteration}',
             {
                 'qubits': qubits,
                 'fluxlines_dict': self.fluxlines_dict
