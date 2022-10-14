@@ -2,7 +2,7 @@ import numpy as np
 
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
-from typing import Literal, Dict, Any, Tuple, Union
+from typing import Literal, Dict, Any, Tuple, Union, Optional
 
 
 def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
@@ -145,16 +145,19 @@ def qb_is_at_designated_sweet_spot(qb: QuDev_transmon,
 def flux_to_float(qb: QuDev_transmon,
                   flux: Union[float, Literal['{designated}',
                                              '{opposite}',
-                                             '{mid}']]) -> float:
+                                             '{mid}']]) -> Optional[float]:
     """
     Return the specified flux as a float, useful with descriptive fluxes.
     Args:
         qb: Qubit element.
-        flux: float or literal.
+        flux: float or literal. If it is None it will be returned unchanged.
 
-    Returns: flux as float.
+    Returns: flux as float, or None if this was the passed value.
 
     """
+    if flux is None:
+        return None
+
     designated_ss_flux = qb.flux_parking()
     if designated_ss_flux == 0:
         # Qubit parked at the USS.
