@@ -675,6 +675,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 for n, p in enumerate(acq_paths[acq_dev_name]):
                     if p not in dataset[acq_dev_name]:
                         continue
+                    # print(data[acq_dev_name][n])
+                    # print(dataset[acq_dev_name][p])
                     data[acq_dev_name][n] = np.concatenate([
                         data[acq_dev_name][n], *dataset[acq_dev_name][p]])
                     n_data = len(data[acq_dev_name][n])
@@ -1586,6 +1588,52 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
 
+
+class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
+    """
+    Detector used for integrated single-shot acquisition.
+    """
+
+    def __init__(self, acq_dev, nr_shots: int = 4094, nr_bins=None, **kw):
+        """
+        Init of the IntegratingSingleShotPollDetector.
+        See the IntegratingAveragingPollDetector for the full dostring of the
+        accepted input parameters.
+
+        Args:
+            acq_dev (instrument): data acquisition device
+            nr_shots (int)     : number of acquisition shots
+            nr_bins (dict)     : TODO (index by tuples representing int channels)
+
+        Keyword args:
+            passed to the init of the parent class. In addition,
+            the following keyword arguments are understood:
+            - live_plot_allowed: (bool, default: False) whether to allow MC to
+              use live plotting
+        """
+        super().__init__(acq_dev, nr_averages=1, **kw)
+
+        self.name = '{}_integration_hist_det'.format(self.data_type)
+        self.nr_shots = nr_shots
+        if nr_bins is None:
+            nr_bins = {k: 8 for k in self.channels}
+        self.nr_bins = nr_bins
+        # self.acq_data_len_scaling = np.prod(
+        #     self.nr_bins.values())  # to be used in MC
+        # Disable MC live plotting by default for histogram acquisition
+        self.live_plot_allowed = kw.get('live_plot_allowed', False)
+        self.value_names = [f'{acq_dev.name}_histogram']
+
+    def prepare(self, sweep_points=None):
+        self.acq_dev.nb_bins = self.nr_bins
+        # TODO peak_to_peak
+        super().prepare(sweep_points=sweep_points)
+
+    def process_data(self, data_raw):
+        print(np.shape(data_raw))
+        from pprint import pprint
+        pprint(data_raw)
+        # return data_raw
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
     """
