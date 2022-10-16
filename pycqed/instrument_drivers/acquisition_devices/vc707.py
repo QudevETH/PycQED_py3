@@ -11,9 +11,12 @@ from vc707_python_interface.qcodes.instrument_drivers import VC707 as \
 from vc707_python_interface.modules.base_module import BaseModule
 from vc707_python_interface.settings.state_discriminator_settings \
     import DiscriminationUnit
+from vc707_python_interface.settings.histogrammer_settings import (BinSettings,
+                                                                   DataInput)
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 import time
+from collections import OrderedDict
 
 
 log = logging.getLogger(__name__)
@@ -29,11 +32,12 @@ class VC707(VC707_core, AcquisitionDevice):
     settings is changed for one of the channels, all settings are reuploaded.
     """
     n_acq_units = 2
-    n_acq_int_channels = 2  # TODO
+    n_acq_int_channels = 8  # TODO
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     # to record so long traces by default.
     # TODO: In state discrimination mode this is actually 256.
     acq_weights_n_samples = 4096
+    acq_length_granularity = 8
     allowed_modes = {
         "avg": [], # averaged raw input (time trace) in V
         "int_avg": [
@@ -60,6 +64,8 @@ class VC707(VC707_core, AcquisitionDevice):
         self.initialize(devidx=devidx, clockmode=clockmode, verbose=verbose)
         self._acq_integration_weights = {}
         self._last_traces = []
+        self.nb_bins = {}
+        self._histogrammer_result_lookup = {}
         self.add_parameter(
             'acq_start_after_awgs', initial_value=False,
             vals=vals.Bool(), parameter_class=ManualParameter,
@@ -67,6 +73,17 @@ class VC707(VC707_core, AcquisitionDevice):
                       "AWG(s), i.e., in prepare_poll_after_AWG_start, "
                       "instead of before, i.e., "
                       "in prepare_poll_before_AWG_start.")
+        for i in range(self.n_acq_units):
+            for j in range(self.n_acq_int_channels // 2):
+                self.add_parameter(
+                    f'acq_delay_{i}_{j}', initial_value=0,
+                    vals=vals.Ints(), parameter_class=ManualParameter,
+                    docstring="TODO (in number of samples)")
+        # self.add_parameter(
+        #     'acq_use_histogrammer', initial_value=False,
+        #     vals=vals.Bool(), parameter_class=ManualParameter,
+        #     docstring="Use the histogrammer module when acquiring in int_avg"
+        #               "mode.")
 
     @property
     def acq_sampling_rate(self):
@@ -87,9 +104,12 @@ class VC707(VC707_core, AcquisitionDevice):
             self._prepare_poll()
 
     def _prepare_poll(self):
-        if self._get_current_fpga_module_name() == "averager":
+        module = self._get_current_fpga_module_name()
+        if module == "averager":
             self.averager.run()
-        elif self._get_current_fpga_module_name() == "state_discriminator":
+        elif module == "histogrammer":
+            self.histogrammer.run()
+        elif module == "state_discriminator":
             self.state_discriminator.upload_weights()
             self.state_discriminator.run()
 
@@ -104,7 +124,8 @@ class VC707(VC707_core, AcquisitionDevice):
         self._acquisition_nodes = deepcopy(channels)
         self._acq_data_type = data_type
 
-        if self._get_current_fpga_module_name() == "averager":
+        module = self._get_current_fpga_module_name()
+        if module == "averager":
             self._last_traces = []
             self.averager_nb_samples.set(
                 self.convert_time_to_n_samples(acquisition_length)
@@ -118,8 +139,80 @@ class VC707(VC707_core, AcquisitionDevice):
             elif mode == "int_avg":
                 self.averager_nb_segments.set(n_results)
             self.averager.configure()
+        elif module == 'histogrammer':
+            self._acquisition_nodes = ['histogram']
+            nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
+            self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
+            pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
+            pairs = OrderedDict({k: None for k in set(pair_lookup)})
+            for pair_id in pairs:
+                if pair_id[0] != 0:
+                    raise NotImplementedError(
+                        'Histogrammer can only be used on physical channel 0 '
+                        'until someone fixes a bug in the FPGA.')
+                unit = DiscriminationUnit()
+                unit.nb_states = 3  # use two integrators
+                unit.weights = [np.zeros(nb_samples) for i in range(4)]
+                unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
+                unit.source_adc = pair_id[0]
+                pairs[pair_id] = unit
+            for ch in self._acq_channels:
+                pair_id = pair_lookup[ch]
+                for i in range(2):
+                    w = self._acq_integration_weights[ch][i]
+                    p = max(nb_samples - len(w), 0)
+                    print(np.shape(w))
+                    print(np.shape(np.pad(w, p)[:nb_samples]))
+                    pairs[pair_id].weights[i] = np.pad(w, p)[:nb_samples]
+            print('XXX')
+            from pprint import pprint
+            pprint(pairs)
+            print(list(pairs.values()))
+            self.state_discriminator.settings.units = list(pairs.values())
+            self.state_discriminator.settings.nb_samples = nb_samples
+            self.state_discriminator.settings.use_list_output = False
+            self.histogrammer.settings.nb_segments = (
+                self._acq_n_results // self._acq_loop_cnt)
+            self.histogrammer.settings.nb_states = 1  # no state discrimination
+            self.histogrammer.settings.enable_time_resolve = False
+            nb_triggers = self._acq_n_results
+            nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
+            nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
+            if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
+                log.warning(f'TODO ')
+            print(nb_triggers_pow4)
+            self.histogrammer.settings.nb_triggers_pow4 = nb_triggers_pow4
+            integrator_lookup = {}
+            for pair_nr, pair_id in enumerate(pairs):
+                for ch in [ch for ch in self._acq_channels
+                           if pair_lookup[ch] == pair_id]:
+                    integrator_lookup[ch] = pair_nr * 2 + (ch[1] % 2)
+            bin_settings = []
+            self._histogrammer_result_lookup = {}
+            used_hists = 0
+            for i in range(self.n_acq_units):
+                if not any([ch[0] == i for ch in self._acq_channels]):
+                    continue
+                for j in range(self.n_acq_int_channels):
+                    # Here, log2(1) as default means: no histogram
+                    nb_bins_pow2 = int(np.log2(self.nb_bins.get((i, j), 1)))
+                    if nb_bins_pow2:
+                        self._histogrammer_result_lookup[(i, j)] = used_hists
+                        used_hists += 1
+                    bin_settings.append(BinSettings(
+                        # the following exploits that INT_i are consecutive ints
+                        DataInput.INT_0 + integrator_lookup.get((i, j), 0),
+                        peak_to_peak=2, # FIXME (hardcoded for now)
+                        nb_bins_pow2=nb_bins_pow2,
+                        delay=0))
+            self.histogrammer.settings.bin_settings = bin_settings
+            # FIXME: Downscaling is set to zero here: histogram doesn't work
+            # if downscaling is not set to zero and we don't know why exactly
+            self.preprocessing_down_scaling(0)
+            self.histogrammer.configure()
+            self.state_discriminator.upload_weights(discriminate=False)
 
-        elif self._get_current_fpga_module_name() == "state_discriminator":
+        elif module == "state_discriminator":
             self.state_discriminator_nb_samples.set(
                 self.convert_time_to_n_samples(acquisition_length)
             )
@@ -142,26 +235,33 @@ class VC707(VC707_core, AcquisitionDevice):
             self.state_discriminator.configure()
 
     def acquisition_progress(self):
-        if self._get_current_fpga_module_name() == "averager":
-            return self.averager.trigger_counter()
-        else:
-            # FIXME: implement trigger_counter for other modules
-            return 0
+        print(self._fpga.fpga_interface.trigger_counter(),
+              self._get_current_fpga_module().has_finished()
+              )
+        return self._fpga.fpga_interface.trigger_counter()
+        # if self._get_current_fpga_module_name() == "averager":
+        #     return self.averager.trigger_counter()
+        # else:
+        #     # FIXME: implement trigger_counter for other modules
+        #     return 0
 
     def poll(self, poll_time=0.1) -> dict:
         # Return empty data if FPGA still running
-        if not self._get_current_fpga_module().has_finished():
+        module_obj = self._get_current_fpga_module()
+        if not module_obj.has_finished():
             return {}
 
         # Read results and update dataset
-        if self._get_current_fpga_module_name() == "averager":
-            res = self.averager.read_results()
+        res = module_obj.read_results()
+        module = self._get_current_fpga_module_name()
+        if module == "averager":
             if self._acq_mode == "avg":
                 return self._adapt_averager_results(res)
             elif self._acq_mode == "int_avg":
                 return self._perform_integrated_averager(res)
-        elif self._get_current_fpga_module_name() == "state_discriminator":
-            res = self.state_discriminator.read_results()
+        elif module == "histogrammer":
+            return self._adapt_histogrammer_results(res)
+        elif module == "state_discriminator":
             return self._adapt_state_discriminator_results(res)
 
     # TODO: Should take in list of tuple (acq_unit, quadrature)
@@ -183,8 +283,13 @@ class VC707(VC707_core, AcquisitionDevice):
 
         return dataset
 
+    def _adapt_histogrammer_results(self, raw_results) -> dict:
+        """Format the FPGA histogrammer results as expected by PycQED."""
+        # cut by segment (which is the last index)
+        return {'histogram': [[{'data': a.T} for a in raw_results.T]]}
+
     def _adapt_state_discriminator_results(self, raw_results) -> dict:
-        """Format the FPGA averager results as expected by PycQED."""
+        """Format the FPGA state discriminator results as expected by PycQED."""
 
         dataset = {}
 
@@ -236,21 +341,28 @@ class VC707(VC707_core, AcquisitionDevice):
     def _get_current_fpga_module_name(self) -> str:
         """Helper function that checks which FPGA module must be used."""
 
-        if self._acq_mode == "avg" or \
-           (self._acq_mode == "int_avg" and self._acq_data_type == "raw"):
+        if self._acq_mode == "avg":
             return "averager"
-        elif self._acq_mode == "int_avg" and self._acq_data_type == "digitized":
-            return "state_discriminator"
-        else:
-            raise ValueError(f"Unknown FPGA mode for mode '{self._acq_mode}' "
-                             f"and data type '{self._acq_mode}'.")
+        elif self._acq_mode == "int_avg":
+            if self._acq_data_type == "raw":
+                if self._acq_averages > 1:
+                    return "averager"
+                else:
+                    return "histogrammer"
+            elif self._acq_data_type == "digitized":
+                return "state_discriminator"
+        raise ValueError(f"Unknown FPGA mode for mode '{self._acq_mode}' "
+                         f"and data type '{self._acq_data_type}'.")
 
     def _get_current_fpga_module(self) -> BaseModule:
         """Returns the FPGA module that is used with the acquisition mode."""
 
-        if self._get_current_fpga_module_name() == "averager":
+        module = self._get_current_fpga_module_name()
+        if module == "averager":
             return self.averager
-        elif self._get_current_fpga_module_name() == "state_discriminator":
+        elif module == 'histogrammer':
+            return self.histogrammer
+        elif module == "state_discriminator":
             return self.state_discriminator
 
     def get_value_properties(self, data_type='raw', acquisition_length=None):
