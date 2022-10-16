@@ -291,6 +291,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 **kw)
             for uhf in uhfs])
+    elif df_name == 'int_hist_det':
+        print("nr_shots", nr_shots)
+        return det.MultiPollDetector([
+            det.IntegratingHistogramPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
+                integration_length=max_int_len[uhf], nr_shots=nr_shots,
+                **kw)
+            for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
         # Can be used to force a hard sweep by explicitly setting to False
         kw['single_int_avg'] = kw.get('single_int_avg', True)
