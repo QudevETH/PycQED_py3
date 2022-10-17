@@ -122,7 +122,8 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
         flux = flux_to_float(qb=qb, flux=flux)
         voltage = qb.calculate_voltage_from_flux(flux)
     else:
-        voltage = voltage or fluxlines_dict[qb.name]()
+        if voltage is None:
+            voltage = fluxlines_dict[qb.name]()
         uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
         V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
         flux = (voltage - uss) / V_per_phi0
