@@ -234,15 +234,15 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # model
         if use_prior_model:
             freq_model = routines_utils.get_transmon_freq_model(qubit)
+            # Use measured values for designated sweet spot or estimated ones
+            # for other fluxes
             self.flux_to_voltage_and_freq_guess = {
-                self.ss1_flux: (
-                    qubit.calculate_voltage_from_flux(flux=self.ss1_flux),
+                flux: (self.fluxlines_dict[qubit.name](),
+                       qubit.ge_freq()) if flux == qubit.flux_parking() else (
+                    qubit.calculate_voltage_from_flux(flux=flux),
                     qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss1_flux)),
-                self.ss2_flux: (
-                    qubit.calculate_voltage_from_flux(flux=self.ss2_flux),
-                    qubit.calculate_frequency(model=freq_model,
-                                              flux=self.ss2_flux)),
+                                              flux=flux))
+                for flux in [self.ss1_flux, self.ss2_flux]
             }
 
         # Validity of flux_to_voltage_and_freq_guess dictionary
