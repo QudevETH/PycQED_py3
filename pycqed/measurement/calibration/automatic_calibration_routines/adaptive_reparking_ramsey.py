@@ -160,9 +160,9 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
                     self.fluxlines_dict[qb.name]()
 
             else:
-                if np.sign(qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] - (
-                    voltage := self.fluxlines_dict[qb.name]())) != np.sign(
-                        lss := qb.flux_parking()):
+                if (np.sign((voltage := self.fluxlines_dict[qb.name]()) -
+                            qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'])
+                        != np.sign(lss := qb.flux_parking())):
                     log.critical("The measured lower sweet spot does not "
                                  f"correspond to {qb.name} designated sweet"
                                  f" spot ({lss})")
