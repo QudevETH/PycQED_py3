@@ -229,6 +229,51 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
                        f'{instr_name}.')
     return d['instr_param_val']
 
+def get_analysis_from_hdf_file(timestamp=None, param_name=None, file_id=None,
+                                  data_file=None, close_file=True, mode='r'):
+    """
+    Get a parameter with param_name from the 'Processed data' group in
+    the HDF5 file specified by timestamp, or return the whole group if
+    param_name is None.
+    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
+    :param param_name: (str) name of a key in 'Processed data' group
+    :param data_file: (HDF file) opened HDF5 file
+    :param close_file: (bool) whether to close the HDF5 file
+    :return: the value of the param_name or the whole 'Processed data'
+    dictionary
+    """
+    if data_file is None:
+        if timestamp is None:
+            raise ValueError('Please provide either timestamp or data_file.')
+        folder = a_tools.get_folder(timestamp)
+        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
+        data_file = h5py.File(h5filepath, mode)
+
+    try:
+        if param_name is None:
+            group = data_file['Analysis']
+            return read_dict_from_hdf5({}, group['Processed data'])
+
+        group = data_file['Analysis']['Processed data']
+        if param_name in group:
+            group = group[param_name]
+            param_value = OrderedDict()
+            if isinstance(group, h5py._hl.dataset.Dataset):
+                param_value = list(np.array(group).flatten())
+                param_value = [x.decode('utf-8') if isinstance(x, bytes)
+                               else x for x in param_value]
+            else:
+                param_value = read_dict_from_hdf5(param_value, group)
+        elif param_name in group.attrs:
+            param_value = get_hdf_param_value(group, param_name)
+        else:
+            raise KeyError(f'{param_name} was not found in analysis.')
+        if close_file:
+            data_file.close()
+    except Exception as e:
+        data_file.close()
+        raise e
+    return param_value
 
 def get_clf_params_from_hdf_file(timestamp, meas_obj_names, for_ge=True,
                                  **params):
