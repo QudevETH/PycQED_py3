@@ -220,28 +220,37 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         kwargs = super().parse_settings(requested_kwargs)
         kwargs['task_list'] = []
         # Build the tasks for the remaining qubits to be measured using the
-        # default settings
-        for qb in self.qubits:
-            # Build frequency sweep points
-            freq_pts = self.get_param_value('freq_pts', qubit=qb.name)
+        # default settings.
 
+        freq_centers = {}
+        for qb in self.qubits:
             freq_center = self.get_param_value('freq_center', qubit=qb.name)
             if isinstance(freq_center, str):
                 freq_center = eval(
                     freq_center.format(current=qb.ro_freq(),
                                        between_dips=self.get_freq_between_dips(
                                            qb)))
+            freq_centers[qb.name] = freq_center
 
-            freq_range = self.get_param_value('freq_range', qubit=qb.name)
-            if isinstance(freq_range, str):
-                freq_range = eval(
-                    freq_range.format(
-                        adaptive=self.get_adaptive_freq_range(qb, freq_center)))
+        # Unlike the freq_center, the range and pts must be the same for all
+        # qubits that share the same feedline.
+        freq_pts = self.get_param_value('freq_pts')
+        freq_range = self.get_param_value('freq_range')
+        if isinstance(freq_range, str):
+            freq_range = eval(
+                freq_range.format(
+                    adaptive=self.get_adaptive_freq_range(freq_centers)))
 
-            log.debug(f'{self.step_label}: '
-                      f'{freq_center=}, {freq_range=}, {freq_pts=}')
-            freqs = np.linspace(freq_center - freq_range / 2,
-                                freq_center + freq_range / 2, freq_pts)
+        # Array centered around 0
+        freqs_base = np.linspace(-freq_range / 2, freq_range / 2, freq_pts)
+
+        for qb in self.qubits:
+            # Build frequency sweep points
+            log.debug(f'{self.step_label}, {qb.name}: '
+                      f'{freq_centers[qb.name]=}, {freq_range=}, {freq_pts=}')
+
+            # Array centered around the desired center
+            freqs = freqs_base + freq_centers[qb.name]
 
             # Build voltage sweep points
             current_voltage = self.routine.fluxlines_dict[qb.name]
@@ -303,31 +312,46 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         except (AttributeError, KeyError, TypeError):
             return qubit.ro_freq()
 
-    def get_adaptive_freq_range(self, qubit: QuDev_transmon,
-                                freq_center: float) -> float:
+    def get_adaptive_freq_range(self,
+                                freq_centers: Dict[str, float]) -> float:
         """Calculates a reasonable freq_range such that two flux-oscillating
-        dips will be contained in it, but not neighboring dips.
-        The full range is determined as the minimum between this distance and
-        twice the distance between the two qubit's freqs.
+        dips will be contained in it, but not neighboring dips that might
+        disturb the measurement.
+
+        These values are calculated for all the qubits and then the full range
+        is determined as the lower value between:
+            1. The minimum over all the distances between the dips of
+            neighboring qubits.
+
+            2. Three times the maximal (over all qubits) distance between the
+            two dips of the same qubit.
         """
 
         try:
-            ro_freq, mode2_freq, feedline_results = self._get_two_dips_freqs(
-                qubit)
-            qubit_dips_distance = np.abs(ro_freq - mode2_freq)
-            all_other_dips = [v for k, v in feedline_results.items() if
-                              all([k.endswith('frequency'),
-                                   k.startswith('qb'),
-                                   not k.startswith(qubit.name)])]
-            if len(all_other_dips) == 0:  # No more qubits on the feedline
-                return 3 * qubit_dips_distance
-            distance_from_nearest_dip = np.abs(np.array(all_other_dips) -
-                                               freq_center).min()
-            if distance_from_nearest_dip < qubit_dips_distance:
-                log.warning("The neighboring dip is very close to the two dips."
-                            "Frequency range might not be appropriate.")
-            return np.min([distance_from_nearest_dip,
-                           3 * qubit_dips_distance])
+            max_two_dips_distance = 0
+            min_distance_from_nearest_dip = np.inf
+            for qb in self.qubits:
+                ro_freq, mode2_freq, feedline_results = \
+                    self._get_two_dips_freqs(qb)
+                qubit_dips_distance = np.abs(ro_freq - mode2_freq)
+                max_two_dips_distance = max(max_two_dips_distance,
+                                            qubit_dips_distance)
+                all_other_dips = [v for k, v in feedline_results.items() if
+                                  all([k.endswith('frequency'),
+                                       k.startswith('qb'),
+                                       not k.startswith(qb.name)])]
+                if len(all_other_dips) == 0:  # No more qubits on the feedline
+                    return 3 * qubit_dips_distance
+                distance_from_nearest_dip = np.abs(np.array(all_other_dips) -
+                                                   freq_centers[qb.name]).min()
+                if distance_from_nearest_dip < qubit_dips_distance:
+                    log.warning("The neighboring dip is very close to the two "
+                                f"dips of {qb.name}. Frequency range might not "
+                                f"be appropriate.")
+                min_distance_from_nearest_dip = min(
+                    min_distance_from_nearest_dip, distance_from_nearest_dip)
+            return min(min_distance_from_nearest_dip, 3 * max_two_dips_distance)
+
         except (AttributeError, KeyError, TypeError) as err:
             log.warning(f'Error in `get_adaptive_freq_range`: {err}. '
                         f'Using default value {self.DEFAULT_FREQ_RANGE/1e6:.0f}'
