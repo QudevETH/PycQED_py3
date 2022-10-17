@@ -920,11 +920,13 @@ class FindFrequency(AutomaticCalibrationRoutine):
                                                qubit=self.qubit)
 
         # Adaptive qubit spectroscopy
-        aqs_settings = {
-            "qubits": self.qubits
-        }
-        self.add_step(AdaptiveQubitSpectroscopy, 'adaptive_qubit_spectroscopy',
-                      aqs_settings)
+        if transition_name == 'ge':
+            aqs_settings = {
+                "qubits": self.qubits
+            }
+            self.add_step(AdaptiveQubitSpectroscopy,
+                          'adaptive_qubit_spectroscopy',
+                          aqs_settings)
 
         # Pi-Pulse calibration
         pipulse_settings = {
