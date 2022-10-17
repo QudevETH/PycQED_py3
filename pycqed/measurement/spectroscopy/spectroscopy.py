@@ -669,7 +669,6 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                         f_start=freqs[0] - lo_freq,
                         f_step=delta_f,
                         n_step=len(freqs),
-                        seqtrigger=True,
                     )
                 # adapt df kwargs to hard sweep
                 self.df_kwargs['single_int_avg'] = False

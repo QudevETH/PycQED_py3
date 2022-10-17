@@ -24,9 +24,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
-        seqtrigger (int): Index of the acquisition unit whose internal
-            sequencer trigger should trigger the scope. If None, the scope is
-            triggered by the external trigger of acq unit 0.
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
     """
@@ -72,7 +69,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
         self._awg_source_strings = {}
-        self.seqtrigger = None
         self.timer = None
 
         self.awg_active = [False] * self.n_acq_units
@@ -285,12 +281,17 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self.seqtrigger is None:
-                    self.qachannels[i].spectroscopy.trigger.channel(
-                        f'channel{i}_trigger_input0')
-                else:
+                if self._awg_program[i]:
+                    # assume that this sequencer program includes triggering
+                    # for the spectroscopy
                     self.qachannels[i].spectroscopy.trigger.channel(
                         f'channel{i}_sequencer_trigger0')
+                else:
+                    # no sequencer will be running. Use the trigger that
+                    # would otherwise trigger the sequencer as a trigger for
+                    # the spectroscopy.
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        self.qachannels[i].generator.auxtriggers[0].channel())
                 # Spectroscopy mode outputs a modulated pulse, whose envelope
                 # is programmed by pulsar and whose modulation frequency is
                 # given by the sum of the configured center frequency and
@@ -341,11 +342,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                         "discrepancies, since the whole scope is triggered by "
                         "a single acquisition unit.")
         trigger_channel = f'channel{acq_unit}_sequencer_monitor0'
-        # FIXME are these different triggering schemes still needed?
-        # if self.seqtrigger is None:
-        #     trigger_channel = f'channel{acq_unit}_trigger_input0'
-        # else:
-        #     trigger_channel = f'channel{self.seqtrigger}_sequencer_trigger0'
         self.scopes[0].configure(
             input_select={acq_unit: f"channel{acq_unit}_signal_input"},
             num_samples=num_points_per_run,
