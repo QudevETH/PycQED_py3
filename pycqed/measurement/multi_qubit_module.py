@@ -54,6 +54,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                                                correlations=None,
                                                add_channels=None,
                                                det_get_values_kws=None,
+                                               enforce_pulsar_restart=False,
                                                **kw):
     """
     Creates an instances of the MultiPollDetector with the detector classes
@@ -134,6 +135,9 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
             ClassifyingPollDetector).
+        enforce_pulsar_restart (bool): Whether or not to pass pulsar as AWG to
+            the detector and thereby enforce restarting the pulsar, e.g. after
+            a poll. Defaults to `False`.
 
     Keyword args: passed to the instantiation call of the detector classes that
         are used to instantiate the MultiPollDetector's
@@ -288,11 +292,14 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
                 acq_dev=uhf_instances[uhf],
-                AWG=uhf_instances[uhf].get_awg_control_object()[0],
+                AWG=(AWG if enforce_pulsar_restart
+                     else uhf_instances[uhf].get_awg_control_object()[0]),
                 channels=int_channels[uhf],
+                prepare_and_finish_pulsar=(not enforce_pulsar_restart),
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                real_imag=False, **kw)
-            for uhf in uhfs], AWG=trigger_dev if len(uhfs) > 1 else None)
+                polar=False, **kw)
+            for uhf in uhfs],
+            AWG=trigger_dev if len(uhfs) > 1 and not enforce_pulsar_restart else None)
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
@@ -723,6 +730,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                     # and only start the acq device for repetitions or averages
                     # of the timetrace measurement.
                     single_acq_dev = qubits[0].instr_acq.get_instr()
+                    # FIXME: use df.prepare_and_finish_pulsar instead
                     MC.set_sweep_function(awg_swf.SegmentHardSweep(
                         sequence=seq, upload=upload, start_pulsar=True,
                         start_exclude_awgs=[single_acq_dev.name]))
@@ -744,6 +752,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 finally:
                     try:
                         if single_acq_dev is not None:
+                            # FIXME: use df.prepare_and_finish_pulsar instead
                             ps.Pulsar.get_instance().stop()
                     except Exception:
                         pass
