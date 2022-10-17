@@ -871,7 +871,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             if np.abs(routine.delta_f) < allowed_delta_f:
                 # Success
                 if self.get_param_value('verbose'):
-                    print(f"{transition}-frequency found to be"
+                    print(f"{transition}-frequency found to be "
                           f"{freq / f_factor} {f_unit} within "
                           f"{allowed_delta_f / delta_f_factor} "
                           f"{delta_f_unit} of previous value.")
