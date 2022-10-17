@@ -152,28 +152,33 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
             self.run_update()
     
     def post_run(self):
-        # Update the 'dac_sweet_spot' attribute such that the found new voltage
-        # will correspond to the designated flux
         for qb in self.qubits:
             if self.analysis.fit_uss:
-                qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = \
-                    self.fluxlines_dict[qb.name]()
+                # Update the 'dac_sweet_spot' attribute such that the found new
+                # voltage will correspond to the designated flux
+                dac_sweet_spot = self.fluxlines_dict[qb.name]()
+                qb.fit_ge_freq_from_dc_offset()[
+                    'dac_sweet_spot'] = dac_sweet_spot
+                self.results[qb.name]['dac_sweet_spot'] = dac_sweet_spot
+                log.info(f"{qb.name} 'dac_sweet_spot' value updated to "
+                         f"{dac_sweet_spot} V")
 
             else:
-                if (np.sign((voltage := self.fluxlines_dict[qb.name]()) -
-                            qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'])
-                        != np.sign(lss := qb.flux_parking())):
+                if (np.sign((lss_voltage := self.fluxlines_dict[qb.name]()) -
+                            (uss_voltage := qb.fit_ge_freq_from_dc_offset()[
+                                'dac_sweet_spot']))
+                        != np.sign(lss_flux := qb.flux_parking())):
                     log.critical("The measured lower sweet spot does not "
                                  f"correspond to {qb.name} designated sweet"
-                                 f" spot ({lss})")
+                                 f" spot ({lss_flux})")
 
-                # Notice that we *do not* update `V_per_phi0`
-                V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
-                qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot'] = \
-                    voltage - np.sign(qb.flux_parking()) * 0.5 * V_per_phi0
-
-            log.info(f"{qb.name} 'dac_sweet_spot' value updated to "
-                     f"{qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']} V")
+                # Update the 'V_per_phi0' attribute such that the found new
+                # voltage will correspond to the designated flux
+                V_per_phi0 = 2 * np.abs(uss_voltage - lss_voltage)
+                qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
+                self.results[qb.name]['V_per_phi0'] = V_per_phi0
+                log.info(f"{qb.name} 'V_per_phi0' value updated to "
+                         f"{V_per_phi0}")
 
 
 class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
