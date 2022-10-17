@@ -652,7 +652,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 lo_freq, delta_f, _ = acq_instr.get_params_for_spectrum(
                     freqs, get_closest_lo_freq=(
                         lambda f, qb=qb: qb.get_closest_lo_freq(
-                            f, operation='ro')))
+                            f, operation='ro', fixed_lo=None)))
                 # We need to disable the fixed lo feature in order to set the
                 # ro/mod frequency independently in the temporary values.
                 if qb.ro_fixed_lo_freq() is not None:
