@@ -3,6 +3,9 @@ import numpy as np
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from typing import Literal, Dict, Any, Tuple, Union, Optional
+import logging
+
+log = logging.getLogger('Routines')
 
 
 def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
@@ -123,6 +126,10 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
         uss = qb.fit_ge_freq_from_dc_offset()['dac_sweet_spot']
         V_per_phi0 = qb.fit_ge_freq_from_dc_offset()['V_per_phi0']
         flux = (voltage - uss) / V_per_phi0
+
+        if flux not in [0.0, -0.5, 0.5]:
+            log.warning(f"The returned flux for {qb.name} is {flux}, based on "
+                        f"the values {voltage=}, {uss=} and {V_per_phi0=}.")
 
     return flux, voltage
 
