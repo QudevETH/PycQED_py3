@@ -107,9 +107,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 spot.
 
                 default:
-                    {0: ('ge', 'ef')),
-                    -0.5: ('ge',),
-                    -0.25: ('ge',)}
+                {"{designated}": ["ge", "ef"],
+                 "{opposite}": ["ge"],
+                 "{mid}": ["ge"]}
 
             flux_to_voltage_and_freq_guess (dict(float, tuple(float, float))):
                 Guessed values for voltage and ge-frequencies for the fluxes in

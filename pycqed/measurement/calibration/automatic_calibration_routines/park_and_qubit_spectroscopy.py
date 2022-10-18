@@ -165,7 +165,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
 
     class SetBiasVoltageAndFluxPulseAssistedReadOut(IntermediateStep):
         """Intermediate step that updates the bias voltage of the qubit and the
-        temporary values of the following AdaptiveQubitSpectroscopy for
+        temporary values of the following :obj:`AdaptiveQubitSpectroscopy` for
         flux-pulse-assisted RO.
 
         It is possible to specify the voltage or the flux. If the flux is given,
