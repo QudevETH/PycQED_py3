@@ -154,6 +154,7 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
     dac_sweet_spot (V): voltage at which the sweet-spot is found
     V_per_phi0 (V): volt per phi0 (convert voltage to flux)
     '''
+    return_float = False
     if np.ndim(dac_voltage) == 0:
         dac_voltage = np.array([dac_voltage])
         return_float = True
