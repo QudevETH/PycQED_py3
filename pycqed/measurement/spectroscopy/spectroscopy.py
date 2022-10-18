@@ -111,7 +111,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
             ro_lo_qubits_dict = {}
             for task in self.preprocessed_task_list:
                 qb = self.get_qubit(task)
-                ro_lo = qb.instr_ro_lo()
+                ro_lo = qb.get_ro_lo_identifier()
                 if ro_lo not in ro_lo_qubits_dict:
                     ro_lo_qubits_dict[ro_lo] = [qb]
                 else:
