@@ -105,7 +105,11 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
         self._fill_temporary_values()
         # temp value ensure that mod_freqs etc are set corretcly
-        with temporary_value(*self.temporary_values):
+        # We only use the temp vals of the qubit & dev at this point to
+        # prevent issues with setting the trigger period on hardware and reading
+        # it back immediately afterwards in the next tmp env.
+        with temporary_value(*[t for t in self.temporary_values \
+                               if t[0].instrument in self.qubits + [self.dev]]):
             # configure RO LOs for potential multiplexed RO
             # This is especially necessary for qubit spectroscopies as they do
             # not take care of the RO LO and mod freqs.
