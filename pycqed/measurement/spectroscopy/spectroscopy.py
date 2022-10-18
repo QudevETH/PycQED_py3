@@ -88,6 +88,7 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
         self.group_tasks()
         self.check_all_freqs_per_lo()
+        self.check_soft_sweep_compatibility()
         self.check_hard_sweep_compatibility()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
@@ -421,6 +422,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         elif any(is_hard_sweep):
             raise ValueError("Either all tasks need to be hard sweeps or "
                              "none of them.")
+
+    def check_soft_sweep_compatibility(self, **kw):
+        """Nothing to check right here. Child classes can extend functionality
+        e.g. to only allow one soft sweep per feedline.
+        """
+        pass
 
     def sweep_block(self, **kw):
         raise NotImplementedError('Child class has to implement sweep_block.')
@@ -878,6 +885,17 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                  f"supported for hard sweeps. Qubits "
                                  f"{[task['qb'] for task in tasks]} share "
                                  f"synthesizer {awg_synth}.")
+
+    def check_soft_sweep_compatibility(self, **kw):
+        super().check_soft_sweep_compatibility()
+        for awg_synth, tasks in self.grouped_tasks.items():
+            if not all([task['hard_sweep'] for task in tasks]) and \
+              len(tasks) > 1 and isinstance(awg_synth, tuple):
+                raise NotImplementedError(f"Currently only one task per "
+                                          f"synthesizer is supported for soft "
+                                          f"sweeps. Qubits "
+                                          f"{[task['qb'] for task in tasks]} "
+                                          f"share synthesizer {awg_synth}.")
 
     def resolve_freq_sweep_points(self, **kw):
         """Configures potential hard_sweeps and afterwards calls super method
