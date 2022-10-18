@@ -2760,6 +2760,75 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             all_qubits.update([v for k,v in task.items() if 'qb' in k])
         return list(all_qubits)
 
+
+class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
+    def extract_data(self):
+        self.default_options['rotation'] = False
+        super().extract_data()
+
+    def get_channel_map(self):
+        # delete this method once we pass the correct movnm
+        # git cherry-pick 75151513f6cf1df260ce7d6dba4255e99c28a5db
+        # might solve this, but there might be some conflicts to resolve
+        if len(self.qb_names) > 1:
+            raise NotImplementedError(
+                'We need to fix the movnm before doing multi-qb histograms.')
+        self.channel_map = {
+            self.qb_names[0]: self.raw_data_dict['value_names']}
+
+    def process_data(self):
+        super().process_data()
+        import re
+        hsp = self.raw_data_dict['hard_sweep_points']
+        for qbn in self.qb_names:
+            hist = self.proc_data_dict['meas_results_per_qb'][qbn]
+            bins = {}
+            for vn in hist:
+                res = re.findall(r'_hist_(\([0-9, ]*\))', vn)
+                if len(res) == 1:
+                    bins[eval(res[0])] = vn
+            nr_bins = [max([b[i] for b in bins]) + 1 for i in
+                       range(len(list(bins)[0]))]
+            all_bins = list(itertools.product(*[range(i) for i in nr_bins]))
+            missing = [b for b in all_bins if b not in bins]
+            if len(missing):
+                log.warning(f'Bin data missing for {qbn}: {missing}')
+            hist_proc = dict()
+            for i in range(len(hsp)):
+                hist_proc[i] = np.zeros(nr_bins)
+                for b, vn in bins.items():
+                    hist_proc[i][b] = hist[vn][i]
+            self.proc_data_dict.setdefault('histogram_per_qb', {})
+            self.proc_data_dict['histogram_per_qb'][qbn] = hist_proc
+            self.proc_data_dict.setdefault('nr_bins', {})
+            self.proc_data_dict['nr_bins'][qbn] = nr_bins
+
+    def prepare_plots(self):
+        for qbn in self.qb_names:
+            self.prepare_hist_plot(qbn)
+
+    def prepare_hist_plot(self, qb_name):
+        nr_bins = self.proc_data_dict['nr_bins'][qb_name]
+        if len(nr_bins) != 2:
+            return
+        hists = self.proc_data_dict['histogram_per_qb'][qb_name]
+        for seg, hist in hists.items():
+            plot_name = f'histogram_{qb_name}_{seg}'
+            self.plot_dicts[plot_name] = {
+                'plotfn': self.plot_colorxy,
+                'fig_id': plot_name,
+                'xvals': list(range(nr_bins[0])),
+                'yvals': list(range(nr_bins[0])),
+                'zvals': hist,
+                'xlabel': 'bin index dim. 0',
+                'xunit': '',
+                'ylabel': 'bin index dim. 1',
+                'yunit': '',
+                'zrange': self.get_param_value('zrange', None),
+                'title': f'Histogram {qb_name} Segment {seg}',
+                'clabel': 'counts'}
+
+
 class StateTomographyAnalysis(ba.BaseDataAnalysis):
     """
     Analyses the results of the state tomography experiment and calculates
