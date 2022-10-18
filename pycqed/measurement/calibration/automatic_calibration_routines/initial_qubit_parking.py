@@ -15,7 +15,7 @@ import numpy as np
 import logging
 from typing import Tuple, Dict, Any
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('Routines')
 
 
 class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
@@ -411,8 +411,10 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                 )
                 dips = ('left_uss', 'right_uss', 'left_lss', 'right_lss')
                 fr = np.mean([fit_results[f'{dip}_freq'] for dip in dips])
-                self.results[qb.name].update({'fr': fr, 'coupling': coupling})
-                hamiltonian_fit_params.update({'fr': fr, 'coupling': coupling})
+                update_dict = {'fr': fr, 'coupling': coupling}
+                self.results[qb.name].update(update_dict)
+                hamiltonian_fit_params.update(update_dict)
+                log.info(f'{qb.name} parameters updated with {update_dict}.')
 
 
 class InitialQubitParking(AutomaticCalibrationRoutine):
