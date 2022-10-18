@@ -689,6 +689,11 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 lo_freq_key = tasks[0]['prefix'] + 'freq'
             if getattr(self.sweep_functions_dict[lo_freq_key],
                        'includes_IF_sweep', False):
+                if len(tasks) > 1:
+                    raise NotImplementedError('Measureing a soft resonator '
+                                              'spectroscopy in parallel on one '
+                                              'QA channel not supported at the '
+                                              'moment.')
                 for task in tasks:
                     task['mod_freq'] = 0
 
