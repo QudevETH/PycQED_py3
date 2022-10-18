@@ -110,29 +110,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         # it back immediately afterwards in the next tmp env.
         with temporary_value(*[t for t in self.temporary_values \
                                if t[0].instrument in self.qubits + [self.dev]]):
-            # configure RO LOs for potential multiplexed RO
-            # This is especially necessary for qubit spectroscopies as they do
-            # not take care of the RO LO and mod freqs.
-            ro_lo_qubits_dict = {}
-            for task in self.preprocessed_task_list:
-                qb = self.get_qubit(task)
-                ro_lo = qb.get_ro_lo_identifier()
-                if ro_lo not in ro_lo_qubits_dict:
-                    ro_lo_qubits_dict[ro_lo] = [qb]
-                else:
-                    ro_lo_qubits_dict[ro_lo] += [qb]
-            for ro_lo, qubits in ro_lo_qubits_dict.items():
-                freqs_all = np.array([qb.ro_freq() for qb in qubits])
-                if len(freqs_all) >= 2:
-                    ro_lo_freq = 0.5 * (np.max(freqs_all) + np.min(freqs_all))
-                else:
-                    ro_lo_freq = freqs_all[0] - qubits[0].ro_mod_freq()
-                configure_qubit_mux_readout(
-                    qubits=qubits,
-                    lo_freqs_dict={ro_lo: ro_lo_freq},
-                    set_mod_freq=(not isinstance(self, ResonatorSpectroscopy))
-                )
-
             self.update_operation_dict()
 
             self.sequences, _ = self.parallel_sweep(
