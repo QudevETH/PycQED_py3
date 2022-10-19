@@ -55,6 +55,16 @@ class Sequence:
         for seg in segments:
             self.add(seg)
 
+    def upload(self, awgs_to_upload='all'):
+        """Upload the sequence to the AWG using self.pulsar instrument.
+        """
+        if awgs_to_upload != 'all':
+            log.warning('Sequence:upload: reducing upload overhead manually '
+                        'with awgs_to_upload is deprecated. Set '
+                        'pulsar.use_sequence_cache to True for automatic '
+                        'reduction of upload overhead.')
+        self.pulsar.program_awgs(self, awgs=awgs_to_upload)
+
     @Timer()
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
