@@ -78,14 +78,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = None
         self._init_mcc()
 
-        self._hdawg_channel_pairs = []
+        self._awg_modules = []
         for awg_nr in self._hdawg_active_awgs():
             channel_pair = HDAWGGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._hdawg_channel_pairs.append(channel_pair)
+            self._awg_modules.append(channel_pair)
 
     def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
@@ -441,7 +441,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 self._zi_clear_waves()
 
         has_waveforms = False
-        for channel_pair in self._hdawg_channel_pairs:
+        for channel_pair in self._awg_modules:
             upload = channels_to_upload == 'all' or \
                 any([ch in channels_to_upload
                      for ch in channel_pair.channel_ids])
@@ -489,7 +489,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         # This wrapper method is needed because 'finalize_upload_after_mcc'
         # method in 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms'
         # method from device interfaces instead of from channel interfaces.
-        self._hdawg_channel_pairs[awg_nr].upload_waveforms(
+        self._awg_modules[awg_nr].upload_waveforms(
             wave_idx=wave_idx,
             waveforms=waveforms,
             wave_hashes=wave_hashes

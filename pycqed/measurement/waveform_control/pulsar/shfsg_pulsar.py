@@ -69,14 +69,14 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         (off) in :meth:`start` (:meth:`stop`).
         """
 
-        self._shf_generator_channels = []
+        self._awg_modules = []
         for awg_nr in range(len(self.awg.sgchannels)):
             channel = SHFGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._shf_generator_channels.append(channel)
+            self._awg_modules.append(channel)
 
     def _get_awgs_mcc(self) -> list:
         return [sgc.awg for sgc in self.awg.sgchannels]
@@ -186,7 +186,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 self._zi_clear_waves()
 
         has_waveforms = False
-        for channel in self._shf_generator_channels:
+        for channel in self._awg_modules:
             upload = channels_to_upload == 'all' or \
                 any([ch in channels_to_upload for ch in channel.channel_ids])
             program = channels_to_program == 'all' or \
@@ -344,7 +344,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         # This method is needed because 'finalize_upload_after_mcc' method in
         # 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms' method
         # from device interfaces instead of from channel interfaces.
-        self._shf_generator_channels[awg_nr].upload_waveforms(
+        self._awg_modules[awg_nr].upload_waveforms(
             wave_idx=wave_idx,
             waveforms=waveforms,
             wave_hashes=wave_hashes
