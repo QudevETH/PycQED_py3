@@ -200,8 +200,13 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             has_waveforms |= any(channel.has_waveforms)
 
         if self.pulsar.sigouts_on_after_programming():
-            for sgchannel in self.awg.sgchannels:
-                sgchannel.output.on(True)
+            for awg_module in self._awg_modules:
+                for channel_id in awg_module.analog_channel_ids:
+                    channel_name = self.pulsar._id_channel(
+                        cid=channel_id,
+                        awg=self.awg,
+                    )
+                    self.sigout_on(channel_name)
 
         if has_waveforms:
             self.pulsar.add_awg_with_waveforms(self.awg.name)
@@ -435,7 +440,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             awg_sequence: A list of elements. Each element consists of a
                 waveform-hash for each codeword and each channel.
         """
-        channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
+        channels = [self.pulsar._id_channel(chid, self._awg.name)
                     for chid in self.analog_channel_ids]
         channel_mod_config = {ch: {} for ch in channels}
 

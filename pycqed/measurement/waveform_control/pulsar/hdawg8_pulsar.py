@@ -457,8 +457,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             has_waveforms |= any(channel_pair.has_waveforms)
 
         if self.pulsar.sigouts_on_after_programming():
-            for ch in range(8):
-                self.awg.set('sigouts_{}_on'.format(ch), True)
+            for awg_module in self._awg_modules:
+                for channel_id in awg_module.analog_channel_ids:
+                    channel_name = self.pulsar._id_channel(
+                        cid=channel_id,
+                        awg=self.awg,
+                    )
+                    self.sigout_on(channel_name)
 
         if has_waveforms:
             self.pulsar.add_awg_with_waveforms(self.awg.name)
