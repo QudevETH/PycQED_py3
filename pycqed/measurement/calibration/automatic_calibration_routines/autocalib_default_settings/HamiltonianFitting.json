@@ -23,10 +23,18 @@
         "t0": 60e-9
     },
     "FindFrequency": {
-        "General":{
+        "General": {
             "allowed_delta_f": 0.5e6,
             "max_iterations": 2
         }
+    },
+    "find_frequency_ge_2": {
+                "AdaptiveQubitSpectroscopy": {
+                    "qubit_spectroscopy_1": {
+                        "freq_range": 400e6,
+                        "pts": 800
+                    }
+                }
     },
     "DetermineModel": {
         "method": "Nelder-Mead",
