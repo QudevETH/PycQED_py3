@@ -48,15 +48,16 @@ class UpdateFrequency(IntermediateStep):
         # Transition and frequency
         self.transition = transition
         self.qubits = qubits or self.routine.qubits
+
+        if frequencies is None:
+            assert any([fluxes is not None,
+                        voltages is not None]), \
+                f"Could not calculate the frequency of transition " \
+                f"{self.transition} without flux or voltage specified."
+
         self.frequencies = frequencies or [None]
         self.voltages = voltages or [None]
         self.fluxes = fluxes or [None]
-
-        if frequencies is None:
-            assert any([self.fluxes is not None,
-                        self.voltages is not None]), \
-                f"Could not calculate the frequency of transition " \
-                f"{self.transition} without flux or voltage specified."
 
     def run(self):
         """Updates frequency of the qubit for a given transition. This can
