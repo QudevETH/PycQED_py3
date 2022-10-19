@@ -25,12 +25,12 @@
                 "max_iterations": 2
             },
             "qubit_spectroscopy_1": {
-                "spec_power": -10,
+                "spec_power": -15,
                 "freq_range": 200e6,
                 "pts": 400
             },
             "qubit_spectroscopy_1_repetition_2": {
-                "spec_power": -5,
+                "spec_power": -10,
                 "freq_range": 800e6,
                 "pts": 1500
             }
