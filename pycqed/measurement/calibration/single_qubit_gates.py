@@ -2052,10 +2052,10 @@ class Rabi(SingleQubitGateCalibExperiment):
 class ThermalPopulation(Rabi):
     """
     Experiment to determine the residual thermal population in the e state by
-    performs two subsequent Rabi experiments on the ef transition. For one of
+    performing two subsequent Rabi experiments on the ef transition. For one of
     them we prepare the e state before each ef Rabi pulse and for the other,
     the qubit starts out in the thermal equilibrium state. By comparing the
-    amplitudes of the two Rabi oscillations, one can interfere the thermal e
+    amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
     TODO: extend to states other than the e state

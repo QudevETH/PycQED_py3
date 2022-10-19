@@ -4746,7 +4746,8 @@ class ThermalPopulationAnalysis(RabiAnalysis):
                     / fit_res_prep.best_values['amplitude']
         peth = ratio / (1 + ratio)
         ge_freq = self.raw_data_dict[f'ge_freq_'+qbn]
-        # We set E_g = 0 and assume p_fth = 0. This implies: 1/Z + p_eth = 1
+        # We set E_g = 0 and assume p_fth = 0. This implies: 1/Z + p_eth = 1,
+        # where Z is the partition function, Z=\sum_j exp(E_j/(k_B T)).
         # => Z = 1/(1-p_eth) => p_eth = (1 - p_eth) * exp(h * f_ge / (k * T))
         # and therefore:
         T = ge_freq * sp.constants.h / (sp.constants.k * np.log(1/peth-1))
