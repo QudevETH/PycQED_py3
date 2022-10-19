@@ -841,7 +841,7 @@ class HamiltonianFittingAnalysis:
             "ge",
             "ef",
         ),
-        experiments=("Ramsey",),
+        experiments=("ramsey",),
         **kw,
     ):
         """
@@ -885,7 +885,7 @@ class HamiltonianFittingAnalysis:
         default_datadir = a_tools.datadir
         a_tools.datadir = kw.get("datadir", default_datadir)
 
-        if not set(transitions).issubset(set(("ge", "ef"))):
+        if not set(transitions).issubset({"ge", "ef"}):
             log.warning(
                 "Only ge and ef transitions are supported now. Setting "
                 "transitions to ('ge', 'ef')"
@@ -895,7 +895,7 @@ class HamiltonianFittingAnalysis:
         # easily add ReparkingRamseys to the experiments list
         if kw.get("include_reparkings", False):
             experiments = list(experiments)
-            experiments.append("ReparkingRamsey")
+            experiments.append("reparking_ramsey")
 
         for transition in transitions:
             for experiment in experiments:
@@ -906,11 +906,11 @@ class HamiltonianFittingAnalysis:
                 for timestamp in timestamps:
                     fill_values_args = [experimental_values, timestamp, qubit,
                                         fluxlines_dict]
-                    if experiment == "Ramsey":
+                    if experiment == "ramsey":
                         HamiltonianFittingAnalysis._fill_experimental_values_with_Ramsey(
                             *fill_values_args)
 
-                    elif experiment == "ReparkingRamsey":
+                    elif experiment == "reparking_ramsey":
                         HamiltonianFittingAnalysis._fill_experimental_values_with_ReparkingRamsey(
                             *fill_values_args)
 
