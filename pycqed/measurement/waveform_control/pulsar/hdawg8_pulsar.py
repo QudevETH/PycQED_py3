@@ -78,9 +78,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = None
         self._init_mcc()
 
-        # dict for storing previously-uploaded waveforms
-        self.waveform_cache = dict()
-
         self._hdawg_channel_pairs = []
         for awg_nr in self._hdawg_active_awgs():
             channel_pair = HDAWGGeneratorModule(
@@ -466,77 +463,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         if has_waveforms:
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
-    def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
-        if self.pulsar.use_sequence_cache():
-            if wave_hashes == self.waveform_cache[
-                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
-                log.debug(
-                    f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
-                return
-            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
-        log.debug(
-            f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
-
-        a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
-        n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
-        if m1 is not None and a1 is None:
-            a1 = np.zeros(n)
-        if m1 is None and a1 is None and (m2 is not None or a2 is not None):
-            # Hack needed to work around an HDAWG bug where programming only
-            # m2 channel does not work. Remove once bug is fixed.
-            a1 = np.zeros(n)
-        if m2 is not None and a2 is None:
-            a2 = np.zeros(n)
-        if m1 is not None or m2 is not None:
-            m1 = np.zeros(n) if m1 is None else np.pad(m1, n - m1.size)
-            m2 = np.zeros(n) if m2 is None else np.pad(m2, n - m2.size)
-            if a1 is None:
-                mc = m2
-            else:
-                mc = m1 + 4*m2
-        else:
-            mc = None
-        a1 = None if a1 is None else np.pad(a1, n - a1.size)
-        a2 = None if a2 is None else np.pad(a2, n - a2.size)
-        wf_raw_combined = merge_waveforms(a1, a2, mc)
-        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (wf_raw_combined, wave_hashes)
-        else:
-            self.upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
-
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        """
-        Upload waveforms to an awg core (awg_nr).
-
-        Args:
-            awg_nr (int): index of awg core (0, 1, 2, or 3)
-            wave_idx (int): index of wave upload (0 or 1)
-            waveforms (array): waveforms to upload
-            wave_hashes: waveforms hashes
-        """
-        # Upload waveforms to awg
-        self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', waveforms)
-        # Save hashes in the cache memory after a successful waveform upload.
-        self._save_hashes(awg_nr, wave_idx, wave_hashes)
-
-    def _save_hashes(self, awg_nr, wave_idx, wave_hashes):
-        """
-        Save hashes in the cache memory after a successful waveform upload.
-
-        Args:
-            awg_nr (int): index of awg core (0, 1, 2, or 3)
-            wave_idx (int): index of wave upload (0 or 1)
-            wave_hashes: waveforms hashes
-        """
-        if self.pulsar.use_sequence_cache():
-            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
-
     def is_awg_running(self):
         return all([self.awg.get('awgs_{}_enable'.format(awg_nr))
                     for awg_nr in self._hdawg_active_awgs()
@@ -558,6 +484,16 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         chid = self.pulsar.get(ch + '_id')
         if chid[-1] != 'm':  # not a marker channel
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+        # This wrapper method is needed because 'finalize_upload_after_mcc'
+        # method in 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms'
+        # method from device interfaces instead of from channel interfaces.
+        self._hdawg_channel_pairs[awg_nr].upload_waveforms(
+            wave_idx=wave_idx,
+            waveforms=waveforms,
+            wave_hashes=wave_hashes
+        )
 
 
 class HDAWGGeneratorModule(ZIGeneratorModule):
@@ -622,6 +558,76 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         else:
             raise NotImplementedError('Internal modulation can only be'
                                       'specified per sub AWG!')
+
+    def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
+        awg_nr = self._awg_nr
+
+        if self.pulsar.use_sequence_cache():
+            if wave_hashes == self.waveform_cache.get(wave_idx, None):
+                log.debug(
+                    f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
+                    f'cache')
+                return
+            self.waveform_cache[wave_idx] = wave_hashes
+        log.debug(
+            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+
+        a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
+        n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
+        if m1 is not None and a1 is None:
+            a1 = np.zeros(n)
+        if m1 is None and a1 is None and (m2 is not None or a2 is not None):
+            # Hack needed to work around an HDAWG bug where programming only
+            # m2 channel does not work. Remove once bug is fixed.
+            a1 = np.zeros(n)
+        if m2 is not None and a2 is None:
+            a2 = np.zeros(n)
+        if m1 is not None or m2 is not None:
+            m1 = np.zeros(n) if m1 is None else np.pad(m1, n - m1.size)
+            m2 = np.zeros(n) if m2 is None else np.pad(m2, n - m2.size)
+            if a1 is None:
+                mc = m2
+            else:
+                mc = m1 + 4*m2
+        else:
+            mc = None
+        a1 = None if a1 is None else np.pad(a1, n - a1.size)
+        a2 = None if a2 is None else np.pad(a2, n - a2.size)
+        wf_raw_combined = merge_waveforms(a1, a2, mc)
+        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
+            # Parallel seqc compilation is used, which must take place before
+            # waveform upload. Waveforms are added to self.wfms_to_upload and
+            # will be uploaded to device in pulsar._program_awgs.
+            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
+                (wf_raw_combined, wave_hashes)
+        else:
+            self.upload_waveforms(wave_idx, wf_raw_combined, wave_hashes)
+
+    def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
+        """
+        Upload waveforms to an awg core (awg_nr).
+
+        Args:
+            wave_idx (int): index of wave upload (0 or 1)
+            waveforms (array): waveforms to upload
+            wave_hashes: waveforms hashes
+        """
+        # Upload waveforms to awg
+        self._awg.setv(f'awgs/{self._awg_nr}/waveform/waves/{wave_idx}',
+                       waveforms)
+        # Save hashes in the cache memory after a successful waveform upload.
+        self._save_hashes(wave_idx, wave_hashes)
+
+    def _save_hashes(self, wave_idx, wave_hashes):
+        """
+        Save hashes in the cache memory after a successful waveform upload.
+
+        Args:
+            wave_idx (int): index of wave upload (0 or 1)
+            wave_hashes: waveforms hashes
+        """
+        if self.pulsar.use_sequence_cache():
+            self.waveform_cache[wave_idx] = wave_hashes
 
     def _update_awg_instrument_status(self):
         # tell ZI_base_instrument that it should not compile a program on

@@ -64,8 +64,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._init_mcc()
-        # dict for storing previously-uploaded waveforms
-        self.waveform_cache = dict()
         self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
         """Determines the sgchannels for which the sine generator is turned on
         (off) in :meth:`start` (:meth:`stop`).
@@ -296,107 +294,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         chid = self.pulsar.get(ch + '_id')
         return self.awg.sgchannels[int(chid[2]) - 1].synthesizer() - 1
 
-    def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
-        """upload waveforms with Zurich Instrument API
-
-        Arguments:
-            awg_nr (int): output channel number to upload the waveform
-            wave_idx (int): index assigned to the current wave
-            wave_hashes (tuple): tuple in groups of four. Each element
-                corresponds to an analog or marker channel. The elements are
-                organized in order (analog_i, marker1, analog_q, marker2).
-            waveforms (dict): an overall dictionary of waveforms, specified
-                bit-wise and indexed by their hash values.
-
-        Returns:
-            None
-        """
-
-        # check if the waveform has been uploaded
-        if self.pulsar.use_sequence_cache():
-            if wave_hashes == self.waveform_cache[
-                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
-                log.debug(f'{self.awg.name} awgs{awg_nr}: '
-                          f'{wave_idx} same as in cache')
-                return
-            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
-        log.debug(
-            f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
-
-        # take the waves specified for this channel from the overall wave dict
-        a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
-
-        # harmonize the wave lengths to the longest waveform
-        n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
-
-        if m1 is not None and a1 is None:
-            a1 = np.zeros(n)
-        if m1 is None and a1 is None and (m2 is not None or a2 is not None):
-            # FIXME: test if this hack is needed one marker support is added
-            # Hack needed to work around an HDAWG bug where programming only
-            # m2 channel does not work. Remove once bug is fixed.
-            a1 = np.zeros(n)
-        if m2 is not None and a2 is None:
-            a2 = np.zeros(n)
-        if m1 is not None or m2 is not None:
-            m1 = np.zeros(n) if m1 is None else np.pad(m1, n - m1.size)
-            m2 = np.zeros(n) if m2 is None else np.pad(m2, n - m2.size)
-            if a1 is None:
-                mc = m2
-            else:
-                mc = m1 + 4 * m2
-        else:
-            mc = None
-        a1 = None if a1 is None else np.pad(a1, n - a1.size)
-        a2 = None if a2 is None else np.pad(a2, n - a2.size)
-        assert mc is None # marker not yet supported on SG
-
-        # Q channel sign needs to be flipped for SHFSG/QC
-        if a2 is not None:
-            a2 = -a2
-
-        waveforms = zhinst.toolkit.waveform.Waveforms()
-        waveforms.assign_waveform(wave_idx, a1, a2)
-
-        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (waveforms, wave_hashes)
-        else:
-            self.upload_waveforms(awg_nr, wave_idx, waveforms, wave_hashes)
-
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        """
-        Upload waveforms to an sg channel awg (awg_nr).
-
-        Args:
-            awg_nr (int): index of sg channel awg
-            wave_idx (int): index of wave upload (0 or 1)
-            waveforms (zhinst.toolkit.waveform.Waveforms): waveforms to upload
-            wave_hashes: waveforms hashes
-        """
-        # Upload waveforms to awg
-        sgchannel = self.awg.sgchannels[awg_nr]
-        sgchannel.awg.write_to_waveform_memory(waveforms)
-        # Save hashes in the cache memory after a successful waveform upload.
-        self._save_hashes(awg_nr, wave_idx, wave_hashes)
-
-    def _save_hashes(self, awg_nr, wave_idx, wave_hashes):
-        """
-        Save hashes in the cache memory after a successful waveform upload.
-
-        Args:
-            awg_nr (int): index of sg channel awg
-            wave_idx (int): index of wave upload (0 or 1)
-            wave_hashes: waveforms hashes
-        """
-        if self.pulsar.use_sequence_cache():
-            self.waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
-
     def _direct_mod_setter(self, ch):
         def s(val):
             if val == None:
@@ -442,6 +339,16 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             log.warning('The current sine gain configuration is not '
                         'supported by pulsar. Cannot retrieve amplitude.')
         return g
+
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+        # This method is needed because 'finalize_upload_after_mcc' method in
+        # 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms' method
+        # from device interfaces instead of from channel interfaces.
+        self._shf_generator_channels[awg_nr].upload_waveforms(
+            wave_idx=wave_idx,
+            waveforms=waveforms,
+            wave_hashes=wave_hashes
+        )
 
 
 class SHFSGPulsar(SHFGeneratorModulesPulsar):
@@ -608,6 +515,89 @@ class SHFGeneratorModule(ZIGeneratorModule):
             )
 
         self._sine_config = channel_sine_config
+
+    def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
+        awg_nr = self._awg_nr
+
+        # check if the waveform has been uploaded
+        if self.pulsar.use_sequence_cache():
+            if wave_hashes == self.waveform_cache.get(wave_idx, None):
+                log.debug(f'{self._awg.name} awgs{awg_nr}: '
+                          f'{wave_idx} same as in cache')
+                return
+            self.waveform_cache[wave_idx] = wave_hashes
+        log.debug(
+            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+
+        # take the waves specified for this channel from the overall wave dict
+        a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
+
+        # harmonize the wave lengths to the longest waveform
+        n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
+
+        if m1 is not None and a1 is None:
+            a1 = np.zeros(n)
+        if m1 is None and a1 is None and (m2 is not None or a2 is not None):
+            # FIXME: test if this hack is needed one marker support is added
+            # Hack needed to work around an HDAWG bug where programming only
+            # m2 channel does not work. Remove once bug is fixed.
+            a1 = np.zeros(n)
+        if m2 is not None and a2 is None:
+            a2 = np.zeros(n)
+        if m1 is not None or m2 is not None:
+            m1 = np.zeros(n) if m1 is None else np.pad(m1, n - m1.size)
+            m2 = np.zeros(n) if m2 is None else np.pad(m2, n - m2.size)
+            if a1 is None:
+                mc = m2
+            else:
+                mc = m1 + 4 * m2
+        else:
+            mc = None
+        a1 = None if a1 is None else np.pad(a1, n - a1.size)
+        a2 = None if a2 is None else np.pad(a2, n - a2.size)
+        assert mc is None # marker not yet supported on SG
+
+        # Q channel sign needs to be flipped for SHFSG/QC
+        if a2 is not None:
+            a2 = -a2
+
+        waveforms = zhinst.toolkit.waveform.Waveforms()
+        waveforms.assign_waveform(wave_idx, a1, a2)
+
+        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
+            # Parallel seqc compilation is used, which must take place before
+            # waveform upload. Waveforms are added to self.wfms_to_upload and
+            # will be uploaded to device in pulsar._program_awgs.
+            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
+                (waveforms, wave_hashes)
+        else:
+            self.upload_waveforms(wave_idx, waveforms, wave_hashes)
+
+    def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
+        """
+        Upload a wavefor to this awg module.
+
+        Args:
+            wave_idx (int): index of wave upload (0 or 1)
+            waveforms: waveforms to upload
+            wave_hashes: waveforms hashes
+        """
+        # Upload waveforms to awg
+        sgchannel = self._awg.sgchannels[self._awg_nr]
+        sgchannel.awg.write_to_waveform_memory(waveforms)
+        # Save hashes in the cache memory after a successful waveform upload.
+        self._save_hashes(wave_idx, wave_hashes)
+
+    def _save_hashes(self, wave_idx, wave_hashes):
+        """
+        Save hashes in the cache memory after a successful waveform upload.
+
+        Args:
+            wave_idx (int): index of wave upload (0 or 1)
+            wave_hashes: waveforms hashes
+        """
+        if self.pulsar.use_sequence_cache():
+            self.waveform_cache[wave_idx] = wave_hashes
 
     def _generate_oscillator_seq_code(self):
         if self._mod_config.get('internal_mod', False) \

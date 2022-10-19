@@ -553,6 +553,9 @@ class ZIGeneratorModule:
         self._upload_idx = None
         """Node index on the ZI data server."""
 
+        self.waveform_cache = dict()
+        """Dict for storing previously-uploaded waveforms."""
+
         self._defined_waves = None
         """Waves that has been assigned names on this channel."""
 
@@ -1055,7 +1058,7 @@ class ZIGeneratorModule:
         if not self._use_placeholder_waves or program:
             run_compiler = True
         else:
-            cached_lookup = self._awg_interface.waveform_cache.get(
+            cached_lookup = self.waveform_cache.get(
                 f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup', None)
             try:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
@@ -1068,11 +1071,8 @@ class ZIGeneratorModule:
         if run_compiler:
             self._execute_compiler(awg_str=awg_str)
             if self._use_placeholder_waves:
-                self._awg_interface.waveform_cache[
-                    f'{self._awg.name}_{self._awg_nr}'] = {}
-                self._awg_interface.waveform_cache[
-                    f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup'] = \
-                    self._wave_idx_lookup
+                self.waveform_cache = dict()
+                self.waveform_cache['wave_idx_lookup'] = self._wave_idx_lookup
 
     def _upload_placeholder_waveforms(
             self,
@@ -1085,12 +1085,33 @@ class ZIGeneratorModule:
             waveforms (Dict): A dictionary of waveforms, keyed by their hash.
         """
         for idx, wave_hashes in self._defined_waves[1].items():
-            self._awg_interface._update_waveforms(
-                awg_nr=self._awg_nr,
+            self._update_waveforms(
                 wave_idx=idx,
                 wave_hashes=wave_hashes,
                 waveforms=waveforms,
             )
+
+    def _update_waveforms(
+            self,
+            wave_idx,
+            wave_hashes,
+            waveforms
+    ):
+        """upload waveforms with Zurich Instrument API to the specified AWG
+        module.s
+
+        Arguments:
+            wave_idx (int): index assigned to the upload wave.
+            wave_hashes (tuple): tuple in groups of four. The elements are
+                organized in order (analog_i, marker, analog_q, None).
+            waveforms (dict): an complete dictionary of waveforms, specified
+                sample-wise and indexed by their hash values.
+
+        Returns:
+            None
+        """
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
 
     def _execute_compiler(
             self,
