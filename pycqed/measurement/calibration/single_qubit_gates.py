@@ -2048,6 +2048,7 @@ class Rabi(SingleQubitGateCalibExperiment):
         })
         return d
 
+
 class ThermalPopulation(Rabi):
     """
     Experiment to determine the residual thermal population in the e state by
@@ -2083,7 +2084,7 @@ class ThermalPopulation(Rabi):
                 label='amplitude ge')
         return super().update_sweep_points()
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, **kw):
         prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
         prepend_pulse_dicts += [{'op_code': f'X180 {qb}',
                     'amplitude': ParametricValue(f'{qb}_amplitude_ge')}]
@@ -2107,22 +2108,6 @@ class ThermalPopulation(Rabi):
             qb_names=self.meas_obj_names, t_start=self.timestamp,
             **analysis_kwargs)
 
-    @classmethod
-    def gui_kwargs(cls, device):
-        d = super().gui_kwargs(device)
-        d['task_list_fields'].update({
-            ThermalPopulation.__name__: odict({
-                'n': (int, 1),
-            })
-        })
-        d['sweeping_parameters'].update({
-            ThermalPopulation.__name__: {
-                0: {
-                    'ef amplitude': 'V',
-                },
-            }
-        })
-        return d
 
 class Ramsey(SingleQubitGateCalibExperiment):
     """
