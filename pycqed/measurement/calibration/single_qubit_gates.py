@@ -2074,9 +2074,13 @@ class ThermalPopulation(Rabi):
             traceback.print_exc()
 
     def update_sweep_points(self):
-        for qb in self.get_qubits()[0]:
-            self.sweep_points[1][f'{qb.name}_amplitude_ge'] = \
-                (np.linspace(0.0, qb.ge_amp180(), 2), 'V', 'amplitude ge')
+        for qbn in self.qb_names:
+            ge_amp = self.dev.get_operation_dict()[f'X180 {qbn}']['amplitude']
+            self.sweep_points.add_sweep_parameter(
+                param_name=f'{qbn}_amplitude_ge',
+                values=np.array([0.0, ge_amp]),
+                unit='V',
+                label='amplitude ge')
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, transition_name, **kw):
