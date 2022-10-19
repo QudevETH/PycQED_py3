@@ -24,7 +24,7 @@ from typing import Dict, Tuple
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('Routines')
 
 
 class HamiltonianFitting(AutomaticCalibrationRoutine,
@@ -457,6 +457,22 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         #  tested (there were problem with mixer calibration on Otemma)
         # self.add_mixer_calib_steps(**self.kw)
 
+    def post_run(self):
+        qb = self.qubit
+        # Park the qubit at its designated sweet spot after the routine is over
+
+        # Setting bias voltage
+        voltage = qb.calculate_voltage_from_flux(flux := qb.flux_parking())
+        self.fluxlines_dict[qb.name](voltage)
+        log.info(f'{qb.name} updated with voltage {voltage} V, corresponding to'
+                 f' flux {flux}')
+
+        # Updating ge-frequency at this voltage to guess value
+        qb.ge_freq(ge_freq := qb.calculate_frequency(flux=flux))
+        log.info(f'{qb.name} updated with ge-frequency {ge_freq} Hz.')
+
+        AutomaticCalibrationRoutine.post_run(self)
+
     def add_mixer_calib_steps(self, **kw):
         """Add steps to calibrate the mixer after the rest of the routine is
         defined. Mixer calibrations are put after every UpdateFrequency step.
@@ -602,7 +618,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.__end_of_run_timestamp: str = None
 
         def run(self):
-            """Runs the optimization and extract the fit parameters of the model.
+            """Runs the optimization and extract the fit parameters of the
+            model.
             The extracted parameters are saved in the qubit object.
             """
             kw = self.kw
