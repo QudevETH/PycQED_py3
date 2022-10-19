@@ -8,7 +8,7 @@ from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
-from .zi_pulsar_mixin import ZIDriveAWGChannel
+from .zi_pulsar_mixin import ZIGeneratorModule
 from .zi_pulsar_mixin import diff_and_combine_dicts
 from .pulsar import PulsarAWGInterface
 
@@ -26,8 +26,8 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
-                               ZIMultiCoreCompilerMixin):
+class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
+                                ZIMultiCoreCompilerMixin):
     """ZI SHFSG and SHFQC signal generator module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -73,7 +73,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
 
         self._shf_generator_channels = []
         for awg_nr in range(len(self.awg.sgchannels)):
-            channel = SHFGeneratorChannel(
+            channel = SHFGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
@@ -444,7 +444,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
         return g
 
 
-class SHFSGPulsar(SHFGeneratorModulePulsar):
+class SHFSGPulsar(SHFGeneratorModulesPulsar):
     """ZI SHFSG specific Pulsar module"""
     AWG_CLASSES = [SHFSG_core]
 
@@ -480,7 +480,7 @@ class SHFSGPulsar(SHFGeneratorModulePulsar):
         self._create_all_channel_parameters(channel_name_map)
 
 
-class SHFGeneratorChannel(ZIDriveAWGChannel):
+class SHFGeneratorModule(ZIGeneratorModule):
     """Pulsar interface for ZI SHF Generator AWG modules. Each AWG module
     consists of one analog channel and one marker channel. There are two AWGs
     in each analog channel, one for generating in-phase (I-) signal and

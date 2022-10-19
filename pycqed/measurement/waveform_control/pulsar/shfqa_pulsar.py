@@ -25,7 +25,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 log = logging.getLogger(__name__)
 
 
-class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
+class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI SHFQA and SHFQC acquisition module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -373,7 +373,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         return self.awg.get_lo_sweep_function(int(chid[2]) - 1, **kw)
 
 
-class SHFQAPulsar(SHFAcquisitionModulePulsar):
+class SHFQAPulsar(SHFAcquisitionModulesPulsar):
     """ZI SHFQA specific Pulsar module"""
     AWG_CLASSES = [SHFQA_core]
 

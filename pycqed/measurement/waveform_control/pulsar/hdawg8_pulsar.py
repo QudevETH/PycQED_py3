@@ -19,7 +19,7 @@ except Exception:
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
-from .zi_pulsar_mixin import ZIDriveAWGChannel
+from .zi_pulsar_mixin import ZIGeneratorModule
 
 
 log = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         self._hdawg_channel_pairs = []
         for awg_nr in self._hdawg_active_awgs():
-            channel_pair = HDAWG8Channel(
+            channel_pair = HDAWGGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
@@ -560,7 +560,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
 
-class HDAWG8Channel(ZIDriveAWGChannel):
+class HDAWGGeneratorModule(ZIGeneratorModule):
     """Pulsar interface for ZI HDAWG AWG modules. Each AWG module consists of
     two analog channels and two marker channels. Please refer to ZI user manual
     https://docs.zhinst.com/hdawg_user_manual/overview.html

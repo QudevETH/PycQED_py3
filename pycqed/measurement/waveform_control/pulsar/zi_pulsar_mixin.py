@@ -505,7 +505,7 @@ class ZIMultiCoreCompilerMixin:
                                   'implementations.')
 
 
-class ZIDriveAWGChannel:
+class ZIGeneratorModule:
     """Interface for ZI drive AWG modules. Each instance of this class saves
     configuration of this module and handles communication with the base
     instrument class when programming the module. Implementation of an AWG
