@@ -32,9 +32,9 @@
         "method": "Nelder-Mead",
         "include_reparkings": true,
         "include_resonator": true,
-        "use_prior_model": false
+        "use_prior_model": true
     },
-    "determine_model_final":{
+    "determine_model_final": {
         "use_prior_model": true
     },
     "UpdateFrequency": {
