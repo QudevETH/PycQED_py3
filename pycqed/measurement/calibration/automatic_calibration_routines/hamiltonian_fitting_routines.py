@@ -265,6 +265,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     "General": self.parameters_qubit
                 }})
 
+        self.results[self.qubit.name] = {}
         self.final_init(**kw)
 
     def create_routine_template(self):
@@ -635,6 +636,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 ))
 
             log.info(f"Experimental values: {self.experimental_values}")
+            self.routine.results[self.qubit.name][
+                "experimental_values"] = self.experimental_values
 
             # Preparing guess parameters and choosing parameters to optimize
             p_guess, parameters_to_optimize = self.make_model_guess(
