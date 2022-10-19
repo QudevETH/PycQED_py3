@@ -141,14 +141,19 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         :obj:`FeedlineSpectroscopy` which updates all the qubits of the
         feedline.
         """
+        not_updated_qubits = self.qubits.copy()
         for feedline in self.feedlines:
             feedline_results = self.analysis.fit_res[feedline[0].name]
             for qb in self.qubits:
                 try:
                     ro_freq = feedline_results[f"{qb.name}_RO_frequency"]
                     qb.ro_freq(ro_freq)
+                    not_updated_qubits.remove(qb)
                 except KeyError:
-                    log.warning(f"RO frequency of {qb.name} was not updated")
+                    pass
+
+        for qb in not_updated_qubits:
+            log.warning(f"RO frequency of {qb.name} was not updated")
 
 
 class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
