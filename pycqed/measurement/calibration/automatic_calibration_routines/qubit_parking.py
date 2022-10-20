@@ -27,7 +27,7 @@ log = logging.getLogger(ROUTINES)
 
 @dataclass
 class QubitParkingResults:
-    # Store results for a single qubit
+    """Store results for a single qubit."""
     flux: float = None
     initial_voltage: float = None
     measured_voltage: float = None
@@ -36,7 +36,8 @@ class QubitParkingResults:
 
 
 class QubitParking(AutomaticCalibrationRoutine):
-    """Qubit parking for a single qubit, to better calibrate a sweet spot
+    """
+    Qubit parking for a single qubit, to better calibrate a sweet spot
     ge_frequency and voltage.
 
     This routine usually acts as a step in the :obj:`MultiQubitParking` routine,
@@ -50,17 +51,15 @@ class QubitParking(AutomaticCalibrationRoutine):
 
      """
 
-    def __init__(
-            self,
-            dev: Device,
-            qubit: QuDev_transmon,
-            fluxlines_dict: Dict[str, Any],
-            flux: Optional[Union[float, Literal['{designated}',
-                                                '{opposite}',
-                                                '{mid}']]] = None,
-            initial_voltage: float = None,
-            **kw,
-    ):
+    def __init__(self,
+                 dev: Device,
+                 qubit: QuDev_transmon,
+                 fluxlines_dict: Dict[str, Any],
+                 flux: Optional[Union[float, Literal['{designated}',
+                                                     '{opposite}',
+                                                     '{mid}']]] = None,
+                 initial_voltage: float = None,
+                 **kw):
         """
         Args:
             dev: Device.
@@ -71,7 +70,7 @@ class QubitParking(AutomaticCalibrationRoutine):
             initial_voltage: The voltage that will be used for the initial
                 parking (center of the sweep range).
 
-        Keyword Args:
+        Keyword args:
             Additional keyword arguments that will be transferred to
             :obj:`AutomaticCalibrationRoutine`
 
@@ -123,7 +122,8 @@ class QubitParking(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """Creates the routine template for the QubitParking routine using
+        """
+        Creates the routine template for the QubitParking routine using
         the specified parameters.
         """
         super().create_routine_template()  # Create empty routine template
@@ -166,6 +166,7 @@ class QubitParking(AutomaticCalibrationRoutine):
         )
 
     def post_run(self):
+        """Update the results dataclass."""
         qb = self.qubit
         last_results = self.routine_steps[-1].results[qb.name]
         self.results[qb.name].measured_ge_freq = last_results['ss_freq']
@@ -185,16 +186,13 @@ class QubitParking(AutomaticCalibrationRoutine):
 
 
 class MultiQubitParking(AutomaticCalibrationRoutine):
-    """Routine to park several (or one) qubits at a sweet spot.
-    """
+    """Routine to park several (or one) qubits at a sweet spot."""
 
-    def __init__(
-            self,
-            dev: Device,
-            fluxlines_dict: Dict[str, Any],
-            qubits: List[QuDev_transmon],
-            **kw,
-    ):
+    def __init__(self,
+                 dev: Device,
+                 fluxlines_dict: Dict[str, Any],
+                 qubits: List[QuDev_transmon],
+                 **kw):
         """
         Args:
             dev (Device): Device to be used for the routine
@@ -235,9 +233,10 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     class Decision(IntermediateStep):
-        """Decision step that decides to add another reparking Ramsey step if
-            the reparking Ramsey experiment found a fit value for the sweet-spot
-            voltage that is outside the range of the swept voltages.
+        """
+        Decision step that decides to add another reparking Ramsey step if
+        the reparking Ramsey experiment found a fit value for the sweet-spot
+        voltage that is outside the range of the swept voltages.
         """
 
         def __init__(self,
@@ -245,7 +244,8 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
                      max_delta: float = 0.1e6,
                      max_iterations: int = 3,
                      **kw):
-            """Initialize the Decision step.
+            """
+            Initialize the Decision step.
 
             Args:
                 routine (Step): AdaptiveReparkingRamsey routine.
@@ -254,16 +254,15 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
                 max_iterations (int) The maximum number of iterations for
                     the routine.
 
-            Keyword Args:
-                kw: Arguments that will be passes to :obj:`IntermediateStep`
+            Keyword args:
+                Arguments that will be passes to :obj:`IntermediateStep`
             """
             super().__init__(routine=routine, **kw)
             self.max_delta = max_delta
             self.max_iterations = max_iterations
 
         def run(self):
-            """Executes the decision step.
-            """
+            """Executes the decision step."""
             routine: MultiQubitParking = self.routine
             success = True
             for qb_step_index, qb in enumerate(self.qubits, -len(self.qubits)):
@@ -293,11 +292,12 @@ class MultiQubitParking(AutomaticCalibrationRoutine):
                              f"routine.")
 
     def create_routine_template(self):
+        """Create a routine template."""
         super().create_routine_template()  # Create empty routine template
         self.add_qubits_parkings_and_decision()
 
     def add_qubits_parkings_and_decision(self):
-        """Add a series of qubit parkings for all the qubits"""
+        """Add routine steps with qubit parkings for all the qubits."""
         # Add qubit parkings for all qubits
         for qb in self.qubits:
             if self.index_iteration == 1:
