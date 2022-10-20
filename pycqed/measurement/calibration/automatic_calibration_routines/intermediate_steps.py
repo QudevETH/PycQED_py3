@@ -13,8 +13,9 @@ logger = logging.getLogger(ROUTINES)
 
 
 class UpdateFrequency(IntermediateStep):
-    """Updates the frequency of the specified transition at a specified
-        flux and voltage bias.
+    """
+    Updates the frequency of the specified transition at a specified
+    flux and voltage bias.
     """
 
     def __init__(self,
@@ -24,7 +25,8 @@ class UpdateFrequency(IntermediateStep):
                  voltages: List[float] = None,
                  fluxes: List[float] = None,
                  **kw):
-        """Initialize the UpdateFrequency step.
+        """
+        Initialize the UpdateFrequency step.
 
         Args:
             transition: The frequency will be updated for this transition.
@@ -60,7 +62,8 @@ class UpdateFrequency(IntermediateStep):
         self.fluxes = fluxes or [None]
 
     def run(self):
-        """Updates frequency of the qubit for a given transition. This can
+        """
+        Updates frequency of the qubit for a given transition. This can
         either be done by passing the frequency directly, or in case a
         model exists by passing the voltage or flux.
         """
@@ -94,7 +97,8 @@ class UpdateFrequency(IntermediateStep):
 
 
 class SetBiasVoltage(IntermediateStep):
-    """Intermediate step that updates the bias voltage of the qubit.
+    """
+    Intermediate step that updates the bias voltage of the qubit.
     This can be done by simply specifying the voltage, or by specifying
     the flux. If the flux is given, the corresponding bias is calculated
     using the Hamiltonian model stored in the qubit object.
@@ -105,7 +109,8 @@ class SetBiasVoltage(IntermediateStep):
                  voltage: float = None,
                  flux: float = None,
                  **kw):
-        """Initialize the SetBiasVoltage step.
+        """
+        Initialize the SetBiasVoltage step.
 
         Args:
             qubit: The qubit whose flux line needs to be set. If None the qubit

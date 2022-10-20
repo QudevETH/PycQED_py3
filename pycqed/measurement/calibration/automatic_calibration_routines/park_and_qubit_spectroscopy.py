@@ -31,7 +31,8 @@ class ParkAndQubitSpectroscopyResults:
 
 
 class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
-    """AutomaticRoutine that parks a qubit at the specified spot where it
+    """
+    AutomaticRoutine that parks a qubit at the specified spot where it
     performs an AdaptiveQubitSpectroscopy routine to find its ge_freq.
 
     The flux and voltage, together with initial and measured values for ge_freq,
@@ -62,14 +63,13 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         park_and_qubit_spectroscopy.run()
     """
 
-    def __init__(
-            self,
-            dev,
-            qubits: List[QuDev_transmon],
-            fluxlines_dict,
-            **kw,
-    ):
-        """Initializes the ParkAndQubitSpectroscopy routine.
+    def __init__(self,
+                 dev,
+                 qubits: List[QuDev_transmon],
+                 fluxlines_dict,
+                 **kw):
+        """
+        Initializes the ParkAndQubitSpectroscopy routine.
         The fluxes and/or voltages at which the AdaptiveQubitSpectroscopies are
         run are specified with the settings of
         SetBiasVoltageAndFluxPulseAssistedReadOut. If no settings are specified
@@ -87,12 +87,10 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             **kw: keyword arguments that will be passed to the `__init__()` and
                 `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
         """
-        super().__init__(
-            dev=dev,
-            qubits=qubits,
-            fluxlines_dict=fluxlines_dict,
-            **kw,
-        )
+        super().__init__(dev=dev,
+                         qubits=qubits,
+                         fluxlines_dict=fluxlines_dict,
+                         **kw)
 
         # Routine attributes
         self.fluxlines_dict = fluxlines_dict
@@ -146,7 +144,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
             self.split_step_for_parallel_groups(index=i)
 
     def post_run(self):
-        # Save the results of the routine
+        """Save the results of the routine."""
         for qb in self.qubits:
             self.results[qb.name].measured_ge_freq = qb.ge_freq()
 
@@ -164,7 +162,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         super().post_run()
 
     class SetBiasVoltageAndFluxPulseAssistedReadOut(IntermediateStep):
-        """Intermediate step that updates the bias voltage of the qubit and the
+        """
+        Intermediate step that updates the bias voltage of the qubit and the
         temporary values of the following :obj:`AdaptiveQubitSpectroscopy` for
         flux-pulse-assisted RO.
 
@@ -209,6 +208,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
         """
 
         def run(self):
+            """Execute the step."""
             for qb in self.qubits:
                 flux = self.routine.results[qb.name].flux
                 voltage = self.routine.results[qb.name].voltage
