@@ -789,6 +789,10 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
     default_experiment_name = 'FeedlineSpectroscopy'
 
     def __init__(self, task_list, **kw):
+        """
+        Args:
+            task_list: a list of tasks to be sent to the instrument.
+        """
         self.qubits = []
         self.feedlines = []
 
@@ -817,7 +821,8 @@ class FeedlineSpectroscopy(ResonatorSpectroscopy):
         super().__init__(task_list, qubits=self.qubits, **kw)
 
     def run_update(self, **kw):
-        """Updates the readout frequency of the qubits corresponding to the
+        """
+        Updates the readout frequency of the qubits corresponding to the
         measured feedlines.
         """
         for qb_name, feedline in zip(self.qb_names, self.feedlines):
@@ -894,7 +899,8 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
         super().__init__(task_list, **kw)
 
     def run_update(self, **kw):
-        """Updates each qubit bias voltage to the designated sweet spot.
+        """
+        Updates each qubit bias voltage to the designated sweet spot.
         The RO frequency is also updated, choosing the dip with the minimum
         average width.
 
