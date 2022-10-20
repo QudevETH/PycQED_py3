@@ -12,6 +12,7 @@ from pycqed.utilities.timer import Timer, TimedMetaClass
 from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
+from pycqed.measurement.waveform_control import pulsar as ps
 import logging
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ class Detector_Function(object):
             'progress_callback_interval', 5)  # in seconds
         # tells MC whether to show live plotting for the measurement
         self.live_plot_allowed = kw.get('live_plot_allowed', True)
+        self.live_plot_transform_type = kw.get('live_plot_transform_type',
+                                               None)
         self.extra_data_callback = None
 
     def set_kw(self, **kw):
@@ -151,6 +154,47 @@ class Detector_Function(object):
         else:
             return attr_val
 
+    def live_plot_transform(self, data):
+        """Transform data for the liveplot
+
+        Args:
+            data: array of shape (i, ) or (n, i) with i being the
+                number of data points per sweep point and n being an arbitrary
+                integer. Further information for specific transformation types:
+                 'mag_phase':
+                    (i, ):
+                        Input: inphase: data[0::2]; quadrature: data[1::2]
+                        Output: magnitudes: data[0::2]; phases: data[1::2]
+                    (n, i):
+                        Input: inphase: data[:, 0::2]; quadrature: data[:, 1::2]
+                        Output: magnitudes: data[:, 0::2]; phases: data[:, 1::2]
+
+        """
+        if self.live_plot_transform_type == 'mag_phase':
+            # transform shape (i, ) into (1, i) and leave (n, i) as is:
+            x = np.atleast_2d(data)
+            y = np.zeros_like(x)
+            # convert real valued representation into complex representation
+            x = x[:, ::2] + 1j * x[:, 1::2]
+            # compute magnitude and phase of the complex values
+            y[:, ::2], y[:, 1::2] = np.abs(x), np.angle(x)
+            # make sure return value has same shape as input
+            return y.reshape(data.shape)
+        else:
+            return data
+
+    @property
+    def live_plot_labels(self):
+        if self.live_plot_transform_type == 'mag_phase':
+            return [f'{x}_{l}'
+                    for x in self.value_names[::2] for l in ['mag', 'phase']]
+        else:
+            return self.value_names
+
+    @property
+    def live_plot_units(self):
+        return self.value_units
+
 
 class Multi_Detector(Detector_Function):
     """
@@ -169,11 +213,13 @@ class Multi_Detector(Detector_Function):
         self.name = 'Multi_detector'
         self.value_names = []
         self.value_units = []
+        self.detector_values_length = []
         for i, detector in enumerate(detectors):
             for detector_value_name in detector.value_names:
                 if det_idx_suffix:
                     detector_value_name += '_det{}'.format(i)
                 self.value_names.append(detector_value_name)
+            self.detector_values_length.append(len(detector.value_names))
             for detector_value_unit in detector.value_units:
                 self.value_units.append(detector_value_unit)
 
@@ -208,6 +254,23 @@ class Multi_Detector(Detector_Function):
     def finish(self):
         for detector in self.detectors:
             detector.finish()
+
+    def live_plot_transform(self, data):
+        original_shape = data.shape
+        data = np.atleast_2d(data)
+        ind = 0
+        for i, d in enumerate(self.detectors):
+            data[:, ind:ind + self.detector_values_length[i]] \
+                = d.live_plot_transform(data[:, ind:ind + self.detector_values_length[i]])
+            ind += self.detector_values_length[i]
+        return data.reshape(original_shape)
+
+    @property
+    def live_plot_labels(self):
+        labels = []
+        for d in self.detectors:
+            labels += d.live_plot_labels
+        return labels
 
 
 class IndexDetector(Detector_Function):
@@ -578,7 +641,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     """
     TIMED_METHODS = ["prepare"]
 
-    def __init__(self, acq_dev=None, detectors=None, **kw):
+    def __init__(self, acq_dev=None, detectors=None,
+                 prepare_and_finish_pulsar=False,
+                 **kw):
         """
         Init of the PollDetector base class.
 
@@ -587,6 +652,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 single polling detector is passed to detectors.
             detectors (list): poling detectors from this module to be used for
                 acquisition
+            prepare_and_finish_pulsar (bool, optional): Whether to start and
+                stop all other AWGs in pulsar in addition to the AWGs being part
+                of the df itself. Defaults to False.
 
         Keyword args: passed to parent class
 
@@ -596,6 +664,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         """
         super().__init__(**kw)
         self.always_prepare = False
+        self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
 
         if detectors is None:
             # if no detector is provided then itself is the only detector
@@ -616,8 +685,21 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self.progress_scaling = None
 
     def prepare(self, sweep_points=None):
+        self.prepare_pulsar()
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
+
+    def prepare_pulsar(self):
+        if self.prepare_and_finish_pulsar:
+            awgs_exclude = []
+            for awg in self.get_awgs():
+                if awg is not None:
+                    # AWG can be an awg_control_object which can be None
+                    awgs_exclude += [awg.name]
+            ps.Pulsar.get_instance().start(exclude=awgs_exclude)
+
+    def get_awgs(self):
+        return [self.AWG]
 
     @Timer()
     def poll_data(self):
@@ -757,11 +839,13 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         Takes care of setting instruments into a known state at the end of
         acquisition.
         """
-        if self.AWG is not None:
+        if self.prepare_and_finish_pulsar:
+            ps.Pulsar.get_instance().stop()
+        elif self.AWG is not None:
             self.AWG.stop()
 
-        for d in self.detectors:
-            d.acq_dev.acquisition_finalize()
+        if hasattr(self, 'acq_dev'):
+            self.acq_dev.acquisition_finalize()
 
 
 class MultiPollDetector(PollDetector):
@@ -807,6 +891,7 @@ class MultiPollDetector(PollDetector):
         self.value_names = []
         self.value_units = []
         self.live_plot_allowed = []  # to be used by MC
+        self.detector_values_length = []
 
         if AWG is not None:  # treat as master AWG
             self.AWG = self.MultiAWGWrapper(AWG,
@@ -814,9 +899,18 @@ class MultiPollDetector(PollDetector):
         else:
             self.AWG = None
         for d in self.detectors:
+            # The following if statement makes sure that pulsar is prepared and
+            # finished if one of the detectors was delegated to take care of
+            # that. At the same time we ensure that this only happens once by
+            # setting the prepare_and_finish_pulsar parameter to False for all
+            # 'child' detectors.
+            if d.prepare_and_finish_pulsar:
+                self.prepare_and_finish_pulsar = True
+                d.prepare_and_finish_pulsar = False
             self.value_names += [vn + ' ' + d.acq_dev.name for vn in
                                  d.value_names]
             self.value_units += d.value_units
+            self.detector_values_length.append(len(d.value_names))
             self.live_plot_allowed += [d.live_plot_allowed]
             if d.AWG is not None\
                     and not isinstance(self.AWG, self.MultiAWGWrapper):
@@ -825,7 +919,7 @@ class MultiPollDetector(PollDetector):
                 elif self.AWG != d.AWG:
                     raise Exception('Not all AWG instances in '
                                     'MultiPollDetector are the same.')
-                d.AWG = None
+            d.AWG = None
 
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
@@ -876,6 +970,11 @@ class MultiPollDetector(PollDetector):
             getattr(d, 'progress_scaling', None) for d in self.detectors]
         if any([a is None for a in self.progress_scaling]):
             self.progress_scaling = None
+
+    def get_awgs(self):
+        if isinstance(self.AWG, self.MultiAWGWrapper):
+            return [self.AWG.master_awg] + self.AWG.awgs
+        return [self.AWG]
 
     def get_values(self):
         """
@@ -993,12 +1092,27 @@ class MultiPollDetector(PollDetector):
         Takes care of setting instruments into a known state at the end of
         acquisition by calling the finish method of each polling detector in
         self.detectors.
-        TODO: shouldn't it call the super method?
         """
-        if self.AWG is not None:
-            self.AWG.stop()
+        super().finish()
         for d in self.detectors:
             d.finish()
+
+    def live_plot_transform(self, data):
+        original_shape = data.shape
+        data = np.atleast_2d(data)
+        ind = 0
+        for i, d in enumerate(self.detectors):
+            data[:, ind:ind + self.detector_values_length[i]] \
+                = d.live_plot_transform(data[:, ind:ind + self.detector_values_length[i]])
+            ind += self.detector_values_length[i]
+        return data.reshape(original_shape)
+
+    @property
+    def live_plot_labels(self):
+        labels = []
+        for d in self.detectors:
+            labels += d.live_plot_labels
+        return labels
 
 
 class AveragingPollDetector(PollDetector):
@@ -1070,7 +1184,7 @@ class IntegratingAveragingPollDetector(PollDetector):
                  nr_averages: int = 1024,
                  channels: list = ((0, 0), (0, 1)),
                  data_type: str = 'raw',  # FIXME: more general default value?
-                 real_imag: bool = True,
+                 polar: bool = False,
                  single_int_avg: bool = False,
                  chunk_size: int = None,
                  values_per_point: int = 1,
@@ -1106,9 +1220,8 @@ class IntegratingAveragingPollDetector(PollDetector):
                                     integration channels.
                                     NOTE: thresholds need to be set outside the
                                     detector object.
-            real_imag (bool)     : if False returns data in polar coordinates
-                                    useful for e.g., spectroscopy
-                                    FIXME -> should be named "polar"
+            polar (bool)     : if True returns data in polar coordinates
+                useful for e.g., spectroscopy. Defaults to 'False'.
             single_int_avg (bool): if True makes this a soft detector
 
             Args relating to changing the amount of points being detected:
@@ -1160,7 +1273,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
         self.prepare_function = prepare_function
         self.prepare_function_kwargs = prepare_function_kwargs
-        self.set_real_imag(real_imag)
+        self.set_polar(polar)
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
@@ -1183,20 +1296,25 @@ class IntegratingAveragingPollDetector(PollDetector):
                     new_value_units.append(vu)
             return new_value_names, new_value_units
 
-    def set_real_imag(self, real_imag=False):
+    def set_polar(self, polar=True):
+        """Sets df attribute and adopts value units and names if necessary
+
+        Args:
+            polar (bool, optional): Whether the data should be converted to
+                polar or not. Also affects the units and value names.
+                Defaults to True.
         """
-        Function so that real_imag can be changed after initialization.
-        """
-        self.real_imag = real_imag
-        if not self.real_imag:
+        self.polar = polar
+        if self.polar:
             if len(self.channels) != 2:
                 raise ValueError('Length of "{}" is not 2'.format(
                                  self.channels))
             self.value_names[0] = 'Magn'
             self.value_names[1] = 'Phase'
             self.value_units[1] = 'deg'
+        # FIXME: reset to previous names in case `set_polar(False)` is called
 
-    def process_data(self, data_raw, real_imag=None, reshape_data=True):
+    def process_data(self, data_raw, polar=None, reshape_data=True):
         """
         Process the raw data array as returned by poll_data().
          - multiplies by self.scaling_factor
@@ -1206,8 +1324,8 @@ class IntegratingAveragingPollDetector(PollDetector):
 
         Args:
             data_raw (array): raw data array to be processed
-            real_imag (bool): whether to convert to polar data (True), see
-                docstring of convert_to_polar. Defaults to self.real_imag if
+            polar (bool): whether to convert to polar data (True), see
+                docstring of convert_to_polar. Defaults to self.polar if
                 None.
             reshape_data (bool): whether to reshape the processed data based on
                 len(self.value_names) // len(self.channels).
@@ -1218,9 +1336,9 @@ class IntegratingAveragingPollDetector(PollDetector):
         data = data_raw * self.scaling_factor
         data = self.acq_dev.correct_offset(self.channels, data)
 
-        if real_imag is None:
-            real_imag = self.real_imag
-        if not real_imag:
+        if polar is None:
+            polar = self.polar
+        if polar:
             data = self.convert_to_polar(data)
 
         if reshape_data:
@@ -1410,7 +1528,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
     """
 
     def __init__(self, acq_dev, AWG=None, integration_length=1e-6,
-                 nr_averages=1024,  real_imag=True,
+                 nr_averages=1024,  polar=False,
                  channels: list = ((0, 0), (0, 1)),
                  correlations: list = (((0, 0), (0, 1))),
                  data_type: str = 'raw_corr',
@@ -1426,7 +1544,7 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
         super().__init__(
             acq_dev, AWG=AWG, integration_length=integration_length,
-            nr_averages=nr_averages, real_imag=real_imag,
+            nr_averages=nr_averages, polar=polar,
             channels=channels, single_int_avg=single_int_avg,
             data_type=data_type,
             **kw)
@@ -1705,7 +1823,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         Returns:
              processed data array of the same shape as data_raw
         """
-        data_processed = super().process_data(data_raw, real_imag=True,
+        data_processed = super().process_data(data_raw, polar=False,
                                               reshape_data=False).T
         nr_states = len(self.state_labels)
         thresholded = self.get_values_function_kwargs.get('thresholded', True)
