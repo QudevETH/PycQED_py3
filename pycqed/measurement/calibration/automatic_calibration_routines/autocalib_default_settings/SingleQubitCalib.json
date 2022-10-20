@@ -21,8 +21,6 @@
         "df_name": "int_avg_det",
         "configure_mux_readout": true,
         "configure_mux_drive": true
-
-
     },
     "Rabi":{
         "clip_drive_amp": true,
