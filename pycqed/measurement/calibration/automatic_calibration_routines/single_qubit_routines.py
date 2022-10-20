@@ -16,10 +16,6 @@ if not _device_db_client_module_missing:
 
 from pycqed.measurement.sweep_points import SweepPoints
 
-from pycqed.measurement.calibration.single_qubit_gates import (
-    SingleQubitGateCalibExperiment
-)
-
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
 from pycqed.utilities.general import (
     configure_qubit_mux_drive,
@@ -1099,7 +1095,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                 except IndexError:
                     step_tmp_settings = []
 
-                if issubclass(step_class, SingleQubitGateCalibExperiment):
+                if issubclass(step_class, qbcal.SingleQubitGateCalibExperiment):
                     if 'qscale' in step_label or 'echo' in step_label:
                         if transition_name != 'ge':
                             continue
