@@ -1990,9 +1990,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
                 (n_shots * n_seqs)
+            # the following lines assume a single preselection readout and an arbitrary
+            # number of other readouts per segment.
+            n_readouts_per_segment = n_readouts // (n_ro_before_filtering - n_readouts)
             preselection_ro_mask = \
                 np.tile([True] * n_seqs +
-                        [False] * (n_ro_before_filtering - n_readouts) * n_seqs,
+                        [False] * n_readouts_per_segment * n_seqs,
                         n_shots * n_readouts)
             presel_shots_per_qb = \
                 {qbn: presel_shots[preselection_ro_mask] for qbn, presel_shots in
