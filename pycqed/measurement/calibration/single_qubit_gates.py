@@ -2446,10 +2446,6 @@ class ReparkingRamsey(Ramsey):
         options_dict.update(dict(
             fit_gaussian_decay=kw.pop('fit_gaussian_decay', True),
             artificial_detuning=kw.pop('artificial_detuning', None)))
-
-        # Avoid error when trying to extract not-yet existing file
-        time.sleep(3)
-
         self.analysis = tda.ReparkingRamseyAnalysis(
             qb_names=self.meas_obj_names, t_start=self.timestamp,
             options_dict=options_dict, **analysis_kwargs)
