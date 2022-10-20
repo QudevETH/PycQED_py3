@@ -7,6 +7,7 @@ the spectroscopy measurement analyses.
 
 from copy import deepcopy
 import logging
+import re
 from typing import Union
 import numpy as np
 import lmfit
@@ -1737,7 +1738,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             analyze_ef (bool, optional):  whether to look for a second peak/dip,
                 which would be the at f_gf/2. Defaults to False.
 
-        Keyword Args:
+        Kwargs:
             percentile (int):  percentile of the  data that is considered
                 background noise when looking for peaks/dips. Defaults to 20.
             num_sigma_threshold (float): used to define the threshold above
@@ -1774,7 +1775,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     def prepare_fitting(self):
         """
         Prepares the dictionaries where the analysis results are going to be
-        stored
+        stored.
         """
         self.fit_res = OrderedDict()
         for qb_name in self.qb_names:
@@ -2223,7 +2224,8 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.fit_res[qb_name] = {}
 
     def run_fitting(self):
-        """Finds the dips the 1D resonator spectroscopy and assigns them to the
+        """
+        Finds the dips the 1D resonator spectroscopy and assigns them to the
         corresponding qubit. The dips are paired up (starting from the one
         at the lowest frequency) and the sharpest dip of the pair is chosen
         as the readout frequency for the corresponding qubit.
@@ -2347,7 +2349,8 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
         return dips_indices, dips_widths
 
     def prepare_plots(self):
-        """Plots the projected data with the additional information found with
+        """
+        Plots the projected data with the additional information found with
         the analysis.
         """
         MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
@@ -2442,7 +2445,8 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
         super().__init__(ndips = self.ndips, **kwargs)
 
     def run_fitting(self):
-        """Finds the dips the 1D resonator spectroscopy and assigns them to the
+        """
+        Finds the dips the 1D resonator spectroscopy and assigns them to the
         corresponding qubit. The dips are paired up (starting from the one
         at the lowest frequency) and the sharpest dip of the pair is chosen
         as the readout frequency for the corresponding qubit.
@@ -2545,7 +2549,8 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                         f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i]
 
     def prepare_plots(self):
-        """Plots the projected data with the additional information found with
+        """
+        Plots the projected data with the additional information found with
         the analysis.
         """
         MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
@@ -2675,6 +2680,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
     def __init__(self, ndips: int = 2, **kwargs):
         """ Initializes the class by calling the parent class constructor.
         Args:
+            ndips: The number of dips that will be fitted. Default is
+                two since usually a Purcell filter is being used.
 
         Kwargs:
             see ResonatorSpectropscopyAnalysis
@@ -2705,7 +2712,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                 self.sp[1][f"{qb_name}_volt"][0])
 
     def run_fitting(self):
-        """Finds the dips the 2D resonator spectroscopy and extracts the LSS and
+        """
+        Finds the dips the 2D resonator spectroscopy and extracts the LSS and
         the USS. The sharpest dip is chosen to designate a candidate sweet spot
         for the given qubit bias voltage and RO frequency.
         """
@@ -2836,7 +2844,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                      biases: np.ndarray,
                      window_length: int = 7,
                      polyorder: int = 2) -> tuple[float, float]:
-        """Finds the LSS and USS given the frequency of the dips (previously
+        """
+        Finds the LSS and USS given the frequency of the dips (previously
         found in find_dips) and the corresponding voltage biases of a resonator
         spectroscopy.
         The algorithm works in the following way. First, the numerical
@@ -2942,7 +2951,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         return lss, uss
 
     def prepare_plots(self):
-        """Plots the projected data with the additional information found with
+        """
+        Plots the projected data with the additional information found with
         the analysis.
         """
         MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
