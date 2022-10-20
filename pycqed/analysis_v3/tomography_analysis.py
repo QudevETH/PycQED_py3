@@ -976,6 +976,13 @@ def process_tomography_analysis(data_dict, Uideal=None,
         Other possible keyword arguments:
             - measured_rhos as {est_type.rho: list of meas ops for est_type
             in estimation_types}
+            - correct_readout_str (str, default: ''): takes the density matrix
+                from data_dict whose key path contains this string. Is typically
+                "readout_corrected" of "readout_uncorrected".
+                Only has an effect if measured_rhos are not passed.
+                Ex: of key path in data_dict that points to a rho which has
+                been obtained with readout correction applied
+                'II.qb10,qb11.readout_corrected.state_tomo.max_likelihood.rho'
     :return: adds to data_dict:
         - chi_{process_name}.{estimation_type} and
             measured_error_{process_name}.{estimation_type} for estimation_type
@@ -992,6 +999,8 @@ def process_tomography_analysis(data_dict, Uideal=None,
     keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
                                            default_value='process_tomo',
                                            **params)
+    correct_readout_str = hlp_mod.get_param('correct_readout_str', data_dict,
+                                           default_value='',  **params)
     if Uideal is None:
         if process_name == 'CZ':
             Uideal = qtp.qip.operations.cphase(np.pi)
@@ -1028,18 +1037,27 @@ def process_tomography_analysis(data_dict, Uideal=None,
         # get measured density matrices
         measured_rhos = meas_density_matrices.get(estimation_type, None)
         if measured_rhos is None:
+            # construct them from the density matrices in the data_dict
             measured_rhos = len(prep_pulses_list) * ['']
             for i, prep_pulses in enumerate(prep_pulses_list):
                 prep_str = ''.join(prep_pulses)
                 if verbose:
                     print(prep_str)
-                measured_rhos[i] = \
-                    hlp_mod.get_param(
-                        f'{prep_str}.{estimation_type}.rho',
-                        data_dict, raise_error=True,
-                        error_message=f'Data for preparation pulses '
-                                      f'{prep_str} was not found in '
-                                      f'data_dict.').full().flatten()
+                matches = hlp_mod.get_param('rho', data_dict, find_all=True,
+                                            **params)
+                # take the rhos which have prep_str, estimation_type, and
+                # correct_readout_str in their key paths
+                meas_rho = [v for k, v in matches.items() if prep_str in k and
+                            estimation_type in k and correct_readout_str in k]
+                if len(meas_rho) == 0:
+                    raise ValueError(f'Data for preparation pulses '
+                                     f'{prep_str} was not found in '
+                                     f'data_dict.')
+                elif len(meas_rho) > 1:
+                    raise ValueError(f'{len(meas_rho)} density matrices were '
+                                     f'found for preparation pulses {prep_str} '
+                                     f'and estimation {estimation_type}. ')
+                measured_rhos[i] = meas_rho[0].full().flatten()
         else:
             for i, mrho in enumerate(measured_rhos):
                 if isinstance(mrho, qtp.qobj.Qobj):
