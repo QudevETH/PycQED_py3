@@ -243,7 +243,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Validity of flux_to_voltage_and_freq_guess dictionary
         x = set(self.flux_to_voltage_and_freq_guess.keys())
         y = set(self.measurements.keys())
-        z = {self.ss1_flux, self.ss2_flux}  # A third set
+        z = {self.ss1_flux, self.ss2_flux}
 
         assert x.issubset(y), (
             "Fluxes in flux_to_voltage_and_freq_guess must be a subset of the "
