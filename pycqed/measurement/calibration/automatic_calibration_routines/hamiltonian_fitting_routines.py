@@ -30,8 +30,9 @@ log = logging.getLogger(ROUTINES)
 
 class HamiltonianFitting(AutomaticCalibrationRoutine,
                          hfa.HamiltonianFittingAnalysis):
-    """Constructs a HamiltonianFitting routine used to determine a
-        Hamiltonian model for a transmon qubit.
+    """
+    Constructs a HamiltonianFitting routine used to determine a
+    Hamiltonian model for a transmon qubit.
 
     Routine steps:
 
@@ -80,14 +81,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         iv) |g⟩ ↔ |e⟩ (midpoint).
     """
 
-    def __init__(
-            self,
-            dev,
-            qubit,
-            fluxlines_dict,
-            **kw,
-    ):
-        """Constructs a HamiltonianFitting routine used to determine a
+    def __init__(self,
+                 dev,
+                 qubit,
+                 fluxlines_dict,
+                 **kw):
+        """
+        Constructs a HamiltonianFitting routine used to determine a
         Hamiltonian model for a transmon qubit.
 
         Args:
@@ -159,11 +159,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 try to get the parameters from the qubit object. Default is
                 False.
 
-        FIXME: If the guess is very rough, it might be good to have an option to
-         run a qubit spectroscopy before. This could be included in the future
-         either directly here or, maybe even better, as an optional step in
-         FindFrequency.
-
         FIXME: There needs to be a general framework allowing the user to decide
          which optional steps should be included (e.g., mixer calib, qb spec,
          FindFreq before ReparkingRamsey, etc.).
@@ -193,10 +188,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             'flux_to_voltage_and_freq_guess')
 
         if not use_prior_model:
-            assert (
-                    flux_to_voltage_and_freq_guess is not None
-            ), "If use_prior_model is False, flux_to_voltage_and_freq_guess" \
-               "must be specified"
+            assert (flux_to_voltage_and_freq_guess is not None
+                    ), "If use_prior_model is False, " \
+                       "flux_to_voltage_and_freq_guess must be specified."
 
         # Flux to voltage and frequency dictionaries (guessed and measured)
         self.flux_to_voltage_and_freq = {}
@@ -270,7 +264,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """Creates the routine template for the HamiltonianFitting routine using
+        """
+        Creates the routine template for the HamiltonianFitting routine using
         the specified parameters.
         """
         super().create_routine_template()  # Create empty routine template
@@ -454,14 +449,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Determining final model based on all data
         self.add_step(self.DetermineModel, 'determine_model_final', {})
 
-        # Interweave routine if the user wants to include mixer calibration
-        # FIXME: Currently not included because it still needs to be properly
-        #  tested (there were problem with mixer calibration on Otemma)
-        # self.add_mixer_calib_steps(**self.kw)
+        # FIXME: add mixer calibration step
+        #  self.add_mixer_calib_steps(**self.kw)
 
     def post_run(self):
+        """
+        Park the qubit at its designated sweet spot after the routine is over.
+        """
         qb = self.qubit
-        # Park the qubit at its designated sweet spot after the routine is over
 
         # Setting bias voltage
         voltage = qb.calculate_voltage_from_flux(flux := qb.flux_parking())
@@ -476,7 +471,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         AutomaticCalibrationRoutine.post_run(self)
 
     def add_mixer_calib_steps(self, **kw):
-        """Add steps to calibrate the mixer after the rest of the routine is
+        """
+        Add steps to calibrate the mixer after the rest of the routine is
         defined. Mixer calibrations are put after every UpdateFrequency step.
 
         Configuration parameters (coming from the configuration parameter
@@ -541,7 +537,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 i += 1
 
     class UpdateFluxToVoltage(IntermediateStep):
-        """Intermediate step that updates the flux_to_voltage_and_freq
+        """
+        Intermediate step that updates the flux_to_voltage_and_freq
         dictionary using prior ReparkingRamsey measurements.
         """
 
@@ -589,16 +586,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 {flux: (voltage, frequency)})
 
     class DetermineModel(IntermediateStep):
-        """Intermediate step that determines the model of the qubit based on
+        """
+        Intermediate step that determines the model of the qubit based on
         the measured data. Can be used for both estimating the model and
         determining the final model.
         """
 
-        def __init__(
-                self,
-                **kw,
-        ):
-            """Initialize the DetermineModel step.
+        def __init__(self,
+                     **kw):
+            """
+            Initialize the DetermineModel step.
 
             Configuration parameters (coming from the configuration parameter
             dictionary):
@@ -620,7 +617,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.__end_of_run_timestamp: str = None
 
         def run(self):
-            """Runs the optimization and extract the fit parameters of the
+            """
+            Runs the optimization and extract the fit parameters of the
             model.
             The extracted parameters are saved in the qubit object.
             """
@@ -672,7 +670,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.__end_of_run_timestamp = a_tools.get_last_n_timestamps(1)[0]
 
         def get_device_property_values(self, **kwargs):
-            """Returns a dictionary of high-level device property values from
+            """
+            Returns a dictionary of high-level device property values from
             running this DetermineModel step
 
             Args:
@@ -687,8 +686,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             sweet_spots = kwargs.get('qubit_sweet_spots', {})
             if _device_db_client_module_missing:
                 log.warning("Assembling the dictionary of high-level device "
-                            "property values requires the module"
-                            "'device-db-client', which was not imported"
+                            "property values requires the module "
+                            "'device-db-client', which was not imported "
                             "successfully.")
             elif self.__result_dict is not None:
                 # For DetermineModel, the results are in
@@ -762,7 +761,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         def make_model_guess(self,
                              use_prior_model=True,
                              include_resonator=True):
-            """Constructing parameters for the Hamiltonian model optimization.
+            """
+            Constructing parameters for the Hamiltonian model optimization.
             This includes defining values for the fixed parameters as well as
             initial guesses for the parameters to be optimized.
 
@@ -844,7 +844,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                  voltages=None,
                                  verbose=True,
                                  **kw):
-        """Performs a verification measurement of the model for given fluxes
+        """
+        Performs a verification measurement of the model for given fluxes
         (or voltages). The read-out is done using flux assisted read-out and
         the read-out should be configured beforehand.
 
@@ -943,7 +944,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         return experimental_values
 
     def get_device_property_values(self, **kwargs):
-        """Returns a property values dictionary of the fitted Hamiltonian
+        """
+        Returns a property values dictionary of the fitted Hamiltonian
         parameters
 
         Returns:
@@ -967,11 +969,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
 
 class MixerCalibrationSkewness(IntermediateStep):
-    """Mixer calibration step that calibrates the skewness of the mixer.
-    """
+    """Mixer calibration step that calibrates the skewness of the mixer."""
 
     def __init__(self, routine, **kw):
-        """Initialize the MixerCalibrationSkewness step.
+        """
+        Initialize the MixerCalibrationSkewness step.
 
         Args:
             routine (Step): Routine object.
@@ -998,11 +1000,11 @@ class MixerCalibrationSkewness(IntermediateStep):
 
 
 class MixerCalibrationCarrier(IntermediateStep):
-    """Mixer calibration step that calibrates the carrier of the mixer.
-    """
+    """Mixer calibration step that calibrates the carrier of the mixer."""
 
     def __init__(self, routine, **kw):
-        """Initialize the MixerCalibrationCarrier step.
+        """
+        Initialize the MixerCalibrationCarrier step.
 
         Args:
             routine (Step): Routine object.
@@ -1029,16 +1031,15 @@ class MixerCalibrationCarrier(IntermediateStep):
 
 
 class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
-    """Intermediate step that sets the temporary values for flux-pulse-assisted
+    """
+    Intermediate step that sets the temporary values for flux-pulse-assisted
     readout for a step of the routine. The step will modify the temporary
     values of the step at the specified index.
     """
 
-    def __init__(
-            self,
-            index,
-            **kw,
-    ):
+    def __init__(self,
+                 index,
+                 **kw):
         """Initialize the SetTemporaryValuesFluxPulseReadOut step.
 
         Args:

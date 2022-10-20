@@ -12,9 +12,8 @@ if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
 from pycqed.measurement.spectroscopy import spectroscopy as spec
-from pycqed.utilities.general import (
-    temporary_value,
-)
+from pycqed.utilities.general import temporary_value
+
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.instrument_drivers.meta_instrument.device import Device
@@ -28,11 +27,11 @@ log = logging.getLogger(ROUTINES)
 
 
 class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
-    """Wrapper for QubitSpectroscopy1D experiment.
-    """
+    """Wrapper for QubitSpectroscopy1D experiment."""
 
     def __init__(self, routine: AutomaticCalibrationRoutine, **kwargs):
-        """Initializes the QubitSpectroscopy1DStep class, which also includes
+        """
+        Initializes the QubitSpectroscopy1DStep class, which also includes
         initialization of the QubitSpectroscopy1D experiment.
 
         Args:
@@ -139,7 +138,8 @@ class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
         return kwargs
 
     def run(self):
-        """Runs the QubitSpectroscopy1D experiment and the analysis for it.
+        """
+        Runs the QubitSpectroscopy1D experiment and the analysis for it.
         The specified spectroscopy powers are used within the temporary_value
         context manager.
         """
@@ -157,7 +157,8 @@ class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
 
 
 class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
-    """Routine to find the ge transition frequency via qubit spectroscopy.
+    """
+    Routine to find the ge transition frequency via qubit spectroscopy.
     A series of qubit spectroscopies is performed. A Decision step decides
     whether a fit failed for some qubits and whether to rerun the spectroscopy
     for them.
@@ -249,23 +250,25 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     class Decision(IntermediateStep):
-        """Decision step that decides to add another qubit spectroscopy if
-            the Lorentzian fit of the previous spectroscopy was not successful.
-            The fit is considered not successful if the reduced chi-squared is
-            greater than the variance of the data minus the standard deviation
-            of the variance.
-            Additionally, it checks if the maximum number of iterations has been
-            reached.
+        """
+        Decision step that decides to add another qubit spectroscopy if
+        the Lorentzian fit of the previous spectroscopy was not successful.
+        The fit is considered not successful if the reduced chi-squared is
+        greater than the variance of the data minus the standard deviation
+        of the variance.
+        Additionally, it checks if the maximum number of iterations has been
+        reached.
         """
 
         def __init__(self, routine: AutomaticCalibrationRoutine, **kw):
-            """Initialize the Decision step.
+            """
+            Initialize the Decision step.
 
             Args:
                 routine (Step): AdaptiveQubitSpectroscopy routine.
 
-            Keyword Args:
-                kw: Arguments that will be passes to :obj:`IntermediateStep`
+            Kwargs:
+                Keyword arguments that will be passed to :obj:`IntermediateStep`
 
             Configuration parameters (coming from the configuration parameter
             dictionary):
@@ -291,8 +294,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
             super().__init__(routine=routine, **kw)
 
         def run(self):
-            """Executes the decision step.
-            """
+            """Executes the decision step."""
             routine: AdaptiveQubitSpectroscopy = self.routine
             qubits_to_rerun = []
             qubits_failed = []
@@ -459,7 +461,8 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 routine.index_spectroscopy += 1
 
     def create_routine_template(self):
-        """Creates the routine template for the AdaptiveQubitSpectroscopy
+        """
+        Creates the routine template for the AdaptiveQubitSpectroscopy
         routine.
         """
         super().create_routine_template()
@@ -477,7 +480,8 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
 
     def add_rerun_qubit_spectroscopy_step(self, index_spectroscopy,
                                           index_iteration, qubits):
-        """Adds a next QubitSpectroscopy1DStep followed by a Decision step
+        """
+        Adds a next QubitSpectroscopy1DStep followed by a Decision step
 
         Args:
             index_spectroscopy (int): Index of the spectroscopy whose fit

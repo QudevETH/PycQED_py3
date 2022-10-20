@@ -19,7 +19,8 @@ else:
 
 
 class SettingsDictionary(dict):
-    """This class represents the configuration parameters specified in default,
+    """
+    This class represents the configuration parameters specified in default,
     setup, and sample folder as a dictionary.
 
     The hierarchy (in descending significance) is
@@ -130,7 +131,8 @@ class SettingsDictionary(dict):
                 self.enable_use_database(db_client_config)
 
     def update_user_settings(self, settings_user):
-        """Updates the current configuration parameter dictionary with the
+        """
+        Updates the current configuration parameter dictionary with the
         provided user parameters.
 
         Args:
@@ -148,7 +150,8 @@ class SettingsDictionary(dict):
                                      leaf=True,
                                      associated_component_type_hint=None) -> \
             Tuple[Any, bool]:
-        """Looks for the requested parameter recursively in the configuration
+        """
+        Looks for the requested parameter recursively in the configuration
         parameter dictionary. It is used as a helper function for
         get_param_value, but the actual search in the nested dictionary is
         done here.
@@ -232,7 +235,8 @@ class SettingsDictionary(dict):
                         leaf=True,
                         associated_component_type_hint=None) -> Tuple[
             Any, bool]:
-        """Looks up the requested parameter in the configuration parameters.
+        """
+        Looks up the requested parameter in the configuration parameters.
         If the fetched value is a request to query the database, the queried
         value is returned.
 
@@ -286,7 +290,8 @@ class SettingsDictionary(dict):
         return val, success
 
     def get_qubit_groups(self, qubit, lookups) -> set:
-        """Gets the groups the specified qubit belongs to out of the
+        """
+        Gets the groups the specified qubit belongs to out of the
         configuration parameter dictionary.
 
         Args:
@@ -311,7 +316,8 @@ class SettingsDictionary(dict):
                                 settings_setup_folder: Union[Path, str] = None,
                                 settings_sample_folder: Union[Path, str] = None,
                                 settings_user: Dict[str, Any] = None):
-        """Loads the device settings from the folders storing Default, Setup and
+        """
+        Loads the device settings from the folders storing Default, Setup and
         Sample parameters and puts it into the configuration parameter
         dictionary as a nested dictionary. The folders should contain JSON
         files.
@@ -345,11 +351,9 @@ class SettingsDictionary(dict):
         if settings_sample_folder is None:
             log.warning("No settings_sample_folder specified.")
 
-        for settings_folder in [
-            settings_default_folder,
-            settings_setup_folder,
-            settings_sample_folder
-        ]:
+        for settings_folder in [settings_default_folder,
+                                settings_setup_folder,
+                                settings_sample_folder]:
             if settings_folder is not None:
                 for file in Path.iterdir(settings_folder):
                     with open(file) as f:
@@ -362,7 +366,8 @@ class SettingsDictionary(dict):
         self._postprocess_settings_from_file()
 
     def _postprocess_settings_from_file(self):
-        """Since JSON only supports strings as keys, postprocessing is applied.
+        """
+        Since JSON only supports strings as keys, postprocessing is applied.
         Therefore, it is also possible to use a string with a tuple inside as a
         key, which is converted to a tuple in the dictionary, e.g.
         "('SFHQA', 1)" is converted to ('SFHQA', 1).
@@ -374,7 +379,8 @@ class SettingsDictionary(dict):
                 self[eval(k)] = self.pop(k)
 
     def enable_use_database(self, db_client_config):
-        """Can be called to enable querying the database with configuration
+        """
+        Can be called to enable querying the database with configuration
         parameters. Either this function is called or the database client is
         already specified in the init of the dictionary.
 
@@ -387,7 +393,8 @@ class SettingsDictionary(dict):
         self.db_client = devicedb.Client(db_client_config)
 
     def copy(self, overwrite_dict=None):
-        """Creates a deepcopy of the current dictionary.
+        """
+        Creates a deepcopy of the current dictionary.
 
         Args:
             overwrite_dict (dict): When this is not None, the content of the
@@ -408,9 +415,13 @@ class SettingsDictionary(dict):
         return settings_copy
 
     def __deepcopy__(self, memo):
-        """Overloads the standard deepcopying function to enable
+        """
+        Overloads the standard deepcopying function to enable
         deepcopying the dictionary by disabling deepcopying of certain argument
         objects.
+
+        Args:
+            memo: See `deepcopy` documentation.
         """
         return self.__class__(
             {k: copy.deepcopy(v, memo) for k, v in self.items()},
@@ -419,7 +430,8 @@ class SettingsDictionary(dict):
 
 
 def update_nested_dictionary(d, u: Mapping) -> dict:
-    """Updates a nested dictionary. Each value of 'u' will update the
+    """
+    Updates a nested dictionary. Each value of 'u' will update the
     corresponding entry of 'd'. If an entry of 'u' is a dictionary itself,
     then the function is called recursively, and the subdictionary of 'd' will
     be the dictionary to be updated.

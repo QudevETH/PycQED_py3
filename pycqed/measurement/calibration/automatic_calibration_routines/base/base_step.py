@@ -10,7 +10,8 @@ from collections import OrderedDict
 
 
 class Step:
-    """A class to collect functionality used for each step in a routine.
+    """
+    A class to collect functionality used for each step in a routine.
     A step can be an AutomaticCalibrationRoutine, an IntermediateStep
     or a measurements. Measurements are wrapped with a wrapper class
     which inherits from this class to give access to its functions.
@@ -24,7 +25,8 @@ class Step:
                  qubits: Optional[List[QuDev_transmon]] = None,
                  settings_user: Optional[Dict[str, Any]] = None,
                  **kw):
-        """Initializes the Step class.
+        """
+        Initializes the Step class.
 
         Arguments:
             dev (Device): The device which is currently measured.
@@ -71,14 +73,16 @@ class Step:
         self.results: Optional[Dict[str, Dict[str, Any]]] = {}
 
     class NotFound:
-        """This class is used in get_param_value to identify the cases where
+        """
+        This class is used in get_param_value to identify the cases where
         a keyword could not be found in the configuration parameter dictionary.
         It is necessary to distinguish between the cases when None is explicitly
         specified for a keyword argument and when no keyword argument was found.
         """
 
         def __bool__(self):
-            """Return False by default for the truth value of an instance of
+            """
+            Return False by default for the truth value of an instance of
             NotFound.
             """
             return False
@@ -90,7 +94,8 @@ class Step:
                         default=None,
                         leaf=None,
                         associated_component_type_hint=None):
-        """Looks up the requested parameter in the own configuration parameter
+        """
+        Looks up the requested parameter in the own configuration parameter
         dictionary. If no value was found, the parent routine's function is
         called recursively up to the root routine.
 
@@ -188,7 +193,8 @@ class Step:
         return val if success else default
 
     def get_qubit_groups(self, qubit):
-        """Gets the groups the specified qubit belongs to out of the
+        """
+        Gets the groups the specified qubit belongs to out of the
         configuration parameter dictionary.
 
         Args:
@@ -206,15 +212,19 @@ class Step:
         return groups
 
     def run(self):
-        """Run the Step. To be implemented by subclasses."""
+        """
+        Run the Step. To be implemented by child classes."""
         pass
 
     def post_run(self):
-        """Do something after the run. Update results, for example."""
+        """
+        Execute after run. To be implemented by child classes.
+        Update results, for example."""
         pass
 
     def get_empty_device_properties_dict(self, step_type=None):
-        """Returns an empty dictionary of the following structure, for use with
+        """
+        Returns an empty dictionary of the following structure, for use with
         `get_device_property_values`
 
         Example:
@@ -238,7 +248,8 @@ class Step:
         }
 
     def get_device_property_values(self, **kwargs):
-        """Returns a dictionary of high-level property values from running this
+        """
+        Returns a dictionary of high-level property values from running this
         step. To be overridden by children classes.
 
         Here is an example of the output dictionary
@@ -273,7 +284,8 @@ class Step:
 
     @classmethod
     def gui_kwargs(cls, device):
-        """Returns the kwargs necessary to run a QuantumExperiment. Every
+        """
+        Returns the kwargs necessary to run a QuantumExperiment. Every
         QuantumExperiment should implement them. The keywords returned by
         this method will be included in the requested settings (see
         get_requested_settings) and eventually extracted from the configuration
@@ -301,7 +313,8 @@ class Step:
         }
 
     def get_requested_settings(self):
-        """Gets a set of keyword arguments which are needed for the
+        """
+        Gets a set of keyword arguments which are needed for the
         initialization of the current step. The keywords are retrieved via the
         gui_kwargs method that is implemented in each QuantumExperiment.
 
@@ -319,7 +332,8 @@ class Step:
         return requested_kwargs
 
     def parse_settings(self, requested_kwargs):
-        """Resolves the keyword arguments from get_requested_settings to calls
+        """
+        Resolves the keyword arguments from get_requested_settings to calls
         within the parameter dictionary.
 
         Args:
@@ -346,7 +360,8 @@ class Step:
 
     @property
     def highest_lookup(self):
-        """Returns the highest scope for this step which is not None
+        """
+        Returns the highest scope for this step which is not None
         in the order step_label, class name, General.
 
         Returns:
@@ -357,7 +372,8 @@ class Step:
 
     @property
     def highest_sublookup(self):
-        """Returns the highest subscope for this step which is not None.
+        """
+        Returns the highest subscope for this step which is not None.
 
         Returns:
             str: A string with the highest sublookup of this step which is not
@@ -369,7 +385,8 @@ class Step:
 
     @staticmethod
     def _get_first_not_none(lookup_list):
-        """Returns the first subscope in the lookup list that is not None.
+        """
+        Returns the first subscope in the lookup list that is not None.
 
         Args:
             lookup_list (list): List of scopes to look up.
@@ -396,7 +413,8 @@ class Step:
 
 
 class IntermediateStep(Step):
-    """Class used for defining intermediate steps between automatic calibration
+    """
+    Class used for defining intermediate steps between automatic calibration
     steps.
 
     NOTE: Currently, there is no difference between an IntermediateStep and a
@@ -409,7 +427,8 @@ class IntermediateStep(Step):
         super().__init__(**kw)
 
     def run(self):
-        """Intermediate processing step to be overridden by Children (which are
+        """
+        Intermediate processing step to be overridden by Children (which are
         routine specific).
         """
         pass

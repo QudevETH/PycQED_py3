@@ -26,14 +26,14 @@ log = logging.getLogger(ROUTINES)
 
 
 class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
-    """A wrapper class for the ReparkingRamsey experiment.
-    """
+    """A wrapper class for the ReparkingRamsey experiment."""
 
     def __init__(self, routine,
                  fluxlines_dict: Dict[str, Any],
                  qubits: List[QuDev_transmon] = None,
                  **kwargs):
-        """Initializes the ReparkingRamseyStep class, which also includes
+        """
+        Initializes the ReparkingRamseyStep class, which also includes
         initialization of the ReparkingRamsey experiment.
 
         Arguments:
@@ -66,7 +66,8 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
         qbcal.ReparkingRamsey.__init__(self, dev=self.dev, **settings)
 
     def parse_settings(self, requested_kwargs):
-        """Searches the keywords for the ReparkingRamsey experiment given in
+        """
+        Searches the keywords for the ReparkingRamsey experiment given in
         requested_kwargs in the configuration parameter dictionary.
 
         Args:
@@ -144,7 +145,8 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
         return kwargs_super
 
     def run(self):
-        """Runs the Ramsey experiment and the analysis for it.
+        """
+        Runs the Ramsey experiment and the analysis for it.
         """
         self.run_measurement()
         self.run_analysis()
@@ -182,7 +184,8 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
 
 
 class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
-    """Routine to find the sweet-spot of a qubit using Ramsey experiments at
+    """
+    Routine to find the sweet-spot of a qubit using Ramsey experiments at
     different voltages.
     A series of Ramsey experiments is performed. A Decision step decides
     whether the found sweet spot is outside the swept voltages range, and if so
@@ -265,9 +268,10 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     class Decision(IntermediateStep):
-        """Decision step that decides to add another reparking Ramsey step if
-            the reparking Ramsey experiment found a fit value for the sweet-spot
-            voltage that is outside the range of the swept voltages.
+        """
+        Decision step that decides to add another reparking Ramsey step if
+        the reparking Ramsey experiment found a fit value for the sweet-spot
+        voltage that is outside the range of the swept voltages.
         """
 
         def __init__(self, routine: AutomaticCalibrationRoutine, **kw):
@@ -276,15 +280,14 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
             Args:
                 routine (Step): AdaptiveReparkingRamsey routine.
 
-            Keyword Args:
-                kw: Arguments that will be passes to :obj:`IntermediateStep`
+            Kwargs:
+                Arguments that will be passes to :obj:`IntermediateStep`.
             """
             super().__init__(routine=routine, **kw)
             self.precision = 1e-4  # 0.1 mV. Used for comparing QDAC values.
 
         def run(self):
-            """Executes the decision step.
-            """
+            """Executes the decision step."""
             routine: AdaptiveReparkingRamsey = self.routine
             qubits_to_rerun = []
             qubits_failed = []
@@ -344,7 +347,8 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                     qubits=qubits_to_rerun)
 
     def create_routine_template(self):
-        """Creates the routine template for the AdaptiveReparkingRamsey
+        """
+        Creates the routine template for the AdaptiveReparkingRamsey
         routine.
         """
         super().create_routine_template()
@@ -363,7 +367,8 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
     def add_rerun_reparking_ramsey_step(self,
                                         index_iteration: int,
                                         qubits: List[QuDev_transmon]):
-        """Adds a next ReparkingRamseyStep followed by a Decision step
+        """
+        Adds a next ReparkingRamseyStep followed by a Decision step
 
         Args:
             index_iteration (int): Index of the iteration for the spectroscopy
