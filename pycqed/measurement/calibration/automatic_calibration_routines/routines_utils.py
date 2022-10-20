@@ -83,7 +83,7 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
     """
     qubit_parameters = qubit.fit_ge_freq_from_dc_offset()
     if "coupling" in qubit_parameters.keys():
-        if not qubit_parameters["coupling"] == 0:
+        if qubit_parameters["coupling"] != 0:
             return qubit_parameters["coupling"]
     else:
         assert all([uss_transmon_freq, uss_readout_freq,
