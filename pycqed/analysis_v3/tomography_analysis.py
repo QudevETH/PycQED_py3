@@ -221,12 +221,21 @@ def state_tomography_analysis(data_dict, keys_in,
                                         default_value=True, node_params=params)
     do_plotting = hlp_mod.pop_param('do_plotting', data_dict,
                                     default_value=True, node_params=params)
+    plot_prob_table = hlp_mod.pop_param('plot_prob_table', data_dict,
+                                        default_value=True, node_params=params)
+    plot_rho_target = hlp_mod.pop_param('plot_rho_target', data_dict,
+                                        default_value=True, node_params=params)
+    plot_pauli = hlp_mod.pop_param('plot_pauli', data_dict,
+                                   default_value=True, node_params=params)
     if prepare_plotting:
-        prepare_prob_table_plot(data_dict, do_preselection, **params)
+        if plot_prob_table:
+            prepare_prob_table_plot(data_dict, do_preselection, **params)
         for i, estimation_type in enumerate(estimation_types):
-            prepare_density_matrix_plot(data_dict, estimation_type,
-                                        plot_rho_target=(i == 0), **params)
-            prepare_pauli_basis_plot(data_dict, estimation_type, **params)
+            prepare_density_matrix_plot(
+                data_dict, estimation_type,
+                plot_rho_target=(i == 0) and plot_rho_target, **params)
+            if plot_pauli:
+                prepare_pauli_basis_plot(data_dict, estimation_type, **params)
     if do_plotting:
         getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
