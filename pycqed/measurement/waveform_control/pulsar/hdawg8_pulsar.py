@@ -573,7 +573,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                     f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
                     f'cache')
                 return
-            self.waveform_cache[wave_idx] = wave_hashes
         log.debug(
             f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 

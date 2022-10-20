@@ -1059,7 +1059,7 @@ class ZIGeneratorModule:
             run_compiler = True
         else:
             cached_lookup = self.waveform_cache.get(
-                f'{self._awg.name}_{self._awg_nr}_wave_idx_lookup', None)
+                f'wave_idx_lookup', None)
             try:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
                 run_compiler = False

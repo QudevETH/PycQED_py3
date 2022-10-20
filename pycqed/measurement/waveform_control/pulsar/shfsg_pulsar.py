@@ -530,7 +530,6 @@ class SHFGeneratorModule(ZIGeneratorModule):
                 log.debug(f'{self._awg.name} awgs{awg_nr}: '
                           f'{wave_idx} same as in cache')
                 return
-            self.waveform_cache[wave_idx] = wave_hashes
         log.debug(
             f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
