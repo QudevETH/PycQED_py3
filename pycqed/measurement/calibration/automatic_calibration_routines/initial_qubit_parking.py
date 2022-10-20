@@ -19,7 +19,8 @@ log = logging.getLogger(ROUTINES)
 
 
 class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
-    """Wrapper for FeedlineSpectroscopy experiment. Performs a 1D spectroscopy
+    """
+    Wrapper for FeedlineSpectroscopy experiment. Performs a 1D spectroscopy
     of the feedlines to which the given qubits belong to.
 
     Args:
@@ -57,7 +58,8 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
                                            **self.experiment_settings)
 
     def get_requested_settings(self):
-        """Add additional keywords and default values to be passed to the
+        """
+        Add additional keywords and default values to be passed to the
         FeedlineSpectroscopy class. These are the keywords that are going to be
         looked up in the configuration parameter dictionary.
 
@@ -123,8 +125,7 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         return kwargs
 
     def run(self):
-        """Runs the FeedlineSpectroscopy experiment and the analysis for it.
-        """
+        """Runs the FeedlineSpectroscopy experiment and the analysis for it."""
         # Set 'measure', 'analyze' and `update` of ResonatorSpectroscopy to True
         # in order to use its autorun() function
         self.experiment_settings['measure'] = True
@@ -135,7 +136,8 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
 
     def run_update(self, **kw):
-        """Updates the readout frequency of the qubits sent to the routine.
+        """
+        Updates the readout frequency of the qubits sent to the routine.
 
         This function overrides the function in the experiment
         :obj:`FeedlineSpectroscopy` which updates all the qubits of the
@@ -158,7 +160,8 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
 
 class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                                          Step):
-    """Wrapper for ResonatorSpectroscopyFluxSweep experiment. Performs a 2D
+    """
+    Wrapper for ResonatorSpectroscopyFluxSweep experiment. Performs a 2D
     resonator spectroscopy sweeping the bias voltage.
 
     Args:
@@ -295,7 +298,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
     def _get_two_dips_freqs(self, qubit: QuDev_transmon) -> \
             Tuple[float, float, Dict[str, float]]:
-        """Returns:
+        """
+        Returns:
             ro_freq (float): The designated frequency for the readout.
             mode2_freq (float): The other mode of the RO-Purcell system.
             feedline_results (Dict[str, float]): The full results dictionary
@@ -319,7 +323,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
     def get_adaptive_freq_range(self,
                                 freq_centers: Dict[str, float]) -> float:
-        """Calculates a reasonable freq_range such that two flux-oscillating
+        """
+        Calculates a reasonable freq_range such that two flux-oscillating
         dips will be contained in it, but not neighboring dips that might
         disturb the measurement.
 
@@ -364,7 +369,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
             return self.DEFAULT_FREQ_RANGE
 
     def run(self):
-        """Runs the ResonatorSpectroscopyFluxSweep experiment and the analysis
+        """
+        Runs the ResonatorSpectroscopyFluxSweep experiment and the analysis
         for it.
         """
         # Set 'measure' and 'analyze' of ResonatorSpectroscopyFluxSweep to True
@@ -376,17 +382,24 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         self.autorun(**self.experiment_settings)
 
     def post_run(self):
+        """
+        Updates the results dictionary of the routine with the analysis fit
+        results and updates the qubit instance with the estimated values of 'fr'
+        and 'coupling'.
+        """
         self.results: Dict[str, Dict[str, float]] = self.analysis.fit_res
         self.update_qubits_fr_and_coupling()
 
     def update_qubits_fr_and_coupling(self):
-        """Update the keys 'fr' and 'coupling' of the qubit Hamiltonian model.
+        """
+        Update the keys 'fr' and 'coupling' of the qubit Hamiltonian model.
 
         Update the `fit_ge_freq_from_dc_offset()` dictionary with an estimation
         from the step results.
         Note that this estimation uses the qubit
         frequencies at the sweet spots, which are estimated from the parameters
-        'E_c', 'Ej_max' and 'asymmetry' which might be only design values. """
+        'E_c', 'Ej_max' and 'asymmetry' which might be only design values.
+        """
 
         for qb in self.qubits:
             hamiltonian_fit_params = qb.fit_ge_freq_from_dc_offset()
@@ -463,7 +476,6 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
                                                 autorun=False)
         initial_qubit_parking.view()
         initial_qubit_parking.run()
-
     """
 
     def __init__(
@@ -483,9 +495,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """
-        Creates routine template.
-        """
+        """Creates routine template."""
         super().create_routine_template()
         # Loop in reverse order so that the correspondence between the index
         # of the loop and the index of the routine_template steps is preserved

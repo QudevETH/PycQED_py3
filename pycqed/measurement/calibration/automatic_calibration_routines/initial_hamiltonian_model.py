@@ -36,7 +36,8 @@ class QubitHamiltonianParameters:
 
 
 class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
-    r"""This routine populates a first guess for the Hamiltonian model of a
+    r"""
+    This routine populates a first guess for the Hamiltonian model of a
     transmon.
 
     It is meant to run after the `InitialQubitParking` routine and before the
@@ -87,8 +88,9 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
             fluxlines_dict:  Dict with the qubit names as keys and a
                 `qcodes.Parameter` that sets the flux that is applied on the
                 corresponding qubit.
-            **kw: keyword arguments that will be passed to the `__init__()` and
-                `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
+        Keyword args:
+            keyword arguments that will be passed to the `__init__()` and
+            `final_init()` functions of :obj:`AutomaticCalibrationRoutine`.
 
         Configuration parameters:
             park_qubit_after_routine: If True the qubit flux and
@@ -124,6 +126,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
 
     @staticmethod
     def extract_qubit_E_c(qubit: QuDev_transmon) -> float:
+        """Extracts the charging energy of a qubit."""
         # TODO Implement this method to give a meaningful value! (from the
         #  design DB?)
         log.warning("Implement the `extract_qubit_E_c()` method to give a"
@@ -133,9 +136,11 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
     @staticmethod
     def get_park_and_spectroscopy_step_label(qubit: QuDev_transmon,
                                              flux: float):
+        """Returns a step label for a park and qubit spectroscopy step."""
         return f'park_and_qubit_{qubit.name}_spectroscopy_flux_{float(flux)}'
 
     def create_initial_routine(self, load_parameters=True):
+        """Create the initial routine."""
         super().create_routine_template()  # Create empty routine template
         for qubit in self.qubits:
             designated_flux = routines_utils.flux_to_float(
@@ -161,15 +166,15 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                               step_settings=step_settings)
 
     class UpdateHamiltonianModel(IntermediateStep):
-        """Updates the parameters of the initial Hamiltonian with the values
-         extracted from the last step.
+        """
+        Updates the parameters of the initial Hamiltonian with the values
+        extracted from the last step.
         """
 
         def __init__(self,
                      flux: float,
                      **kw):
             """
-
             Args:
                 flux: The flux at which the qubit was measured, in Phi0 unit.
 
@@ -182,6 +187,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
             self.flux = flux
 
         def run(self):
+            """Executes the step."""
             for qubit in self.qubits:
                 qubit_parameters: QubitHamiltonianParameters = \
                     self.routine.results[qubit.name]
@@ -204,6 +210,7 @@ class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
                     qubit.fit_ge_freq_from_dc_offset(asdict(qubit_parameters))
 
     def post_run(self):
+        """If requested, park the qubits at their designated sweet-spots."""
         for qubit in self.qubits:
             park_qubit_after_routine = self.get_param_value(
                 "park_qubit_after_routine", qubit=qubit.name)
