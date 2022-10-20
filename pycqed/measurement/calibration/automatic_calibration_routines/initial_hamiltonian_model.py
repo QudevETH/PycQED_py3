@@ -1,7 +1,7 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, AutomaticCalibrationRoutine)
-from pycqed.measurement.calibration.automatic_calibration_routines import \
-    routines_utils
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    routines_utils, ROUTINES)
 
 from .park_and_qubit_spectroscopy import (ParkAndQubitSpectroscopy,
                                           ParkAndQubitSpectroscopyResults)
@@ -14,7 +14,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass, asdict
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 @dataclass

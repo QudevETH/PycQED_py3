@@ -3,13 +3,13 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     IntermediateStep
 from pycqed.measurement.calibration.automatic_calibration_routines import \
-    routines_utils
+    routines_utils, ROUTINES
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from typing import Literal, List
 import logging
 
-logger = logging.getLogger('Routines')
+logger = logging.getLogger(ROUTINES)
 
 
 class UpdateFrequency(IntermediateStep):

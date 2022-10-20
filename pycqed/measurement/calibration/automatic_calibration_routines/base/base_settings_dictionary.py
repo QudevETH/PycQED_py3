@@ -6,8 +6,7 @@ import re
 from collections.abc import Mapping
 from typing import Union, Dict, Any, Tuple
 
-log = logging.getLogger('Routines')
-# log.setLevel('INFO')
+log = logging.getLogger(__name__)
 
 try:
     from pycqed.utilities import devicedb

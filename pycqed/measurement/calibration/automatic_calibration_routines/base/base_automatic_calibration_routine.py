@@ -16,7 +16,8 @@ import logging
 import pprint
 import inspect
 
-log = logging.getLogger('Routines')
+ROUTINES = 'Routines'
+log = logging.getLogger(ROUTINES)
 log.setLevel('INFO')
 
 try:

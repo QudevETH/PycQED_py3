@@ -4,8 +4,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     AutomaticCalibrationRoutine
 )
 
-from pycqed.measurement.calibration.automatic_calibration_routines import \
-    routines_utils
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    routines_utils, ROUTINES)
 from pycqed.measurement.spectroscopy import spectroscopy as spec
 from pycqed.instrument_drivers.meta_instrument.device import Device
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -15,7 +15,7 @@ import numpy as np
 import logging
 from typing import Tuple, Dict, Any
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):

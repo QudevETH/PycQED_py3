@@ -1,11 +1,13 @@
 import numpy as np
 
+from pycqed.measurement.calibration.automatic_calibration_routines import \
+    ROUTINES
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from typing import Literal, Dict, Any, Tuple, Union, Optional
 import logging
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[

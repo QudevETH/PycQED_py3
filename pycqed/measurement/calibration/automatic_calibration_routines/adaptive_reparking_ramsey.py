@@ -15,14 +15,14 @@ from pycqed.measurement.calibration import single_qubit_gates as qbcal
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from pycqed.instrument_drivers.meta_instrument.device import Device
-from pycqed.measurement.calibration.automatic_calibration_routines import \
-    routines_utils
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    routines_utils, ROUTINES)
 
 import numpy as np
 import logging
 from typing import Dict, List, Any
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):

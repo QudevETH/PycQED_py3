@@ -5,7 +5,7 @@ from pycqed.measurement.calibration.automatic_calibration_routines import \
 from pycqed.measurement.calibration.automatic_calibration_routines.base.\
     base_automatic_calibration_routine import _device_db_client_module_missing
 from pycqed.measurement.calibration.automatic_calibration_routines \
-    import routines_utils
+    import routines_utils, ROUTINES
 
 if not _device_db_client_module_missing:
     pass
@@ -18,7 +18,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 @dataclass

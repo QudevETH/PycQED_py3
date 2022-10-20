@@ -1,5 +1,6 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
-    IntermediateStep, AutomaticCalibrationRoutine, update_nested_dictionary)
+    IntermediateStep, AutomaticCalibrationRoutine, update_nested_dictionary,
+    ROUTINES)
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
     base_automatic_calibration_routine import (_device_db_client_module_missing,
                                                keyword_subset_for_function)
@@ -24,7 +25,7 @@ from typing import Dict, Tuple
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 class HamiltonianFitting(AutomaticCalibrationRoutine,

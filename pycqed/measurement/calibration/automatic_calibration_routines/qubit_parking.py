@@ -9,8 +9,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines import (
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
-from pycqed.measurement.calibration.automatic_calibration_routines.\
-    single_qubit_routines import FindFrequency
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    FindFrequency, ROUTINES)
 
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 
@@ -22,7 +22,7 @@ from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
 from pycqed.instrument_drivers.meta_instrument.device import Device
 from dataclasses import dataclass
 
-log = logging.getLogger('Routines')
+log = logging.getLogger(ROUTINES)
 
 
 @dataclass
