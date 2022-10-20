@@ -285,9 +285,9 @@ class SettingsDictionary(dict):
                 settings.
             settings_sample_folder (string): Full path to the folder for sample
                 settings.
-            settings_default_folder (string): User settings as a dictionary.
+            settings_user (dict): User settings as a dictionary.
         """
-        if settings_default_folder == None:
+        if settings_default_folder is None:
             dirname = os.path.dirname(os.path.abspath(__file__))
             settings_default_folder = os.path.join(
                 dirname, "autocalib_default_settings")
@@ -308,7 +308,7 @@ class SettingsDictionary(dict):
                             self, {os.path.splitext(file)[0]: json.load(f)})
 
         if settings_user is not None:
-            self.update_user_settings(settings_user, reload_database=False)
+            self.update_user_settings(settings_user)
 
         self._postprocess_settings_from_file()
 

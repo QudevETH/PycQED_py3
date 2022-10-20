@@ -832,6 +832,7 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
         settings['kwargs']['freq_stop'] = (float, 7.5e9)
         settings['kwargs']['pts'] = (int, 1000)
         settings['kwargs']['feedlines'] = (list, [])
+        settings['kwargs']['analysis_kwargs'] = (dict, {})
         return settings
 
     def parse_settings(self, requested_kwargs):
@@ -977,7 +978,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
             volt_range = self.get_param_value('volt_range', qubit=qb.name)
             volt_pts = self.get_param_value('volt_pts', qubit=qb.name)
             volt_center = self.get_param_value('volt_center', qubit=qb.name)
-            if isinstance(freq_center, str):
+            if isinstance(volt_center, str):
                 volt_center = eval(
                     volt_center.format(current=current_voltage))
             volts = np.linspace(volt_center - volt_range / 2,
@@ -1312,6 +1313,9 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
                 running the Decision step. This is necessary because it might
                 take some time before the analysis results are available.
         """
+        if not isinstance(qubits, list):  # If, e.g., a single qubit was passed
+            qubits = [qubits]
+
         super().__init__(
             dev=dev,
             qubits=qubits,
