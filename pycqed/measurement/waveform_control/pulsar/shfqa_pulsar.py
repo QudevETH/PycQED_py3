@@ -118,7 +118,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         grp_has_waveforms = {}
         for i, qachannel in enumerate(self.awg.qachannels):
-            self.awg._awg_program[i] = None  # do not start generator
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
