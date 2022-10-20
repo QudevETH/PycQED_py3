@@ -174,7 +174,11 @@ def state_tomography_analysis(data_dict, keys_in,
     # get measurement_ops and cov_matrix_meas_obs
     measurement_ops = hlp_mod.get_param('measurement_ops', data_dict, **params)
     correct_readout = hlp_mod.get_param('correct_readout', data_dict, **params)
-    if measurement_ops is None:
+    add_param_method = hlp_mod.get_param('add_param_method', data_dict,
+                                         default_value='replace', **params)
+    if measurement_ops is None or add_param_method == 'replace':
+        # if add_param_method == 'replace', we want to overwrite the found
+        # measurement_ops
         if cp is not None and (correct_readout or correct_readout is None):
             dat_proc_mod.calculate_meas_ops_and_covariations_cal_points(
                 data_dict, keys_in, n_readouts=n_readouts,
