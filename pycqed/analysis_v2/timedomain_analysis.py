@@ -2384,7 +2384,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': linestyle,
-                'do_legend': do_legend_data,
+                'do_legend': do_legend_data and len(data_label),
                 'legend_bbox_to_anchor': (1, 0.5),
                 'legend_pos': 'center left'}
 

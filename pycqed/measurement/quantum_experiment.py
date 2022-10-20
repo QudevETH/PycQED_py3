@@ -1,5 +1,6 @@
 import traceback
 
+import time
 import numpy as np
 from pycqed.analysis_v3 import helper_functions
 
@@ -576,7 +577,23 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             sweep_func_1st_dim = self.sweep_functions[0](
                 sequence=self.sequences[0], upload=self.upload,
                 parameter_name=sweep_param_name, unit=unit)
+        elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunction):
+            sweep_func_1st_dim = self.sweep_functions[0]
+            sweep_func_1st_dim.sequence = self.sequences[0]
         else:
+            # Check whether it is a nested sweep function whose first
+            # sweep function is a SegmentHardSweep class as placeholder.
+            swfs = getattr(self.sweep_functions[0], 'sweep_functions',
+                            [None])
+            if (len(swfs) != 0 and swfs[0] == awg_swf.SegmentHardSweep):
+                # Replace the SegmentHardSweep placeholder by a properly
+                # configured instance of SegmentHardSweep.
+                if len(swfs) > 1:
+                    # make sure that units are compatible
+                    unit = getattr(swfs[1], 'unit', unit)
+                swfs[0] = awg_swf.SegmentHardSweep(
+                    sequence=self.sequences[0], upload=self.upload,
+                    parameter_name=sweep_param_name, unit=unit)
             # In case of an unknown sweep function type, it is assumed
             # that self.sweep_functions[0] has already been initialized
             # with all required parameters and can be directly passed to
@@ -586,6 +603,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.MC.set_sweep_function(sweep_func_1st_dim)
         self.MC.set_sweep_points(self.mc_points[0])
 
+        swf_prep_pulsar = None
         # set second dimension sweep function
         if len(self.mc_points[1]) > 0: # second dimension exists
             try:
@@ -595,22 +613,30 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             except TypeError:
                 sweep_param_name, unit = "None", ""
             if self.sweep_functions[1] == awg_swf.SegmentSoftSweep:
-                sweep_func_2nd_dim = self.sweep_functions[1](
-                    sweep_func_1st_dim, self.sequences, sweep_param_name, unit)
+                sweep_func_2nd_dim = awg_swf.SegmentSoftSweep(
+                    self.sequences, sweep_param_name, unit)
+                # Indicate that df.prepare_pulsar needs to be configured as
+                # an upload_finished_callback for this sweep function (to
+                # let the detector function restart pulsar if needed).
+                swf_prep_pulsar = sweep_func_2nd_dim
             else:
                 # Check whether it is a nested sweep function whose first
                 # sweep function is a SegmentSoftSweep class as placeholder.
                 swfs = getattr(self.sweep_functions[1], 'sweep_functions',
                                [None])
-                if (swfs[0] == awg_swf.SegmentSoftSweep):
+                if (len(swfs) != 0 and swfs[0] == awg_swf.SegmentSoftSweep):
                     # Replace the SegmentSoftSweep placeholder by a properly
                     # configured instance of SegmentSoftSweep.
                     if len(swfs) > 1:
                         # make sure that units are compatible
                         unit = getattr(swfs[1], 'unit', unit)
                     swfs[0] = awg_swf.SegmentSoftSweep(
-                        sweep_func_1st_dim, self.sequences,
+                        self.sequences,
                         sweep_param_name, unit)
+                    # Indicate that df.prepare_pulsar needs to be configured as
+                    # an upload_finished_callback for this sweep function (to
+                    # let the detector function restart pulsar if needed).
+                    swf_prep_pulsar = swfs[0]
                 # In case of an unknown sweep function type, it is assumed
                 # that self.sweep_functions[1] has already been initialized
                 # with all required parameters and can be directly passed to
@@ -657,6 +683,21 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
 
+        # Below, start_pulsar is set to False since pulsar usually gets
+        # started by the detector function (either via df.AWG or via
+        # df.prepare_and_finish_pulsar).
+        if sweep_func_1st_dim.configure_upload(start_pulsar=False):
+            # sweep_func_1st_dim takes care of first upload
+            pass
+        elif len(self.mc_points[1]) > 0 \
+                and sweep_func_2nd_dim.configure_upload(start_pulsar=False):
+            # sweep_func_2nd_dim takes care of first upload
+            pass
+        else:
+            self._upload_first_sequence()
+            # separate method so that children can override
+            # see docstring for default behavior
+
         # check whether there is at least one measure object
         if len(self.meas_objs) == 0:
             raise ValueError('No measure objects provided. Cannot '
@@ -672,6 +713,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.df_kwargs['single_int_avg'] = False
         self.df = mqm.get_multiplexed_readout_detector_functions(
             self.df_name, self.meas_objs, **self.df_kwargs)
+        # Set an upload_finished_callback if the above logic determined that
+        # this is needed (i.e., for SegmentSoftSweep).
+        if swf_prep_pulsar is not None:
+            swf_prep_pulsar.upload_finished_callback = self.df.prepare_pulsar
         self.MC.set_detector_function(self.df)
         if self.dev is not None:
             meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
@@ -743,6 +788,15 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     #             raise e
     #
     #     self.__dict__[name] = value
+
+    def _upload_first_sequence(self):
+        if self.upload:
+            if hasattr(self, 'sequences') and self.sequences is not None \
+                    and len(self.sequences) > 0:
+                self.sequences[0].upload()
+            else:
+                raise ValueError(f'QuantumExperiment needs to have attribute '
+                                 f'self.sequences not None and not empty.')
 
     def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():

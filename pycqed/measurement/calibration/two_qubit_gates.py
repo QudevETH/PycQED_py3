@@ -165,20 +165,26 @@ class MultiTaskingExperiment(QuantumExperiment):
         })
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
+
+        def replace_qc_params(obj):
+            obj = copy(obj)
+            if isinstance(obj, list):
+                ind = range(len(obj))
+            elif isinstance(obj, dict):
+                ind = obj.keys()
+            for i in ind:
+                if isinstance(obj[i], (dict, list)):
+                    obj[i] = replace_qc_params(obj[i])
+                elif isinstance(obj[i], qcodes.Parameter):
+                    obj[i] = repr(obj[i])
+            return(obj)
+
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
-            tl = [copy(t) for t in self.preprocessed_task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.preprocessed_task_list)
             self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
-            tl = [copy(t) for t in self.task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.task_list)
             self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
@@ -437,9 +443,19 @@ class MultiTaskingExperiment(QuantumExperiment):
                            if f'RO {m}' not in op_codes
                            and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
-        return self.sweep_n_dim(self.sweep_points,
+        return self.sweep_n_dim(self.get_sweep_points_for_sweep_n_dim(),
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points, **kw)
+
+    def get_sweep_points_for_sweep_n_dim(self):
+        """Return the sweep_points list that is passed to sweep_n_dim.
+
+        This method can be implemented by child classes to modify which sweep
+        points are used to generate segments and sequences, e.g. only one RO
+        segment is needed in a feedline spectroscopy and not one per fequency
+        sweep point.
+        """
+        return self.sweep_points
 
     @staticmethod
     def find_qubits_in_tasks(qubits, task_list, search_in_operations=True):

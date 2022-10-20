@@ -327,7 +327,8 @@ class AcquisitionDevice():
         """
         return data
 
-    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+    def get_lo_sweep_function(self, acq_unit, ro_mod_freq,
+                              get_closest_lo_freq=(lambda x: x)):
         """Return a sweep function for sweeping the internal LO
 
         Needs to be implemented in the child class for acquisition devices
@@ -344,6 +345,10 @@ class AcquisitionDevice():
                 sweep of LO and IF in a way that the IF is as close as
                 possible to the provided value, while accounting for
                 hardware limitations of the internal LO.
+            get_closest_lo_freq (function): a function that takes an LO
+                frequency as argument and returns the closest allowed LO
+                frequency. This can be used to provide limitations imposed
+                by higher-layer settings to the driver.
 
         Returns:
             A sweep function object for the frequency sweep.

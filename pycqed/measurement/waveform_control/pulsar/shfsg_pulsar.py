@@ -144,7 +144,7 @@ class SHFGeneratorModulePulsar(PulsarAWGInterface, ZIPulsarMixin,
             new_center_freq = self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
             if np.abs(new_center_freq - value) > 1:
-                log.warning(f'{self.name}: center frequency {value/1e6:.6f} '
+                log.warning(f'{self.awg.name}: center freq. {value/1e6:.6f} '
                             f'MHz not supported. Setting center frequency to '
                             f'{new_center_freq/1e6:.6f} MHz. This does NOT '
                             f'automatically set the IF!')
