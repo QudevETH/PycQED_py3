@@ -22,31 +22,33 @@ class FeedlineSpectroscopyStep(spec.FeedlineSpectroscopy, Step):
     """
     Wrapper for FeedlineSpectroscopy experiment. Performs a 1D spectroscopy
     of the feedlines to which the given qubits belong to.
-
-    Args:
-        routine (Step): The parent routine
-
-    Keyword Arguments (for the Step constructor):
-        step_label (str): A unique label for this step to be used in the
-            configuration parameters files.
-        settings (:obj:`SettingsDictionary`): The configuration parameters
-            passed down from its parent. if None, the dictionary is taken from
-            the Device object.
-        qubits (list): A list with the Qubit objects which should be part of
-            the step.
-        settings_user (dict): A dictionary from the user to update the
-            configuration parameters with.
-
-    Configuration parameters (coming from the configuration parameter dictionary):
-        freq_start (float): Starting frequency for the frequency sweep.
-        freq_stop (float): Stopping frequency for the frequency sweep.
-        pts (int): Number of points for the sweep range.
-        feedlines (list[str]): list of qubit groups that will be used as
-            feedlines. The feedlines to which the given qubits belong will be
-            measured.
     """
 
     def __init__(self, routine, **kwargs):
+        """
+        Args:
+            routine (Step): The parent routine
+
+        Keyword args (for the :obj:`Step` constructor):
+            step_label (str): A unique label for this step to be used in the
+                configuration parameters files.
+            settings (:obj:`SettingsDictionary`): The configuration parameters
+                passed down from its parent. if None, the dictionary is taken
+                from the Device object.
+            qubits (list): A list with the Qubit objects which should be part of
+                the step.
+            settings_user (dict): A dictionary from the user to update the
+                configuration parameters with.
+
+        Configuration parameters (coming from the configuration parameter
+         dictionary):
+            freq_start (float): Starting frequency for the frequency sweep.
+            freq_stop (float): Stopping frequency for the frequency sweep.
+            pts (int): Number of points for the sweep range.
+            feedlines (list[str]): list of qubit groups that will be used as
+                feedlines. The feedlines to which the given qubits belong
+                will be measured.
+        """
         self.kw = kwargs
 
         Step.__init__(self, routine=routine, **kwargs)
@@ -163,43 +165,55 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
     """
     Wrapper for ResonatorSpectroscopyFluxSweep experiment. Performs a 2D
     resonator spectroscopy sweeping the bias voltage.
-
-    Args:
-        routine (Step): The parent routine
-
-    Keyword Arguments (for the Step constructor):
-        step_label (str): A unique label for this step to be used in the
-            configuration parameters files.
-        settings (SettingsDictionary obj): The configuration parameters passed
-            down from its parent. if None, the dictionary is taken from the
-            Device object.
-        qubits (list): A list with the Qubit objects which should be part of
-            the step.
-        settings_user (dict): A dictionary from the user to update the
-            configuration parameters with.
-
-    Configuration parameters (coming from the configuration parameter dictionary):
-        freq_range (float): Range of the frequency sweep points. The center of
-            the sweep points is the RO frequency of the qubit. It is possible to
-            specify "{adaptive}" to give a smart estimation of the good range.
-        freq_pts (int): Number of points for the frequency sweep.
-        freq_center (float): Center of the frequency sweep points. The sweep
-            points will extend from freq_center - freq_range/2 to
-            freq_center + freq_range/2. It is possible to specify "{current}" to
-            use the current RO frequency as the center value.
-        volt_range (float): Range of the bias voltage sweep points. The center
-            of the sweep points is 0 V.
-        volt_pts (int): Number of points for the bias voltage sweep.
-        volt_center (float): Center of the voltage sweep points. The sweep
-            points will extend from volt_center - volt_range/2 to
-            volt_center + volt_range/2. It is possible to specify "{current}" to
-            use the current voltage bias as the center value.
-        expected_dips_width (float): Expected width of the dips (in Hz). This
-            value is used for the calculation of prominence (for more information
-            see analysis_v2.spectroscopy_analysis.ResonatorSpectroscopy1DAnalysis).
     """
 
     def __init__(self, routine, **kwargs):
+        """
+        Args:
+            routine (Step): The parent routine
+
+        Keyword args (for the :obj:`Step` constructor):
+            step_label (str): A unique label for this step to be used in the
+                configuration parameters files.
+            settings (SettingsDictionary obj): The configuration parameters
+                passed down from its parent. if None, the dictionary is taken
+                from the Device object.
+            qubits (list): A list with the Qubit objects which should be part of
+                the step.
+            settings_user (dict): A dictionary from the user to update the
+                configuration parameters with.
+
+        Configuration parameters (coming from the configuration parameter
+         dictionary):
+            freq_range (float): Range of the frequency sweep points. The center
+                of the sweep points is the RO frequency of the qubit. It is
+                possible to specify "{adaptive}" to give a smart estimation of
+                the good range.
+            freq_pts (int): Number of points for the frequency sweep.
+            freq_center (float): Center of the frequency sweep points. The sweep
+                points will extend from freq_center - freq_range/2 to
+                freq_center + freq_range/2. It is possible to specify
+                "{current}" to use the current RO frequency as the center value.
+            volt_range (float): Range of the bias voltage sweep points. The
+                center of the sweep points is 0 V.
+            volt_pts (int): Number of points for the bias voltage sweep.
+            volt_center (float): Center of the voltage sweep points. The sweep
+                points will extend from volt_center - volt_range/2 to
+                volt_center + volt_range/2. It is possible to specify
+                "{current}" to use the current voltage bias as the center value.
+            expected_dips_width (float): Expected width of the dips (in Hz).
+                This value is used for the calculation of prominence (for more
+                information see analysis_v2.spectroscopy_analysis.ResonatorSpectroscopy1DAnalysis).
+                volt_pts (int): Number of points for the bias voltage sweep.
+                volt_center (float): Center of the voltage sweep points. The
+                    sweep points will extend from volt_center - volt_range/2 to
+                    volt_center + volt_range/2. It is possible to specify
+                    "{current}" to use the current voltage bias as the center
+                    value.
+                expected_dips_width (float): Expected width of the dips (in Hz).
+                    This value is used for the calculation of prominence (for
+                    more information see analysis_v2.spectroscopy_analysis.ResonatorSpectroscopy1DAnalysis).
+        """
         self.kw = kwargs
 
         Step.__init__(self, routine=routine, **kwargs)
@@ -299,11 +313,18 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
     def _get_two_dips_freqs(self, qubit: QuDev_transmon) -> \
             Tuple[float, float, Dict[str, float]]:
         """
+        Get the values of the ro_freq, mode2_freq and the entire
+        feedline_results dictionary associated with a specific qubit.
+
+        Args:
+            qubit: The qubit instance.
+
         Returns:
             ro_freq (float): The designated frequency for the readout.
             mode2_freq (float): The other mode of the RO-Purcell system.
             feedline_results (Dict[str, float]): The full results dictionary
-                of the feedline of the qubit."""
+                of the feedline of the qubit.
+        """
         fit_res = self.routine.routine_steps[-1].results
         for feedline_results in fit_res.values():
             for k in feedline_results.keys():
@@ -314,7 +335,12 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                     return ro_freq, mode2_freq, feedline_results
 
     def get_freq_between_dips(self, qubit: QuDev_transmon) -> float:
-        """Find the frequency between the RO-Purcell dips."""
+        """
+        Find the frequency between the RO-Purcell dips.
+
+        Args:
+            qubit: The qubit instance.
+        """
         try:
             ro_freq, mode2_freq, _ = self._get_two_dips_freqs(qubit)
             return np.mean([ro_freq, mode2_freq])
@@ -478,12 +504,10 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         initial_qubit_parking.run()
     """
 
-    def __init__(
-            self,
-            dev: Device,
-            fluxlines_dict: Dict[str, Any],
-            **kw,
-    ):
+    def __init__(self,
+                 dev: Device,
+                 fluxlines_dict: Dict[str, Any],
+                 **kw):
         # FIXME: fluxlines_dict has to be passed as an argument because the
         #  fluxlines are not available directly from the qubit objects.
         self.fluxlines_dict = fluxlines_dict
