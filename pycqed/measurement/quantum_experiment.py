@@ -48,10 +48,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  plot_sequence=False, filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None, mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
-                                                                     awg_swf.SegmentSoftSweep),
+                                                  awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda: True, **kw):
+                 callback_condition=lambda : True, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -154,7 +154,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                       'implemented yet. Either dev or qubits'
                                       'or operation_dict has to be provided.')
             # planned future behavior (but has to be tested in all aspects):
-            # if no qubits/device/operation_dict are provided, use empty
+            # if no qubits/devive/operation_dict are provided, use empty
             # list to skip iterations over qubit lists
             # qubits = []
         super().__init__(dev=dev, qubits=qubits, operation_dict=operation_dict,
@@ -936,51 +936,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     @classmethod
     def gui_kwargs(cls, device):
-        """
-        Determines which options of a quantum experiment can be configured
-        in the QuantumExperimentGUI. Returns a dictionary with keys
-        'kwargs', 'task_list_fields' and 'sweeping_parameters', where the
-        corresponding values are themselves ordered dictionaries.
-
-        The 'kwargs', 'task_list_fields' and 'sweeping_parameters' ordered
-        dictionaries can be extended in the subclasses of QuantumExperiment.
-        The keys of the ordered dictionaries should indicate, in which class
-        the configuration options were added to the corresponding ordered
-        dictionary. The values of the ordered dictionaries are regular
-        dictionaries and contain the name, type and default value of the
-        configuration options. Only the configuration options that
-        are added to these dictionaries are available in the
-        QuantumExperimentGUI.
-
-        The 'kwargs' ordered dict contains the keyword arguments to
-        configure/instantiate QuantumExperiment objects. Quantum experiments
-        of type MultiTaskingExperiment can be configured by specifying a
-        task_list. The 'task_list_fields' ordered dict contains the keyword
-        arguments that can be used to configure task lists in the GUI. Finally,
-        the 'sweeping_parameters' ordered dict contains the sweep parameters
-        that can be selected in the QuantumExperimentGUI (e.g. pulse
-        amplitude in the case of a Rabi experiment).
-
-        For the lowest level dict, the keys correspond to the keyword
-        argument names of the configuration options, while the values are
-        tuples. The first entry of a tuple indicates the field type in
-        which the configuration option can be set (e.g. if the first entry
-        is bool, the GUI will provide a checkbox to set the value of the
-        configuration option). See the docstring of the
-        create_field_from_field_information method of the
-        QuantumExperimentGUI class to see, which value corresponds to what
-        field type. The second entry specifies the default value of the field,
-        i.e. the value that is initially displayed in the field. If None,
-        no value is displayed by default.
-
-        Args:
-            device (Device): Device object containing information about the
-                currently installed superconducting device.
-
-        Returns:
-            Dictionary containing the configuration options available in
-                the QuantumExperimentGUI.
-        """
         two_qb_gates = device.two_qb_gates()
         return {
             'kwargs': odict({
