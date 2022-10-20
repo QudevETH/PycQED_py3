@@ -221,9 +221,8 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
                         AdaptiveQubitSpectroscopy.__name__)
                 self.routine.extend_step_tmp_vals_at_index(tmp_vals=ro_tmp_vals,
                                                            index=index)
-                if self.get_param_value("verbose"):
-                    log.info(f"Setting {qb.name} voltage bias to {voltage:.6f} "
-                             f"V. Corresponding flux: {flux} Phi0")
+                log.info(f"Setting {qb.name} voltage bias to {voltage:.6f} V. "
+                         f"Corresponding flux: {flux} Phi0")
 
                 # Set the voltage on the corresponding flux line
                 self.routine.fluxlines_dict[qb.name](voltage)
