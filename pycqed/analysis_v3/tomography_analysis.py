@@ -615,7 +615,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
 
 
 def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
-                                plot_rho_target=True, leakage=None, **params):
+                                plot_rho_target=True, **params):
     """
     Prepares plot of the density matrix estimated with method estimation_type.
     :param data_dict: OrderedDict containing data to be plotted and where
@@ -624,8 +624,6 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
         estimate the density matrix. Assumes estimation_type.rho exists in
         data_dict.
     :param plot_rho_target: whether to prepare a separate figure for rho_target
-    :param leakage: dict of leakages as returned by
-        data_processing.py/extract_leakage_classified_shots
     :param params: keyword arguments:
         Expects to find either in data_dict or in params:
             - meas_obj_names: list of measurement object names
