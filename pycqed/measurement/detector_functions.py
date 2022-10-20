@@ -643,6 +643,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
     def __init__(self, acq_dev=None, detectors=None,
                  prepare_and_finish_pulsar=False,
+                 channels=(),
                  **kw):
         """
         Init of the PollDetector base class.
@@ -683,6 +684,15 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self.det_from_acq_dev = {k.name: v for k, v in zip(self.acq_devs,
                                                            self.detectors)}
         self.progress_scaling = None
+        self.meas_obj_channel_map = {}
+        if isinstance(channels, dict):
+            self.channels = []
+            for mobj, chs in channels.items():
+                self.meas_obj_channel_map[mobj] = chs
+                self.channels += deepcopy(chs)
+        else:
+            self.channels = deepcopy(channels)
+        self.value_names = []
 
     def prepare(self, sweep_points=None):
         self.prepare_pulsar()
@@ -846,6 +856,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
         if hasattr(self, 'acq_dev'):
             self.acq_dev.acquisition_finalize()
+
+    def get_meas_obj_value_names_map(self):
+        # traceback.print_stack(limit=5)
+        ch_vn_map = {ch: vn for ch, vn in zip(self.channels, self.value_names)}
+        return {mobj: [ch_vn_map[ch] for ch in chs]
+                for mobj, chs in self.meas_obj_channel_map.items()}
 
 
 class MultiPollDetector(PollDetector):
@@ -1114,6 +1130,17 @@ class MultiPollDetector(PollDetector):
             labels += d.live_plot_labels
         return labels
 
+    def get_meas_obj_value_names_map(self):
+        movnm = {}
+        for d in self.detectors:
+            d_movnm = d.get_meas_obj_value_names_map()
+            for k, vn in d_movnm.items():
+                # this is to be compatible with how self.value_names is set
+                # in the init
+                d_movnm[k] = [f'{ch} {d.acq_dev.name}' for ch in vn]
+            movnm.update(d_movnm)
+        return movnm
+
 
 class AveragingPollDetector(PollDetector):
 
@@ -1140,8 +1167,7 @@ class AveragingPollDetector(PollDetector):
         Keyword args: passed to parent class
 
         """
-        super().__init__(acq_dev, **kw)
-        self.channels = channels
+        super().__init__(acq_dev, channels=channels, **kw)
         self.value_names = ['']*len(self.channels)
         self.value_units = ['']*len(self.channels)
         for i, ch in enumerate(self.channels):
@@ -1240,9 +1266,8 @@ class IntegratingAveragingPollDetector(PollDetector):
             prepare_function (callable): function to be called in prepare
             prepare_function_kwargs (dict): kwargs for prepare_function
         """
-        super().__init__(acq_dev, **kw)
+        super().__init__(acq_dev, channels=channels, **kw)
         self.name = '{}_integrated_average'.format(data_type)
-        self.channels = deepcopy(channels)
 
         self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} w{ch[1]}'
                             for ch in self.channels]
@@ -1462,9 +1487,9 @@ class ScopePollDetector(PollDetector):
                  nr_averages,
                  data_type,
                  **kw):
-        super().__init__(acq_dev=acq_dev, detectors=None, **kw)
+        super().__init__(acq_dev=acq_dev, channels=channels, detectors=None,
+                         **kw)
         self.name = f'{data_type}_scope'
-        self.channels = channels
         self.acquisition_length = acquisition_length
         self.nr_averages = nr_averages
         self.data_type = data_type
@@ -1481,6 +1506,8 @@ class ScopePollDetector(PollDetector):
             # Multiple shots aren't implemented for power spectrum measurements
             self.acq_data_len_scaling = 1
         self.value_units = [''] * len(self.channels)
+        self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} {ch[1]}'
+                            for ch in self.channels]
 
     def prepare(self, sweep_points=None):
 

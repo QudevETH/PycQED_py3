@@ -718,12 +718,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         if swf_prep_pulsar is not None:
             swf_prep_pulsar.upload_finished_callback = self.df.prepare_pulsar
         self.MC.set_detector_function(self.df)
-        if self.dev is not None:
-            meas_obj_value_names_map = self.dev.get_meas_obj_value_names_map(
-                self.meas_objs, self.df)
-        else:
-            meas_obj_value_names_map = mqm.get_meas_obj_value_names_map(
-                self.meas_objs, self.df)
+        meas_obj_value_names_map = self.df.get_meas_obj_value_names_map()
         self.exp_metadata.update(
             {'meas_obj_value_names_map': meas_obj_value_names_map})
         if 'meas_obj_sweep_points_map' not in self.exp_metadata:
