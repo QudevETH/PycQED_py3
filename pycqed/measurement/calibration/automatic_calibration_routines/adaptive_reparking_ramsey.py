@@ -274,6 +274,8 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
         voltage that is outside the range of the swept voltages.
         """
 
+        DC_BIAS_PRECISION = 1e-4  # 0.1 mV. Used for comparing QDAC values.
+
         def __init__(self, routine: AutomaticCalibrationRoutine, **kw):
             """Initialize the Decision step.
 
@@ -284,7 +286,6 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                 Arguments that will be passes to :obj:`IntermediateStep`.
             """
             super().__init__(routine=routine, **kw)
-            self.precision = 1e-4  # 0.1 mV. Used for comparing QDAC values.
 
         def run(self):
             """Executes the decision step."""
@@ -307,8 +308,8 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
                 min_swept_voltage = np.min(swept_voltages)
                 max_swept_voltage = np.max(swept_voltages)
                 if any([np.isclose(fit_voltage, range_edge, rtol=0,
-                                   atol=self.precision) for range_edge in
-                        [min_swept_voltage, max_swept_voltage]]):
+                                   atol=self.DC_BIAS_PRECISION) for range_edge
+                        in [min_swept_voltage, max_swept_voltage]]):
                     fail_message = f'Extremum voltage of fit outside range.'
                     success = False
                 elif min_swept_voltage < fit_voltage < max_swept_voltage:
