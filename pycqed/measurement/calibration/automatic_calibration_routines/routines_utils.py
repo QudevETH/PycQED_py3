@@ -29,14 +29,14 @@ def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
     Optional parameters for a more accurate frequency model:
         - 'coupling'
         - 'fr'
-
     """
     qubit_hamiltonian_params = qubit.fit_ge_freq_from_dc_offset()
     assert all([k in qubit_hamiltonian_params for k in
                 ['dac_sweet_spot', 'V_per_phi0', 'Ej_max', 'E_c',
                  'asymmetry']]), (
         "To calculate the frequency of a transmon, a sufficient model "
-        "must be present in the qubit object")
+        "must be present in the qubit object. However, the current dictionary"
+        f" is {qubit_hamiltonian_params}.")
 
     if all([k in qubit_hamiltonian_params for k in ['coupling', 'fr']]):
         # Use the more accurate model, that takes the resonator into account
@@ -48,7 +48,8 @@ def get_transmon_freq_model(qubit: QuDev_transmon) -> Literal[
 
 
 def get_transmon_anharmonicity(qubit: QuDev_transmon) -> float:
-    """Get the anharmonicity of a transmon or its estimation as the charging
+    """
+    Get the anharmonicity of a transmon or its estimation as the charging
     energy (E_c) if no anharmonicity is found."""
     if qubit.anharmonicity():  # Not None or 0
         return qubit.anharmonicity()
@@ -63,7 +64,8 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
                                     lss_transmon_freq: float = None,
                                     lss_readout_freq: float = None,
                                     update: bool = False) -> float:
-    r"""Get the transmon-readout coupling strength or its estimation if no
+    r"""
+    Get the transmon-readout coupling strength or its estimation if no
     coupling is found in the qubit's attributes.
 
     Arguments:
@@ -100,8 +102,13 @@ def get_transmon_resonator_coupling(qubit: QuDev_transmon,
 
 
 def append_DCsources(routine):
-    """Append the DC_sources of a routine as an attribute. This is used when
-    the `reload_settings` function is called after the routine ends."""
+    """
+    Append the DC_sources of a routine as an attribute. This is used when
+    the `reload_settings` function is called after the routine ends.
+
+    Args:
+        routine: The routine to which the DCsources will be appended.
+    """
     routine.DCSources = []
     for qb in routine.qubits:
         dc_source = routine.fluxlines_dict[qb.name].instrument
@@ -116,9 +123,19 @@ def get_qubit_flux_and_voltage(qb: QuDev_transmon,
                                                           'mid']] = None,
                                voltage: float = None) -> Tuple[
         float, float]:
-    """Get the flux and voltage values of a qubit.
+    """
+    Get the flux and voltage values of a qubit.
     One of the three values [voltage > flux > fluxlines_dict] must be passed,
-    and their hierarchy is according to this order."""
+    and their hierarchy is according to this order.
+
+    Args:
+        qb: Qubit instance.
+        fluxlines_dict: Dictionary with qubit names as keys and matching flux
+            lines as values. Optional.
+        flux: The flux from which the voltage that needs to be set will be
+            calculated. Optional.
+        voltage: The voltage that needs to be set. Optional.
+    """
 
     if voltage is None and flux is not None:
         flux = flux_to_float(qb=qb, flux=flux)
@@ -142,7 +159,10 @@ def qb_is_at_designated_sweet_spot(qb: QuDev_transmon,
                                    voltage: float = None,
                                    fluxlines_dict: Dict[str, Any] = None,
                                    small_flux: float = 0.1) -> bool:
-    """Helps when only the voltage is known, not the flux."""
+    """
+    Return `True` if the qubit is currently parked at its designated sweet spot
+    and `False` otherwise. Helps when only the voltage is known, not the flux.
+    """
     if flux is None:
         if voltage is None:
             voltage = fluxlines_dict[qb.name]()
