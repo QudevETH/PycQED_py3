@@ -4,7 +4,7 @@ import logging
 log = logging.getLogger(__name__)
 
 def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
-                    qubits=None, dev=None,
+                    dev=None,
                     DCSources=None,
                     fluxlines_dict=None,
                     **kw):
@@ -12,23 +12,20 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
     Reload settings from the database.
     """
     if dev is None:
-        raise ValueError('dev must be specified')
+        qubits = kw.get('qubits', kw.get('qbs', None))
     else:
         qubits = dev.get_qubits()
 
-    qbs = kw.get('qubits', kw.get('qbs', None))
-    if qbs is None:
-        qbs = qubits
-
-    gen.load_settings(dev, timestamp=timestamp)
-    for qb in qbs:
+    for qb in qubits:
         gen.load_settings(qb, timestamp=timestamp)
         if timestamp_filters is not None:
             gen.load_settings(qb, timestamp=timestamp_filters,
                               params_to_set=[f'flux_distortion'])
         # set offsets and create filters in pulsar based on settings in the qubits
         qb.configure_pulsar()
-    dev.configure_pulsar()
+    if dev is not None:
+        gen.load_settings(dev, timestamp=timestamp)
+        dev.configure_pulsar()
 
 
     if load_flux_bias:  # reload and set flux bias
@@ -49,7 +46,7 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
                 fluxlines_dict[qb.name].name[5:]:  # strip "volt_"
                 eval(DCSource_params[fluxlines_dict[qb.name].name])
                 for qb in qubits
-                if qb in qbs and fluxlines_dict[qb.name].instrument == DCSource
+                if fluxlines_dict[qb.name].instrument == DCSource
             }
             print(f"Setting flux line voltages to {set_fluxline_dict}")
             if 'Virtual' in DCSource.__class__.__name__:
