@@ -989,6 +989,9 @@ def process_tomography_analysis(data_dict, Uideal=None,
 
     process_name = hlp_mod.get_param('process_name', data_dict,
                                      raise_error=True, **params)
+    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                           default_value='process_tomo',
+                                           **params)
     if Uideal is None:
         if process_name == 'CZ':
             Uideal = qtp.qip.operations.cphase(np.pi)
@@ -999,7 +1002,7 @@ def process_tomography_analysis(data_dict, Uideal=None,
                              f'Please provide the process unitary, Uideal.')
     chi_ideal = qtp.to_chi(Uideal)/16
     # add ideal chi matrix to data_dict
-    hlp_mod.add_param(f'chi_ideal_{process_name}',
+    hlp_mod.add_param(f'{keys_out_container}.chi_ideal_{process_name}',
                       chi_ideal.full(), data_dict, **params)
 
     if prep_pulses_list is None:
@@ -1008,7 +1011,8 @@ def process_tomography_analysis(data_dict, Uideal=None,
             error_message='Either prep_pulses_list or basis_rots needs to be '
                           'provided.', **params)
         if hlp_mod.get_param('basis_rots', data_dict) is None:
-            hlp_mod.add_param('basis_rots', basis_rots, data_dict, **params)
+            hlp_mod.add_param(f'{keys_out_container}.basis_rots',
+                              basis_rots, data_dict, **params)
         prep_pulses_list = list(itertools.product(basis_rots, repeat=n_qubits))
 
     meas_density_matrices = hlp_mod.get_param('measured_rhos', data_dict,
@@ -1116,13 +1120,15 @@ def process_tomography_analysis(data_dict, Uideal=None,
         chi_qtp = qtp.Qobj(chi, dims=chi_ideal.dims)
 
         # add found chi matrix to data_dict
-        hlp_mod.add_param(f'chi_{process_name}.{estimation_type}',
-                          chi_qtp.full(), data_dict, **params)
+        hlp_mod.add_param(
+            f'{keys_out_container}.chi_{process_name}.{estimation_type}',
+            chi_qtp.full(), data_dict, **params)
 
         # add gate error to data_dict
-        hlp_mod.add_param(f'measured_error_{process_name}.{estimation_type}',
-                          1-np.real(qtp.process_fidelity(chi_qtp, chi_ideal)),
-                          data_dict, **params)
+        hlp_mod.add_param(
+            f'{keys_out_container}.measured_error_{process_name}.{estimation_type}',
+            1-np.real(qtp.process_fidelity(chi_qtp, chi_ideal)),
+            data_dict, **params)
 
 
 def bootstrapping(data_dict=None, keys_in=None, measured_data=None, **params):
@@ -1323,6 +1329,9 @@ def bootstrapping_process_tomography(
         process_tomography_analysis so all required input params needed
         there must also be here
     """
+    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                           default_value='process_tomo',
+                                           **params)
     if prep_pulses_list is None:
         meas_obj_names = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
@@ -1371,10 +1380,11 @@ def bootstrapping_process_tomography(
                 data_dict_temp)
 
     params['replace_value'] = replace_value
-    hlp_mod.add_param('Nbstrp', Nbstrp, data_dict, **params)
+    hlp_mod.add_param(f'{keys_out_container}.Nbstrp', Nbstrp, data_dict,
+                      **params)
     for estimation_type in errors:
         hlp_mod.add_param(
-            f'bootstrapping_errors_{gate_name}.{estimation_type}',
+            f'{keys_out_container}.bootstrapping_errors_{gate_name}.{estimation_type}',
             errors[estimation_type], data_dict, **params)
 
 
@@ -1415,3 +1425,4 @@ def get_tomo_data_subset(data_dict, keys_in, preselection=True, **params):
         for prep_pulses, row in zip(prep_pulses_list, data_reshaped):
             hlp_mod.add_param(f'{"".join(prep_pulses)}.{keyi}',
                               row, data_dict, **params)
+
