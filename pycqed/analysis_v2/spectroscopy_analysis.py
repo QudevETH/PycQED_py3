@@ -2676,7 +2676,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         """ Initializes the class by calling the parent class constructor.
         Args:
 
-        Ke
+        Kwargs:
+            see ResonatorSpectropscopyAnalysis
             kwargs: see ResonatorSpectroscopyAnalysis.
         """
         super().__init__(ndips=ndips,**kwargs)
