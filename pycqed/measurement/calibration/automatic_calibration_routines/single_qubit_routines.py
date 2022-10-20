@@ -51,7 +51,7 @@ class RabiStep(qbcal.Rabi, Step):
         Arguments:
             routine (Step): The parent routine
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine
 
         Configuration parameters (coming from the configuration parameter
@@ -204,7 +204,7 @@ class RamseyStep(qbcal.Ramsey, Step):
         Args:
             routine (Step obj): The parent routine
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): list of qubits to be used in the routine
 
         Configuration parameters (coming from the configuration parameter
@@ -314,7 +314,7 @@ class RamseyStep(qbcal.Ramsey, Step):
         """Returns a dictionary of high-level device property values from
         running this RamseyStep.
 
-        Keyword Arguments:
+        Keyword args:
             qubit_sweet_spots (dict, optional): a dictionary mapping qubits to
                 sweet-spots ('uss', 'lss', or None).
 
@@ -382,7 +382,7 @@ class T1Step(qbcal.T1, Step):
         Arguments:
             routine (Step): The parent routine.
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine.
 
         Configuration parameters (coming from the configuration parameter
@@ -515,7 +515,7 @@ class QScaleStep(qbcal.QScale, Step):
         Arguments:
             routine (Step): The parent routine.
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine.
 
         Configuration parameters (coming from the configuration parameter
@@ -618,7 +618,7 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
         Arguments:
             routine (Step): The parent routine.
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine.
 
         Configuration parameters (coming from the configuration parameter
@@ -689,7 +689,7 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         Args:
             dev (Device obj): the device which is currently measured.
 
-        Keyword Arguments:
+        Keyword args:
             qubits: qubits on which to perform the measurement.
 
         """
@@ -741,7 +741,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             qubits (list): List of qubits to be calibrated. FIXME: currently
                 only one qubit is supported. E.g., qubits = [qb1].
 
-        Keyword Arguments:
+        Keyword args:
             autorun (bool): Whether to run the routine automatically
             rabi_amps (list): List of amplitudes for the (initial) Rabi
                 experiment

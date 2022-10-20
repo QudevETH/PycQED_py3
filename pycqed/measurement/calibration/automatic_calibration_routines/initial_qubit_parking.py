@@ -443,7 +443,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         fluxlines_dict (dict): dictionary containing the qubits names as
             keys and the flux lines QCoDeS parameters as values.
 
-    Keyword Arguments:
+    Keyword args:
         qubits (list(Qudev_transmon)): qubits on which to perform the
             measurement.
 

@@ -267,7 +267,7 @@ class AdaptiveQubitSpectroscopy(AutomaticCalibrationRoutine):
             Args:
                 routine (Step): AdaptiveQubitSpectroscopy routine.
 
-            Kwargs:
+            Keyword args:
                 Keyword arguments that will be passed to :obj:`IntermediateStep`
 
             Configuration parameters (coming from the configuration parameter

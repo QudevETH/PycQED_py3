@@ -40,7 +40,7 @@ class UpdateFrequency(IntermediateStep):
                 known a priori and there is a Hamiltonian model or a
                 flux-frequency relationship is known.
 
-        Keyword Arguments:
+        Keyword args:
             routine (Step): the routine to which this step belongs to.
         """
         super().__init__(**kw, )
@@ -114,7 +114,7 @@ class SetBiasVoltage(IntermediateStep):
                 value will be calculated with from the given flux.
             flux: If voltage is None this value will
 
-        Keyword Arguments:
+        Keyword args:
             routine (Step): the parent routine to which this step belongs.
         """
 

@@ -43,7 +43,7 @@ class Step:
                 configuration parameters. The structure of the dictionary must
                 be compatible with that of a general settings dictionary.
 
-        Keyword Arguments:
+        Keyword args:
             Shouldn't be any, this is here for backwards compatibility.
 
         """

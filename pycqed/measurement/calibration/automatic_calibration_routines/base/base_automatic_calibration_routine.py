@@ -315,7 +315,7 @@ class AutomaticCalibrationRoutine(Step):
                 initialization.
             routine (Step): The parent routine of the routine.
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine
 
         Configuration parameters (coming from the configuration parameter

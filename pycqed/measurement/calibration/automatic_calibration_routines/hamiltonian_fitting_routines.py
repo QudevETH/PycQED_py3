@@ -875,7 +875,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             verbose (bool): If True, prints updates on the progress of the
                 measurement.
 
-        Keyword Arguments:
+        Keyword args:
             reset_fluxline (bool): bool for resetting to fluxline to initial
                 value after the measurement. Default is True.
             plot (bool): bool for plotting the results at the end, default False.
@@ -978,7 +978,7 @@ class MixerCalibrationSkewness(IntermediateStep):
         Args:
             routine (Step): Routine object.
 
-        Keyword Arguments:
+        Keyword args:
             calibrate_drive_mixer_skewness_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_skewness_model.
         """
@@ -1009,7 +1009,7 @@ class MixerCalibrationCarrier(IntermediateStep):
         Args:
             routine (Step): Routine object.
 
-        Keyword Arguments:
+        Keyword args:
             calibrate_drive_mixer_carrier_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_carrier_model.
         """

@@ -282,7 +282,7 @@ class AdaptiveReparkingRamsey(AutomaticCalibrationRoutine):
             Args:
                 routine (Step): AdaptiveReparkingRamsey routine.
 
-            Kwargs:
+            Keyword args:
                 Arguments that will be passes to :obj:`IntermediateStep`.
             """
             super().__init__(routine=routine, **kw)
