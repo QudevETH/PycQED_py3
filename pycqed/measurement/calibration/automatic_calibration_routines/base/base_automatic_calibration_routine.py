@@ -37,12 +37,11 @@ class RoutineTemplate(list):
     measurements, calibration routines, or intermediate steps.
     """
 
-    def __init__(
-            self,
-            steps,
-            global_settings=None,
-            routine=None,
-    ):
+    def __init__(self,
+                 steps,
+                 global_settings=None,
+                 routine=None,
+                 ):
         """Initialize the routine template.
 
         Args:
@@ -301,13 +300,12 @@ class AutomaticCalibrationRoutine(Step):
     at runtime when the parent routine is running the subroutine step.
     """
 
-    def __init__(
-            self,
-            dev,
-            routine=None,
-            autorun=True,
-            **kw,
-    ):
+    def __init__(self,
+                 dev,
+                 routine=None,
+                 autorun=True,
+                 **kw,
+                 ):
         """Initializes the routine.
 
         Args:
@@ -502,6 +500,9 @@ class AutomaticCalibrationRoutine(Step):
             dict: A dictionary containing the settings extracted from the
                 configuration parameter dictionary.
         """
+        if not issubclass(step_class, Step):
+            raise NotImplementedError("Steps have to inherit from class Step.")
+
         if step_settings is None:
             step_settings = {}
         # No 'General' lookup since at this point we are only interested
@@ -592,7 +593,7 @@ class AutomaticCalibrationRoutine(Step):
                 # Find the qubits belonging to parallel_group
                 qubits_filtered = [
                     qb for qb in self.qubits if
-                    (qb.name is parallel_group or
+                    (qb.name == parallel_group or
                      parallel_group in self.get_qubit_groups(qb.name))
                 ]
                 # Create a new step for qubits_filtered only and add it to the
