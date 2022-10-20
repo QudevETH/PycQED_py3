@@ -976,6 +976,10 @@ def calculate_meas_ops_and_covariations(
 
     if keys_out is None:
         keys_out = ['measurement_ops', 'cov_matrix_meas_obs']
+        keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                               **params)
+        if keys_out_container is not None:
+            keys_out = [f'{keys_out_container}.{keyo}' for keyo in keys_out]
     if len(keys_out) != 2:
         raise ValueError(f'keys_out must have length 2. {len(keys_out)} '
                          f'entries were given.')
@@ -1074,6 +1078,10 @@ def calculate_meas_ops_and_covariations_cal_points(
     """
     if keys_out is None:
         keys_out = ['measurement_ops', 'cov_matrix_meas_obs']
+        keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                               **params)
+        if keys_out_container is not None:
+            keys_out = [f'{keys_out_container}.{keyo}' for keyo in keys_out]
     if len(keys_out) != 2:
         raise ValueError(f'keys_out must have length 2. {len(keys_out)} '
                          f'entries were given.')
