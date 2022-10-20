@@ -180,17 +180,21 @@ def state_tomography_analysis(data_dict, keys_in,
         # if add_param_method == 'replace', we want to overwrite the found
         # measurement_ops
         if cp is not None and (correct_readout or correct_readout is None):
+            # use cal_points and correct for readout
             dat_proc_mod.calculate_meas_ops_and_covariations_cal_points(
                 data_dict, keys_in, n_readouts=n_readouts,
                 probability_table=probability_table,
-                keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
+                keys_out=[f'{keys_out_container}.measurement_ops',
+                          f'{keys_out_container}.cov_matrix_meas_obs'],
                 observables=observables, **params)
         else:
+            # no cal_points; correct_readout flag decides whether readout
+            # is corrected
             dat_proc_mod.calculate_meas_ops_and_covariations(
-                data_dict, keys_out=['measurement_ops', 'cov_matrix_meas_obs'],
-                meas_obj_names=meas_obj_names,
+                data_dict, keys_out=[f'{keys_out_container}.measurement_ops',
+                                     f'{keys_out_container}.cov_matrix_meas_obs'],
                 observables=observables,
-                correct_readout=correct_readout)
+                **params)
     else:
         if hlp_mod.get_param('measurement_ops', data_dict) is None:
             hlp_mod.add_param(f'{keys_out_container}.measurement_ops',
@@ -309,14 +313,13 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
     for i, v in enumerate(prob_table):
         prob_table[i] = v / v.sum()
     prob_table = prob_table.T
-
-
     pulse_list = list(itertools.product(basis_rots,
                                         repeat=len(meas_obj_names)))
     rotations = tomo.standard_qubit_pulses_to_rotations(pulse_list)
     rotations = [qtp.Qobj(U) for U in rotations]
 
-    msmt_ops = hlp_mod.get_param('measurement_ops', data_dict)
+    msmt_ops = hlp_mod.get_param(f'{keys_out_container}.measurement_ops',
+                                 data_dict)
     msmt_ops = [qtp.Qobj(F) for F in msmt_ops]
     all_msmt_ops = tomo.rotated_measurement_operators(rotations, msmt_ops)
     all_msmt_ops = [all_msmt_ops[i][j]
@@ -329,7 +332,8 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
     hlp_mod.add_param(f'{keys_out_container}.all_measurement_results',
                       all_msmt_res, data_dict, **params)
 
-    omegas = hlp_mod.get_param('cov_matrix_meas_obs', data_dict)
+    omegas = hlp_mod.get_param(f'{keys_out_container}.cov_matrix_meas_obs',
+                               data_dict)
     all_omegas = sp.linalg.block_diag(*[omegas] * len(prob_table[0]))
     hlp_mod.add_param(f'{keys_out_container}.all_cov_matrix_meas_obs',
                       all_omegas, data_dict, **params)
@@ -424,8 +428,8 @@ def density_matrices(data_dict,
         elif estimation_type == 'pauli_values':
             rho_pauli = tomo.pauli_values_tomography(
                 all_measurement_results,
-                [qtp.Qobj(F) for F in hlp_mod.get_param('measurement_ops',
-                                                        data_dict)],
+                [qtp.Qobj(F) for F in hlp_mod.get_param(
+                    f'{keys_out_container}.measurement_ops', data_dict)],
                 hlp_mod.get_param('basis_rots', data_dict))
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
