@@ -36,8 +36,7 @@ log = logging.getLogger(__name__)
 # FIXME: these wrappers can probably be collected with an ExperimentStep class
 #  to avoid repetition
 class RabiStep(qbcal.Rabi, Step):
-    """A wrapper class for the Rabi experiment.
-    """
+    """A wrapper class for the Rabi experiment."""
 
     def __init__(self, routine, **kwargs):
         """
@@ -86,7 +85,8 @@ class RabiStep(qbcal.Rabi, Step):
         qbcal.Rabi.__init__(self, dev=self.dev, **rabi_settings)
 
     def parse_settings(self, requested_kwargs):
-        """Searches the keywords for the Rabi experiment given in
+        """
+        Searches the keywords for the Rabi experiment given in
         requested_kwargs in the configuration parameter dictionary.
 
         Args:
@@ -161,7 +161,8 @@ class RabiStep(qbcal.Rabi, Step):
         return kwargs_super
 
     def run(self):
-        """Runs the Rabi experiment, the analysis for it and additional
+        """
+        Runs the Rabi experiment, the analysis for it and additional
         postprocessing.
         """
         self.run_measurement()
@@ -190,8 +191,7 @@ class RabiStep(qbcal.Rabi, Step):
 
 
 class RamseyStep(qbcal.Ramsey, Step):
-    """A wrapper class for the Ramsey experiment.
-    """
+    """A wrapper class for the Ramsey experiment."""
 
     def __init__(self, routine, *args, **kwargs):
         """Initializes the RamseyStep class, which also includes initialization
@@ -292,7 +292,8 @@ class RamseyStep(qbcal.Ramsey, Step):
         return kwargs_super
 
     def run(self):
-        """Runs the Ramsey experiment, the analysis for it and additional
+        """
+        Runs the Ramsey experiment, the analysis for it and additional
         postprocessing.
         """
         self.run_measurement()
@@ -307,7 +308,8 @@ class RamseyStep(qbcal.Ramsey, Step):
             configure_qubit_mux_drive(self.qubits, drive_lo_freqs)
 
     def get_device_property_values(self, **kwargs):
-        """Returns a dictionary of high-level device property values from
+        """
+        Returns a dictionary of high-level device property values from
         running this RamseyStep.
 
         Keyword args:
@@ -368,11 +370,11 @@ class RamseyStep(qbcal.Ramsey, Step):
 
 
 class T1Step(qbcal.T1, Step):
-    """A wrapper class for the T1 experiment.
-    """
+    """A wrapper class for the T1 experiment."""
 
     def __init__(self, routine, *args, **kwargs):
-        """Initializes the T1Step class, which also includes initialization
+        """
+        Initializes the T1Step class, which also includes initialization
         of the T1 experiment.
 
         Arguments:
@@ -454,15 +456,15 @@ class T1Step(qbcal.T1, Step):
         return kwargs_super
 
     def run(self):
-        """Runs the T1 experiment and the analysis for it.
-        """
+        """Runs the T1 experiment and the analysis for it."""
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
             self.run_update()
 
     def get_device_property_values(self, **kwargs):
-        """Returns a dictionary of high-level device property values from
+        """
+        Returns a dictionary of high-level device property values from
         running this T1Step.
 
         Args:
@@ -501,8 +503,7 @@ class T1Step(qbcal.T1, Step):
 
 
 class QScaleStep(qbcal.QScale, Step):
-    """A wrapper class for the QScale experiment.
-    """
+    """A wrapper class for the QScale experiment."""
 
     def __init__(self, routine, *args, **kwargs):
         """Initializes the QScaleStep class, which also includes initialization
@@ -532,7 +533,8 @@ class QScaleStep(qbcal.QScale, Step):
         qbcal.QScale.__init__(self, dev=self.dev, **qscale_settings)
 
     def parse_settings(self, requested_kwargs):
-        """Searches the keywords for the QScale experiment given in
+        """
+        Searches the keywords for the QScale experiment given in
         requested_kwargs in the configuration parameter dictionary.
 
         Args:
@@ -591,7 +593,8 @@ class QScaleStep(qbcal.QScale, Step):
         return kwargs_super
 
     def run(self):
-        """Runs the QScale experiment, the analysis for it and some
+        """
+        Runs the QScale experiment, the analysis for it and some
         postprocessing.
         """
         self.run_measurement()
@@ -606,12 +609,11 @@ class QScaleStep(qbcal.QScale, Step):
 
 
 class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
-    """A wrapper class for the InPhaseAmpCalibStep experiment.
-    """
+    """A wrapper class for the InPhaseAmpCalibStep experiment."""
 
     def __init__(self, routine, *args, **kwargs):
         """
-        Arguments:
+        Args:
             routine (Step): The parent routine.
 
         Keyword args:
@@ -627,7 +629,8 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
         qbcal.InPhaseAmpCalib.__init__(self, dev=self.dev, **ip_calib_settings)
 
     def parse_settings(self, requested_kwargs):
-        """Searches the keywords for the InPhaseAmpCalib experiment given in
+        """
+        Searches the keywords for the InPhaseAmpCalib experiment given in
         requested_kwargs in the configuration parameter dictionary.
 
         Args:
@@ -646,7 +649,8 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
         return kwargs_super
 
     def get_requested_settings(self):
-        """Add additional keywords to be passed to the InPhaseAmpCalib class.
+        """
+        Add additional keywords to be passed to the InPhaseAmpCalib class.
 
         Returns:
             dict: Dictionary containing names and default values of the keyword
@@ -657,8 +661,7 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
         return settings
 
     def run(self):
-        """Runs the InPhaseAmpCalib experiment and the analysis for it.
-        """
+        """Runs the InPhaseAmpCalib experiment and the analysis for it."""
         self.run_measurement()
         self.run_analysis()
         if self.get_param_value('update'):
@@ -666,7 +669,8 @@ class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
 
 
 class PiPulseCalibration(AutomaticCalibrationRoutine):
-    """Pi-pulse calibration consisting of a Rabi experiment followed by a Ramsey
+    """
+    Pi-pulse calibration consisting of a Rabi experiment followed by a Ramsey
     experiment.
 
     Routine steps:
@@ -675,12 +679,11 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
     2) Ramsey
     """
 
-    def __init__(
-            self,
-            dev,
-            **kw,
-    ):
-        """Pi-pulse calibration routine consisting of one Rabi and one Ramsey.
+    def __init__(self,
+                 dev,
+                 **kw):
+        """
+        Pi-pulse calibration routine consisting of one Rabi and one Ramsey.
 
         Args:
             dev (Device obj): the device which is currently measured.
@@ -712,7 +715,8 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
 
 
 class FindFrequency(AutomaticCalibrationRoutine):
-    """Routine to find frequency of a given transmon transition.
+    """
+    Routine to find frequency of a given transmon transition.
 
     Routine steps:
 
@@ -724,13 +728,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
         step.
     """
 
-    def __init__(
-            self,
-            dev,
-            qubits,
-            **kw,
-    ):
-        """Routine to find frequency of a given transmon transition.
+    def __init__(self,
+                 dev,
+                 qubits,
+                 **kw):
+        """
+        Routine to find frequency of a given transmon transition.
 
         Args:
             dev (Device): The device which is currently measured.
@@ -789,7 +792,8 @@ class FindFrequency(AutomaticCalibrationRoutine):
     class Decision(IntermediateStep):
 
         def __init__(self, routine, **kw):
-            """Decision step that decides to add another round of Rabi-Ramsey to
+            """
+            Decision step that decides to add another round of Rabi-Ramsey to
             the FindFrequency routine based on the difference between the
             results of the previous and current Ramsey experiments.
             Additionally, it checks if the maximum number of iterations has been
@@ -810,8 +814,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             self.leaf = self.routine.leaf
 
         def run(self):
-            """Executes the decision step.
-            """
+            """Executes the decision step."""
             qubit = self.qubit
 
             routine = self.routine
@@ -909,8 +912,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
                       f"is {freq / f_factor} {f_unit}.")
 
     def create_routine_template(self):
-        """Creates the routine template for the FindFrequency routine.
-        """
+        """Creates the routine template for the FindFrequency routine."""
         super().create_routine_template()
         transition_name = self.get_param_value("transition_name",
                                                qubit=self.qubit)
@@ -943,8 +945,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         self.add_step(self.Decision, 'decision', decision_settings)
 
     def add_next_pipulse_step(self):
-        """Adds a next pipulse step
-        """
+        """Adds a next pipulse step"""
         qubit = self.qubit
 
         adaptive = self.get_param_value('adaptive')
@@ -1011,7 +1012,8 @@ class FindFrequency(AutomaticCalibrationRoutine):
 
 
 class SingleQubitCalib(AutomaticCalibrationRoutine):
-    """Single qubit calibration brings the setup into a default state and
+    """
+    Single qubit calibration brings the setup into a default state and
     calibrates the specified qubits. It consists of several steps:
 
     <Class name> (<step_label>)
@@ -1030,7 +1032,8 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
     """
 
     def __init__(self, dev, **kw):
-        """Initialize the SingleQubitCalib routine.
+        """
+        Initialize the SingleQubitCalib routine.
 
         Args:
             dev (Device): Device to be used for the routine.
@@ -1077,9 +1080,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """
-        Creates routine template.
-        """
+        """Creates routine template."""
         super().create_routine_template()
 
         detailed_routine_template = copy.copy(self.routine_template)
@@ -1145,16 +1146,15 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
             self.split_step_for_parallel_groups(index=i)
 
     class SQCPreparation(IntermediateStep):
-        """Intermediate step that configures qubits for Mux drive and
-        readout.
+        """
+        Intermediate step that configures qubits for Mux drive and readout.
         """
 
-        def __init__(
-                self,
-                routine,
-                **kw,
-        ):
-            """Initialize the SQCPreparation step.
+        def __init__(self,
+                     routine,
+                     **kw):
+            """
+            Initialize the SQCPreparation step.
 
             Args:
                 routine (Step): the parent routine.
