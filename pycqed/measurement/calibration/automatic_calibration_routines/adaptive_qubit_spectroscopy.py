@@ -1,7 +1,8 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     Step,
     IntermediateStep,
-    AutomaticCalibrationRoutine
+    AutomaticCalibrationRoutine,
+    ROUTINES
 )
 
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
@@ -23,7 +24,7 @@ import numpy as np
 import logging
 from typing import Dict, List, Any
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(ROUTINES)
 
 
 class QubitSpectroscopy1DStep(spec.QubitSpectroscopy1D, Step):
