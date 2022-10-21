@@ -346,10 +346,12 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def is_awg_running(self):
         is_running = []
         for awg_nr, qachannel in enumerate(self.awg.qachannels):
+            if not self.awg.awg_active[awg_nr]:
+                continue  # no check needed
             if self.awg._awg_program[awg_nr]:
                 # hardware spec or 'readout' mode
                 is_running.append(qachannel.generator.enable())
-            elif self.awg.awg_active[awg_nr]:
+            else:
                 # software spectroscopy
                 # No awg needs to be started, so we can pretend that it's always
                 # running for the check to pass

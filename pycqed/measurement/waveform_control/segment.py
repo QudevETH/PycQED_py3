@@ -97,7 +97,7 @@ class Segment:
         # sweep values given in this property.
         # FIXME: This is an experimental feature and needs to be further
         #  cleaned up and documented in the future.
-        self.sweep_params = {}
+        self.sweep_params = kw.pop('sweep_params', dict())
         # allow_filter specifies whether the segment can be filtered out in
         # a FilteredSweep
         self.allow_filter = False
@@ -1274,7 +1274,8 @@ class Segment:
                 continue
             if awg not in awg_wfs:
                 awg_wfs[awg] = {}
-            channel_list = set(self.pulsar.get_trigger_group_channels(group)) & channels
+            channel_list = set(self.pulsar.get_trigger_group_channels(
+                group)) & set(channels)
             if channel_list == set():
                 continue
             channel_list = list(channel_list)

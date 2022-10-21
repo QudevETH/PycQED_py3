@@ -102,6 +102,10 @@ class ZHInstSGMixin:
             gains=gains,
             sine_generator_index=sine_generator_index,
         )
+        # FIXME: remove the following line if ZI at some point takes it into
+        #  account directly in configure_sine_generation
+        self.sgchannels[int(chid[2]) - 1].sines[
+            sine_generator_index].harmonic(1)
         self._sgchannel_sine_enable[int(chid[2]) - 1] = enable
 
     def configure_internal_mod(self, chid, enable=True, osc_index=0, phase=0.0,
