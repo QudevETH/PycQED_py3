@@ -5,6 +5,8 @@ from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
+    zhinst_qcodes_wrappers import ZHInstMixin, ZHInstSGMixin
 from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
@@ -13,7 +15,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
+class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     """QuDev-specific PycQED driver for the ZI SHF instrument series
 
     This is not meant to be instantiated directly, but should be inherited
@@ -105,15 +107,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                       'units for consistency.',
             vals=validators.Numbers())
 
-    @property
-    def devname(self):
-        return self.serial
-
-    @property
-    def daq(self):
-        """Returns the ZI data server (DAQ).
-        """
-        return self.session.daq_server
+        self.add_parameter(
+           'timeout',
+           unit='s',
+           initial_value=30,
+           parameter_class=ManualParameter,
+           docstring='Timeout when waiting for scope data.',
+           vals=validators.Ints())
 
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
@@ -175,25 +175,34 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         freqs = freqs + lo_freq
         return freqs
 
-    def get_params_for_spectrum(self, requested_freqs):
+    def get_params_for_spectrum(self, requested_freqs,
+                                get_closest_lo_freq=(lambda x: x)):
         """Convenience method for retrieving parameters needed to measure a
         spectrum
 
         Args:
             requested_freqs (list of double): frequencies to be measured.
-            Note that the effectively measured frequencies will be a rounded
-            version of these values.
+                Note that the effectively measured frequencies will be a
+                rounded version of these values.
+            get_closest_lo_freq (function): a function that takes an LO
+                frequency as argument and returns the closest allowed LO
+                frequency. This can be used to provide limitations imposed
+                by higher-layer settings to the driver.
         """
         # For rounding reasons, we can't measure exactly on these frequencies.
         # Here we extract the frequency spacing and the frequency range
         # (center freq and bandwidth)
+        allowed_lo_freqs = np.unique([get_closest_lo_freq(f)
+                                      for f in self.allowed_lo_freqs()])
         if len(requested_freqs) == 1:
-            id_closest = (np.abs(np.array(self.awg.allowed_lo_freqs()) -
+            id_closest = (np.abs(np.array(allowed_lo_freqs) -
                                 requested_freqs[0])).argmin()
-            if self.awg.allowed_lo_freqs()[id_closest] - requested_freqs[0] < 10e6:
+            if allowed_lo_freqs[id_closest] - requested_freqs[0] < 10e6:
                 # resulting mod_freq would be smaller than 10 MHz
                 # TODO: arbitrarily chosen limit of 10 MHz
                 id_closest = id_closest + (-1 if id_closest != 0 else +1)
+            delta_f = 0
+            acq_length = None
         else:
             diff_f = np.diff(requested_freqs)
             if not all(diff_f-diff_f[0] < 1e-3):
@@ -202,20 +211,20 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                             f'the measurement will return equally spaced values.')
             # Find closest allowed center frequency
             approx_center_freq = np.mean(requested_freqs)
-            id_closest = (np.abs(np.array(self.allowed_lo_freqs()) -
+            id_closest = (np.abs(np.array(allowed_lo_freqs) -
                                 approx_center_freq)).argmin()
-        center_freq = self.allowed_lo_freqs()[id_closest]
+            # Compute needed acq length
+            delta_f = np.mean(diff_f)
+            # Note that this might underestimate the necessary acq_length to get
+            # the correct freq precision (because of rounding, hardware
+            # limitations, etc.)
+            acq_length = 1 / delta_f
+        center_freq = allowed_lo_freqs[id_closest]
         # Compute the actual needed bandwidth
         min_bandwidth = 2 * max(np.abs(requested_freqs - center_freq))
         if min_bandwidth > self.acq_sampling_rate:
             raise NotImplementedError('Spectrum wider than the bandwidth of '
                                       'the SHF is not yet implemented!')
-        # Compute needed acq length
-        delta_f = np.mean(diff_f)
-        # Note that this might underestimate the necessary acq_length to get
-        # the correct freq precision (because of rounding, hardware
-        # limitations, etc.)
-        acq_length = 1 / delta_f
         # center freq and delta_f are used by the hardware sweeper,
         # acq_length by the software PSD using timetraces
         return center_freq, delta_f, acq_length
@@ -362,10 +371,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                n_acq[i] = 0
+                return None  # intermediate progress not implemented
             else:
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
@@ -528,20 +537,24 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
                 raise NotImplementedError("Mode not recognised!")
         return dataset
 
-    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+    def get_lo_sweep_function(self, acq_unit, ro_mod_freq,
+                              get_closest_lo_freq):
         name = 'Readout frequency'
         if self.use_hardware_sweeper():
-            return swf.SpectroscopyHardSweep(parameter_name=name)
-        name_offset = 'Readout frequency with offset'
-        return swf.Offset_Sweep(
-            swf.MajorMinorSweep(
+            sf = swf.SpectroscopyHardSweep(parameter_name=name)
+        else:
+            name_offset = 'Readout frequency with offset'
+            sf = swf.Offset_Sweep(swf.MajorMinorSweep(
                 self.qachannels[acq_unit].centerfreq,
                 swf.Offset_Sweep(
                     self.qachannels[acq_unit].oscs[0].freq,
                     ro_mod_freq),
-                self.allowed_lo_freqs(),
+                np.unique([get_closest_lo_freq(f)
+                           for f in self.allowed_lo_freqs()]),
                 name=name_offset, parameter_name=name_offset),
-            -ro_mod_freq, name=name, parameter_name=name)
+                -ro_mod_freq, name=name, parameter_name=name)
+        sf.includes_IF_sweep = True
+        return sf
 
     def stop(self):
         # Use a transaction since qcodes does not support wildcards
@@ -582,20 +595,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice):
         properties['scaling_factor'] = 1  # Set separately in poll()
         return properties
 
-    def _check_server(self, kwargs):
-        # Note: kwargs are passed without ** in order to allow modifying them.
-        if kwargs.pop('server', None) == 'emulator':
-            from pycqed.instrument_drivers.physical_instruments \
-                .ZurichInstruments import ZI_base_qudev as zibase
-            from zhinst.qcodes import session as ziqcsess
-            daq = zibase.MockDAQServer.get_instance(
-                kwargs.get('host', 'localhost'),
-                port=kwargs.get('port', 8004))
-            self._session = ziqcsess.ZISession(
-                server_host=kwargs.get('host', 'localhost'),
-                connection=daq, new_session=False)
-            return daq
-
 
 class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """QuDev-specific PycQED driver for the ZI SHFQA
@@ -607,7 +606,7 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
-class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
+class SHFQC(SHFQC_core, SHF_AcquisitionDevice, ZHInstSGMixin):
     """QuDev-specific PycQED driver for the ZI SHFQC
     """
 
@@ -618,3 +617,12 @@ class SHFQC(SHFQC_core, SHF_AcquisitionDevice):
         super().__init__(serial, *args, **kwargs)
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
         self._awg_program += [None] * len(self.sgchannels)
+        self._sgchannel_sine_enable = [False] * len(self.sgchannels)
+
+    def start(self, **kwargs):
+        SHF_AcquisitionDevice.start(self, **kwargs)
+        ZHInstSGMixin.start(self)
+
+    def stop(self):
+        SHF_AcquisitionDevice.stop(self)
+        ZHInstSGMixin.stop(self)
