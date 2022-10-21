@@ -765,7 +765,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         """
 
         if isinstance(amplitude, float):
-            amplitude = [amplitude, amplitude]
+            amplitude = [amplitude] * 2
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 2):
             raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "

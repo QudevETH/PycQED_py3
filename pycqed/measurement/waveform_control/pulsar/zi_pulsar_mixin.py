@@ -1247,7 +1247,7 @@ class ZIGeneratorModule:
             entry_index: int,
             wave_index: int,
             amplitude: float = None,
-            phase: float = 0.0
+            phase: float = 0.0,
     ):
         """returns a command table entry in the format specified
         by ZI. Details of the command table can be found in
@@ -1255,14 +1255,11 @@ class ZIGeneratorModule:
 
         Arguments:
             entry_index (int): index of the current command table entry
-
             wave_index (int): index of the reference wave
-
-            amplitudes (Optional, array-like): an array of 4 recording the
-            amplitudes specified in the command table. They are grouped in
-            the order (amplitude00, amplitude01, amplitude10, amplitude11).
-            If not specified, this array is set to (1, -1, 1, 1)
-
+            amplitude (Optional, array-like): an array of 4 recording the
+                amplitudes specified in the command table. They are grouped in
+                the order (amplitude00, amplitude01, amplitude10, amplitude11).
+                If not specified, this array is set to (1, -1, 1, 1)
             phase (Optional, float): phase of the waveform. Default is 0.0.
 
         Returns:
@@ -1273,7 +1270,7 @@ class ZIGeneratorModule:
     @staticmethod
     def _compare_command_table_entry(
             entry1: dict,
-            entry2: dict
+            entry2: dict,
     ):
         """compares if two command table entries equal except for the index
 
@@ -1296,7 +1293,7 @@ class ZIGeneratorModule:
 
     def _compile_awg_program(
             self,
-            program
+            program,
     ):
         """Compiles the sequencer code and programs the device.
 

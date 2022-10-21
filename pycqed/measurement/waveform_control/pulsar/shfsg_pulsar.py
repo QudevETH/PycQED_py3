@@ -745,7 +745,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         if isinstance(amplitude, float):
             # if 'amplitude' is a scalar, the same scaling is used for all
             # amplitude factors in the digital up-conversion unit.
-            amplitude = [amplitude, amplitude, amplitude, amplitude]
+            amplitude = [amplitude] * 4
 
             # Configures the correct sideband by flipping the sign of the
             # corresponding off-diagonal element for digital up-conversion.
