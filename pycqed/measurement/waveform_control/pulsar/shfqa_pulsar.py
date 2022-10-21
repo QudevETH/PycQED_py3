@@ -217,8 +217,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 "configFreqSweep(OSC0, {f_start}, {f_step});\n"
             )
 
-            self.awg.seqtrigger = None
-
             if is_spectroscopy:
                 for element in awg_sequence:
                     # This is a light copy of the readout mode below,
@@ -252,7 +250,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                             playback_string='\n  '.join(playback_strings)))
                     # The acquisition modules will each be triggered by their
                     # sequencer
-                    self.awg.seqtrigger = True
                 else:
                     self.awg._awg_program[i] = None  # do not start generator
 
@@ -313,9 +310,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
                 ]
                 if trig == '0x1':
-                    if self.awg.seqtrigger is None:
-                        # The scope will be triggered by this single acq_unit
-                        self.awg.seqtrigger = acq_unit
                     playback_strings += [
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
                         f'setTrigger(0x0);'
