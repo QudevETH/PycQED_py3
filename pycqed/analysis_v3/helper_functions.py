@@ -450,8 +450,8 @@ def find_all_in_dict(str_to_match, data_dict, split_char='.', key_prev_lev=''):
             search_res[f'{key_prev_lev}{k}'] = data_dict[k]
 
         if isinstance(v, dict):
-            search_res.update(find_all_in_dict(str_to_match, v,
-                                               f'{key_prev_lev}{k}'))
+            search_res.update(find_all_in_dict(
+                str_to_match, v, key_prev_lev=f'{key_prev_lev}{k}'))
     return search_res
 
 
