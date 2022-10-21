@@ -13,7 +13,15 @@ import traceback
 
 class NoisePower(twoqbcal.MultiTaskingExperiment):
     """
-    Noise PSD measurement for TWPA objects
+    Noise PSD measurement for TWPA objects.
+
+    Measures the power spectral density in the readout lines as a function of
+    the readout frequency (first sweep dimension). Other parameters can be
+    swept in dimension 2.
+
+    TODO this is for now only implemented for SHFQA instruments, since there
+     is a more efficient version for the UHFQA. To be refactored and unified
+     once the SHFQA allows correlation measurements in hardware.
     """
     task_mobj_keys = ['mobj']
 

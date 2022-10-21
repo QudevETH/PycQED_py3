@@ -10664,15 +10664,37 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
-    """
-    TODO
-    """
 
     def __init__(self, mobj_names=None, slicing_plotting_list=None, auto=True,
                  **kwargs):
         """
-        TODO
+        Basic analysis class for NDimQuantumExperiment and child classes.
+        Processes the data of several QuantumExperiment to reconstruct one or
+        multiple N-dimensional datasets and corresponding SweepPoints.
 
+        The idea is that running n N-dimensional measurements will yield in
+        total M=M1+M2+...+Mn measurement timestamps, where N-dimensional
+        measurement i consists of Mi data timestamps. For example,
+        MultiTWPA_SNR_Analysis expects n=4 groups with M=num_ts+num_ts+1+1
+        timestamps. By default this base class expects n=1 group (M=num_ts).
+        Starting from a list of M timestamps, this class partitions them back
+        into lists of M1+M2+...+Mn as indicated in get_measurement_groups,
+        then calls tile_data_ndim to reconstruct n groups of N-dimensional data.
+
+        The N-dimensional SweepPoints extracted for each group are saved in
+        pdd['group_sweep_points'][group], and global SweepPoints are saved in
+        pdd['sweep_points'] (should be overriden in child classes). That the
+        SweepPoints are extracted in the pdd does not matter for the processing
+        and is only meant as a convenience for the user and for plotting,
+        so this could be modified.
+
+        Child classes should override get_measurement_groups to indicate how
+        to partition the timestamps into groups to reconstruct the
+        N-dimensional measurements.
+        See MultiTWPA_SNR_Analysis for an example.
+
+        Attributes:
+            slicing_plotting_list (dict): see plot_slice
         """
 
         self.slicing_plotting_list = slicing_plotting_list
@@ -10699,38 +10721,60 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         self.save_processed_data()
 
     def get_measurement_groups(self):
+        """
+        Returns:
+            a dictionary indicating how the measured timestamps should be
+            combined into groups (key), each group being one N-dimensional
+            measurement. The value for each group name should be a dictionary
+            containing kwargs for tile_data_ndim.
+        """
+
         default_proc = lambda data_dict, ch_map: np.sqrt(
             data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2)
-        # We have a set of num_QEs experiments in total
-        num_QEs = len(self.raw_data_dict)
+        # We have a set of num_ts experiments in total
+        num_ts = len(self.raw_data_dict)
         measurement_groups = {
             'ndim_data': dict(
-                ana_ids=range(0, num_QEs),
+                ana_ids=range(0, num_ts),
                 post_proc_func=default_proc,
             ),
         }
         return measurement_groups
 
     def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+        """
+        Creates an N-dimensional dataset from separate timestamps each
+        containing 2-dimensional data, and returns the corresponding
+        N-dim SweepPoints. Additionally, performs possible post-processing on
+        the data as specified by post_proc_func.
+
+        Attributes:
+            ana_ids: indices of timestamps whose data should be used
+            post_proc_func: specifies how to convert the raw data per channel
+        into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
+
+        """
+
         # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
-        #  Once spectroscopies can be done without a qb, we can remove on_qb
-        #  and clean up the interleaved list of mobjs and qb to a proper list of mobj
+        #  Once spectroscopies can be done without a qb, this can be cleaned
+        #  up since we can remove on_qb and replace the interleaved list of
+        #  mobjs and qb to a proper list of mobj
 
         data_ndim = {}
         sweep_points_ndim = {}
 
         for mobj_id in range(len(self.mobj_names) // 2):
-            mobjn = self.mobj_names[
-                2 * mobj_id]  # FIXME after removing qb objects
+            mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
             data_ndim[mobjn] = {}
-            sweep_points_ndim[
-                mobjn] = self.get_ndim_sweep_points_from_mobj_name(ana_ids,
-                                                                   self.mobj_names[
-                                                                       2 * mobj_id + on_qb])
+            sweep_points_ndim[mobjn] =\
+                self.get_ndim_sweep_points_from_mobj_name(
+                    ana_ids, self.mobj_names[2 * mobj_id + on_qb])
             sweep_lengths = sweep_points_ndim[mobjn].length()
             data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
             for ana_id in ana_ids:
-                # idxs are for now the same for all tasks, they are just stored in the task list for convenience
+                # idxs: see NDimQuantumExperiment
+                # idxs are for now the same for all tasks, they are just stored
+                # in the task list for convenience
                 idxs = \
                 self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
                     'ndim_current_idxs']
@@ -10745,31 +10789,63 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         return data_ndim, sweep_points_ndim
 
     def get_meas_objs_from_task(self, task):
-        # FIXME similar to twpacal_mod, qe_mod, twoqbcal_mod
+        # FIXME there are similar methods in twpacal_mod, qe_mod,
+        #  twoqbcal_mod, this could get cleaned up
         return [task.get('mobj', task.get('qb'))]
 
     def get_ndim_sweep_points_from_mobj_name(self, ana_ids, mobjn):
+        """
+        Convenience method to reconstruct SweepPoints. Here we simply take
+        the N-dim SweepPoints originally passed in the task_list, and add the
+        2-dim SweepPoints from the experiment, since these can get overriden
+        before running e.g. in spectroscopy.
 
-        # Assumes sp are the same in all sub-experiments indexed by ana_ids
-        # TODO: these lines could be replaced by something to re-expand the sp from all experiments into a big n-dim sp object
+        Note: This behaviour could be improved or extended once there are
+        more complicated use cases, e.g. by really extracting each
+        SweepPoints values in dimensions >=2 from the corresponding
+        QuantumExperiment instead of getting those saved in the task list.
+        This would provide flexibility by avoiding to hardcode the experiment
+        structure in get_measurement_groups.
+        """
 
         task_list = self.raw_data_dict[ana_ids[0]]['exp_metadata']['task_list']
         # Find task containing this mobj
-        task = \
-        [t for t in task_list if mobjn in self.get_meas_objs_from_task(t)][0]
+        tasks = \
+        [t for t in task_list if mobjn in self.get_meas_objs_from_task(t)]
+        if len(tasks)!=1:
+            raise ValueError(f"{len(tasks)} tasks found containing"
+                             f" {mobjn} in experiments {ana_ids}")
+        task = tasks[0]
         sweep_points_ndim = sp_mod.SweepPoints(task['sweep_points'],
                                                min_length=2)
+        # Cleanup swept SP in dim>=2 which contain only one value
         sweep_points_ndim.prune_constant_values()
         sweep_points_ndim.update(task['ndim_sweep_points'])
         return sweep_points_ndim
 
     def plot(self, *args, **kwargs):
-        # FIXME
+        # FIXME should we do an automatic plotting at all for N-dim data?
+        #  Note that the separate QuantumExperiments can all get their own
+        #  2-D data plotted using their own analyses
         self.plot_slice()
 
-    def plot_slice(self, slicing_plotting_list=None):
-        print(self.proc_data_dict.keys())
-        slicing_plotting_list = self.slicing_plotting_list if slicing_plotting_list is None else slicing_plotting_list
+    def plot_slice(self, slicing_plotting_list=None, **kw):
+        """
+        Generic method to plot a 2-dim slice of an N-dim dataset from
+        self.proc_data_dict. Will generate a plot for each dict in
+        slicing_plotting_list.
+
+        Attributes:
+            slicing_plotting_list (list of dict): each dict can contain the
+            following items:
+            - mobjn: name of the mobjn whose data should be plotted
+            - data_key: key of the data in self.proc_data_dict
+            - sliceat: see SweepPoints.get_slice
+            - flip: if True, flips the x and y axes of the plot
+            - pcolor_kw: kwargs for plt.pcolor
+        """
+        slicing_plotting_list = self.slicing_plotting_list if \
+            slicing_plotting_list is None else slicing_plotting_list
         if self.slicing_plotting_list is not None:
             for d in slicing_plotting_list:
                 data_2D, sp_2D = sp_mod.SweepPoints.get_slice(
@@ -10777,16 +10853,15 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
                     self.proc_data_dict['sweep_points'][d['mobjn']],
                     d['sliceat']
                 )
-                if not d[
-                    'flip']:  # 'not' is just to match the orientation of plt.pcolor
+                # 'not' is just to match the orientation of plt.pcolor
+                if not d['flip']:
                     data_2D = data_2D.T
                 xlabel = list(sp_2D[d['flip']])[0]
                 ylabel = list(sp_2D[1 - d['flip']])[0]
                 X, Y = np.meshgrid(sp_2D.get_values(xlabel),
                                    sp_2D.get_values(ylabel))
                 plt.figure()
-                plt.pcolor(X, Y, data_2D)
-                # plt.pcolor(X, Y, data_2D, vmin=0)
+                plt.pcolor(X, Y, data_2D, **d['pcolor_kw'])
                 plt.xlabel(xlabel)
                 plt.ylabel(ylabel)
                 plt.title(f"{d['mobjn']}: {d['data_key']}")
@@ -10795,13 +10870,20 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
 
 class MultiTWPA_SNR_Analysis(NDim_BaseDataAnalysis):
     """
-    Analysis class for SNR (gain + noise) measurements,
-    used for the TWPA measurement object.
+    Analysis class for SNR (gain + noise) measurements for TWPAs.
+    Will group data to reconstruct 4 successive NDimMultiTaskingExperiment:
+    - num_ts times NoisePower (N-dim sweep over TWPA params + RO frequency)
+    - num_ts times ResonatorSpectroscopy (same parameters)
+    - 1 NoisePower (sweep over RO frequency with TWPA off)
+    - 1 ResonatorSpectroscopy (same parameters)
+    In addition to the datasets specified in get_measurement_groups,
+    an 'SNR_rise' dataset is computed and added to self.proc_data_dict.
 
     FIXME for now mobj_names must be of the form
-    [TWPA1.name, qb1.name, TWPA2.name...]
-    where each characterized TWPA is followed by a qubit pertaining to the same feedline.
-    This is because the spectroscopy (gain) measurements are for now only feasible with qubits.
+     [TWPA1.name, qb1.name, TWPA2.name...]
+     where each characterized TWPA is followed by a qubit pertaining to the
+     same feedline. This is because the spectroscopy (gain) measurements are
+     for now only feasible with qubits.
     """
 
     def get_measurement_groups(self):
@@ -10809,19 +10891,19 @@ class MultiTWPA_SNR_Analysis(NDim_BaseDataAnalysis):
         post_proc_gain = lambda data_dict, ch_map: 20 * np.log10(
             np.sqrt(data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2))
 
-        # We have a set of num_QEs+num_QEs+1+1 experiments
-        num_QEs = len(self.raw_data_dict) // 2 - 1
+        # We have a set of num_ts+num_ts+1+1 experiments
+        num_ts = len(self.raw_data_dict) // 2 - 1
 
         # Assumes that all experiments are ordered as follows:
-        # num_QEs for PSD, num_QEs for gain, plus two reference
+        # num_ts for PSD, num_ts for gain, plus two reference
         # measurements with TWPA off
         measurement_groups = {
             'noise_on': dict(
-                ana_ids=range(0, num_QEs),
+                ana_ids=range(0, num_ts),
                 post_proc_func=post_proc_noise,
             ),
             'gain_on': dict(
-                ana_ids=range(num_QEs, 2 * num_QEs),
+                ana_ids=range(num_ts, 2 * num_ts),
                 post_proc_func=post_proc_gain,
                 on_qb=True,
             ),

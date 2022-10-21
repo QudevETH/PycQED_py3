@@ -1009,6 +1009,17 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
 
 class NDimQuantumExperiment():
+    """
+    Wrapper class to allow running an N-dimensional QuantumExperiment.
+
+    Instantiates M times self.QuantumExperiment, where M is the product of
+    lengths of self.sweep_points[2:], each initialised with
+    sweep_points=self.sweep_points[0:2].
+    self.experiments are then indexed by self.get_experiment_indices(),
+    such that one can reconstruct an N-dim dataset afterwards from the
+    separate 2-dim datasets.
+    """
+
     QuantumExperiment = QuantumExperiment
     DUMMY_DIM = 1
 
@@ -1034,11 +1045,28 @@ class NDimQuantumExperiment():
         self.sweep_lengths = sp.length()
 
     def get_experiment_indices(self):
+        """
+        Returns:
+            idxs: list of indices indexing self.experiments, where each
+                index is a tuple of int indicating the position of
+                the experiment within self.sweep_points[2:]. E.g. for
+                self.sweep_points.length() = [a, b, 3, 2],
+                idxs = [(0, 0),(1, 0),(2, 0),(0, 1),(1, 1),(2, 1)]
+        """
         idxs = itertools.product(
             *[range(i) for i in self.sweep_lengths[:1:-1]])
         return [idx[::-1] for idx in idxs]
 
     def make_2d_sweep_points(self, sweep_points, idxs):
+        """
+        Makes 2-dim SweepPoints for the experiments indexed by idxs,
+        by slicing the dimensions >=2 of sweep_points at idxs.
+
+        Attributes:
+            sweep_points: N-dim sweep points to slice down to 2 dimensions.
+            idxs: indices of the experiments to instantiate,
+            see self.get_experiment_indices
+        """
         extra_sp = SweepPoints(sweep_points[2:])
         current_sp = SweepPoints(sweep_points[:2])
         length = self.sweep_lengths[self.DUMMY_DIM]
@@ -1053,6 +1081,13 @@ class NDimQuantumExperiment():
         return current_sp
 
     def create_experiment(self, idxs):
+        """
+        Instantiates sub-experiments.
+
+        Attributes:
+            idxs: indices of the experiments to instantiate,
+                see self.get_experiment_indices
+        """
         current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
         exp_metadata = dict(
             ndim_sweep_points=self.sweep_points,
@@ -1078,27 +1113,18 @@ class NDimQuantumExperiment():
 
 
 class NDimMultiTaskingExperiment(NDimQuantumExperiment):
-    # FIXME should a MultiTasking-like experiment be listed in this module?
+    """
+    Extension of NDimQuantumExperiment capable of running MultiTaskingExperiment
+
+    FIXME should a MultiTasking-like experiment be listed in this module?
+    """
+
     def __init__(self, task_list, *args, sweep_points=None,
                  QuantumExperiment=None, **kwargs):
         self.task_list = list(task_list)
         super().__init__(*args, sweep_points=sweep_points,
                          QuantumExperiment=QuantumExperiment, **kwargs)
 
-    # def _generate_sweep_lengths(self):
-    #     super()._generate_sweep_lengths()
-    #     for task in self.task_list:
-    #         tsp = SweepPoints(task.get('sweep_points', []))
-    #         self.sweep_lengths += [0 for i in
-    #                                range(len(self.sweep_lengths), len(tsp))]
-    #         for dim in range(len(tsp)):
-    #             current_len = tsp.length(dim)
-    #             if current_len:
-    #                 if not self.sweep_lengths[dim]:
-    #                     self.sweep_lengths[dim] = current_len
-    #                 elif self.sweep_lengths[dim] != current_len:
-    #                     raise ValueError(
-    #                         f'Incompatible number of sweep points in dim {dim}.')
 
     def _generate_sweep_lengths(self, sweep_points=None):
         sp = self.sweep_points if sweep_points is None else sweep_points

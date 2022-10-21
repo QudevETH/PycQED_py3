@@ -45,7 +45,7 @@ except ModuleNotFoundError:
 
 
 class MeasurementObject(Instrument):
-    # FIXME future remove stuff from Qubit object
+    # TODO to be cleaned up once QuDev_transmon is refactored as a child class
 
     # from Qubit object
     def _get_operations(self):
