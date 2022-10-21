@@ -1102,10 +1102,13 @@ class ZIGeneratorModule:
 
                     scaling_factor = metadata.get("scaling_factor", 1.0)
                     entry_index = len(self._command_table)
+                    amplitude = self._extract_command_table_amplitude(
+                        scaling_factor=scaling_factor
+                    )
                     entry = self._generate_command_table_entry(
                         entry_index=entry_index,
                         wave_index=self._wave_idx_lookup[element][cw],
-                        amplitude=scaling_factor,
+                        amplitude=amplitude,
                         phase=0.0
                     )
                     update_entry = True
@@ -1214,6 +1217,7 @@ class ZIGeneratorModule:
         """
         raise NotImplementedError("This method should be rewritten in child "
                                   "classes.")
+
     def _upload_csv_waveforms(
             self,
             waveforms,
@@ -1290,6 +1294,40 @@ class ZIGeneratorModule:
         entry2_copy["index"] = 0
 
         return entry1_copy == entry2_copy
+
+    def _extract_command_table_amplitude(
+            self,
+            scaling_factor,
+    ):
+        """Get command table 'amplitude' entry from scaling factors
+        passed from element metadata.
+
+        Args:
+            scaling_factor: metadata passed from awg_sequence that specifies
+                the amplitude ratio between the actual wave and the uploaded
+                wave.
+        """
+        # check if channels specified in scaling_factor match the
+        # analog channels on this AWG module.
+        channel_ids = [self.pulsar.get(f"{channel}_id")
+                       for channel in scaling_factor.keys()]
+        if set(channel_ids) != set(self.analog_channel_ids):
+            raise RuntimeError(
+                f"Channels specified in 'scaling_factor' metadata does not "
+                f"match analog channels on {self.awg.name} generator module "
+                f"{self._awg_nr}."
+            )
+
+        # check if factors specified in scaling_factor are all equal.
+        # TODO: support different scaling factors for different output
+        #  channels in this AWG module.
+        if len(set(scaling_factor.values())) > 1:
+            raise RuntimeError(
+                f"Scaling factors on {self.awg.name} generator module"
+                f"{self._awg_nr} are defined differently among output channels."
+            )
+
+        return list(scaling_factor.values())[0]
 
     def _compile_awg_program(
             self,
