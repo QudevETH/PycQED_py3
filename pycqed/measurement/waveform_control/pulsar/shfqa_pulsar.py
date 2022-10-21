@@ -121,6 +121,8 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
+            channels = set(self.pulsar._id_channel(chid, self.awg.name)
+                        for chid in chids)
 
             playback_strings = []
 
@@ -182,14 +184,12 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
             # otherwise SHFQA.USER_REG_... would crash on setups which do not
             # have an SHFQA object initialised
             shfqa_sequence_string_template = (
-                "var loop_cnt = "
-                f"getUserReg({SHF_AcquisitionDevice.USER_REG_LOOP_COUNT});\n"
                 "var acq_len = "
                 f"getUserReg({SHF_AcquisitionDevice.USER_REG_ACQ_LEN});"
                 f" // only needed in sweeper mode\n"
                 "{prep_string}"
                 "\n"
-                "repeat (loop_cnt) {{\n"
+                "while(1) {{\n"
                 "  {playback_string}\n"
                 "}}\n"
             )
@@ -279,9 +279,14 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     current_segment = element
                     playback_strings.append(f'// Segment {current_segment}')
                     return playback_strings
-                playback_strings.append(f'// Element {element}')
 
                 metadata = awg_sequence_element.pop('metadata', {})
+                trigger_groups = metadata['trigger_groups']
+                if not self.pulsar.check_channels_in_trigger_groups(
+                        channels, trigger_groups):
+                    return playback_strings
+                playback_strings.append(f'// Element {element}')
+
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
                 playback_strings += self._zi_playback_string_loop_start(
@@ -341,14 +346,17 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
     def is_awg_running(self):
         is_running = []
         for awg_nr, qachannel in enumerate(self.awg.qachannels):
-            if qachannel.mode().name == 'readout':
+            if not self.awg.awg_active[awg_nr]:
+                continue  # no check needed
+            if self.awg._awg_program[awg_nr]:
+                # hardware spec or 'readout' mode
                 is_running.append(qachannel.generator.enable())
-            else:  # spectroscopy
-                daq = self.awg.daq
-                path = f"/{self.awg.get_idn()['serial']}/qachannels/{awg_nr}/" \
-                       f"spectroscopy/result/enable"
-                is_running.append(daq.getInt(path) != 0)
-        return any(is_running)
+            else:
+                # software spectroscopy
+                # No awg needs to be started, so we can pretend that it's always
+                # running for the check to pass
+                is_running.append(True)
+        return all(is_running)
 
     def clock(self):
         return 2.0e9

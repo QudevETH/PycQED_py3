@@ -997,7 +997,8 @@ class CircuitBuilder:
     def sweep_n_dim(self, sweep_points, body_block=None, body_block_func=None,
                     cal_points=None, init_state='0', seq_name='Sequence',
                     ro_kwargs=None, return_segments=False, ro_qubits='all',
-                    repeat_ro=True, init_kwargs=None, final_kwargs=None, **kw):
+                    repeat_ro=True, init_kwargs=None, final_kwargs=None,
+                    segment_kwargs=None, **kw):
         """
         Creates a sequence or a list of segments by doing an N-dim sweep
         over the given operations based on the sweep_points.
@@ -1028,6 +1029,8 @@ class CircuitBuilder:
             see method initialize().
         :param final_kwargs: Keyword arguments (dict) for the finalization,
             see method finalize().
+        :param segment_kwargs: Keyword arguments (dict) passed to segment.
+            (default: None)
         :param kw: additional keyword arguments
             body_block_func_kw (dict, default: {}): keyword arguments for the
                 body_block_func
@@ -1057,6 +1060,8 @@ class CircuitBuilder:
             init_kwargs = {}
         if final_kwargs is None:
             final_kwargs = {}
+        if segment_kwargs is None:
+            segment_kwargs = {}
 
         nr_sp_list = sweep_points.length()
         if sweep_dims == 1:
@@ -1121,7 +1126,7 @@ class CircuitBuilder:
                     sweep_dicts_list=(
                         None if (body_block is None and self.fast_mode)
                         else sweep_points), sweep_index_list=[j, i],
-                    destroy=True), fast_mode=self.fast_mode)
+                    destroy=True), fast_mode=self.fast_mode, **segment_kwargs)
                 # apply Segment sweep points
                 for dim in [0, 1]:
                     for param in sweep_points[dim]:

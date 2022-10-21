@@ -443,6 +443,12 @@ class QuDev_transmon(Qubit):
         self.add_parameter('spec_power', unit='dBm', initial_value=-20,
                            parameter_class=ManualParameter,
                            label='Qubit spectroscopy power')
+        self.add_parameter('spec_mod_amp', unit='V', initial_value=0.1,
+                           parameter_class=ManualParameter,
+                           label='IF amplitude in qb spec',
+                           docstring='This configures the amplitude of the IF '
+                            'tone when doing a modulated qb spectroscopy (not '
+                            'bypassing the mixer, used for multi qb spec).')
         self.add_operation('Spec')
         self.add_pulse_parameter('Spec', 'spec_pulse_type', 'pulse_type',
                                  initial_value='SquarePulse',
@@ -1044,13 +1050,14 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             data_type='digitized')
 
+        awg_ctrl = self.instr_acq.get_instr().get_awg_control_object()[0]
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
-            AWG=self.instr_acq.get_instr(),
+            AWG=awg_ctrl,
             channels=self.get_acq_int_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            data_type='raw', real_imag=False, single_int_avg=True)
+            data_type='raw', polar=True, single_int_avg=True)
 
         if 'UHF' in self.instr_acq.get_instr().__class__.__name__ and hasattr(
                 self.instr_acq.get_instr().daq, 'scopeModule'):
@@ -1064,7 +1071,7 @@ class QuDev_transmon(Qubit):
         else:
             self.scope_fft_det = det.ScopePollDetector(
                 acq_dev=self.instr_acq.get_instr(),
-                AWG=self.instr_acq.get_instr(),
+                AWG=awg_ctrl,
                 channels=self.get_acq_inp_channels(),
                 data_type='fft_power',
                 nr_averages=self.acq_averages(),
@@ -1086,12 +1093,14 @@ class QuDev_transmon(Qubit):
         Args:
             drive (str, None): the kind of drive to be applied, which can be
                 None (no drive), 'continuous_spec' (continuous spectroscopy),
+                'continuous_spec_modulated' (continuous spectroscopy using
+                the modulated configuation of the switch),
                 'pulsed_spec' (pulsed spectroscopy), or the default
                 'timedomain' (AWG-generated signal upconverted by the mixer)
             switch (str): the required switch mode. Can be a switch mode
                 understood by set_switch or the default value 'default', in
                 which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy;
+                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
                 'no_drive' if drive is None and a switch mode 'no_drive' is
                 configured for this qubit; 'modulated' in all other cases).
         """
@@ -1121,7 +1130,7 @@ class QuDev_transmon(Qubit):
         if ge_lo() is not None:
             if drive is None:
                 ge_lo.get_instr().off()
-            elif drive == 'continuous_spec':
+            elif 'continuous_spec' in drive :
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
@@ -1141,7 +1150,9 @@ class QuDev_transmon(Qubit):
             else:
                 raise ValueError("Invalid drive parameter '{}'".format(drive)
                                  + ". Valid options are None, 'continuous_spec"
-                                 + "', 'pulsed_spec' and 'timedomain'.")
+                                 + "', 'pulsed_spec', "
+                                 + "'continuous_spec_modulated' and "
+                                 + "'timedomain'.")
 
         param = f'{self.ge_I_channel()}_centerfreq'
         if param in self.instr_pulsar.get_instr().parameters:
@@ -1371,7 +1382,7 @@ class QuDev_transmon(Qubit):
             return pulsar.get_frequency_sweep_function(
                 self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
 
-    def swf_ro_freq_lo(self):
+    def swf_ro_freq_lo(self, bare=False):
         """Create a sweep function for sweeping the readout frequency.
 
         The sweep is implemented as an LO sweep in case of an acquisition
@@ -1380,17 +1391,28 @@ class QuDev_transmon(Qubit):
         internal LO (note that it might be an IF sweep or a combined LO and
         IF sweep in that case.)
 
+        Args:
+            bare (bool): return the bare LO freq swf without any automatic
+                offsets applied. Defaults to False.
+
         Returns: the Sweep_function object
         """
         if self.instr_ro_lo() is not None:  # external LO
-            return swf.Offset_Sweep(
-                self.instr_ro_lo.get_instr().frequency,
-                -self.ro_mod_freq(),
-                name='Readout frequency',
-                parameter_name='Readout frequency')
+            if bare:
+                return swf.mc_parameter_wrapper.wrap_par_to_swf(
+                    self.instr_ro_lo.get_instr().frequency)
+            else:
+                return swf.Offset_Sweep(
+                    self.instr_ro_lo.get_instr().frequency,
+                    -self.ro_mod_freq(),
+                    name='Readout frequency',
+                    parameter_name='Readout frequency')
         else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit(), self.ro_mod_freq())
+                self.acq_unit(),
+                0 if (self.ro_fixed_lo_freq() or bare) else self.ro_mod_freq(),
+                get_closest_lo_freq=(lambda f, s=self:
+                                     s.get_closest_lo_freq(f, operation='ro')))
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
@@ -1416,9 +1438,10 @@ class QuDev_transmon(Qubit):
             else:
                 label = 'resonator_scan' + self.msmt_suffix
         self.prepare(drive=None)
+        sweep_function = self.swf_ro_freq_lo()
         if upload:
             ro_pars = self.get_ro_pars()
-            if self.instr_ro_lo() is None:
+            if getattr(sweep_function, 'includes_IF_sweep', False):
                 ro_pars['mod_frequency'] = 0
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
 
@@ -1426,8 +1449,12 @@ class QuDev_transmon(Qubit):
                 if hasattr(self.instr_acq.get_instr(),
                            'use_hardware_sweeper') and \
                         self.instr_acq.get_instr().use_hardware_sweeper():
+                    self.int_avg_det_spec.AWG = self.instr_pulsar.get_instr()
                     lo_freq, delta_f, _ = self.instr_acq.get_instr()\
-                        .get_params_for_spectrum(freqs)
+                        .get_params_for_spectrum(
+                            freqs, get_closest_lo_freq=(
+                                lambda f, s=self: s.get_closest_lo_freq(
+                                    f, operation='ro')))
                     self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
                                                            lo_freq)
                     seg.acquisition_mode = dict(
@@ -1444,7 +1471,7 @@ class QuDev_transmon(Qubit):
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.swf_ro_freq_lo())
+        MC.set_sweep_function(sweep_function)
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
@@ -1458,15 +1485,18 @@ class QuDev_transmon(Qubit):
         else:
             # The following ensures that we use a hard detector if the acq
             # dev provided a sweep function for a hardware IF sweep.
-            self.int_avg_det.set_real_imag(False)
+            self.int_avg_det.set_polar(True)
             self.int_avg_det.AWG = self.int_avg_det_spec.AWG
             MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+                self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                self.instr_pulsar.get_instr().stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
@@ -1575,12 +1605,13 @@ class QuDev_transmon(Qubit):
         else:
             # The following ensures that we use a hard detector if the swf
             # provided by swf_drive_lo_freq uses a hardware IF sweep.
-            self.int_avg_det.set_real_imag(False)
+            self.int_avg_det.set_polar(True)
             MC.set_detector_function(self.int_avg_det)
         temp_vals += [(self.instr_trigger.get_instr().pulse_period,
                        trigger_separation)]
         with temporary_value(*temp_vals):
-            pulsar.start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            pulsar.start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
             pulsar.stop()
 
@@ -1826,7 +1857,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(detector_generator())
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -1934,8 +1966,8 @@ class QuDev_transmon(Qubit):
             other_qb.prepare(drive=None)
             MC.set_detector_function(det.IndexDetector(
                 other_qb.int_avg_det_spec, 0))
-            other_qb.instr_pulsar.get_instr().start(
-                exclude=[other_qb.instr_uhf()])
+            awg_n = other_qb.instr_acq().get_instr().get_awg_control_object()[1]
+            other_qb.instr_pulsar.get_instr().start(exclude=[awg_n])
             MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -2059,7 +2091,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det_spec)
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
 
@@ -2599,7 +2632,8 @@ class QuDev_transmon(Qubit):
             MC.set_sweep_points(freqs)
             MC.set_detector_function(self.int_avg_det_spec)
 
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=f"{state}-spec" + self.msmt_suffix)
             self.instr_pulsar.get_instr().stop()
 

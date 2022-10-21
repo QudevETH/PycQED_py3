@@ -727,10 +727,15 @@ class MeasurementControl(Instrument):
         Deletes arrays to clean up memory and avoid memory related mistakes
         '''
         # this data can be plotted by enabling persist_mode
-        self._persist_dat = result
-        self._persist_xlabs = self.sweep_par_names
-        self._persist_ylabs = self.detector_function.value_names
-        self._persist_plotmon_axes_info = self._plotmon_axes_info
+        n = len(self.sweep_par_names)
+        if self._live_plot_enabled():
+            self._persist_dat = np.concatenate([
+                result[:, :n],
+                self.detector_function.live_plot_transform(result[:, n:])
+            ], axis=1)
+            self._persist_xlabs = self.sweep_par_names
+            self._persist_ylabs = self.detector_function.live_plot_labels
+            self._persist_plotmon_axes_info = self._plotmon_axes_info
 
         for attr in ['TwoD_array',
                      'dset',
@@ -877,8 +882,8 @@ class MeasurementControl(Instrument):
         sunits = self.sweep_par_units
         # labels and units for measured values (each one will be used for
         # the y axis of a 1D plot, and possible as the colorbar of a 2D plot)
-        zlabels = self.detector_function.value_names
-        zunits = self.detector_function.value_units
+        zlabels = self.detector_function.live_plot_labels
+        zunits = self.detector_function.live_plot_units
 
         # cf != 1 indicates a compressed 2D sweep
         cf = self.exp_metadata.get("compression_factor", 1)
@@ -974,7 +979,7 @@ class MeasurementControl(Instrument):
 
                 # Try to find a measured object (mo) to which the measured
                 # value belongs
-                mo = vnmom.get(zlabel, None) if vnmom is not None else None
+                mo = vnmom.get(vn, None) if vnmom is not None else None
                 # update the label of the measured value with the mo name
                 if mo is not None:
                     zlabel = f'{mo}: {zlabel}'
@@ -1231,6 +1236,8 @@ class MeasurementControl(Instrument):
 
                     nr_sweep_funcs = len(self.sweep_function_names)
                     # for each column of measured data
+                    ydata = self.detector_function.live_plot_transform(
+                        self.dset[:, nr_sweep_funcs:])
                     for y_ind, vn in enumerate(
                             self.detector_function.value_names):
                         # get the axis info for this column
@@ -1238,7 +1245,7 @@ class MeasurementControl(Instrument):
                         # The first nr_sweep_funcs columns are sweep values
                         # (x axis in 1D plots), the following columns are
                         # data columns (y axis in 1D plots).
-                        y = self.dset[:, nr_sweep_funcs + y_ind]
+                        y = ydata[:, y_ind]
                         x_vals = [self.dset[:, x_ind] for x_ind in range(
                             nr_sweep_funcs)]
                         # If 2D sweep compression was used, calculate the soft
@@ -1314,11 +1321,12 @@ class MeasurementControl(Instrument):
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
                 y_ind = int(i / self.xlen)
+                self.TwoD_array[y_ind, x_ind, :] = \
+                    self.detector_function.live_plot_transform(
+                        self.dset[i, len(self.sweep_functions):])
                 for j in range(len(self.detector_function.value_names)):
-                    z_ind = len(self.sweep_functions) + j
-                    self.TwoD_array[y_ind, x_ind, j] = self.dset[i, z_ind]
-                self.secondary_QtPlot.traces[j]['config'][
-                    'z'] = self.TwoD_array[:, :, j]
+                    self.secondary_QtPlot.traces[j]['config'][
+                        'z'] = self.TwoD_array[:, :, j]
                 if (time.time() - self.time_last_2Dplot_update >
                         self.plotting_interval()
                         or self.iteration == len(self.sweep_points) or
@@ -1578,10 +1586,11 @@ class MeasurementControl(Instrument):
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
+                data = self.detector_function.live_plot_transform(
+                    self.dset[i * self.xlen:(i + 1) * self.xlen,
+                              len(self.sweep_functions):])
                 for j in range(len(self.detector_function.value_names)):
-                    z_ind = len(self.sweep_functions) + j
-                    data_row = self.dset[
-                        i*self.xlen:(i+1)*self.xlen, z_ind]
+                    data_row = data[:, j]
                     if cf != 1:
                         # reshape data according to compression factor
                         data_reshaped = data_row.reshape((cf, int(len(data_row)/cf)))
@@ -2069,11 +2078,17 @@ class MeasurementControl(Instrument):
             averaging progress is 300, then current_acq should be set to
             40*300/2**10.)
         """
-        percdone = (self.total_nr_acquired_values + current_acq) / (
-            np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
+        if current_acq == np.nan:
+            # np.nan indicates that progress reporting is in principle
+            # supported, but failed. This will be treated like no progress.
+            percdone = np.nan
+        else:
+            percdone = (self.total_nr_acquired_values + current_acq) / (
+                np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
         try:
             now = time.time()
-            if percdone != self._last_percdone_value:  # progress was made
+            if percdone != np.nan and percdone != self._last_percdone_value:
+                # progress was made
                 self._last_percdone_value = percdone
                 self._last_percdone_change_time = now
                 log.debug(f'MC: percdone = {self._last_percdone_value} at '
@@ -2092,6 +2107,7 @@ class MeasurementControl(Instrument):
                       f'for {no_prog_min: .01f} minutes.'
                 if now - self._last_percdone_change_time > no_prog_inter \
                         and now - self._last_percdone_log_time > no_prog_inter:
+                    log.warning(msg)
                     self.log_to_slack(msg)
                     self._last_percdone_log_time = now
                 if now - self._last_percdone_change_time > no_prog_inter2:
@@ -2109,10 +2125,10 @@ class MeasurementControl(Instrument):
 
         :param current_acq: see docstring of get_percdone
         """
-        if self.verbose():
-            acquired_points = self.dset.shape[0]
-            total_nr_pts = len(self.get_sweep_points())
-            percdone = self.get_percdone(current_acq=current_acq)
+        # The following method is always called because it includes the
+        # no-progress checks.
+        percdone = self.get_percdone(current_acq=current_acq)
+        if self.verbose() and percdone != np.nan:
             elapsed_time = time.time() - self.begintime
             t_left = round((100. - percdone) / (percdone) *
                            elapsed_time, 1) if percdone != 0 else '??'
