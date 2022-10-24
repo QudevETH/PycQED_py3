@@ -11,10 +11,7 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
     """
     Reload settings from the database.
     """
-    if dev is None:
-        qubits = kw.get('qubits', kw.get('qbs', None))
-    else:
-        qubits = dev.get_qubits()
+    qubits = kw.get('qubits', kw.get('qbs', dev.get_qubits()))
 
     for qb in qubits:
         gen.load_settings(qb, timestamp=timestamp)
