@@ -163,6 +163,11 @@ class Block:
             })
         self.block_end.update(block_end)
 
+    def get_built_pulse_attr(self, pulse, attr="name"):
+        name = self.name + (f"_{self.counter}" if self.counter > 0 else "")
+        if pulse.get(attr, None) is not None:
+            return name + "-|-" + pulse[attr]
+
     def _is_shell(self, pulse, block_start, block_end):
         """
         Checks, based on the pulse name, whether a pulse belongs to the block shell.
