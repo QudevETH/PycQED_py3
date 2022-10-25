@@ -429,7 +429,7 @@ class CircuitBuilder:
                                block_name=block_name,
                                pulse_modifs=pulse_modifs)
 
-    def prepare_old(self, qb_names='all', ref_pulse='start',
+    def _prepare(self, qb_names='all', ref_pulse='start',
                 preparation_type=STD_PREP_PARAMS['preparation_type'],
                 post_ro_wait=STD_PREP_PARAMS['post_ro_wait'],
                 ro_separation=STD_PREP_PARAMS['ro_separation'],
@@ -465,6 +465,8 @@ class CircuitBuilder:
         Returns:
 
         """
+        log.warning("This function is deprecated and will be removed in the "
+                    "near future. Please use CircuitBuilder.prepare()")
         if block_name is None:
             block_name = f"Preparation_{qb_names}"
         _, qb_names = self.get_qubits(qb_names)
@@ -671,157 +673,6 @@ class CircuitBuilder:
                                       set_end_after_all_pulses=True,
                                       block_align=step_alignment))
         return self.sequential_blocks(block_name, prep)
-
-
-    def _preselection(self, qb_names="all", ro_separation=1e-6,
-                      ref_pulse="segment_start", block_name=None, name_suffix="_{qb_names}",
-                                    element_suffix=""):
-        """
-
-        Args:
-            qb_names:
-            ro_separation:
-            ref_pulse:
-            block_name:
-            name_suffix:
-            element_suffix:
-
-        Returns:
-
-        """
-        _, qb_names = self.get_qubits(qb_names)
-        ns = name_suffix.format(qb_names=qb_names)
-        es = element_suffix.format(qb_names=qb_names)
-        if block_name is None:
-            block_name = f"preselection{ns}"
-
-        block_start = dict(ref_pulse=ref_pulse, pulse_delay=-ro_separation)
-        block_end = dict(ref_pulse='start', pulse_delay=ro_separation)
-        presel = self.mux_readout(qb_names, block_name=block_name,
-                                     element_name=f'preselection_element{es}')
-        presel.block_start = block_start
-        presel.block_end = block_end
-        return presel
-
-    def _active_reset_with_feedback(self, qb_names, type, reset_reps,
-                                    threshold_mapping, ro_feedback_delay,
-                                    ro_separation, ref_pulse="segment_start",
-                                    pad_end=False,
-                                    block_name=None, name_suffix="_{qb_names}",
-                                    element_suffix=""):
-        """
-        ref pulse: where AR should end.
-        Args:
-            qb_names:
-            type:
-            reset_reps:
-            threshold_mapping:
-            ro_feedback_delay:
-            ro_separation:
-            ref_pulse:
-            pad_end:
-            block_name:
-            name_suffix:
-            element_suffix:
-
-        Returns:
-
-        """
-        _, qb_names = self.get_qubits(qb_names)
-        ns = name_suffix.format(qb_names=qb_names)
-        es = element_suffix.format(qb_names=qb_names)
-        if block_name is None:
-            block_name = f"active_reset_with_feedback{ns}"
-
-        if threshold_mapping is None or len(threshold_mapping) == 0:
-            threshold_mapping = {qbn: {0: 'g', 1: 'e'} for qbn in qb_names}
-
-        # Calculate the length of a ge pulse, assumed the same for all qubits
-        state_ops = dict(g=["I "], e=["X180 "], f=["X180_ef ", "X180 "])
-        reset_ro_pulses = []
-        ops_and_codewords = {}
-        for i, qbn in enumerate(qb_names):
-            reset_ro_pulses.append(self.get_pulse('RO ' + qbn))
-            reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
-
-            if type == 'active_reset_e':
-                ops_and_codewords[qbn] = [
-                    (state_ops[threshold_mapping[qbn][0]], 0),
-                    (state_ops[threshold_mapping[qbn][1]], 1)]
-            elif type == 'active_reset_ef':
-                assert len(threshold_mapping[qbn]) == 4, \
-                    f"Active reset for the f-level requires a mapping of " \
-                    f"length 4 but only {len(threshold_mapping)} were " \
-                    f"given: {threshold_mapping}"
-                ops_and_codewords[qbn] = [
-                    (state_ops[threshold_mapping[qbn][0]], 0),
-                    (state_ops[threshold_mapping[qbn][1]], 1),
-                    (state_ops[threshold_mapping[qbn][2]], 2),
-                    (state_ops[threshold_mapping[qbn][3]], 3)]
-            else:
-                raise ValueError(f'Invalid preparation type: {type}')
-
-        reset_pulses = []
-        for i, qbn in enumerate(qb_names):
-            for ops, codeword in ops_and_codewords[qbn]:
-                for j, op in enumerate(ops):
-                    reset_pulses.append(self.get_pulse(op + qbn))
-                    # Reset does not require to lock the phase of the qubit
-                    # as the qubit has been projected onto the Z axis by the RO.
-                    # This also ensures that the same waveform is used for all
-                    # reset rounds and that a single pulse is uploaded.
-                    reset_pulses[-1]['phaselock'] = False
-                    reset_pulses[-1]['codeword'] = codeword
-                    if j == 0:
-                        reset_pulses[-1]['ref_point'] = 'start'
-                        reset_pulses[-1]['pulse_delay'] = ro_feedback_delay
-                    else:
-                        reset_pulses[-1]['ref_point'] = 'start'
-                        pulse_length = 0
-                        for jj in range(1, j + 1):
-                            if 'pulse_length' in reset_pulses[-1 - jj]:
-                                pulse_length += reset_pulses[-1 - jj][
-                                    'pulse_length']
-                            else:
-                                pulse_length += \
-                                    reset_pulses[-1 - jj]['sigma'] * \
-                                    reset_pulses[-1 - jj]['nr_sigma']
-                        reset_pulses[-1]['pulse_delay'] = ro_feedback_delay + \
-                                                          pulse_length
-
-        prep_pulse_list = []
-        for rep in range(reset_reps):
-            ro_list = deepcopy(reset_ro_pulses)
-            ro_list[0]['name'] = f'refpulse_reset_element{ns}_{rep}'
-
-            for pulse in ro_list:
-                pulse['element_name'] = f'reset_ro_element{es}_{rep}'
-            if rep == 0:
-                ro_list[0]['ref_pulse'] = ref_pulse
-                ro_list[0]['pulse_delay'] = -reset_reps * ro_separation
-            else:
-                ro_list[0]['ref_pulse'] = f'refpulse_reset_element{ns}_{rep-1}'
-                ro_list[0]['pulse_delay'] = ro_separation
-                ro_list[0]['ref_point'] = 'start'
-
-            rp_list = deepcopy(reset_pulses)
-            for j, pulse in enumerate(rp_list):
-                pulse['element_name'] = f'reset_pulse_element{es}_{rep}'
-                pulse['ref_pulse'] = f'refpulse_reset_element{ns}_{rep}'
-            prep_pulse_list += ro_list
-            prep_pulse_list += rp_list
-        block_start = dict(ref_pulse=ref_pulse,
-                           pulse_delay=-reset_reps * ro_separation)
-        # could have option to have pulse delay to 0 to have active reset start somewhere
-        # instead of stop
-        if pad_end:
-            block_end = dict(
-                name='end', pulse_type="VirtualPulse",
-                ref_pulse=f'refpulse_reset_element{ns}_{reset_reps-1}',
-                pulse_delay=ro_separation, ref_point="start")
-            prep_pulse_list += [block_end]
-        return Block(block_name, prep_pulse_list, copy_pulses=False,
-                     block_start=block_start)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
                     **pulse_pars):
