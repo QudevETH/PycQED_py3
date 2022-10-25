@@ -3124,7 +3124,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
             }
 
 
-class MultiQubitAvgRoCalibAnalysis(MultiQubit_Spectroscopy_Analysis):
+class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
     """Analysis to find the RO frequency that maximizes distance in IQ plane.
 
     Compatible with `MultiTaskingSpectroscopyExperiment`.
