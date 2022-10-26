@@ -11,6 +11,12 @@ log = logging.getLogger(__name__)
 
 
 class RandomCircuitBenchmarkingMixin:
+    """Mixin containing utility functions needed by the RB and XEB classes.
+
+    Classes deriving from this mixin must have the following attributes:
+        - kw_for_task_keys: see docstring of MultiTaskingExperiment
+        - kw_for_sweep_points: see docstring of MultiTaskingExperiment
+    """
 
     seq_lengths_name = 'cliffords'
     """Name of the parameter specifying the sequence lengths 
@@ -26,6 +32,14 @@ class RandomCircuitBenchmarkingMixin:
     """
 
     def update_kw_cal_states(self, kw):
+        """
+        Disables cal_points unless user has explicitly set them.
+
+        The cal points are disabled by setting cal_states = '' in the kw.
+
+        Args:
+            kw: keyword arguments which will be updated
+        """
         kw['cal_states'] = kw.get('cal_states', '')
 
     def create_sweep_type(self, sweep_type=None):
@@ -58,8 +72,10 @@ class RandomCircuitBenchmarkingMixin:
         """
         Check whether identical pulses should be applied to all tasks.
 
-        The same RB experiment will be run on all tasks if the input parameter
-        self.randomizations_name is provided as a global parameter.
+        The same RB/XEB experiment will be run on all tasks if the input
+        parameter self.randomizations_name is provided as a global parameter
+        to the init of the RB/XEB measurement class. Therefore, here kw must
+        be the kw that were passed to the init of the RB/XEB measurement class.
 
         Creates the attribute identical_pulses (True if self.randomizations_name
         if provided as a global parameter; False if this parameter is specified
@@ -67,8 +83,8 @@ class RandomCircuitBenchmarkingMixin:
 
         Args:
             task_list (list of dicts): see CalibBuilder docstring
-            **kw: kwargs that were passed to class __init__
-                Contain seq_lengths_name and f'nr_{randomizations_name}'
+            **kw: kwargs that were passed to the __init__ of the child class.
+                Can contain seq_lengths_name and f'nr_{randomizations_name}'
                 if these parameters are passed globally by the user.
         """
         global_seq_lengths = kw.get(self.seq_lengths_name)
@@ -520,7 +536,7 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
         sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
                 the integers specify which parameter should correspond to the
                 inner sweep (0), and which to the outer sweep (1).
-        identical_pulses: Bool, whether the same RB experiment should be
+        identical_pulses: Bool, whether the same XEB experiment should be
             run on all tasks (True), or have unique sequences per task (False)
     """
     default_experiment_name = 'XEB'
@@ -710,11 +726,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         "the first one-qubit gate for each qubit after the initial cycle of
         Hadamard gates is always a T gate; and we place a one-qubit gate only
         in the next cycle after a CZ gate in the same qubit."
-
-        Init of the SingleQubitXEB class.
-        The experiment consists of applying
-        [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
-        with random values of theta each time.
 
         Args:
             nr_seqs (int): the number of times to apply a random
