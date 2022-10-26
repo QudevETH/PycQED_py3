@@ -1461,7 +1461,6 @@ class QuDev_transmon(Qubit):
                         f_start=freqs[0] - lo_freq,
                         f_step=delta_f,
                         n_step=len(freqs),
-                        seqtrigger=True,
                     )
                 else:
                     seg.acquisition_mode = dict(
