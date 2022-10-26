@@ -24,9 +24,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     Attributes:
         awg_active (list of bool): Whether the AWG of each acquisition unit has
             been started by Pulsar.
-        seqtrigger (int): Index of the acquisition unit whose internal
-            sequencer trigger should trigger the scope. If None, the scope is
-            triggered by the external trigger of acq unit 0.
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
     """
@@ -72,7 +69,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._acq_units_modes = {}
         self._awg_program = [None]*self.n_acq_units
         self._awg_source_strings = {}
-        self.seqtrigger = None
         self.timer = None
 
         self.awg_active = [False] * self.n_acq_units
@@ -100,12 +96,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
         self.add_parameter(
             'acq_trigger_delay',
-            initial_value=200e-9,
+            initial_value=0,
             parameter_class=ManualParameter,
-            docstring='Delay between the pulse generation and acquisition. '
-                      'This is used both in the scope and the integration '
-                      'units for consistency.',
-            vals=validators.Numbers())
+            docstring='Delay between the pulse generation and the acquisition.',
+            vals=validators.Numbers(min_value=0))
 
         self.add_parameter(
            'timeout',
@@ -205,7 +199,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             acq_length = None
         else:
             diff_f = np.diff(requested_freqs)
-            if not all(diff_f-diff_f[0] < 1e-3):
+            if not all(np.abs(diff_f-diff_f[0]) < 1e-3):
                 # not equally spaced (arbitrary 1 mHz)
                 log.warning(f'Unequal frequency spacing not supported, '
                             f'the measurement will return equally spaced values.')
@@ -240,7 +234,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._acq_units_modes = {i: self.qachannels[i].mode().name  # Caching
                                  for i in self._acq_units_used}
 
-        # Set the scope trigger to the same delay as the other modes
+        # Set the scope trigger delay with respect to pulse generation
         self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
         for i in range(self.n_acq_units):
@@ -248,7 +242,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             # necessary e.g. to get consistent acquisition weights.
             self.qachannels[i].readout.integration.delay(
                 self.acq_trigger_delay())
-            self.qachannels[i].spectroscopy.delay(self.acq_trigger_delay())
+            self.qachannels[i].spectroscopy.delay(
+                self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
             self.qachannels[i].readout.stop()  # readout mode
@@ -286,12 +281,17 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self.seqtrigger is None:
-                    self.qachannels[i].spectroscopy.trigger.channel(
-                        f'channel{i}_trigger_input0')
-                else:
+                if self._awg_program[i]:
+                    # assume that this sequencer program includes triggering
+                    # for the spectroscopy
                     self.qachannels[i].spectroscopy.trigger.channel(
                         f'channel{i}_sequencer_trigger0')
+                else:
+                    # no sequencer will be running. Use the trigger that
+                    # would otherwise trigger the sequencer as a trigger for
+                    # the spectroscopy.
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        self.qachannels[i].generator.auxtriggers[0].channel())
                 # Spectroscopy mode outputs a modulated pulse, whose envelope
                 # is programmed by pulsar and whose modulation frequency is
                 # given by the sum of the configured center frequency and
@@ -337,18 +337,19 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # trace) compensation for the delay between generator output and input
         # of the integration unit
         self.qachannels[acq_unit].mode("readout")
-        # Arbitrarily always using the trigger from ch0, since there is only
-        # one scope module
-        if self.seqtrigger is None:
-            trigger_channel = 'channel0_trigger_input0'
-        else:
-            trigger_channel = f'channel{self.seqtrigger}_sequencer_trigger0'
+        if len(self._acq_units_used)>1:
+            log.warning("Parallel measurements might lead to timing "
+                        "discrepancies, since the whole scope is triggered by "
+                        "a single acquisition unit.")
+        trigger_channel = f'channel{acq_unit}_sequencer_monitor0'
         self.scopes[0].configure(
             input_select={acq_unit: f"channel{acq_unit}_signal_input"},
             num_samples=num_points_per_run,
             trigger_input=trigger_channel,
             num_segments=num_segments,
             num_averages=num_hard_avg,
+            # trigger_delay for now defaults to 0 in this function...
+            trigger_delay=self.scopes[0].trigger.delay(),
         )
 
     def acquisition_finalize(self):
@@ -460,8 +461,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
                 # In readout mode the data isn't rescaled yet in the SHF
                 # by the number of points
-                scaling_factor = np.sqrt(2) \
-                                 / (self.acq_sampling_rate * self._acq_length)
+                scaling_factor = 1 / (self.acq_sampling_rate * self._acq_length)
                 dataset.update(
                     {(i, ch): [np.real(res[n][self._acq_poll_inds[i][n]:])
                                * scaling_factor]
@@ -474,7 +474,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 if progress >= self._acq_loop_cnt * self._acq_n_results:
                     data = self.qachannels[i].spectroscopy.result.data.wave()
                     data = [[np.real(a), np.imag(a)] for a in data]
-                    scaling_factor = np.sqrt(2)
+                    scaling_factor = 1
                     dataset.update({(i, ch): [[a[n % 2] * scaling_factor
                                               for a in data]]
                                     for n, ch in enumerate(channels)})
@@ -579,6 +579,23 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 log.warning(f'{self.name}: acquisition unit {i} is used '
                             f'without an AWG program. This might result in '
                             f'not triggering the acquisition unit.')
+
+    def _check_hardware_limitations(self):
+        super()._check_hardware_limitations()
+        n_samples = self.convert_time_to_n_samples(self._acq_length)
+        if self._acq_mode == 'scope' and n_samples > self._acq_scope_memory:
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'Acquisition length {self._acq_length} corresponds to '
+                f'{n_samples} > {self._acq_scope_memory}, which is not '
+                f'supported in scope mode.')
+        if n_samples != self.convert_time_to_n_samples(self._acq_length, True):
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'Acquisition length {self._acq_length} corresponds to '
+                f'{n_samples} samples, which is not a multiple of the '
+                f'granularity {self.acq_length_granularity}.')
+
 
     def acquisition_set_weights(self, channels, **kw):
         # Makes super call faster
