@@ -66,6 +66,10 @@ class InitializationScheme(InstrumentModule):
         for operation in operations:
             self.add_operation(operation)
 
+        # create a repetition counter so that _init_block() knows about
+        # the repetition at run time
+        self._rep = 0
+
 
     def add_operation(self, operation_name, init_values=None):
         if operation_name not in self.instr_ref.operations():
@@ -98,16 +102,18 @@ class InitializationScheme(InstrumentModule):
     def _get_operations(self):
         return self._operations
 
-    def init_block(self, name=None):
+    def init_block(self, name=None, **block_kwargs):
         if name is None:
             name = self.short_name
         init = Block(block_name=name, pulse_list=[])
+        self._rep = 0 # set repetition counter to 0
         for i in range(self.repetitions()):
             # build block with buffers for repetition i
-            init_i = self._init_block(name + f'_{i}').build(
+            init_i = self._init_block(name + f'_{i}', **block_kwargs).build(
                 block_delay=self.repetition_buffer_start(),
                 block_end=dict(pulse_delay=self.repetition_buffer_end()))
             init.extend(init_i)
+            self._rep += 1
 
         # add buffers for the total init block
         be = {"pulse_delay": self.buffer_end()}
@@ -116,8 +122,8 @@ class InitializationScheme(InstrumentModule):
         init.block_end.update(be)
         return init
 
-    def _init_block(self, block_name):
-        return Block(block_name, [])
+    def _init_block(self, block_name, **block_kwargs):
+        return Block(block_name, [], **block_kwargs)
 
     # FIXME: this is a duplicate of the one in qubit_object; find where
     #   we can put in hierarchy such that we can access it without dupplication
@@ -169,7 +175,7 @@ class Preselection(InitializationScheme):
         super().__init__(parent, name="preselection", operations=('RO',), **kwargs)
 
 
-    def _init_block(self, name):
+    def _init_block(self, name, **kwargs):
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -179,7 +185,7 @@ class Preselection(InitializationScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         # additional changes
-        return Block(name, [preselection_ro])
+        return Block(name, [preselection_ro], **kwargs)
 
 
 class ActiveReset(InitializationScheme):
@@ -214,7 +220,7 @@ class ActiveReset(InitializationScheme):
         operation_dict[self.get_opcode("I")]['amplitude'] = 0
         return operation_dict
 
-    def _init_block(self, name):
+    def _init_block(self, name, **kwargs):
         op_dict = self.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -228,12 +234,13 @@ class ActiveReset(InitializationScheme):
                 reset_pulses.append(deepcopy(op_dict[self.get_opcode(opname)]))
                 reset_pulses[-1]['phaselock'] = False
                 reset_pulses[-1]['codeword'] = codeword
-                reset_pulses[-1]['element_name'] = f'reset_pulses_element_{name}'
+                # all feedback pulses for a given repetition are in the same element
+                reset_pulses[-1]['element_name'] = f'reset_pulses_element_{self._rep}'
                 if i == 0:
                     reset_pulses[-1]['ref_pulse'] = active_reset_ro['name']
                     reset_pulses[-1]['pulse_delay'] = self.ro_feedback_delay()
                     reset_pulses[-1]['ref_point'] = "start"
-        return Block(name, reset_pulses)
+        return Block(name, reset_pulses, **kwargs)
 
     def _validate_ro_feedback_delay(self, ro_feedback_delay):
         # FIXME: assume reference instrument has acq_length,
@@ -273,10 +280,10 @@ class ParametricFluxReset(InitializationScheme):
         super().__init__(parent, name="parametric_flux_reset",
                          operations=operations, **kwargs)
 
-    def _init_block(self, name):
+    def _init_block(self, name, **kwargs):
         op_dict = self.get_operation_dict()
 
         reset_pulses = [deepcopy(op_dict[self.get_opcode(op)])
                         for op in self.operations()]
 
-        return Block(name, reset_pulses)
+        return Block(name, reset_pulses, **kwargs)
