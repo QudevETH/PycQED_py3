@@ -274,11 +274,11 @@ class ParametricFluxReset(ResetScheme):
     def __init__(self, parent, operations=None, **kwargs):
         if operations is None:
             all_ops = list(parent.root_instrument.operations())
-            # find all operations which include PFR (such that, if defined,
-            # PRF and PFR_ef are both taken)
-            operations = [op for op in all_ops if op.startswith("PFR")]
+            # find all operations which include PFM (such that, if defined,
+            # PFM and PFM_ef are both taken)
+            operations = [op for op in all_ops if op.startswith("PFM")]
             if len(operations) == 0:
-                raise ValueError("No operation found starting with 'PFR'"
+                raise ValueError("No operation found starting with 'PFM'"
                                  f" in the root instrument "
                                  f"{parent.root_instrument}.")
 
