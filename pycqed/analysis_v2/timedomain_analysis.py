@@ -4783,13 +4783,16 @@ class ThermalPopulationAnalysis(RabiAnalysis):
                 fit_res = fit_dict['fit_res']
                 base_plot_name = f'Rabi_{k}_{self.data_to_fit[qbn]}'
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
+                plot_cal_pts=int(i) if i != '' else True
+                data=dtf[int(i)] if i != '' else dtf
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=dtf[int(i)] if i != '' else dtf,
-                    sweep_points=sweep_points,
+                    data=data if plot_cal_pts else data[:-self.num_cal_points],
+                    sweep_points=sweep_points if plot_cal_pts else sweep_points[:-self.num_cal_points],
                     plot_name_suffix=qbn+'fit',
                     qb_name=qbn, TwoD=False,
-                    title_suffix=title_suffix
+                    title_suffix=title_suffix,
+                    plot_cal_points=plot_cal_pts,
                 )
 
                 self.plot_dicts['fit_' + k] = {
