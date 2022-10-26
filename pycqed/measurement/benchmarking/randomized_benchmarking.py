@@ -2,13 +2,10 @@ import numpy as np
 import traceback
 from copy import deepcopy
 import random
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
-from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
-from pycqed.analysis_v3 import *
 import logging
 log = logging.getLogger(__name__)
 
