@@ -31,7 +31,8 @@ class RandomCircuitBenchmarkingMixin:
     'seeds' for RB, 'seqs' for XEB
     """
 
-    def update_kw_cal_states(self, kw):
+    @staticmethod
+    def update_kw_cal_states(kw):
         """
         Disables cal_points unless user has explicitly set them.
 
