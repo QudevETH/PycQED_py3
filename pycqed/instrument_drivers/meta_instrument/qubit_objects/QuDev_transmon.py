@@ -5392,12 +5392,12 @@ class QuDev_transmon(Qubit):
                          feedback_reset=True):
         from pycqed.measurement.waveform_control import reset_schemes as reset
         if preselection:
-            self.init.add_submodule("preselection", reset.Preselection(self.init))
+            self.reset.add_submodule("preselection", reset.Preselection(self.init))
         if parametric_flux_reset:
-            self.init.add_submodule("parametric_flux",
+            self.reset.add_submodule("parametric_flux",
                                     reset.ParametricFluxReset(self.init))
         if feedback_reset:
-            self.init.add_submodule("feedback", reset.FeedbackReset(self.init))
+            self.reset.add_submodule("feedback", reset.FeedbackReset(self.init))
 
 def add_CZ_pulse(qbc, qbt):
     """
