@@ -404,7 +404,7 @@ class CircuitBuilder:
         block.set_end_after_all_pulses()
         blocks = []
         if len(prep_params) != 0:
-            blocks.append(self.prepare(qb_names))
+            blocks.append(self.reset(qb_names))
         if prepend_block is not None:
             blocks.append(prepend_block)
         if len(blocks) > 0:
@@ -541,54 +541,11 @@ class CircuitBuilder:
                 ro_list = deepcopy(reset_ro_pulses)
                 ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
 
-                for pulse in ro_list:
-                    pulse['element_name'] = 'reset_ro_element_{}'.format(rep)
-                if rep == 0:
-                    ro_list[0]['ref_pulse'] = ref_pulse
-                    ro_list[0]['pulse_delay'] = -reset_reps * ro_separation
-                else:
-                    ro_list[0]['ref_pulse'] = \
-                        'refpulse_reset_element_{}'.format(rep - 1)
-                    ro_list[0]['pulse_delay'] = ro_separation
-                    ro_list[0]['ref_point'] = 'start'
-
-                rp_list = deepcopy(reset_pulses)
-                for j, pulse in enumerate(rp_list):
-                    pulse['element_name'] = f'reset_pulse_element_{rep}'
-                    pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
-                prep_pulse_list += ro_list
-                prep_pulse_list += rp_list
-
-            if pad_end:
-                block_end = dict(
-                    name='end', pulse_type="VirtualPulse",
-                    ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
-                    pulse_delay=ro_separation, ref_point="start")
-                prep_pulse_list += [block_end]
-            return Block(block_name, prep_pulse_list, copy_pulses=False)
-
-        # preselection
-        elif preparation_type == 'preselection':
-            preparation_pulses = []
-            for i, qbn in enumerate(qb_names):
-                preparation_pulses.append(self.get_pulse('RO ' + qbn))
-                preparation_pulses[-1]['ref_point'] = 'start'
-                preparation_pulses[-1]['element_name'] = 'preselection_element'
-            preparation_pulses[0]['ref_pulse'] = ref_pulse
-            preparation_pulses[0]['name'] = 'preselection_RO'
-            preparation_pulses[0]['pulse_delay'] = -ro_separation
-            block_end = dict(name='end', pulse_type="VirtualPulse",
-                             ref_pulse='preselection_RO',
-                             pulse_delay=ro_separation,
-                             ref_point='start')
-            preparation_pulses += [block_end]
-            return Block(block_name, preparation_pulses, copy_pulses=False)
-
-    def prepare(self, qb_names='all', steps=None,
-                step_alignment='start', alignment="end",
-                block_name=None):
+    def reset(self, qb_names='all', steps=None,
+              step_alignment='start', alignment="end",
+              block_name=None):
         """
-        Prepares a list of qubits using a sequence of steps (globally provided
+        Resets a list of qubits using a sequence of steps (globally provided
         as argument to this function or individually specified from qubit.init.steps).
 
         qb0 --[step 0 ] -- ... - [step i]
@@ -668,7 +625,7 @@ class CircuitBuilder:
                     step_blocks.append(Block(f'padding_step_{i}_{qb.name}', []))
                 else:
                     init_scheme = qb.init.instrument_modules[init_steps[qb.name][i]]
-                    step_blocks.append(init_scheme.init_block(f'step_{i}_{qb.name}'))
+                    step_blocks.append(init_scheme.reset_block(f'step_{i}_{qb.name}'))
             prep.append(self.simultaneous_blocks(f"Preparation_step_{i}", step_blocks,
                                       set_end_after_all_pulses=True,
                                       block_align=step_alignment))

@@ -3498,10 +3498,10 @@ class ActiveReset(CalibBuilder):
         prep_params.pop('preparation_type', None)
 
         reset_type = f"active_reset_{'e' if len(self.prep_states) < 3 else 'ef'}"
-        reset_block = self.prepare(block_name="reset_ro_and_feedback_pulses",
-                                   qb_names=qubit,
-                                   preparation_type=reset_type,
-                                   reset_reps=self.reset_reps, **prep_params)
+        reset_block = self.reset(block_name="reset_ro_and_feedback_pulses",
+                                 qb_names=qubit,
+                                 preparation_type=reset_type,
+                                 reset_reps=self.reset_reps, **prep_params)
         # delay the reset block by appropriate time as self.prepare otherwise adds reset
         # pulses before segment start
         # reset_block.block_start.update({"pulse_delay": ro_sep * self.reset_reps})

@@ -6,7 +6,7 @@ from qcodes import ManualParameter
 from qcodes.utils import validators
 
 
-class InitializationScheme(InstrumentModule):
+class ResetScheme(InstrumentModule):
     DEFAULT_VALUE = "from parent"
 
     def __init__(self, parent, name, operations=(),
@@ -102,14 +102,14 @@ class InitializationScheme(InstrumentModule):
     def _get_operations(self):
         return self._operations
 
-    def init_block(self, name=None, **block_kwargs):
+    def reset_block(self, name=None, **block_kwargs):
         if name is None:
             name = self.short_name
         init = Block(block_name=name, pulse_list=[])
         self._rep = 0 # set repetition counter to 0
         for i in range(self.repetitions()):
             # build block with buffers for repetition i
-            init_i = self._init_block(name + f'_{i}', **block_kwargs).build(
+            init_i = self._reset_block(name + f'_{i}', **block_kwargs).build(
                 block_delay=self.repetition_buffer_start(),
                 block_end=dict(pulse_delay=self.repetition_buffer_end()))
             init.extend(init_i)
@@ -122,8 +122,8 @@ class InitializationScheme(InstrumentModule):
         init.block_end.update(be)
         return init
 
-    def _init_block(self, block_name, **block_kwargs):
-        return Block(block_name, [], **block_kwargs)
+    def _reset_block(self, name, **kwargs):
+        return Block(name, [], **kwargs)
 
     # FIXME: this is a duplicate of the one in qubit_object; find where
     #   we can put in hierarchy such that we can access it without dupplication
@@ -168,14 +168,14 @@ class InitializationScheme(InstrumentModule):
         return operation + f"_{self.short_name} {instr.name}"
 
 
-class Preselection(InitializationScheme):
+class Preselection(ResetScheme):
 
     def __init__(self, parent, **kwargs):
 
         super().__init__(parent, name="preselection", operations=('RO',), **kwargs)
 
 
-    def _init_block(self, name, **kwargs):
+    def _reset_block(self, name, **kwargs):
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -185,16 +185,16 @@ class Preselection(InitializationScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         # additional changes
-        return Block(name, [preselection_ro], **kwargs)
+        return Block(name, [preselection_ro], copy_pulses=False, **kwargs)
 
 
-class ActiveReset(InitializationScheme):
+class FeedbackReset(ResetScheme):
     # Calculate the length of a ge pulse, assumed the same for all qubits
     state_ops = dict(g=["I"], e=["X180"], f=["X180_ef", "X180"])
 
     def __init__(self, parent, **kwargs):
 
-        super().__init__(parent, name="active_reset",
+        super().__init__(parent, name="feedback",
                          operations=('RO', 'X180', 'X180_ef'), **kwargs)
 
         self.add_parameter('codeword_state_map',
@@ -220,7 +220,7 @@ class ActiveReset(InitializationScheme):
         operation_dict[self.get_opcode("I")]['amplitude'] = 0
         return operation_dict
 
-    def _init_block(self, name, **kwargs):
+    def _reset_block(self, name, **kwargs):
         op_dict = self.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -232,6 +232,11 @@ class ActiveReset(InitializationScheme):
         for j, (codeword, state) in enumerate(self.codeword_state_map().items()):
             for i, opname in enumerate(self.state_ops[state]):
                 reset_pulses.append(deepcopy(op_dict[self.get_opcode(opname)]))
+                # Reset pulses cannot include phase information at the moment
+                # since we use the exact same waveform(s) (corresponding to
+                # a given codeword) for every reset pulse(s) we play (no
+                # matter where in the circuit). Therefore, remove phase_lock
+                # that references the phase to algorithm time t=0.
                 reset_pulses[-1]['phaselock'] = False
                 reset_pulses[-1]['codeword'] = codeword
                 # all feedback pulses for a given repetition are in the same element
@@ -240,7 +245,7 @@ class ActiveReset(InitializationScheme):
                     reset_pulses[-1]['ref_pulse'] = active_reset_ro['name']
                     reset_pulses[-1]['pulse_delay'] = self.ro_feedback_delay()
                     reset_pulses[-1]['ref_point'] = "start"
-        return Block(name, reset_pulses, **kwargs)
+        return Block(name, reset_pulses, copy_pulses=False, **kwargs)
 
     def _validate_ro_feedback_delay(self, ro_feedback_delay):
         # FIXME: assume reference instrument has acq_length,
@@ -264,7 +269,7 @@ class ActiveReset(InitializationScheme):
         return codeword_state_map
 
 
-class ParametricFluxReset(InitializationScheme):
+class ParametricFluxReset(ResetScheme):
 
     def __init__(self, parent, operations=None, **kwargs):
         if operations is None:
@@ -277,13 +282,13 @@ class ParametricFluxReset(InitializationScheme):
                                  f" in the root instrument "
                                  f"{parent.root_instrument}.")
 
-        super().__init__(parent, name="parametric_flux_reset",
+        super().__init__(parent, name="parametric_flux",
                          operations=operations, **kwargs)
 
-    def _init_block(self, name, **kwargs):
+    def _reset_block(self, name, **kwargs):
         op_dict = self.get_operation_dict()
 
         reset_pulses = [deepcopy(op_dict[self.get_opcode(op)])
                         for op in self.operations()]
 
-        return Block(name, reset_pulses, **kwargs)
+        return Block(name, reset_pulses, copy_pulses=False, **kwargs)

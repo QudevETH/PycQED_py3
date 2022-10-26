@@ -544,9 +544,9 @@ class QuDev_transmon(Qubit):
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                             initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
 
-        self.add_submodule('init', instrument.InstrumentModule(self, 'init'))
+        self.add_submodule('reset', instrument.InstrumentModule(self, 'reset'))
 
-        self.init.add_parameter('steps', parameter_class=ManualParameter,
+        self.reset.add_parameter('steps', parameter_class=ManualParameter,
                                 initial_value=[], vals=vals.Lists())
 
         DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
@@ -5387,17 +5387,17 @@ class QuDev_transmon(Qubit):
         """
         return {self.name: self.get_channels(drive=drive, ro=ro, flux=flux)}
 
-    def add_init_schemes(self, preselection=True,
+    def add_reset_schemes(self, preselection=True,
                          parametric_flux_reset=True,
-                         active_reset=True):
-        from pycqed.measurement.waveform_control import initialization_schemes as init
+                         feedback_reset=True):
+        from pycqed.measurement.waveform_control import reset_schemes as reset
         if preselection:
-            self.init.add_submodule("preselection", init.Preselection(self))
+            self.init.add_submodule("preselection", reset.Preselection(self.init))
         if parametric_flux_reset:
-            self.init.add_submodule("parametric_flux_reset",
-                                    init.ParametricFluxReset(self))
-        if active_reset:
-            self.init.add_submodule("active_reset", init.ActiveReset(self))
+            self.init.add_submodule("parametric_flux",
+                                    reset.ParametricFluxReset(self.init))
+        if feedback_reset:
+            self.init.add_submodule("feedback", reset.FeedbackReset(self.init))
 
 def add_CZ_pulse(qbc, qbt):
     """
