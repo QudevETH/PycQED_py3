@@ -414,8 +414,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                                 codeword_table[cw] = (w1, w2)
                             elif codeword_table[cw] != (w1, w2) \
                                     and self.pulsar.reuse_waveforms():
-                                log.warning('Same codeword used for different '
-                                            'waveforms. Using first waveform. '
+                                log.warning(f'Same codeword {cw} used for different '
+                                            f'waveforms: {codeword_table[cw]} '
+                                            f'vs {(w1, w2)}. Using first waveform. '
                                             f'Ignoring element {element}.')
                         ch_has_waveforms[ch1id] |= wave[0] is not None
                         ch_has_waveforms[ch1mid] |= wave[1] is not None
