@@ -586,34 +586,34 @@ class CircuitBuilder:
         """
         qubits, qb_names = self.get_qubits(qb_names)
         if block_name is None:
-            block_name = f"Preparation_{qb_names}"
+            block_name = f"Reset_{qb_names}"
 
         prep = []
         # collect steps and ensure they are lists, and deepcopy them to allow
         # modification within this function without affecting original object
         if steps is None:
             try:
-                init_steps = {qb.name: deepcopy(qb.init.steps()) for qb in qubits}
+                reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
             except AttributeError as e:
                 log.error(f"Failed to retrieve preparation"
                           f" steps from qb.init.steps(): {e}."
                           f"No initialization steps will be added.")
-                init_steps = {qb.name: [] for qb in qubits}
+                reset_steps = {qb.name: [] for qb in qubits}
         else:
             if isinstance(steps, str):
                 steps = [steps]
-            init_steps = {qb.name: deepcopy(steps) for qb in qubits}
-        max_steps = np.max([len(steps) for steps in init_steps.values()])
+            reset_steps = {qb.name: deepcopy(steps) for qb in qubits}
+        max_steps = np.max([len(steps) for steps in reset_steps.values()])
 
         # pad qubits which have less steps
-        for qbn in init_steps:
-            padding = max_steps - len(init_steps[qbn])
+        for qbn in reset_steps:
+            padding = max_steps - len(reset_steps[qbn])
             if alignment == "end":
                 # add padding steps at the beginning
-                init_steps[qbn] = ["padding"] * padding + init_steps[qbn]
+                reset_steps[qbn] = ["padding"] * padding + reset_steps[qbn]
             elif alignment == "start":
                 # add padding steps at the end
-                init_steps[qbn] = init_steps[qbn] + ["padding"] * padding
+                reset_steps[qbn] = reset_steps[qbn] + ["padding"] * padding
             else:
                 raise NotImplementedError("Only start and end alignment of "
                                           "the preparation block is currently"
@@ -621,12 +621,12 @@ class CircuitBuilder:
         for i in range(max_steps):
             step_blocks = []
             for qb in qubits:
-                if init_steps[qb.name][i] == "padding":
+                if reset_steps[qb.name][i] == "padding":
                     step_blocks.append(Block(f'padding_step_{i}_{qb.name}', []))
                 else:
-                    init_scheme = qb.init.instrument_modules[init_steps[qb.name][i]]
-                    step_blocks.append(init_scheme.reset_block(f'step_{i}_{qb.name}'))
-            prep.append(self.simultaneous_blocks(f"Preparation_step_{i}", step_blocks,
+                    reset_scheme = qb.reset.instrument_modules[reset_steps[qb.name][i]]
+                    step_blocks.append(reset_scheme.reset_block(f'step_{i}_{qb.name}'))
+            prep.append(self.simultaneous_blocks(f"Reset_step_{i}", step_blocks,
                                       set_end_after_all_pulses=True,
                                       block_align=step_alignment))
         return self.sequential_blocks(block_name, prep)
