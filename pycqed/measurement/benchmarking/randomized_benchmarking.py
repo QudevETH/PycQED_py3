@@ -709,7 +709,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     """
     default_experiment_name = 'TwoQubitXEB'
     kw_for_sweep_points = {
-        'nr_seqs,cycles,cphase': dict(
+        'nr_seqs,cycles': dict(
             param_name='gateschoice', unit='',
             label='cycles gates', dimension=1,
             values_func='paulis_gen_func')}
