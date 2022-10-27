@@ -433,6 +433,27 @@ class SweepPoints(list):
             self.add_sweep_parameter(par, values[i], units[i],
                                      labels[i], dims[i])
 
+    def append_suffix_to_sweep_params(self, suffix, dim='all'):
+        """
+        Appends suffix to all the sweep parameters in dimension dim.
+
+        Args:
+            suffix (str): suffix to append
+            dim (int or str): sweep dimension whose sweep parameters will be
+                changed. If 'all', then the sweep parameters in all sweep
+                dimensions will be changed.
+        """
+        if dim == 'all':
+            dim = list(range(len(self)))
+        elif not hasattr(dim, '__iter__'):
+            dim = [dim]
+
+        for d in dim:
+            sweep_params = list(self[d].keys())
+            for sweep_param in sweep_params:
+                sweep_dim = self[d].pop(sweep_param)
+                self[d][f'{sweep_param}_{suffix}'] = sweep_dim
+
     def find_parameter(self, param_name):
         """
         Returns the index of the first dimension in which a given sweep
