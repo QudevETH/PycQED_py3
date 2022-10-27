@@ -84,6 +84,7 @@ class VC707(VC707_core, AcquisitionDevice):
         #     vals=vals.Bool(), parameter_class=ManualParameter,
         #     docstring="Use the histogrammer module when acquiring in int_avg"
         #               "mode.")
+        self._acq_progress_prev = 0
 
     @property
     def acq_sampling_rate(self):
@@ -104,11 +105,15 @@ class VC707(VC707_core, AcquisitionDevice):
             self._prepare_poll()
 
     def _prepare_poll(self):
+        self._acq_progress_prev = 0
         module = self._get_current_fpga_module_name()
         if module == "averager":
             self.averager.run()
         elif module == "histogrammer":
-            self.histogrammer.run()
+            self.histogrammer.run(
+                # progress_callback=lambda p: print(
+                #     f"Processed triggers: {p:.1f}% -- {self.histogrammer.has_finished()}")
+            )
         elif module == "state_discriminator":
             self.state_discriminator.upload_weights()
             self.state_discriminator.run()
@@ -156,6 +161,7 @@ class VC707(VC707_core, AcquisitionDevice):
                 unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
                 unit.source_adc = pair_id[0]
                 pairs[pair_id] = unit
+            n_ch_in_pair = {pair_id: 0 for pair_id in pairs}
             for ch in self._acq_channels:
                 pair_id = pair_lookup[ch]
                 for i in range(2):
@@ -163,7 +169,9 @@ class VC707(VC707_core, AcquisitionDevice):
                     p = max(nb_samples - len(w), 0)
                     print(np.shape(w))
                     print(np.shape(np.pad(w, p)[:nb_samples]))
-                    pairs[pair_id].weights[i] = np.pad(w, p)[:nb_samples]
+                    pairs[pair_id].weights[2*n_ch_in_pair[pair_id] + i] =\
+                        np.pad(w, p)[:nb_samples]
+                n_ch_in_pair[pair_id] += 1
             print('XXX')
             from pprint import pprint
             pprint(pairs)
@@ -202,7 +210,7 @@ class VC707(VC707_core, AcquisitionDevice):
                     bin_settings.append(BinSettings(
                         # the following exploits that INT_i are consecutive ints
                         DataInput.INT_0 + integrator_lookup.get((i, j), 0),
-                        peak_to_peak=2, # FIXME (hardcoded for now)
+                        peak_to_peak=-1, # FIXME (hardcoded for now)
                         nb_bins_pow2=nb_bins_pow2,
                         delay=0))
             self.histogrammer.settings.bin_settings = bin_settings
@@ -235,24 +243,35 @@ class VC707(VC707_core, AcquisitionDevice):
             self.state_discriminator.configure()
 
     def acquisition_progress(self):
-        print(self._fpga.fpga_interface.trigger_counter(),
-              self._get_current_fpga_module().has_finished()
-              )
+        # print(self._fpga.fpga_interface.trigger_counter(),
+        #       self._get_current_fpga_module().has_finished()
+        #       )
         return self._fpga.fpga_interface.trigger_counter()
+        # self._acq_progress_prev = counter
+        # # return counter
         # if self._get_current_fpga_module_name() == "averager":
         #     return self.averager.trigger_counter()
         # else:
         #     # FIXME: implement trigger_counter for other modules
         #     return 0
+        return None
 
     def poll(self, poll_time=0.1) -> dict:
         # Return empty data if FPGA still running
         module_obj = self._get_current_fpga_module()
+        # if not (self._acq_progress_prev > 0 and self.acquisition_progress() == 0):
         if not module_obj.has_finished():
+        # if not (self._acq_progress_prev > 0 and self._fpga.fpga_interface.trigger_counter() == 0):
             return {}
-
+        print(self._fpga.fpga_interface.trigger_counter(),
+              self._get_current_fpga_module().has_finished()
+              )
         # Read results and update dataset
         res = module_obj.read_results()
+        print(np.shape(res))
+        print(self._fpga.fpga_interface.trigger_counter(),
+              self._get_current_fpga_module().has_finished()
+              )
         module = self._get_current_fpga_module_name()
         if module == "averager":
             if self._acq_mode == "avg":
@@ -286,7 +305,10 @@ class VC707(VC707_core, AcquisitionDevice):
     def _adapt_histogrammer_results(self, raw_results) -> dict:
         """Format the FPGA histogrammer results as expected by PycQED."""
         # cut by segment (which is the last index)
-        return {'histogram': [[{'data': a.T} for a in raw_results.T]]}
+        res = {'histogram': [[{'data': a.T} for a in raw_results.T]]}
+        from pprint import pprint
+        pprint(np.shape(res['histogram']))
+        return res
 
     def _adapt_state_discriminator_results(self, raw_results) -> dict:
         """Format the FPGA state discriminator results as expected by PycQED."""
