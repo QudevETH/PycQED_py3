@@ -2,19 +2,148 @@ import numpy as np
 import traceback
 from copy import deepcopy
 import random
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
-from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
-from pycqed.analysis_v3 import *
 import logging
 log = logging.getLogger(__name__)
 
 
-class RandomizedBenchmarking(MultiTaskingExperiment):
+class RandomCircuitBenchmarkingMixin:
+    """Mixin containing utility functions needed by the RB and XEB classes.
 
+    Classes deriving from this mixin must have the following attributes:
+        kw_for_task_keys: see docstring of MultiTaskingExperiment
+        kw_for_sweep_points: see docstring of MultiTaskingExperiment
+
+    Creates the following attributes:
+        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+        identical_pulses: Bool, whether the same XEB experiment should be
+            run on all tasks (True), or have unique sequences per task (False)
+    """
+
+    seq_lengths_name = 'cliffords'
+    """Name of the parameter specifying the sequence lengths 
+    
+    'cliffords' for RB, 'cycles' for XEB
+    """
+
+    randomizations_name = 'seeds'
+    """Name of the parameter specifying the number of times to randomize each 
+    sequence length. 
+    
+    'seeds' for RB, 'seqs' for XEB
+    """
+
+    @staticmethod
+    def update_kw_cal_states(kw):
+        """
+        Disables cal_points unless user has explicitly set them.
+
+        The cal points are disabled by setting cal_states = '' in the kw.
+
+        Args:
+            kw: keyword arguments which will be updated
+        """
+        kw['cal_states'] = kw.get('cal_states', '')
+
+    def create_sweep_type(self, sweep_type=None):
+        """
+        Creates the sweep_type attribute.
+
+        Attributes:
+            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+        """
+        self.sweep_type = sweep_type
+        if self.sweep_type is None:
+            self.sweep_type = {self.seq_lengths_name: 0,
+                               self.randomizations_name: 1}
+
+    def update_kw_for_sweep_points_dimension(self):
+        """
+        Updates the sweep dimensions specified in the class attribute
+        kw_for_sweep_points based on the sweep_type attribute.
+        """
+        self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
+        self.kw_for_sweep_points[
+            f'nr_{self.randomizations_name},{self.seq_lengths_name}'][
+            'dimension'] = self.sweep_type[self.randomizations_name]
+        self.kw_for_sweep_points[self.seq_lengths_name]['dimension'] = \
+            self.sweep_type[self.seq_lengths_name]
+
+    def check_identical_pulses(self, task_list, **kw):
+        """
+        Check whether identical pulses should be applied to all tasks.
+
+        The same RB/XEB experiment will be run on all tasks if the input
+        parameter self.randomizations_name is provided as a global parameter
+        to the init of the RB/XEB measurement class. Therefore, here kw must
+        be the kw that were passed to the init of the RB/XEB measurement class.
+
+        Creates the attribute identical_pulses (True if self.randomizations_name
+        if provided as a global parameter; False if this parameter is specified
+        in each task).
+
+        Args:
+            task_list (list of dicts): see CalibBuilder docstring
+            **kw: kwargs that were passed to the __init__ of the child class.
+                Can contain seq_lengths_name and f'nr_{randomizations_name}'
+                if these parameters are passed globally by the user.
+        """
+        global_seq_lengths = kw.get(self.seq_lengths_name)
+        nr_rand = f'nr_{self.randomizations_name}'
+        self.identical_pulses = kw.get(nr_rand) is not None and all([
+            task.get(nr_rand) is None for task in task_list])
+        # Check if we can apply identical pulses on all tasks:
+        # can only do this if they have identical cliffords array.
+        if self.identical_pulses and global_seq_lengths is None:
+            raise ValueError(f'Identical pulses on all qubits requires '
+                             f'identical {self.seq_lengths_name} arrays: '
+                             f'please specify {self.seq_lengths_name} as a '
+                             f'global parameter.\n'
+                             f'To use non-identical pulses, '
+                             f'move nr_{self.randomizations_name} from '
+                             f'keyword arguments into the tasks.')
+
+        if not self.identical_pulses:
+            # If each task should receive unique pulses, then we must ensure
+            # that seq_lengths_name and randomizations_name are in the
+            # task_list in order to create the sweep_points when calling
+            # generate_kw_sweep_points inside preprocess_task.
+
+            # make sure kw_for_task_keys is a list (instantiated as tuple in the
+            # base class)
+            self.kw_for_task_keys = list(self.kw_for_task_keys)
+            self.kw_for_task_keys += [self.seq_lengths_name,
+                                      self.randomizations_name]
+
+
+class RandomizedBenchmarking(MultiTaskingExperiment,
+                             RandomCircuitBenchmarkingMixin):
+
+    """
+    Base class for Randomized Benchmarking measurements:
+    https://journals.aps.org/pra/abstract/10.1103/PhysRevA.89.062321
+    https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.109.080505
+    https://journals.aps.org/pra/abstract/10.1103/PhysRevA.96.022330
+
+    Attributes in addition to those of the base classes:
+        purity: Bool, whether to run purity benchmarking (only implemented for
+            single qubit RB):
+            https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.117.260501
+        tomo_pulses: List with tomo pulses to use in purity benchmarking
+        interleaved_gate: Str (single qb RB) or Int (two-qb RB) specifying the
+            name or index inside the Clifford group of the interleaved gate.
+        gate_decomposition: Str, name of the decomposition ('XY' or 'HZ') for
+            translating the Clifford elements into physical gates
+    """
+
+    default_experiment_name = 'RB'
     kw_for_sweep_points = {
         'cliffords': dict(param_name='cliffords', unit='',
                           label='Nr. Cliffords',
@@ -25,7 +154,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T),
     }
-    default_experiment_name = 'RB'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  sweep_type=None, interleaved_gate=None, purity=False,
@@ -53,7 +181,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                 See HZ_gate_decomposition and XY_gate_decomposition in
                 measurement\randomized_benchmarking\clifford_decompositions.py
 
-        Keyword arg:
+        Keyword args:
             passed to parent class; see docstring there
 
             - tomo_pulses (list, default: ['I', 'X90', 'Y90']) list of op codes
@@ -80,47 +208,23 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
             - seeds (see description above)
 
         Assumptions:
-         - If nr_seeds and cliffords are specified in kw and they do not exist
-          in the task_list, then all tasks will receive the same pulses!
-         - assumes there is one task for each qubit. If task_list is None, it
-          will internally create it.
-         - in rb_block, it assumes only one parameter is being swept in the
-         second sweep dimension (cliffords)
-         - interleaved_gate and gate_decomposition should be the same for
-         all qubits since otherwise the segments will have very different
-         lengths for different qubits
-         - assumes there is one task for each qubit. If task_list is None, it
-          will internally create it.
+             - If nr_seeds and cliffords are specified in kw and they do not
+             exist in the task_list, then all tasks will receive the same pulses
+             - in rb_block, it assumes only one parameter is being swept in the
+             second sweep dimension (cliffords)
+             - interleaved_gate and gate_decomposition should be the same for
+             all qubits since otherwise the segments will have very different
+             lengths for different qubits
         """
         try:
-            condition1 = kw.get('nr_seeds', None) is None and \
-                         kw.get('cliffords', None) is not None
-            condition2 = kw.get('nr_seeds', None) is not None and \
-                         kw.get('cliffords', None) is None
-            if condition1 or condition2:
-                # identical pulses on all tasks is enabled when both nr_seeds
-                # and cliffords are specified as globals. The class breaks if
-                # only one of them is global
-                raise ValueError('If one of nr_seeds or cliffords is specified '
-                                 'as a global parameter, the other must also '
-                                 'be specified. This enables identical pulses '
-                                 'on all tasks if you also remove them from the'
-                                 'task list.')
-
-            self.sweep_type = sweep_type
-            if self.sweep_type is None:
-                self.sweep_type = {'cliffords': 0, 'seeds': 1}
-            self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
-            self.kw_for_sweep_points['nr_seeds,cliffords']['dimension'] = \
-                self.sweep_type['seeds']
-            self.kw_for_sweep_points['cliffords']['dimension'] = \
-                self.sweep_type['cliffords']
-
+            self.update_kw_cal_states(kw)
+            self.create_sweep_type(sweep_type)
+            self.update_kw_for_sweep_points_dimension()
             # tomo pulses for purity benchmarking
             self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
-
             self.purity = purity
             self.interleaved_gate = interleaved_gate
+            self.gate_decomposition = gate_decomposition
 
             if self.interleaved_gate is not None:
                 # kw_for_sweep_points must be changed to add the random seeds
@@ -148,35 +252,15 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                              [np.repeat(np.random.randint(0, 1e8, ns), 3)
                               for _ in range(len(cliffords))]).T)]
 
-            kw['cal_states'] = kw.get('cal_states', '')
-
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
-            self.experiment_name += f'_{gate_decomposition}'
-            if purity:
-                self.experiment_name += '_purity'
-            self.identical_pulses = kw.get('nr_seeds', None) is not None and all([
-                task.get('nr_seeds', None) is None for task in task_list])
-            self.gate_decomposition = gate_decomposition
+            self.default_experiment_name += f'_{self.gate_decomposition}'
+            if self.purity:
+                self.default_experiment_name += '_purity'
+
+            self.check_identical_pulses(task_list, **kw)
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
-
-            # Check if we can apply identical pulses on all qubits in task_list
-            # Can only do this if they have identical cliffords array
-            if self.identical_pulses:
-                unique_clf_sets = np.unique([
-                    self.sweep_points.get_sweep_params_property(
-                        'values', self.sweep_type['cliffords'], k)
-                    for k in self.sweep_points.get_sweep_dimension(
-                        self.sweep_type['cliffords']) if
-                    k.endswith('cliffords')], axis=0)
-                if unique_clf_sets.shape[0] > 1:
-                    raise ValueError('Cannot apply identical pulses. '
-                                     'Not all qubits have the same Cliffords.'
-                                     'To use non-identical pulses, '
-                                     'move nr_seeds from keyword arguments '
-                                     'into the tasks.')
-
             self.sequences, self.mc_points = self.sweep_n_dim(
                 self.sweep_points, body_block=None,
                 body_block_func=self.rb_block, cal_points=self.cal_points,
@@ -195,10 +279,11 @@ class RandomizedBenchmarking(MultiTaskingExperiment):
                 self.exp_metadata['interleaved_gate'] = self.interleaved_gate
             self.exp_metadata['gate_decomposition'] = self.gate_decomposition
             self.exp_metadata['identical_pulses'] = self.identical_pulses
+            self.exp_metadata['purity'] = self.purity
 
             self.add_processing_pipeline(**kw)
             self.autorun(**kw)
-        #
+
         except Exception as x:
             self.exception = x
             traceback.print_exc()
@@ -237,6 +322,7 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
     several qubits in parallel.
     """
     default_experiment_name = 'SingleQubitRB'
+    task_mobj_keys = ['qb']
 
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, **kw):
@@ -258,17 +344,7 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
         """
 
         if kw.get('interleaved_gate', None) is not None:
-            self.experiment_name = 'SingleQubitIRB'
-
-        for task in task_list:
-            if 'qb' not in task:
-                raise ValueError('Please specify "qb" in each task in '
-                                 '"task_list."')
-            if not isinstance(task['qb'], str):
-                task['qb'] = task['qb'].name
-            if 'prefix' not in task:
-                task['prefix'] = f"{task['qb']}_"
-
+            self.default_experiment_name = 'SingleQubitIRB'
         kw['dim_hilbert'] = 2
         super().__init__(task_list, sweep_points=sweep_points,
                          nr_seeds=nr_seeds, cliffords=cliffords, **kw)
@@ -323,8 +399,13 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
     """
     Class for running the two-qubit randomized benchmarking experiment on
     several pairs of qubits in parallel.
+
+    Attributes in addition to the ones created by the base class:
+        max_clifford_idx: Int, size of the 2QB Clifford group
+
     """
     default_experiment_name = 'TwoQubitRB'
+    task_mobj_keys = ['qb_1', 'qb_2']
 
     def __init__(self, task_list, sweep_points=None, nr_seeds=None,
                  cliffords=None, max_clifford_idx=11520, **kw):
@@ -352,20 +433,11 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
         if kw.get('purity', False):
             raise NotImplementedError('Purity benchmarking is not implemented '
                                       'for 2QB RB. Set "purity=False."')
-
         self.max_clifford_idx = max_clifford_idx
         tqc.gate_decomposition = rb.get_clifford_decomposition(
             kw.get('gate_decomposition', 'HZ'))
-
-        for task in task_list:
-            for k in ['qb_1', 'qb_2']:
-                if not isinstance(task[k], str):
-                    task[k] = task[k].name
-            if 'prefix' not in task:
-                task['prefix'] = f"{task['qb_1']}{task['qb_2']}_"
-        kw['for_ef'] = kw.get('for_ef', True)
         if kw.get('interleaved_gate', None) is not None:
-            self.experiment_name = 'TwoQubitIRB'
+            self.default_experiment_name = 'TwoQubitIRB'
         kw['dim_hilbert'] = 4
         super().__init__(task_list, sweep_points=sweep_points,
                          nr_seeds=nr_seeds, cliffords=cliffords, **kw)
@@ -456,31 +528,24 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
             destroy=self.fast_mode)
 
 
-class SingleQubitXEB(MultiTaskingExperiment):
+class CrossEntropyBenchmarking(MultiTaskingExperiment,
+                               RandomCircuitBenchmarkingMixin):
     """
-    Class for running the single qubit cross-entropy benchmarking experiment on
-    several qubits in parallel.
+    Base class for Cross-Entropy Benchmarking measurements:
+    https://www.nature.com/articles/s41567-018-0124-x
+    https://www.science.org/doi/10.1126/science.aao4309
+    https://www.nature.com/articles/s41586-019-1666-5
     """
-    kw_for_sweep_points = {
-        'cycles': dict(param_name='cycles', unit='',
-                          label='Nr. Cycles',
-                          dimension=0),
-        'nr_seqs,cycles': dict(param_name='z_rots', unit='',
-                              label='$R_z$ angles, $\\phi$', dimension=1,
-                              values_func=lambda ns, cycles: [[
-                                  list(np.random.uniform(0, 2, nc) * 180)
-                                  for nc in cycles] for _ in range(ns)]),
-    }
-    default_experiment_name = 'SingleQubitXEB'
+    default_experiment_name = 'XEB'
+    seq_lengths_name = 'cycles'
+    randomizations_name = 'seqs'
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, sweep_type=None,
-                 init_rotation='X90', **kw):
+                 sweep_type=None, **kw):
         """
-        Init of the SingleQubitXEB class.
-        The experiment consists of applying
-        [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
-        with random values of theta each time.
+        Base class for a cross-entropy benchmarking experiment on
+        one or several qubits in parallel (see docstring of children for more
+        details).
 
         Args:
             task_list (list): see CalibBuilder docstring
@@ -489,88 +554,108 @@ class SingleQubitXEB(MultiTaskingExperiment):
                      {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
             qubits (list): QuDev_transmon class instances on which to run
                 measurement
-            nr_seqs (int): the number of times to apply a random
+            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+
+        Keyword args:
+            nr_seqs (int; default: None): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
                 If nr_seqs is specified and it does not exist in the task_list,
                 then all qubits will receive the same pulses provided they have
                 the same cycles array.
-            cycles (list/array): integers specifying the number of
-                [Ry - Rz(theta)] cycles to apply.
-            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
-            init_rotation (str): the preparation pulse name
-
-        Keyword args:
-            passed to CalibBuilder; see docstring there
+            cycles (list/array; default: None): integers specifying the number
+                of cycles to apply.
+            Passed to CalibBuilder; see docstring there.
 
         Assumptions:
-         - assumes there is one task for each qubit. If task_list is None, it
-          will internally create it.
+        - if nr_seqs is passed, the same random gates will be applied to all
+         tasks (same XEB experiment on all tasks). To have different random
+         gates for each task, pass nr_seqs in the task_list.
         """
         try:
-
-            self.sweep_type = sweep_type
-            if self.sweep_type is None:
-                self.sweep_type = {'cycles': 0, 'seqs': 1}
-            self.kw_for_sweep_points['nr_seqs,cycles']['dimension'] = \
-                self.sweep_type['seqs']
-            self.kw_for_sweep_points['cycles']['dimension'] = \
-                self.sweep_type['cycles']
-            kw['cal_states'] = kw.get('cal_states', '')
-
-            for task in task_list:
-                if 'qb' not in task:
-                    raise ValueError('Please specify "qb" in each task in '
-                                     '"task_list."')
-                if not isinstance(task['qb'], str):
-                    task['qb'] = task['qb'].name
-                if 'prefix' not in task:
-                    task['prefix'] = f"{task['qb']}_"
-
-            # if cycles are not added to each task,
-            # self.preprocess_task_list(**kw) will fail because
-            # kw_for_sweep_points['nr_seqs,cycles'] requires cycles
-            if cycles is not None:
-                for task in task_list:
-                    task['cycles'] = cycles
-
-            if nr_seqs is not None:  # identical pulses on all qubits
-                cycles_list = [''] * len(task_list)
-                for i, task in enumerate(task_list):
-                    if 'cycles' not in task:
-                        raise KeyError('Please specify "cycles" either in '
-                                       'the task_list or as input '
-                                       'parameter to class init.')
-                    cycles_list[i] = task['cycles']
-                if np.unique(cycles_list, axis=0).shape[0] > 1:
-                    # different qubits have different nr cycles; cannot be if
-                    # user wants identical pulses on all qubits
-                    raise ValueError('Identical pulses on all qubits requires '
-                                     'identical cycles arrays. '
-                                     'To use non-identical pulses, '
-                                     'move nr_seeds from keyword arguments '
-                                     'into the tasks.')
-                else:
-                    cycles = cycles_list[0]
+            self.kw_for_sweep_points.update({
+                'cycles': dict(param_name='cycles', unit='',
+                               label='Nr. Cycles', dimension=0),
+            })
+            self.update_kw_cal_states(kw)
+            self.create_sweep_type(sweep_type)
+            self.update_kw_for_sweep_points_dimension()
 
             super().__init__(task_list, qubits=qubits,
-                             sweep_points=sweep_points,
-                             nr_seqs=nr_seqs, cycles=cycles, **kw)
-            self.init_rotation = init_rotation
-            self.identical_pulses = nr_seqs is not None and all([
-                task.get('nr_seqs', None) is None for task in task_list])
+                             sweep_points=sweep_points, **kw)
+            self.check_identical_pulses(task_list, **kw)
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.sequences, self.mc_points = self.sweep_n_dim(
                 self.sweep_points, body_block=None,
                 body_block_func=self.xeb_block, cal_points=self.cal_points,
                 ro_qubits=self.meas_obj_names, **kw)
-
             self.exp_metadata['identical_pulses'] = self.identical_pulses
-            self.exp_metadata['init_rotation'] = self.init_rotation
-
             self.autorun(**kw)
 
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def xeb_block(self, sp1d_idx, sp2d_idx, **kw):
+        """
+        Base method to create the xeb blocks. To be modified by children.
+
+        Args:
+            sp1d_idx (int): current iteration index in the 1D sweep points array
+            sp2d_idx (int): current iteration index in the 2D sweep points array
+
+        Keyword args: see the docstrings of children
+        """
+        pass
+
+
+class SingleQubitXEB(CrossEntropyBenchmarking):
+    """
+    Class for running the single qubit cross-entropy benchmarking experiment on
+    several qubits in parallel.
+    """
+    default_experiment_name = 'SingleQubitXEB'
+    kw_for_sweep_points = {
+        'nr_seqs,cycles': dict(
+            param_name='z_rots', unit='',
+            label='$R_z$ angles, $\\phi$',
+            dimension=1, values_func=lambda ns, cycles: [[
+                list(np.random.uniform(0, 2, nc) * 180)
+                for nc in cycles] for _ in range(ns)])}
+    task_mobj_keys = ['qb']
+
+    def __init__(self, task_list, sweep_points=None, qubits=None,
+                 nr_seqs=None, cycles=None, init_rotation='X90', **kw):
+        """
+        Init of the SingleQubitXEB class.
+        The experiment consists of applying
+        [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
+        with random values of theta each time.
+
+        Args:
+            nr_seqs (int): the number of times to apply a random
+                iteration of a sequence consisting of nr_cycles cycles.
+                If nr_seqs is specified and it does not exist in the task_list,
+                THEN ALL TASKS WILL RECEIVE THE SAME PULSES provided they have
+                the same cycles array.
+            cycles (list/array): integers specifying the number of
+                random cycles to apply in a sequence.
+            init_rotation (str): the preparation pulse name
+            See docstring of base class for the remaining parameters.
+
+        Keyword args:
+            See docstring of base class
+
+        Assumptions:
+         - assumes there is one task for each qubit.
+        """
+        try:
+            self.init_rotation = init_rotation
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             nr_seqs=nr_seqs, cycles=cycles,
+                             init_rotation=init_rotation, **kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
@@ -598,7 +683,8 @@ class SingleQubitXEB(MultiTaskingExperiment):
                 'values', self.sweep_type['seqs'], 'z_rots')[seq_idx][nrcyc_idx]
             l = [['Y90', f'Z{zang}'] for zang in z_angles]
             # flatten l, prepend init pulse, append to pulse_op_codes_list
-            pulse_op_codes_list += [[self.init_rotation] + [e1 for e2 in l for e1 in e2]]
+            pulse_op_codes_list += [[self.init_rotation] +
+                                    [e1 for e2 in l for e1 in e2]]
 
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
@@ -611,23 +697,22 @@ class SingleQubitXEB(MultiTaskingExperiment):
                                         destroy=self.fast_mode)
 
 
-class TwoQubitXEB(MultiTaskingExperiment):
+class TwoQubitXEB(CrossEntropyBenchmarking):
     """
     Class for running the two-qubit cross-entropy benchmarking experiment on
     several pairs of qubits in parallel.
     Implementation as in https://www.nature.com/articles/s41567-018-0124-x.
     """
-    kw_for_sweep_points = {'cycles': dict(param_name='cycles', unit='',
-                                          label='Nr. Cycles', dimension=0),
-                           'nr_seqs,cycles': dict(
-                               param_name='gateschoice', unit='',
-                               label='cycles gates', dimension=1,
-                               values_func='paulis_gen_func')
-                           }
     default_experiment_name = 'TwoQubitXEB'
+    kw_for_sweep_points = {
+        'nr_seqs,cycles': dict(
+            param_name='gateschoice', unit='',
+            label='cycles gates', dimension=1,
+            values_func='paulis_gen_func')}
+    task_mobj_keys = ['qb_1', 'qb_2']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, sweep_type=None, **kw):
+                 nr_seqs=None, cycles=None, **kw):
         """
         Init of the TwoQubitXEB class.
         The experiment consists of applying
@@ -640,12 +725,6 @@ class TwoQubitXEB(MultiTaskingExperiment):
         in the next cycle after a CZ gate in the same qubit."
 
         Args:
-            task_list (list): see CalibBuilder docstring
-            sweep_points (SweepPoints instance):
-                Ex: [{'cycles': ([0, 4, 10], '', 'Nr. Cycles')},
-                     {'nr_seqs': (array([0, 1, 2, 3]), '', 'Nr. Sequences')}]
-            qubits (list): QuDev_transmon class instances on which to run
-                measurement
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
                 If nr_seqs is specified and it does not exist in the task_list,
@@ -653,78 +732,19 @@ class TwoQubitXEB(MultiTaskingExperiment):
                 the same cycles array.
             cycles (list/array): integers specifying the number of
                 random cycles to apply in a sequence.
-            sweep_type (dict): of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
+            See docstring of base class for remaining parameters.
 
         Keyword args:
-            passed to CalibBuilder; see docstring there
+            See docstring of base class
 
         Assumptions:
-         - assumes there is one task for each qubit. If task_list is None, it
-          will internally create it.
+         - assumes there is one task for CZ gate.
         """
         try:
-
-            self.sweep_type = sweep_type
-            if self.sweep_type is None:
-                self.sweep_type = {'cycles': 0, 'seqs': 1}
-            self.kw_for_sweep_points['nr_seqs,cycles']['dimension'] = \
-                self.sweep_type['seqs']
-            self.kw_for_sweep_points['cycles']['dimension'] = \
-                self.sweep_type['cycles']
-            kw['cal_states'] = kw.get('cal_states', '')
-
-            for task in task_list:
-                for k in ['qb_1', 'qb_2']:
-                    if k not in task:
-                        raise ValueError('Please specify "{k}" in each task in '
-                                         '"task_list."')
-                    if not isinstance(task[k], str):
-                        task[k] = task[k].name
-                if 'prefix' not in task:
-                    task['prefix'] = f"{task['qb_1']}{task['qb_2']}_"
-
-            # if cycles are not added to each task,
-            # self.preprocess_task_list(**kw) will fail because
-            # kw_for_sweep_points['nr_seqs,cycles'] requires cycles
-            if cycles is not None:
-                for task in task_list:
-                    task['cycles'] = cycles
-
-            if nr_seqs is not None:  # identical pulses on all qubits
-                cycles_list = [''] * len(task_list)
-                for i, task in enumerate(task_list):
-                    if 'cycles' not in task:
-                        raise KeyError('Please specify "cycles" either in '
-                                       'the task_list or as input '
-                                       'parameter to class init.')
-                    cycles_list[i] = task['cycles']
-                if np.unique(cycles_list, axis=0).shape[0] > 1:
-                    # different qubits have different nr cycles; cannot be if
-                    # user wants identical pulses on all qubits
-                    raise ValueError('Identical pulses on all qubits requires '
-                                     'identical cycles arrays. '
-                                     'To use non-identical pulses, '
-                                     'move nr_seeds from keyword arguments '
-                                     'into the tasks.')
-                else:
-                    cycles = cycles_list[0]
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              nr_seqs=nr_seqs, cycles=cycles, **kw)
-            self.identical_pulses = nr_seqs is not None and all([
-                task.get('nr_seqs', None) is None for task in task_list])
-            self.preprocessed_task_list = self.preprocess_task_list(**kw)
-            self.sequences, self.mc_points = self.sweep_n_dim(
-                self.sweep_points, body_block=None,
-                body_block_func=self.xeb_block, cal_points=self.cal_points,
-                ro_qubits=self.meas_obj_names, **kw)
-
-            self.exp_metadata['identical_pulses'] = self.identical_pulses
-
-            self.autorun(**kw)
 
         except Exception as x:
             self.exception = x
