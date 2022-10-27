@@ -152,7 +152,8 @@ def to_hex_string(byteval):
 
 def load_settings(instrument,
                   label: str='', folder: str=None,
-                  timestamp: str=None, update=True, **kw):
+                  timestamp: str=None, update=True, load_settings_submodules=True,
+                  **kw):
     '''
     Loads settings from an hdf5 file onto the instrument handed to the
     function. By default uses the last hdf5 file in the datadirectory.
@@ -175,7 +176,92 @@ def load_settings(instrument,
         params_to_set (list)    : list of strings referring to the parameters
             that should be set for the instrument
     '''
-    from numpy import array  # DO not remove. Used in eval(array(...))
+    def _load_settings(instrument, ins_group, params_to_set=None,
+                       load_settings_submodules=True, update=True,
+                       verbose=True):
+        from numpy import array  # DO not remove. Used in eval(array(...))
+        if isinstance(instrument, str) and not update:
+            instrument_name = instrument
+        else:
+            instrument_name = instrument.name
+        if params_to_set is not None:
+            if len(params_to_set) == 0:
+                log.warning('The list of parameters to update is empty.')
+            if verbose and update:
+                print('Setting parameters {} for {}.'.format(
+                    params_to_set, instrument_name))
+            params = [(param, val) for (param, val) in
+                             ins_group.attrs.items() if param in
+                             params_to_set]
+        else:
+            if verbose and update:
+                print('Setting parameters for {}.'.format(instrument_name))
+            params = [
+                (param, val) for (param, val) in ins_group.attrs.items()
+                if param not in getattr(
+                    instrument, '_params_to_not_load', {})]
+
+        if not update:
+            params_dict = {parameter: value for parameter, value in \
+                           params_to_set}
+
+            return params_dict
+
+        for parameter, value in params:
+            if parameter in instrument.parameters.keys() and \
+                    hasattr(instrument.parameters[parameter], 'set'):
+                if value == 'None':  # None is saved as string in hdf5
+                    try:
+                        instrument.set(parameter, None)
+                    except Exception:
+                        print('Could not set parameter "%s" to "%s" for '
+                              'instrument "%s"' % (
+                                  parameter, value, instrument_name))
+                elif value == 'False':
+                    try:
+                        instrument.set(parameter, False)
+                    except Exception:
+                        print('Could not set parameter "%s" to "%s" for '
+                              'instrument "%s"' % (
+                                  parameter, value, instrument_name))
+                elif value == 'True':
+                    try:
+                        instrument.set(parameter, True)
+                    except Exception:
+                        print('Could not set parameter "%s" to "%s" for '
+                              'instrument "%s"' % (
+                                  parameter, value, instrument_name))
+                else:
+                    try:
+                        instrument.set(parameter, int(value))
+                    except Exception:
+                        try:
+                            instrument.set(parameter, float(value))
+                        except Exception:
+                            try:
+                                instrument.set(parameter, eval(value))
+                            except Exception:
+                                try:
+                                    instrument.set(parameter,
+                                                   value)
+                                except Exception:
+                                    log.error('Could not set parameter '
+                                              '"%s" to "%s" '
+                                              'for instrument "%s"' % (
+                                                  parameter, value,
+                                                  instrument_name))
+        if load_settings_submodules:
+            for submodule in ins_group.keys():
+                try:
+                    _load_settings(
+                        getattr(instrument, submodule), ins_group[submodule],
+                        params_to_set=params_to_set,
+                        load_settings_submodules=load_settings_submodules)
+                except Exception as e:
+                    log.error(f"Could not load settings onto "
+                              f"submodule {submodule}"
+                              f"of instrument {instrument_name}: {e}.")
+
     if folder is None:
         folder_specified = False
     else:
@@ -207,74 +293,12 @@ def load_settings(instrument,
             if verbose:
                 print('Loaded settings successfully from the HDF file.')
 
-            params_to_set = kw.pop('params_to_set', None)
-            if params_to_set is not None:
-                if len(params_to_set) == 0:
-                    log.warning('The list of parameters to update is empty.')
-                if verbose and update:
-                    print('Setting parameters {} for {}.'.format(
-                        params_to_set, instrument_name))
-                params_to_set = [(param, val) for (param, val) in
-                                ins_group.attrs.items() if param in
-                                 params_to_set]
-            else:
-                if verbose and update:
-                    print('Setting parameters for {}.'.format(instrument_name))
-                params_to_set = [
-                    (param, val) for (param, val) in ins_group.attrs.items()
-                    if param not in getattr(
-                        instrument, '_params_to_not_load', {})]
-
-            if not update:
-                params_dict = {parameter : value for parameter, value in \
-                        params_to_set}
-                f.close()
-                return params_dict
-
-            for parameter, value in params_to_set:
-                if parameter in instrument.parameters.keys() and \
-                        hasattr(instrument.parameters[parameter], 'set'):
-                    if value == 'None':  # None is saved as string in hdf5
-                        try:
-                            instrument.set(parameter, None)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'False':
-                        try:
-                            instrument.set(parameter, False)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'True':
-                        try:
-                            instrument.set(parameter, True)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    else:
-                        try:
-                            instrument.set(parameter, int(value))
-                        except Exception:
-                            try:
-                                instrument.set(parameter, float(value))
-                            except Exception:
-                                try:
-                                    instrument.set(parameter, eval(value))
-                                except Exception:
-                                    try:
-                                        instrument.set(parameter,
-                                                       value)
-                                    except Exception:
-                                        log.error('Could not set parameter '
-                                              '"%s" to "%s" '
-                                              'for instrument "%s"' % (
-                                                  parameter, value,
-                                                  instrument_name))
-
+            p = _load_settings(instrument, ins_group,
+                           params_to_set=kw.get('params_to_set', None),
+                               load_settings_submodules=True,
+                               verbose=verbose, update=update)
+            if p is not None:
+                return p
             success = True
             f.close()
         except Exception as e:
