@@ -220,7 +220,13 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
             self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
-            if interleaved_gate is not None:
+            # tomo pulses for purity benchmarking
+            self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
+            self.purity = purity
+            self.interleaved_gate = interleaved_gate
+            self.gate_decomposition = gate_decomposition
+
+            if self.interleaved_gate is not None:
                 # kw_for_sweep_points must be changed to add the random seeds
                 # for the IRB sequences. These are added as an extra sweep
                 # parameter in dimension 1
@@ -235,7 +241,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
                          values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T)]
-            elif purity:
+            elif self.purity:
                 # kw_for_sweep_points must be changed to repeat each seed 3
                 # times (same seed, i.e. same sequence, for the 3 tomography
                 # pulses)
@@ -248,11 +254,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
-            # tomo pulses for purity benchmarking
-            self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
-            self.purity = purity
-            self.interleaved_gate = interleaved_gate
-            self.gate_decomposition = gate_decomposition
 
             self.default_experiment_name += f'_{self.gate_decomposition}'
             if self.purity:
