@@ -295,14 +295,19 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
         idx = self.channels.index(channel)
         wave = np.zeros_like(t)
 
-        if self.gaussian_filter_sigma > 0:
-            timescale = 1 / (np.sqrt(2) * self.gaussian_filter_sigma)
+        if isinstance(self.gaussian_filter_sigma, list):
+            gaussian_filter_sigma = self.gaussian_filter_sigma[idx]
+        else:
+            gaussian_filter_sigma = self.gaussian_filter_sigma
+
+        if gaussian_filter_sigma > 0:
+            timescale = 1 / (np.sqrt(2) * gaussian_filter_sigma)
         else:
             timescale = 0
 
         for seg_len, seg_amp in zip(self.lengths[idx], self.amplitudes[idx]):
             t1 = t0 + seg_len
-            if self.gaussian_filter_sigma > 0:
+            if gaussian_filter_sigma > 0:
                 wave += 0.5 * seg_amp * (sp.special.erf((t - t0) * timescale) -
                                          sp.special.erf((t - t1) * timescale))
             else:
