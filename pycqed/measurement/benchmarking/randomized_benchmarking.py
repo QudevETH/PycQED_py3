@@ -721,7 +721,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     kw_for_task_keys = ['cphase']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, randomize_cphases=False, **kw):
+                 nr_seqs=None, cycles=None, **kw):
         """
         Init of the TwoQubitXEB class.
         The experiment consists of applying
