@@ -2,18 +2,28 @@ import numpy as np
 import traceback
 from copy import deepcopy
 import random
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
-from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
-from pycqed.analysis_v3 import *
 import logging
 log = logging.getLogger(__name__)
 
 
 class RandomCircuitBenchmarkingMixin:
+    """Mixin containing utility functions needed by the RB and XEB classes.
+
+    Classes deriving from this mixin must have the following attributes:
+        kw_for_task_keys: see docstring of MultiTaskingExperiment
+        kw_for_sweep_points: see docstring of MultiTaskingExperiment
+
+    Creates the following attributes:
+        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+        identical_pulses: Bool, whether the same XEB experiment should be
+            run on all tasks (True), or have unique sequences per task (False)
+    """
 
     seq_lengths_name = 'cliffords'
     """Name of the parameter specifying the sequence lengths 
@@ -28,7 +38,16 @@ class RandomCircuitBenchmarkingMixin:
     'seeds' for RB, 'seqs' for XEB
     """
 
-    def update_kw_cal_states(self, kw):
+    @staticmethod
+    def update_kw_cal_states(kw):
+        """
+        Disables cal_points unless user has explicitly set them.
+
+        The cal points are disabled by setting cal_states = '' in the kw.
+
+        Args:
+            kw: keyword arguments which will be updated
+        """
         kw['cal_states'] = kw.get('cal_states', '')
 
     def create_sweep_type(self, sweep_type=None):
@@ -64,8 +83,10 @@ class RandomCircuitBenchmarkingMixin:
         """
         Check whether identical pulses should be applied to all tasks.
 
-        The same RB experiment will be run on all tasks if the input parameter
-        self.randomizations_name is provided as a global parameter.
+        The same RB/XEB experiment will be run on all tasks if the input
+        parameter self.randomizations_name is provided as a global parameter
+        to the init of the RB/XEB measurement class. Therefore, here kw must
+        be the kw that were passed to the init of the RB/XEB measurement class.
 
         Creates the attribute identical_pulses (True if self.randomizations_name
         if provided as a global parameter; False if this parameter is specified
@@ -73,8 +94,8 @@ class RandomCircuitBenchmarkingMixin:
 
         Args:
             task_list (list of dicts): see CalibBuilder docstring
-            **kw: kwargs that were passed to class __init__
-                Contain seq_lengths_name and f'nr_{randomizations_name}'
+            **kw: kwargs that were passed to the __init__ of the child class.
+                Can contain seq_lengths_name and f'nr_{randomizations_name}'
                 if these parameters are passed globally by the user.
         """
         global_seq_lengths = kw.get(self.seq_lengths_name)
@@ -118,12 +139,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
     https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.109.080505
     https://journals.aps.org/pra/abstract/10.1103/PhysRevA.96.022330
 
-    Attributes:
-        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
-        identical_pulses: Bool, whether the same RB experiment should be
-            run on all tasks (True), or have unique sequences per task (False)
+    Attributes in addition to those of the base classes:
         purity: Bool, whether to run purity benchmarking (only implemented for
             single qubit RB):
             https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.117.260501
@@ -211,7 +227,13 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
             self.update_kw_cal_states(kw)
             self.create_sweep_type(sweep_type)
             self.update_kw_for_sweep_points_dimension()
-            if interleaved_gate is not None:
+            # tomo pulses for purity benchmarking
+            self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
+            self.purity = purity
+            self.interleaved_gate = interleaved_gate
+            self.gate_decomposition = gate_decomposition
+
+            if self.interleaved_gate is not None:
                 # kw_for_sweep_points must be changed to add the random seeds
                 # for the IRB sequences. These are added as an extra sweep
                 # parameter in dimension 1
@@ -226,7 +248,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
                          values_func=lambda ns, cliffords: np.array(
                              [np.random.randint(0, 1e8, ns)
                               for _ in range(len(cliffords))]).T)]
-            elif purity:
+            elif self.purity:
                 # kw_for_sweep_points must be changed to repeat each seed 3
                 # times (same seed, i.e. same sequence, for the 3 tomography
                 # pulses)
@@ -239,11 +261,6 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
-            # tomo pulses for purity benchmarking
-            self.tomo_pulses = kw.get('tomo_pulses', ['I', 'X90', 'Y90'])
-            self.purity = purity
-            self.interleaved_gate = interleaved_gate
-            self.gate_decomposition = gate_decomposition
 
             self.default_experiment_name += f'_{self.gate_decomposition}'
             if self.purity:
@@ -525,13 +542,6 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
     https://www.nature.com/articles/s41567-018-0124-x
     https://www.science.org/doi/10.1126/science.aao4309
     https://www.nature.com/articles/s41586-019-1666-5
-
-    Attributes:
-        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
-        identical_pulses: Bool, whether the same RB experiment should be
-            run on all tasks (True), or have unique sequences per task (False)
     """
     default_experiment_name = 'XEB'
     seq_lengths_name = 'cycles'
@@ -703,7 +713,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     """
     default_experiment_name = 'TwoQubitXEB'
     kw_for_sweep_points = {
-        'nr_seqs,cycles,cphase': dict(
+        'nr_seqs,cycles': dict(
             param_name='gateschoice', unit='',
             label='cycles gates', dimension=1,
             values_func='paulis_gen_func')}
@@ -722,11 +732,6 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         "the first one-qubit gate for each qubit after the initial cycle of
         Hadamard gates is always a T gate; and we place a one-qubit gate only
         in the next cycle after a CZ gate in the same qubit."
-
-        Init of the SingleQubitXEB class.
-        The experiment consists of applying
-        [[Ry - Rz(theta)] * nr_cycles for nr_cycles in cycles] nr_seqs times,
-        with random values of theta each time.
 
         Args:
             nr_seqs (int): the number of times to apply a random
