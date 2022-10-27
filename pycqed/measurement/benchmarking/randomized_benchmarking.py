@@ -14,8 +14,15 @@ class RandomCircuitBenchmarkingMixin:
     """Mixin containing utility functions needed by the RB and XEB classes.
 
     Classes deriving from this mixin must have the following attributes:
-        - kw_for_task_keys: see docstring of MultiTaskingExperiment
-        - kw_for_sweep_points: see docstring of MultiTaskingExperiment
+        kw_for_task_keys: see docstring of MultiTaskingExperiment
+        kw_for_sweep_points: see docstring of MultiTaskingExperiment
+
+    Creates the following attributes:
+        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
+                the integers specify which parameter should correspond to the
+                inner sweep (0), and which to the outer sweep (1).
+        identical_pulses: Bool, whether the same XEB experiment should be
+            run on all tasks (True), or have unique sequences per task (False)
     """
 
     seq_lengths_name = 'cliffords'
@@ -125,12 +132,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
     https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.109.080505
     https://journals.aps.org/pra/abstract/10.1103/PhysRevA.96.022330
 
-    Attributes:
-        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
-        identical_pulses: Bool, whether the same RB experiment should be
-            run on all tasks (True), or have unique sequences per task (False)
+    Attributes in addition to those of the base classes:
         purity: Bool, whether to run purity benchmarking (only implemented for
             single qubit RB):
             https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.117.260501
@@ -532,13 +534,6 @@ class CrossEntropyBenchmarking(MultiTaskingExperiment,
     https://www.nature.com/articles/s41567-018-0124-x
     https://www.science.org/doi/10.1126/science.aao4309
     https://www.nature.com/articles/s41586-019-1666-5
-
-    Attributes:
-        sweep_type: Dict of the form {'cycles': 0/1, 'seqs': 1/0}, where
-                the integers specify which parameter should correspond to the
-                inner sweep (0), and which to the outer sweep (1).
-        identical_pulses: Bool, whether the same XEB experiment should be
-            run on all tasks (True), or have unique sequences per task (False)
     """
     default_experiment_name = 'XEB'
     seq_lengths_name = 'cycles'
