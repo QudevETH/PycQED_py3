@@ -507,6 +507,9 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter(op_name, ps_name + '_gaussian_filter_sigma',
                                  'gaussian_filter_sigma', initial_value=2e-9,
                                  vals=vals.Numbers(0))
+        self.add_pulse_parameter(op_name, ps_name + '_square_wave',
+                                 'square_wave', initial_value=False,
+                                 vals=vals.Bool())
         self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
                                  '_trans_amplitude', initial_value=0,
                                  vals=vals.Numbers(),
@@ -658,7 +661,8 @@ class QuDev_transmon(Qubit):
         return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
 
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
-                            model='transmon_res', flux=None, update=False):
+                            model='transmon_res', flux=None, update=False,
+                            return_ge_and_ef=False):
         """
         Calculates the transition frequency for a given DC bias and flux
         pulse amplitude using fit parameters stored in the qubit object.
@@ -694,8 +698,9 @@ class QuDev_transmon(Qubit):
         :return: calculated ge transition frequency
         """
 
-        if transition not in ['ge', 'ef'] or (transition == 'ef' and
-                                              model not in ['transmon_res']):
+        if transition not in ['ge', 'ef', 'gf'] \
+                or (transition in ['ef', 'gf'] \
+                    and model not in ['transmon_res']):
             raise NotImplementedError(
                 f'calculate_frequency: Currently, transition {transition} is '
                 f'not implemented for model {model}.')
@@ -732,10 +737,18 @@ class QuDev_transmon(Qubit):
                 0 if np.all(amplitude == 0)
                 else amplitude / flux_amplitude_bias_ratio), **kw)
         elif model == 'transmon_res':
-            freq = fit_mods.Qubit_dac_to_freq_res(
+            freqs = fit_mods.Qubit_dac_to_freq_res(
                 bias + (0 if np.all(amplitude == 0)
                         else amplitude / flux_amplitude_bias_ratio),
-                return_ef=True, **vfc)[0 if transition == 'ge' else 1]
+                return_ef=True, **vfc)
+            if return_ge_and_ef:
+                return freqs
+            if transition == 'ge':
+                freq = freqs[0]
+            if transition == 'ef':
+                freq = freqs[1]
+            if transition == 'gf':
+                freq = freqs[0] + freqs[1]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
@@ -767,7 +780,8 @@ class QuDev_transmon(Qubit):
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
-            implemented.
+            implemented for all models. The model 'transmon_res' also allows to
+            the 'ef' and 'gf' transition to be specfified.
         :param model: (str, default: 'transmon_res') the model to use.
             Currently 'transmon_res' and 'approx' are supported. See
             docstring of self.calculate_frequency
@@ -794,9 +808,12 @@ class QuDev_transmon(Qubit):
 
         if frequency is None:
             frequency = self.ge_freq()
-        if transition not in ['ge']:
+        if model == 'transmon_res' and transition not in ['ge']:
             raise NotImplementedError(
                 'Currently, only ge transition is implemented.')
+        elif transition not in ['ge', 'ef', 'gf']:
+            raise NotImplementedError(
+                'Currently, only the ge, ef & gf transitions are implemented.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
 
         if model in ['transmon', 'transmon_res']:
@@ -836,7 +853,8 @@ class QuDev_transmon(Qubit):
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch, single_branch=True)
+                frequency, **vfc, branch=branch, single_branch=True,
+                transition=transition)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"
@@ -1109,6 +1127,7 @@ class QuDev_transmon(Qubit):
         ge_lo = self.instr_ge_lo
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
+        self.set_distortion_in_pulsar()
         # configure readout local oscillators
         ro_lo_freq = self.get_ro_lo_freq()
 
@@ -1535,14 +1554,7 @@ class QuDev_transmon(Qubit):
                 spec_pulse = self.get_spec_pars()
                 if hard_sweep or self.instr_ge_lo() is None:
                     # No external LO, use pulse to set the spec power
-                    # The factor of 2 is needed here because the spec pulse is
-                    # applied only to the I channel. This means that we get
-                    # half the amplitude after upconversion when the
-                    # outputamplitude node is set to 0.5, which is the reasonable
-                    # setting to use for digital IQ modulation in time-domain
-                    # experiments (output pulse has the programmed pulse
-                    # amplitude).
-                    spec_pulse["amplitude"] = 2 * dbm_to_vp(self.spec_power())
+                    spec_pulse["amplitude"] = dbm_to_vp(self.spec_power())
                 seq = sq.pulse_list_list_seq([[empty_trigger,
                                                spec_pulse,
                                                self.get_ro_pars()]],
