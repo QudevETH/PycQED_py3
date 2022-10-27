@@ -935,9 +935,12 @@ class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
                 if qb.flux_parking() == 0:
                     qb.fit_ge_freq_from_dc_offset(
                     )['dac_sweet_spot'] = sweet_spot
-                elif np.abs(qb.flux_parking()) == 0.5:
+                elif qb.flux_parking() == 0.5:
                     qb.fit_ge_freq_from_dc_offset(
-                    )['dac_sweet_spot'] = opposite_sweet_spot
+                    )['dac_sweet_spot'] = sweet_spot - V_per_phi0/2
+                elif qb.flux_parking() == -0.5:
+                    qb.fit_ge_freq_from_dc_offset(
+                    )['dac_sweet_spot'] = sweet_spot + V_per_phi0/2
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
