@@ -5,6 +5,7 @@ import random
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
+from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
 import logging
 log = logging.getLogger(__name__)
@@ -875,3 +876,53 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
                                         rb_block_list, block_align='end',
                                         destroy=self.fast_mode)
+
+
+class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
+    default_experiment_name = 'TwoQubitXEBMultiCphase'
+    kw_for_sweep_points = {
+        'cphases': dict(
+            param_name='cphases', unit='',
+            label='cphase angles', dimension=1)}
+    task_mobj_keys = ['qb_1', 'qb_2']
+
+    def __init__(self, task_list, sweep_points=None, qubits=None,
+                 nr_seqs=None, cycles=None, cphases=None, **kw):
+
+        try:
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points, cphases=cphases,
+                             nr_seqs=nr_seqs, cycles=cycles, **kw)
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.xeb_measurements = []
+            self.measure = kw.pop('measure', True)
+            nr_cphases = self.sweep_points.length(1)
+            for i in range(nr_cphases):
+                tl = deepcopy(task_list)
+                for pproc_task in self.preprocessed_task_list:
+                    prefix = pproc_task['prefix']
+                    task = [t for t in tl if t['prefix'] == prefix][0]
+                    task.pop('cphases', None)
+                    task['cphase'] = pproc_task['sweep_points']['cphases'][i]
+                self.xeb_measurements += [
+                    TwoQubitXEB(tl, sweep_points, qubits, nr_seqs=nr_seqs,
+                                cycles=cycles, measure=False, **kw)]
+            # interleave sequences
+            self.sequences, self.mc_points = \
+                self.xeb_measurements[0].sequences[0].interleave_sequences(
+                    [xeb.sequences for xeb in self.xeb_measurements])
+            # combine sweep points
+            self.update_sweep_points()
+
+            self.autorun(**kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        for i, xebm in enumerate(self.xeb_measurements):
+            sweep_points = SweepPoints(xebm.sweep_points)
+            sweep_points.append_suffix_to_sweep_params(str(i))
+            self.sweep_points.update(sweep_points)
+
+
