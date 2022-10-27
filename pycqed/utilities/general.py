@@ -171,7 +171,9 @@ def load_settings(instrument,
         timestamp (str)       : timestamp of file in the datadir
         update (bool, default True): if set to False, the loaded settings
             will be returned instead of updating them in the instrument.
-
+        load_settings_submodules (bool): whether or not the parameters of
+            submodules of `instrument` (and their child submodules recursively)
+            should be loaded. Defaults to True.
     Kwargs:
         params_to_set (list)    : list of strings referring to the parameters
             that should be set for the instrument
