@@ -34,6 +34,60 @@ class AWG70002A(AWG70002A.AWG70002A):
                            get_cmd='MMEMory:MSIS?',
                            initial_value = 'C:',
                            vals=vals.Strings())
+        self.add_parameter('trigger_interval',
+                           label='Internal trigger interval',
+                           set_cmd='TRIG:INT {}',
+                           get_cmd='TRIG:INT?',
+                           initial_value=1e-6,
+                           vals=vals.Numbers(1e-6, 10e-6))
+        self.add_parameter('trigger_level_A',
+                           label='External trigger level',
+                           set_cmd='TRIG:LEV {}, ATR',
+                           get_cmd='TRIG:LEV? ATR',
+                           initial_value=1,
+                           vals=vals.Numbers(-5, 5))
+        self.add_parameter('trigger_level_B',
+                           label='External trigger level',
+                           set_cmd='TRIG:LEV {}, BTR',
+                           get_cmd='TRIG:LEV? BTR',
+                           initial_value=1,
+                           vals=vals.Numbers(-5, 5))
+        self.add_parameter('trigger_polarity_A',
+                           label='Trigger polarity',
+                           set_cmd='TRIG:SLOP {}, ATR',
+                           get_cmd='TRIG:SLOP? ATR',
+                           initial_value="POS",
+                           vals=vals.Strings())
+        self.add_parameter('trigger_polarity_B',
+                           label='Trigger polarity',
+                           set_cmd='TRIG:SLOP {}, BTR',
+                           get_cmd='TRIG:SLOP? BTR',
+                           initial_value="POS",
+                           vals=vals.Strings())
+        self.add_parameter('trigger_impedance_A',
+                           label='Trigger impedance',
+                           set_cmd='TRIG:IMP {}, ATR',
+                           get_cmd='TRIG:IMP? ATR',
+                           initial_value=50,
+                           vals=vals.Enum(50, 1000))
+        self.add_parameter('trigger_impedance_B',
+                           label='Trigger impedance',
+                           set_cmd='TRIG:IMP {}, BTR',
+                           get_cmd='TRIG:IMP? BTR',
+                           initial_value=50,
+                           vals=vals.Enum(50, 1000))
+        self.add_parameter('trigger_timing_A',
+                           label="External trigger timing mode",
+                           set_cmd='TRIG:MODE {}, ATR',
+                           get_cmd='TRIG:MODE? ATR',
+                           initial_value="SYNC",
+                           vals=vals.Strings())
+        self.add_parameter('trigger_timing_B',
+                           label="External trigger timing mode",
+                           set_cmd='TRIG:MODE {}, BTR',
+                           get_cmd='TRIG:MODE? BTR',
+                           initial_value="SYNC",
+                           vals=vals.Strings())
 
     def start(self, **kwargs) -> None:
         """Start the AWG function.
