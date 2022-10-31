@@ -254,7 +254,8 @@ class Sequence:
 
         # harmonize_amplitude only affects AWGs whose command table wave
         # sequencing is enabled.
-        if not getattr(self.pulsar, f"{awg}_use_command_table", False):
+        if not hasattr(self.pulsar, f"{awg}_use_command_table") \
+                or not self.pulsar.get(f"{awg}_use_command_table"):
             return dict()
 
         # Command table wave sequencing is only implemented for
