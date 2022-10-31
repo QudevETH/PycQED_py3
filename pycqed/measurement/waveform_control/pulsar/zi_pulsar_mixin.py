@@ -325,34 +325,6 @@ class ZIPulsarMixin:
             playback_string.append("}")
         return playback_string
 
-    def _zi_interleaved_playback_string(self, name, device, counter,
-                                        wave, acq=False, codeword=False):
-        playback_string = []
-        w1, w2 = self.zi_waves_to_wavenames(wave)
-        if w1 is None or w2 is None:
-            raise ValueError("When using HDAWG modulation both I and Q need "
-                              "to be defined")
-
-        wname = f"wave{counter}"
-        interleaves = [f"wave {wname} = interleave({w1}, {w2});"]
-
-        if not codeword:
-            if not acq:
-                playback_string.append(f"prefetch({wname},{wname});")
-
-        playback_string += self.zi_wait_trigger(name, device)
-
-        if codeword:
-            # playback_string.append("playWaveDIO();")
-            raise NotImplementedError("Modulation in combination with codeword"
-                                      "pulses has not yet been implemented!")
-        else:
-            playback_string.append(f"playWave({wname},{wname});")
-        if acq:
-            playback_string.append("setTrigger(RO_TRIG);")
-            playback_string.append("setTrigger(WINT_EN);")
-        return playback_string, interleaves
-
     def zi_wait_trigger(self, name, device):
         playback_string = []
         trig_source = self.pulsar.get("{}_trigger_source".format(name))

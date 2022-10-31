@@ -684,42 +684,25 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             metadata,
             first_element_of_segment
     ):
-        if not self._hdawg_internal_mod:
-            if first_element_of_segment:
-                prepend_zeros = self.pulsar.parameters[
-                    f"{self._awg.name}_prepend_zeros"]()
-                if prepend_zeros is None:
-                    prepend_zeros = self.pulsar.prepend_zeros()
-                elif isinstance(prepend_zeros, list):
-                    prepend_zeros = prepend_zeros[self._awg_nr]
-            else:
-                prepend_zeros = 0
-            self._playback_strings += self._awg_interface.zi_playback_string(
-                name=self._awg.name,
-                device='hdawg',
-                wave=wave,
-                codeword=codeword,
-                prepend_zeros=prepend_zeros,
-                placeholder_wave=use_placeholder_waves,
-                command_table_index=command_table_index,
-                allow_filter=metadata.get('allow_filter', False)
-            )
-        elif not use_placeholder_waves:
-            pb_string, interleave_string = \
-                self._awg_interface._zi_interleaved_playback_string(
-                    name=self._awg.name,
-                    device='hdawg',
-                    counter=self._counter,
-                    wave=wave,
-                    codeword=codeword
-                )
-            self._counter += 1
-            self._playback_strings += pb_string
-            self._interleaves += interleave_string
+        if first_element_of_segment:
+            prepend_zeros = self.pulsar.parameters[
+                f"{self._awg.name}_prepend_zeros"]()
+            if prepend_zeros is None:
+                prepend_zeros = self.pulsar.prepend_zeros()
+            elif isinstance(prepend_zeros, list):
+                prepend_zeros = prepend_zeros[self._awg_nr]
         else:
-            raise NotImplementedError("Placeholder waves in "
-                                      "combination with internal "
-                                      "modulation not implemented.")
+            prepend_zeros = 0
+        self._playback_strings += self._awg_interface.zi_playback_string(
+            name=self._awg.name,
+            device='hdawg',
+            wave=wave,
+            codeword=codeword,
+            prepend_zeros=prepend_zeros,
+            placeholder_wave=use_placeholder_waves,
+            command_table_index=command_table_index,
+            allow_filter=metadata.get('allow_filter', False)
+        )
 
     def _configure_awg_str(
             self,
