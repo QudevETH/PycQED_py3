@@ -111,46 +111,39 @@ class ZIPulsarMixin:
         """
 
         if defined_waves is None:
-            if wave_index is None:
-                defined_waves = set()
-            else:
-                defined_waves = set(), dict()
+            defined_waves = set() if wave_index is None else set(), dict()
+
+        if isinstance(defined_waves, set):
+            defined_wave_names = defined_waves
+            defined_wave_indices = None
+        else:
+            defined_wave_names = defined_waves[0]
+            defined_wave_indices = defined_waves[1]
 
         wave_definition = []
         w1, w2 = self.zi_waves_to_wavenames(wave)
+
+        # Add wave name definitions.
         if placeholder_wave_length is None:
             # don"t use placeholder waves
             for analog, marker, wc in [(wave[0], wave[1], w1),
                                        (wave[2], wave[3], w2)]:
                 if analog is not None:
                     wa = self.pulsar._hash_to_wavename(analog)
-                    if wa not in defined_waves:
+                    if wa not in defined_wave_names:
                         wave_definition.append(f'wave {wa} = "{wa}";')
-                        if isinstance(defined_waves, set):
-                            defined_waves.add(wa)
-                        else:
-                            defined_waves[0].add(wa)
-                            defined_waves[1][wave_index] = wave
+                        defined_wave_names.add(wa)
 
                 if marker is not None:
                     wm = self.pulsar._hash_to_wavename(marker)
-                    if wm not in defined_waves:
+                    if wm not in defined_wave_names:
                         wave_definition.append(f'wave {wm} = "{wm}";')
-                        if isinstance(defined_waves, set):
-                            defined_waves.add(wm)
-                        else:
-                            defined_waves[0].add(wm)
-                            defined_waves[1][wave_index] = wave
+                        defined_wave_names.add(wm)
 
                 if analog is not None and marker is not None:
-                    if wc not in defined_waves:
+                    if wc not in defined_wave_names:
                         wave_definition.append(f"wave {wc} = {wa} + {wm};")
-                        if isinstance(defined_waves, set):
-                            defined_waves.add(wc)
-                        else:
-                            defined_waves[0].add(wc)
-                            defined_waves[1][wave_index] = wave
-
+                        defined_wave_names.add(wc)
         else:
             if wave_index is None:
                 # wave index has to be specified when using placeholder waves
@@ -161,19 +154,22 @@ class ZIPulsarMixin:
             if w1 is None and w2 is not None:
                 w1 = f"{w2}_but_zero"
             for wc, marker in [(w1, wave[1]), (w2, wave[3])]:
-                if wc is not None and wc not in defined_waves[0]:
+                if wc is not None and wc not in defined_wave_names:
                     wave_definition.append(
                         f"wave {wc} = placeholder({n}" +
                         ("" if marker is None else ", true") +
                         ");")
                     defined_waves[0].add(wc)
-            defined_waves[1][wave_index] = wave
 
+        # Add wave index definitions.
         if wave_index is not None:
-            wave_definition.append(
-                f"assignWaveIndex({self._zi_wavename_pair_to_argument(w1, w2)},"
-                f" {wave_index});"
-            )
+            if wave not in defined_wave_indices.values():
+                wave_definition.append(
+                    f"assignWaveIndex("
+                    f"{self._zi_wavename_pair_to_argument(w1, w2)}, "
+                    f"{wave_index});"
+                )
+                defined_wave_indices[wave_index] = wave
 
         return wave_definition
 
