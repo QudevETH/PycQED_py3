@@ -1133,6 +1133,8 @@ class ZIGeneratorModule:
                     self._wave_definitions += \
                         self._awg_interface.zi_wave_definition(
                             wave=wave,
+                            wave_index=self._wave_idx_lookup[element][cw] if
+                            self._use_command_table else None,
                             defined_waves=self._defined_waves,
                         )
 
