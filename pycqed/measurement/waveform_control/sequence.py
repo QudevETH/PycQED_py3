@@ -37,7 +37,7 @@ class Sequence:
         self.extend(segments)
         self.timer = Timer(self.name)
         self.is_resolved = False
-        self.amplitude_harmonized = []
+        self.awg_scaling_factors = dict()
         """A list of AWG names whose pulse amplitudes has processed with 
         method 'self.harmonize_amplitude'."""
 
@@ -117,21 +117,21 @@ class Sequence:
             for group in trigger_groups:
                 awgs.add(self.pulsar.get_awg_from_trigger_group(group))
 
-        scaling_factors = self.harmonize_amplitude()
+        # Note that method 'self.generate_waveforms_sequences' will be
+        # called by 'pulsar._program_awgs' multiple times, but we only
+        # want to execute 'self.harmonize_amplitude' once. Otherwise,
+        # we will have wrong pulse amplitudes and scaling parameters.
+        for awg in awgs:
+            if awg not in self.awg_scaling_factors.values():
+                self.awg_scaling_factors[awg] = \
+                    self.harmonize_amplitude(awg=awg)
+
         for segname, seg in self.segments.items():
             for group in trigger_groups:
                 awg = self.pulsar.get_awg_from_trigger_group(group)
                 if awg not in awgs:
                     continue
-                # Note that method 'self.generate_waveforms_sequences' will be
-                # called by 'pulsar._program_awgs' multiple times, but we only
-                # want to execute 'self.harmonize_amplitude' once. Otherwise,
-                # we will have wrong pulse amplitudes and scaling parameters.
-                if awg not in self.amplitude_harmonized:
-                    scaling_factors = self.harmonize_amplitude(awg=awg)
-                    self.amplitude_harmonized.append(awg)
-                else:
-                    scaling_factors = dict()
+                scaling_factors = self.awg_scaling_factors[awg]
                 sequences.setdefault(awg, odict())
                 # Store name of the segment as key and None as value.
                 # This is used when compiling docstrings in seqc.

@@ -1100,7 +1100,7 @@ class ZIGeneratorModule:
                             f"other in the sequencer code. "
                         )
 
-                    scaling_factor = metadata.get("scaling_factor", 1.0)
+                    scaling_factor = metadata.get("scaling_factor", dict())
                     entry_index = len(self._command_table)
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
@@ -1307,6 +1307,9 @@ class ZIGeneratorModule:
                 the amplitude ratio between the actual wave and the uploaded
                 wave.
         """
+        if scaling_factor == dict():
+            return 1.0
+
         # check if channels specified in scaling_factor match the
         # analog channels on this AWG module.
         channel_ids = [self.pulsar.get(f"{channel}_id")
