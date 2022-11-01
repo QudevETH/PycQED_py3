@@ -644,12 +644,6 @@ class ZIGeneratorModule:
         self._playback_strings = []
         """Playback strings to be added to the sequencer code."""
 
-        self._counter = 1
-        """Counter for interleaved playback string."""
-
-        self._interleaves = []
-        """Interleaved playback string to be added to the sequencer code."""
-
         self._wave_idx_lookup = {}
         """Look-up dictionary of the defined waveform indices."""
 
@@ -706,8 +700,6 @@ class ZIGeneratorModule:
             reset_codeword_table: bool = True,
             reset_playback_strings: bool = True,
             reset_command_table: bool = True,
-            reset_interleaves: bool = True,
-            reset_counter: bool = True,
     ):
         """Resets everything relates to sequence code strings."""
         if reset_wave_definition:
@@ -723,12 +715,6 @@ class ZIGeneratorModule:
 
         if reset_playback_strings:
             self._playback_strings = []
-
-        if reset_interleaves:
-            self._interleaves = []
-
-        if reset_counter:
-            self._counter = 1
 
     def _reset_has_waveform_flags(self):
         """Resets flags saved in self.has_waveforms."""
@@ -1315,8 +1301,7 @@ class ZIGeneratorModule:
                 only be programmed when the previous waveforms cannot be reused.
         """
         awg_str = self._sequence_string_template.format(
-            wave_definitions='\n'.join(self._wave_definitions +
-                                       self._interleaves),
+            wave_definitions='\n'.join(self._wave_definitions),
             codeword_table_defs='\n'.join(self._codeword_table_defs),
             playback_string='\n  '.join(self._playback_strings),
         )
