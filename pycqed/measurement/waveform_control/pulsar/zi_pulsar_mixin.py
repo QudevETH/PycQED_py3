@@ -951,6 +951,10 @@ class ZIGeneratorModule:
                     waveforms[h_neg] = -waveforms[h_pos]
 
                 wave = tuple(wave)
+                # Update self.has_waveforms flag of the corresponding channel
+                # ID if there are waveforms defined.
+                for i, chid in enumerate(self.channel_ids):
+                    self.has_waveforms[chid] |= wave[i] is not None
 
                 # Skip this element if it has no waves defined on this
                 # channel/channel pair, or sine config instructs pulsar to
@@ -972,11 +976,6 @@ class ZIGeneratorModule:
                         log.warning('Same codeword used for different '
                                     'waveforms. Using first waveform. '
                                     f'Ignoring element {element}.')
-
-                # Update self.has_waveforms flag of the corresponding channel
-                # ID if there are waveforms defined.
-                for i, chid in enumerate(self.channel_ids):
-                    self.has_waveforms[chid] |= wave[i] is not None
 
                 if not upload:
                     # _program_awg was called only to decide which
@@ -1047,6 +1046,8 @@ class ZIGeneratorModule:
                     first_element_of_segment=first_element_of_segment,
                 )
                 first_element_of_segment = False
+            else:
+                self._playback_strings.append('waitDigTrigger(1);')
 
             self._playback_strings += \
                 ZIPulsarMixin.zi_playback_string_loop_end(metadata)
