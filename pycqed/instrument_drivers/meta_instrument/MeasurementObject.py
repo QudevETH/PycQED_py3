@@ -8,7 +8,7 @@ from copy import deepcopy
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 
 from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
 from pycqed.measurement import detector_functions as det
@@ -247,9 +247,6 @@ class MeasurementObject(Instrument):
             "without drive signal, i.e., when calling qb.prepare with "
             "drive=None) as well as additional custom modes (to be used in "
             "manual calls to set_switch).")
-
-    def get_idn(self):
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def get_acq_int_channels(self, n_channels=None):
         """Get a list of tuples with the qubit's integration channels.

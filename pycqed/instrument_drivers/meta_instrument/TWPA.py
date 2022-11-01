@@ -73,8 +73,6 @@ class TWPAObject(MeasurementObject):
                            set_cmd=(lambda val, self=self:
                                     self.instr_signal.get_instr().status(val)))
 
-    def get_idn(self):
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def on(self):
         self.instr_pump.get_instr().on()
