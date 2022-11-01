@@ -20,6 +20,7 @@ import operator
 import string
 from collections import OrderedDict  # for eval in load_settings
 import functools
+from copy import deepcopy
 log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -918,6 +919,245 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     file = open(os.path.join(destination_path, filename), 'a+')
     file.writelines(message)
     file.close()
+
+
+def save_zibugreport(interactive=True, save_folder=None):
+    """
+    Saves a detailed bug report of ZI devices.
+
+    For each ZI device in the running kernel, it saves the following:
+        - awg source string
+        - compiler status string
+        - errors on the device
+        - device snapshot
+    In addition, the following are saved:
+        - current firmware and fpga versions running on each ZI device
+        - current versions of installed zhinst modules. These are typically
+            - zhinst-core
+            - zhinst-deviceutils
+            - zhinst-qcodes
+            - zhinst-toolkit
+            - zhinst-utils
+        - last sequence in pulsar
+        - csv files with the last programmed waves
+
+    Args:
+        interactive (bool): if True, opens a notepad file and prompts the user
+            to paste the error message reported by pycqed.
+        save_folder (str or None): location where the bug report will be saved.
+            If None, the latest measurement timestamp is taken.
+
+    Returns:
+        exceptions (dict): exceptions raised while trying to dump the bug report
+    """
+    from zipfile import ZipFile
+    import json
+    import pickle
+    import time
+
+    # get the pulsar instance
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    exceptions = {}
+
+    def write_logfile(logfile, content):
+        logfile = os.path.join(brdir, f"{logfile}.log")
+        f = open(logfile, 'a+')
+        f.write(content)
+        f.write("\n")
+        f.close()
+        return logfile
+
+    def zipfolder(zipfile, folder):
+        with ZipFile(os.path.join(brdir, f'{zipfile}.zip'), 'w') as zipObj:
+            for folderName, subfolders, filenames in os.walk(folder):
+                for filename in filenames:
+                    filePath = os.path.join(folderName, filename)
+                    zipObj.write(filePath, os.path.relpath(filePath, folder))
+
+    # create the save folder
+    if save_folder is None:
+        save_folder = a_tools.latest_data()
+    brdir = os.path.join(
+        save_folder,
+        f"bugreport_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
+    os.mkdir(brdir)
+
+    # save the waveform files
+    try:
+        zipfolder('waves', pulsar.awg_interfaces[
+            list(pulsar.awg_interfaces)[0]]._zi_wave_dir())
+    except Exception as e:
+        exceptions['waves'] = e
+
+    # get all connected ZI instruments
+    instruments = get_all_connected_zi_instruments()
+
+    # save versions of zhinst modules
+    versions_zhinst, exceps = get_zhinst_modules_versions()
+    exceptions.update(exceps)
+    write_logfile('versions_zhinst', repr(versions_zhinst))
+
+    # save firmware and fpgs versions
+    versions_devs, exceps = get_zhinst_firmware_versions(instruments)
+    exceptions.update(exceps)
+    write_logfile('versions', repr(versions_devs))
+
+    # save awg_source_strings
+    for dev in instruments:
+        try:
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_awg_source_strings'),
+                repr(getattr(dev, '_awg_source_strings', {})))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_awg_source_strings'] = e
+
+    # save compiler status strings
+    for dev in instruments:
+        try:
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
+                getattr(dev, 'compiler_statusstring', ''))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
+
+    # save snapshots
+    for dev in instruments:
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
+                repr(dev.snapshot()))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
+
+    # save errors reported by the devices
+    for dev in instruments:
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
+                repr(json.loads(dev.getv('raw/error/json/errors'))))
+        except Exception as e:
+            try:
+                # for QCodes-based devices
+                err_dict = dev.daq.get(f'{dev.devname}/raw/error/json/errors',
+                                       settingsonly=False)
+                err_str = err_dict[dev.devname][
+                    'raw']['error']['json']['errors'][0]['vector']
+                write_logfile(
+                    os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
+                    repr(json.loads(err_str)))
+            except Exception as e:
+                exceptions[f'{dev.name}_{dev.devname}_errors'] = e
+
+    # save last sequence from pulsar
+    try:
+        seq = deepcopy(pulsar.last_sequence)
+        if seq is not None:
+            seq.pulsar = None
+            for seg in seq.segments.values():
+                seg.pulsar = None
+        with open(os.path.join(brdir, "last_sequence.p"), "wb") as pf:
+            pickle.dump(seq, pf)
+    except Exception as e:
+        exceptions['last_sequence'] = e
+
+    # prompt user to save std output into a textfile
+    if interactive:
+        try:
+            f = write_logfile('stdout', 'COPY AND PASTE STDOUT HERE')
+            print(
+                'Please look for the open notepad window and paste the output '
+                'of the last running cell.')
+            os.system(f'notepad {f}')
+        except Exception as e:
+            exceptions['stdout'] = e
+
+    # print in kernel
+    print(f'Bug report files saved to {brdir}')
+    from pprint import pprint
+    pprint(versions_zhinst)
+    pprint(versions_devs)
+
+    if len(exceptions):
+        print('\n' +
+              f'Not all elements of the bugreport could be saved. '
+              f'Exceptions occurred during: {list(exceptions.keys())}')
+    return exceptions
+
+
+def get_all_connected_zi_instruments():
+    """
+    Gets all the Zurich Instruments devices that have been instantiated in
+    the running kernel.
+
+    Returns:
+        list with instances of ZI device drivers
+    """
+    from qcodes.station import Station
+    if Station.default is not None:
+        all_inst = Station.default.components
+    else:
+        from pycqed.instrument_drivers.instrument import Instrument
+        all_inst = Instrument._all_instruments
+    return [inst for inst in all_inst.values()
+            if inst.get_idn().get('vendor', '') in
+            ['ZurichInstruments', 'Zurich Instruments']]
+
+def get_zhinst_modules_versions():
+    """
+    Gets the current versions of the installed zhinst packages.
+
+    Returns:
+        versions (dict): module names as keys, version numbers as values
+        exceptions (dict): module names as keys, errors as values if an error
+            has occurred when trying to get the version number of a module
+    """
+    versions, exceptions = {}, {}
+    import zhinst
+    submodules = [sm for sm in dir(zhinst) if not sm.startswith('__')]
+    for sm in submodules:
+        try:
+            versions[f'zhinst-{sm}'] = zhinst.__dict__[sm].__version__
+        except Exception as e:
+            exceptions[sm] = e
+    return versions, exceptions
+
+
+def get_zhinst_firmware_versions(zi_instruments=None):
+    """
+    Gets the firmware and fpga versions of ZI instruments.
+
+    Args:
+        zi_instruments (list or None): instances of ZI instrument drivers
+        exclude_mcc_inst (bool): whether to include the instruments that were
+            instantiated twice in order to be used with the MultiCoreCompiler.
+
+    Returns:
+        versions (dict): ZI instrument drivers as keys, dict with
+            version numbers as values
+        exceptions (dict): ZI instrument drivers as keys, errors as values if
+            an error has occurred when trying to get a version number for a
+            ZI device
+    """
+    if zi_instruments is None:
+        zi_instruments = get_all_connected_zi_instruments()
+
+    versions, exceptions = {}, {}
+    for node in ['system/fwrevision', 'system/fpgarevision']:
+        versions[node] = {}
+        for dev in zi_instruments:
+            try:
+                versions[node][dev.devname] = dev.geti(node)
+            except Exception as e:
+                try:
+                    # for QCodes-based devices
+                    versions[node][dev.devname] = \
+                        dev.daq.getInt(f'{dev.devname}/system/fwrevision')
+                except Exception as e:
+                    exceptions[f'{node} for {dev.devname}'] = e
+    return versions, exceptions
+
 
 class TempLogLevel:
     """
