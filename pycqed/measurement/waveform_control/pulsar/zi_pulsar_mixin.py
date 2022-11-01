@@ -839,6 +839,12 @@ class ZIGeneratorModule:
     def _update_awg_instrument_status(self):
         pass
 
+    def _check_ignore_waveforms(self):
+        """Check if all waveforms on this AWG module are ignored. This method
+        will be rewritten in child classes that should take such consideration.
+        """
+        return False
+
     def _generate_filter_seq_code(self):
         """Generates sequencer code that is relevant to using filters."""
         if self._use_filter:
@@ -947,8 +953,10 @@ class ZIGeneratorModule:
                 wave = tuple(wave)
 
                 # Skip this element if it has no waves defined on this
-                # channel/channel pair.
-                if wave == (None, None, None, None):
+                # channel/channel pair, or sine config instructs pulsar to
+                # ignore waveforms.
+                if wave == (None, None, None, None) or \
+                        self._check_ignore_waveforms():
                     continue
 
                 # Updates the codeword table if there exists codewords.
@@ -1030,14 +1038,15 @@ class ZIGeneratorModule:
                 continue
 
             # Add the playback string for the current wave.
-            self._generate_playback_string(
-                wave=wave,
-                codeword=(nr_cw != 0),
-                use_placeholder_waves=self._use_placeholder_waves,
-                metadata=metadata,
-                first_element_of_segment=first_element_of_segment,
-            )
-            first_element_of_segment = False
+            if not self._check_ignore_waveforms():
+                self._generate_playback_string(
+                    wave=wave,
+                    codeword=(nr_cw != 0),
+                    use_placeholder_waves=self._use_placeholder_waves,
+                    metadata=metadata,
+                    first_element_of_segment=first_element_of_segment,
+                )
+                first_element_of_segment = False
 
             self._playback_strings += \
                 ZIPulsarMixin.zi_playback_string_loop_end(metadata)

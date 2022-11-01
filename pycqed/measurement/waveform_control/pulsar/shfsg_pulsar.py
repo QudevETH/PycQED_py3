@@ -615,6 +615,13 @@ class SHFGeneratorModule(ZIGeneratorModule):
             allow_filter=metadata.get('allow_filter', False)
         )
 
+    def _check_ignore_waveforms(self):
+        i_channel = self.pulsar._id_channel(
+            cid=self.analog_channel_ids[0],
+            awg=self._awg.name
+        )
+        return self._sine_config[i_channel].get("ignore_waveforms", False)
+
     def _configure_awg_str(
             self,
             awg_str
