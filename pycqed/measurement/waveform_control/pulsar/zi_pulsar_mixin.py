@@ -799,8 +799,10 @@ class ZIGeneratorModule:
         if self._use_filter:
             self._playback_strings += ['var i_seg = -1;']
             self._wave_definitions += [
-                f'var first_seg = getUserReg({self._awg.USER_REG_FIRST_SEGMENT});',
-                f'var last_seg = getUserReg({self._awg.USER_REG_LAST_SEGMENT});',
+                f'var first_seg = getUserReg'
+                f'({self._awg.USER_REG_FIRST_SEGMENT});',
+                f'var last_seg = getUserReg'
+                f'({self._awg.USER_REG_LAST_SEGMENT});',
             ]
 
     def _generate_oscillator_seq_code(self):
@@ -855,8 +857,7 @@ class ZIGeneratorModule:
                     self.channel_ids
                 )
 
-            nr_cw = len(set(awg_sequence_element.keys()) - \
-                        {'no_codeword'})
+            nr_cw = len(set(awg_sequence_element.keys()) - {'no_codeword'})
             if nr_cw == 1:
                 log.warning(
                     f'Only one codeword has been set for {element}')
@@ -948,8 +949,10 @@ class ZIGeneratorModule:
                         self._awg_interface.zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
-                            placeholder_wave_index=self._wave_idx_lookup[element][cw],
-                            placeholder_wave_length=max(placeholder_wave_lengths),
+                            placeholder_wave_index=
+                            self._wave_idx_lookup[element][cw],
+                            placeholder_wave_length=
+                            max(placeholder_wave_lengths),
                         )
                 else:
                     # No indices will be assigned when not using placeholder
@@ -1050,7 +1053,8 @@ class ZIGeneratorModule:
                 only be programmed when the previous waveforms cannot be reused.
         """
         awg_str = self._sequence_string_template.format(
-            wave_definitions='\n'.join(self._wave_definitions + self._interleaves),
+            wave_definitions='\n'.join(self._wave_definitions +
+                                       self._interleaves),
             codeword_table_defs='\n'.join(self._codeword_table_defs),
             playback_string='\n  '.join(self._playback_strings),
         )
@@ -1184,7 +1188,7 @@ def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
 
     Returns:
         bool: Whether all values for all keys in new (except
-            excluded_keys) that already excisted in combined are the
+            excluded_keys) that already existed in combined are the
             same for new and combined.
     """
     if not (isinstance(new, dict) and isinstance(combined, dict)):
@@ -1203,4 +1207,3 @@ def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
         else:
             combined[key] = new[key]
     return True
-

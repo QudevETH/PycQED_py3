@@ -427,6 +427,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
     ):
         # FIXME: deactivated until implemented for QA
         self._use_filter = False
+
     def _update_internal_mod_config(
             self,
             awg_sequence,

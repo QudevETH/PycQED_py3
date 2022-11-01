@@ -419,7 +419,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             return self.awg.get(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode')
         return g
 
-
     def get_divisor(self, chid, awg):
         """Divisor is 2 for modulated non-marker channels, 1 for other cases."""
 
