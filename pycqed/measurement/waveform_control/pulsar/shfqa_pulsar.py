@@ -289,7 +289,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_start(
+                playback_strings += self.zi_playback_string_loop_start(
                     metadata, [f'qa{acq_unit+1}i', f'qa{acq_unit+1}q'])
 
                 if list(awg_sequence_element.keys()) != ['no_codeword']:
@@ -322,7 +322,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     ]
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_end(metadata)
+                playback_strings += self.zi_playback_string_loop_end(metadata)
                 return playback_strings
 
             qachannel.mode('readout')

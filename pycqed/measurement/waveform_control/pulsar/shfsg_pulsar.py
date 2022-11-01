@@ -625,7 +625,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             first_element_of_segment
     ):
         prepend_zeros = 0
-        self._playback_strings += self._awg_interface._zi_playback_string(
+        self._playback_strings += self._awg_interface.zi_playback_string(
             name=self._awg.name,
             device='shfsg',
             wave=wave,

@@ -84,16 +84,16 @@ class ZIPulsarMixin:
         else:
             return ""
 
-    def _zi_wave_definition(self, wave, defined_waves=None,
-                            placeholder_wave_length=None,
-                            placeholder_wave_index=None):
+    def zi_wave_definition(self, wave, defined_waves=None,
+                           placeholder_wave_length=None,
+                           placeholder_wave_index=None):
         if defined_waves is None:
             if placeholder_wave_length is None:
                 defined_waves = set()
             else:
                 defined_waves = set(), dict()
         wave_definition = []
-        w1, w2 = self._zi_waves_to_wavenames(wave)
+        w1, w2 = self.zi_waves_to_wavenames(wave)
         if placeholder_wave_length is None:
             # don"t use placeholder waves
             for analog, marker, wc in [(wave[0], wave[1], w1),
@@ -132,7 +132,7 @@ class ZIPulsarMixin:
         return wave_definition
 
     @staticmethod
-    def _zi_playback_string_loop_start(metadata, channels):
+    def zi_playback_string_loop_start(metadata, channels):
         """Creates playback string that starts a loop depending on the metadata.
 
         The method also takes care of oscillator sweeps.
@@ -192,11 +192,11 @@ class ZIPulsarMixin:
         return playback_string
 
     @staticmethod
-    def _zi_playback_string_loop_end(metadata):
+    def zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
-    def _zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False):
-        w1, w2 = self._zi_waves_to_wavenames(wave)
+    def zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False):
+        w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True
         if w1 is None and w2 is not None and use_hack and not placeholder_wave:
             # This hack is needed due to a bug on the HDAWG.
@@ -210,7 +210,7 @@ class ZIPulsarMixin:
         else:
             return []
 
-    def _zi_waves_to_wavenames(self, wave):
+    def zi_waves_to_wavenames(self, wave):
         wavenames = []
         for analog, marker in [(wave[0], wave[1]), (wave[2], wave[3])]:
             if analog is None and marker is None:
@@ -223,7 +223,7 @@ class ZIPulsarMixin:
                 wavenames.append(self.pulsar._hash_to_wavename((analog, marker)))
         return wavenames
 
-    def _zi_write_waves(self, waveforms):
+    def zi_write_waves(self, waveforms):
         wave_dir = self._zi_wave_dir()
         for h, wf in waveforms.items():
             filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
@@ -238,16 +238,16 @@ class ZIPulsarMixin:
             fmt = "%.18e" if wf.dtype == np.float else "%d"
             np.savetxt(filename, wf, delimiter=",", fmt=fmt)
 
-    def _zi_playback_string(self, name, device, wave, acq=False, codeword=False,
-                            prepend_zeros=0, placeholder_wave=False,
-                            allow_filter=False):
+    def zi_playback_string(self, name, device, wave, acq=False, codeword=False,
+                           prepend_zeros=0, placeholder_wave=False,
+                           allow_filter=False):
         playback_string = []
         if allow_filter:
             playback_string.append(
                 "if (i_seg >= first_seg && i_seg <= last_seg) {")
         if prepend_zeros:
             playback_string.append(f"playZero({prepend_zeros});")
-        w1, w2 = self._zi_waves_to_wavenames(wave)
+        w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True # set this to false once the bugs with HDAWG are fixed
         playback_string += self._zi_wait_trigger(name, device)
 
@@ -283,7 +283,7 @@ class ZIPulsarMixin:
     def _zi_interleaved_playback_string(self, name, device, counter,
                                         wave, acq=False, codeword=False):
         playback_string = []
-        w1, w2 = self._zi_waves_to_wavenames(wave)
+        w1, w2 = self.zi_waves_to_wavenames(wave)
         if w1 is None or w2 is None:
             raise ValueError("When using HDAWG modulation both I and Q need "
                               "to be defined")
@@ -850,7 +850,7 @@ class ZIGeneratorModule:
             # The following line only has an effect if the metadata
             # specifies that the segment should be repeated multiple times.
             self._playback_strings += \
-                ZIPulsarMixin._zi_playback_string_loop_start(
+                ZIPulsarMixin.zi_playback_string_loop_start(
                     metadata,
                     self.channel_ids
                 )
@@ -861,7 +861,7 @@ class ZIGeneratorModule:
                 log.warning(
                     f'Only one codeword has been set for {element}')
                 self._playback_strings += \
-                    ZIPulsarMixin._zi_playback_string_loop_end(metadata)
+                    ZIPulsarMixin.zi_playback_string_loop_end(metadata)
                 continue
 
             for cw in awg_sequence_element:
@@ -897,10 +897,10 @@ class ZIGeneratorModule:
 
                 # Updates the codeword table if there exists codewords.
                 if nr_cw != 0:
-                    w1, w2 = self._awg_interface._zi_waves_to_wavenames(wave)
+                    w1, w2 = self._awg_interface.zi_waves_to_wavenames(wave)
                     if cw not in self._codeword_table:
                         self._codeword_table_defs += \
-                            self._awg_interface._zi_codeword_table_entry(
+                            self._awg_interface.zi_codeword_table_entry(
                                 cw, wave, self._use_placeholder_waves)
                         self._codeword_table[cw] = (w1, w2)
                     elif self._codeword_table[cw] != (w1, w2) \
@@ -945,7 +945,7 @@ class ZIGeneratorModule:
 
                     # Add new wave definition and save wave index.
                     self._wave_definitions += \
-                        self._awg_interface._zi_wave_definition(
+                        self._awg_interface.zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
                             placeholder_wave_index=self._wave_idx_lookup[element][cw],
@@ -961,7 +961,7 @@ class ZIGeneratorModule:
                     wave = tuple(wave)
 
                     self._wave_definitions += \
-                        self._awg_interface._zi_wave_definition(
+                        self._awg_interface.zi_wave_definition(
                             wave=wave,
                             defined_waves=self._defined_waves,
                         )
@@ -982,7 +982,7 @@ class ZIGeneratorModule:
             first_element_of_segment = False
 
             self._playback_strings += \
-                ZIPulsarMixin._zi_playback_string_loop_end(metadata)
+                ZIPulsarMixin.zi_playback_string_loop_end(metadata)
 
     def _generate_playback_string(
             self,
@@ -1035,7 +1035,7 @@ class ZIGeneratorModule:
                                 h_neg = tuple(list(h) + ['negate'])
                                 waves_to_upload[h_neg] = -waveforms[h]
 
-        self._awg_interface._zi_write_waves(waves_to_upload)
+        self._awg_interface.zi_write_waves(waves_to_upload)
 
     def _compile_awg_program(
             self,
