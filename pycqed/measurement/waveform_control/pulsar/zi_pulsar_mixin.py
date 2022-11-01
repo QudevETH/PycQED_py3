@@ -891,9 +891,19 @@ class ZIGeneratorModule:
                 first_element_of_segment = True
                 continue
             self._wave_idx_lookup[element] = {}
-            self._playback_strings.append(f'// Element {element}')
 
             metadata = awg_sequence_element.pop('metadata', {})
+
+            # Check if analog channels has overlap with the segment trigger
+            # group. If no, this segment will not be played.
+            trigger_groups = metadata['trigger_groups']
+            channels = set(self.pulsar._id_channel(chid, self._awg.name)
+                        for chid in self.analog_channel_ids)
+            if not self.pulsar.check_channels_in_trigger_groups(
+                    set(channels), trigger_groups):
+                continue
+
+            self._playback_strings.append(f'// Element {element}')
             # The following line only has an effect if the metadata
             # specifies that the segment should be repeated multiple times.
             self._playback_strings += \
