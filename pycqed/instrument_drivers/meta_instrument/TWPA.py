@@ -94,6 +94,16 @@ class TWPAObject(MeasurementObject):
     def off(self):
         self.instr_pump.get_instr().off()
 
+    def get_operation_dict(self, operation_dict=None):
+        operation_dict = super().get_operation_dict(operation_dict)
+        operation_dict['I ' + self.name] = {
+            'pulse_type': 'VirtualPulse',
+            'operation_type': 'Virtual',
+        }
+        for code, op in operation_dict.items():
+            op['op_code'] = code
+        return operation_dict
+
     def prepare_readout(self):
         UHF = self.instr_acq.get_instr()
         if not UHF.IDN()['model'].startswith('UHF'):
