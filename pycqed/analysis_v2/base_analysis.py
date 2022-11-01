@@ -1227,6 +1227,13 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
+        ax_keys = ['cax']
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            for ak in ax_keys:
+                if isinstance(i := pdict.get(ak + '_id'), int):
+                    pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
+
     def _plot(self, key_list, transparent_background=False):
         """
         Creates the figures specified by key_list.
