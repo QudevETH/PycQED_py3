@@ -19,6 +19,12 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
     the readout frequency (first sweep dimension). Other parameters can be
     swept in dimension 2.
 
+    Args:
+        meas_objs: see QuantumExperiment
+        sweep_functions_dict: mapping from sweep_points parameter names to
+            sweep functions, used to generate the sweep functions of the
+            experiments
+
     TODO this is for now only implemented for SHFQA instruments, since there
      is a more efficient version for the UHFQA. To be refactored and unified
      once the SHFQA allows correlation measurements in hardware.
@@ -57,7 +63,13 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def sweep_block(self, mobj, **kw):
+    def sweep_block(self, mobj):
+        """
+        Generates an acquisition Block for a NoisePower measurement
+
+        Args:
+            mobj: measurement object for the acquisition
+        """
         return self.block_from_ops(
                 block_name="acq_block",
                 operations=[f'Acq {mobj}'],
@@ -65,6 +77,13 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             )
 
     def create_meas_objs_list(self, task_list=None, **kw):
+        """
+        Creates a list of all measurement objects used in the experiment.
+
+        FIXME there are now several such functions with slightly different
+         functionalities, this should be cleaned up and unified after
+         refactoring QuDev_Transmon to inherit from MeasurementObject
+        """
         super(twoqbcal.MultiTaskingExperiment, self).create_meas_objs_list(**kw)
         if task_list is None:
             task_list = self.task_list
@@ -78,6 +97,11 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
                         self.meas_obj_names += [m.name]
 
     def get_meas_objs_from_task(self, task):
+        """
+        FIXME there are now several such functions with slightly different
+         functionalities, this should be cleaned up and unified after
+         refactoring QuDev_Transmon to inherit from MeasurementObject
+        """
         return [task['mobj']]
 
     def run_measurement(self, **kw):
