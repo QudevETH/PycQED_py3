@@ -171,9 +171,14 @@ class Sequence:
                     sequences[awg][elname]['metadata'].setdefault('trigger_groups', set())
                     sequences[awg][elname]['metadata']['trigger_groups'].add(group)
                     # Write modulation and sine configuration to element
-                    if seg.mod_config:
+                    if elname in element_metadata.keys() \
+                            and 'mod_config' in element_metadata[elname].keys()\
+                                and element_metadata[elname]['mod_config']:
                         sequences[awg][elname]['metadata']['mod_config'] = \
                             element_metadata[elname]['mod_config']
+                    elif seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] =\
+                            seg.mod_config
                     if seg.sine_config:
                         sequences[awg][elname]['metadata']['sine_config'] = \
                             seg.sine_config

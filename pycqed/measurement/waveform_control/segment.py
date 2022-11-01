@@ -521,8 +521,9 @@ class Segment:
             # Check if this channel supports internal modulation, and if
             # internal modulation is turned on for this channel. If not,
             # we will skip this channel.
-            enable_param = f"{channel}_enable_internal_modulation"
-            if not getattr(self.pulsar, enable_param, False):
+            enable_param = f"{channel}_internal_modulation"
+            if not hasattr(self.pulsar, enable_param) \
+                    or not self.pulsar.get(enable_param):
                 continue
 
             # check if all pulses types on this channel are compatible with
@@ -684,13 +685,13 @@ class Segment:
             # Write internal modulation settings collected from pulses to
             # element metadata.
             for param in self.internal_mod_pulse_params_to_check:
-                if hasattr(check_values, param):
+                if param in check_values.keys():
                     channel_metadata[param] = check_values[param]
 
             # Write internal modulation settings passed from segment
             # initialization parameters to element metadata.
             for param, value in self.mod_config.get(channel, {}).items():
-                if hasattr(channel_metadata, param):
+                if param in channel_metadata.keys():
                     raise RuntimeError(
                         f"In segment {self.name}: modulation configuration "
                         f"'{param}' has repetitive definition from segment "
