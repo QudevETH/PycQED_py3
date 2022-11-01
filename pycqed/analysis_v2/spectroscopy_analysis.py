@@ -1710,19 +1710,31 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             return 'Magnitude (Vpeak)'
         return data_key
 
-    def fit_and_plot_ro_params(self, qb_names=None, **guessvals):
-        def s21func(x, A, phi, kP, gR, wRg, chige, chigf, wP, J, k):
-            yg, ye, yf = [(A + k * (x - np.mean(x))) * np.abs(
-                np.cos(phi) - np.exp(1j * phi) * kP * (gR - 2j * (x - wR)) / (
-                            4 * J * J + (kP - 2j * (x - wP)) * (
-                                gR - 2j * (x - wR))))
+    def fit_and_plot_ro_params(self, guessvals=None, qb_names=None, **kw):
+        """
+        Fit transmon readout parameters
+
+        Args:
+            guess_vals (dict): guess values for the fit. It is usually
+            necessary to pass good guesses for the frequencies wRg and wP.
+            qb_names: qubits whose readout parameters should be fitted
+            axs_dict: see self.plot
+        """
+
+        def s21func(f, A, phi, kP, gR, wRg, chige, chigf, wP, J, k):
+            yg, ye, yf = [(A + k * (f - np.mean(f))) * np.abs(
+                np.cos(phi) - np.exp(1j * phi) * kP * (gR - 2j * (f - wR)) / (
+                            4 * J * J + (kP - 2j * (f - wP)) * (
+                                gR - 2j * (f - wR))))
                           for wR in (wRg, wRg + 2 * chige, wRg + 2 * chigf)]
             return np.concatenate((yg, ye, yf))
 
         if qb_names is None:
             qb_names = self.qb_names
-        fig, _ = plt.subplots(len(qb_names))
-        for qbn, ax in zip(qb_names, fig.axes):
+        fig_key_list = []
+        plt_key_list = []
+        res = {}
+        for qbn in qb_names:
             s21s = self.proc_data_dict['projected_data_dict'][qbn][
                                'Magnitude'] * np.exp(
                 1j * self.proc_data_dict['projected_data_dict'][qbn]['Phase'])
@@ -1731,18 +1743,6 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             s21s = s21s / np.max(np.abs(s21s))
 
             model = lmfit.Model(s21func)
-            #     def_guessvals = {
-            #          'A': 0.9606869401888111,
-            #          'J': 26.39731046898196,
-            #          'gR': 0.45399780075641627,
-            #          'k': 7.896669302687555e-05,
-            #          'kP': 23.24117720383665,
-            #          'phi': 0.8357926392473737,
-            #          'chige': -1,
-            #          'chigf': -2,
-            #          'wRg': np.mean(freq),
-            #          'wP': np.mean(freq),
-            #     }
             def_guessvals = {
                 'A': 1,
                 'J': 20,
@@ -1766,22 +1766,47 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             pars['wRg'].max = freq.max()
             fit = model.fit(
                 np.concatenate((np.abs(s21s[0]), np.abs(s21s[1]),
-                                np.abs(s21s[2]))), x=freq, params=pars)
-            s21fit = fit.best_fit
-            ax.plot(freq, np.abs(s21s[0]), '.', c='C0')
-            ax.plot(freq, np.abs(s21s[1]), '.', c='C1')
-            ax.plot(freq, np.abs(s21s[2]), '.', c='C2')
-            ax.plot(freq, np.abs(s21fit[:len(freq)]), '-', c='C0')
-            ax.plot(freq, np.abs(s21fit[len(freq):2 * len(freq)]), '-', c='C1')
-            ax.plot(freq, np.abs(s21fit[2 * len(freq):]), '-', c='C2')
-            ax.set_xlabel('Frequency, $f$ (MHz)')
-            ax.set_ylabel('Transmission amplitude, $|S_{21}|$')
-            print(qbn)
-            pprint(fit.best_values)
-            print()
-        fig.suptitle(' '.join(self.timestamps))
-        fig.subplots_adjust(0.113, 0.155, 0.99, 0.99)
-        return fit, (fig, ax)
+                                np.abs(s21s[2]))), f=freq, params=pars)
+            res[qbn] = fit.best_values
+
+            fig_key_list.append(f'ro_params_fit_{qbn}')
+            for i, state in enumerate('gef'):
+                plt_key_list.append(f'ro_params_fit_data_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(s21s[i]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': 'o',
+                    'linestyle': '',
+                    'color': f'C{i}',
+                    'setlabel': '',
+                    'title': ' '.join(self.timestamps) + ' Readout params '
+                                                         'fit ' + qbn,
+                }
+                plt_key_list.append(f'ro_params_fit_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(fit.best_fit[i*len(freq):(i+1)*len(freq)]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': '',
+                    'linestyle': '-',
+                    'color': f'C{i}',
+                    'setlabel': f'|{state}>',
+                    'do_legend': True,
+                }
+        self.plot(key_list=plt_key_list, **kw)
+        self.save_figures(key_list=fig_key_list, **kw)
+        return res
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
