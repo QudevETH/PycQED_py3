@@ -858,7 +858,13 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             self.acq_dev.acquisition_finalize()
 
     def get_meas_obj_value_names_map(self):
-        # traceback.print_stack(limit=5)
+        """
+        Returns the measurement object to value names mapping
+
+        Returns:
+            dict, where each key is a measurement object name, and each value
+            the list of corresponding value_names from self.value_names
+        """
         ch_vn_map = {ch: vn for ch, vn in zip(self.channels, self.value_names)}
         return {mobj: [ch_vn_map[ch] for ch in chs]
                 for mobj, chs in self.meas_obj_channel_map.items()}

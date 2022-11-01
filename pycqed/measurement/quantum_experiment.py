@@ -1015,9 +1015,45 @@ class NDimQuantumExperiment():
     Instantiates M times self.QuantumExperiment, where M is the product of
     lengths of self.sweep_points[2:], each initialised with
     sweep_points=self.sweep_points[0:2].
-    self.experiments are then indexed by self.get_experiment_indices(),
+    Each of the M experiments is given a single value of each sweep points in
+    self.sweep_points[2:] (passed in self.sweep_points[self.DUMMY_DIM]),
+    such that sweeping over all M experiments is then equivalent to sweeping
+    over self.sweep_points[2:].
+    self.experiments are indexed by self.get_experiment_indices(),
     such that one can reconstruct an N-dim dataset afterwards from the
-    separate 2-dim datasets.
+    separate 2-dim datasets of each experiment.
+
+    Example:
+        Initial sweep points passed to this class:
+        pp=[1,2,3]
+        dv=[1,2]
+        sweep_points=sp_mod.SweepPoints([
+            {'freq': (..., 'Hz', 'Readout frequency')},
+            {'pump_freq': (..., 'Hz', 'TWPA pump frequency')},
+            {'pump_power': (pp, 'dBm', 'TWPA pump power')},
+            {'dc_voltage': (dv, 'V', 'TWPA DC voltage')},
+        ])
+        Resulting experiments (psueudo-code):
+        for j in range(2):
+            for i in range(3):
+                idxs = (i,j)
+                sweep_points=sp_mod.SweepPoints([
+                    {'freq': (..., 'Hz', 'Readout frequency')},
+                    {  # dimension number self.DUMMY_DIM
+                        'pump_freq': (..., 'Hz', 'TWPA pump frequency'),
+                        'pump_power': ([pp[i]]*3, 'dBm', 'TWPA pump power'),
+                        'dc_voltage': ([dv[j]]*2, 'V', 'TWPA DC voltage'),
+                    },
+                ])
+
+    Args:
+        sweep_points (SweepPoints): SweepPoints to be used by the experiment
+        clear_experiments (bool): whether to keep or clear previously
+            instantiated experiments from memory during runtime
+        QuantumExperiment (class): experiment class to be instantiated and
+        run several times as a sub-experiment
+        DUMMY_DIM: dimension of self.sweep_points to which the (non-swept)
+            values of sweep_points from dimensions >= 2 should be collapsed
     """
 
     QuantumExperiment = QuantumExperiment
@@ -1041,6 +1077,12 @@ class NDimQuantumExperiment():
             self.run_ndim_analysis()
 
     def _generate_sweep_lengths(self, sweep_points=None):
+        """
+        Extracts the length of sweep_points (useful for
+        NDimMultiTaskingExperiment). Note: this could be made unnecessary by
+        simply checking that sweep_points lengths are consistent over tasks.
+        """
+
         sp = self.sweep_points if sweep_points is None else sweep_points
         self.sweep_lengths = sp.length()
 
@@ -1049,7 +1091,8 @@ class NDimQuantumExperiment():
         Returns:
             idxs: list of indices indexing self.experiments, where each
                 index is a tuple of int indicating the position of
-                the experiment within self.sweep_points[2:]. E.g. for
+                the experiment within self.sweep_points[2:]. E.g., as in the
+                docstring of the init, for
                 self.sweep_points.length() = [a, b, 3, 2],
                 idxs = [(0, 0),(1, 0),(2, 0),(0, 1),(1, 1),(2, 1)]
         """
@@ -1059,10 +1102,10 @@ class NDimQuantumExperiment():
 
     def make_2d_sweep_points(self, sweep_points, idxs):
         """
-        Makes 2-dim SweepPoints for the experiments indexed by idxs,
-        by slicing the dimensions >=2 of sweep_points at idxs.
+        Extracts 2-dim SweepPoints for an experiment indexed by idxs,
+        by slicing the dimensions >=2 of sweep_points at indices idxs.
 
-        Attributes:
+        Args:
             sweep_points: N-dim sweep points to slice down to 2 dimensions.
             idxs: indices of the experiments to instantiate,
             see self.get_experiment_indices
@@ -1084,7 +1127,7 @@ class NDimQuantumExperiment():
         """
         Instantiates sub-experiments.
 
-        Attributes:
+        Args:
             idxs: indices of the experiments to instantiate,
                 see self.get_experiment_indices
         """
@@ -1109,12 +1152,24 @@ class NDimQuantumExperiment():
         self.run_ndim_analysis()
 
     def run_ndim_analysis(self):
+        """
+        Instantiates and runs an analysis class on the whole N-dimensional
+        dataset
+        """
         pass
 
 
 class NDimMultiTaskingExperiment(NDimQuantumExperiment):
     """
     Extension of NDimQuantumExperiment capable of running MultiTaskingExperiment
+
+    Similar class to NDimQuantumExperiment, but self.QuantumExperiment should be
+    a MultiTaskingExperiment.
+    See NDimQuantumExperiment for details on the high-level logic, and see
+    MultiTaskingExperiment for details on the measurement.
+
+    Args:
+        task_list: see MultiTaskingExperiment
 
     FIXME should a MultiTasking-like experiment be listed in this module?
     """

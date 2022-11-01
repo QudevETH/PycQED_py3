@@ -10693,7 +10693,7 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
 
-        Attributes:
+        Args:
             slicing_plotting_list (dict): see plot_slice
         """
 
@@ -10748,7 +10748,7 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         N-dim SweepPoints. Additionally, performs possible post-processing on
         the data as specified by post_proc_func.
 
-        Attributes:
+        Args:
             ana_ids: indices of timestamps whose data should be used
             post_proc_func: specifies how to convert the raw data per channel
         into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
@@ -10789,8 +10789,11 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         return data_ndim, sweep_points_ndim
 
     def get_meas_objs_from_task(self, task):
-        # FIXME there are similar methods in twpacal_mod, qe_mod,
-        #  twoqbcal_mod, this could get cleaned up
+        """
+        FIXME there are now several such functions with slightly different
+         functionalities, this should be cleaned up and unified after
+         refactoring QuDev_Transmon to inherit from MeasurementObject
+        """
         return [task.get('mobj', task.get('qb'))]
 
     def get_ndim_sweep_points_from_mobj_name(self, ana_ids, mobjn):
