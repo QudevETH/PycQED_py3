@@ -320,6 +320,51 @@ class ZIPulsarMixin:
             playback_string.append(f"wait{trig_source}Trigger();")
         return playback_string
 
+    def _zi_program_generator_awg(
+            self,
+            awg_sequence,
+            waveforms,
+            repeat_pattern=None,
+            channels_to_upload="all",
+            channels_to_program="all"
+    ):
+
+        self.wfms_to_upload = {}  # reset waveform upload memory
+
+        use_placeholder_waves = self.pulsar.get(
+            f"{self.awg.name}_use_placeholder_waves")
+        if not use_placeholder_waves:
+            if not self.zi_waves_clean():
+                self._zi_clear_waves()
+
+        has_waveforms = False
+        for channel_pair in self._awg_modules:
+            upload = channels_to_upload == 'all' or \
+                any([ch in channels_to_upload
+                     for ch in channel_pair.channel_ids])
+            program = channels_to_program == 'all' or \
+                any([ch in channels_to_program
+                     for ch in channel_pair.channel_ids])
+            channel_pair.program_awg_channel(
+                awg_sequence=awg_sequence,
+                waveforms=waveforms,
+                program=program,
+                upload=upload
+            )
+            has_waveforms |= any(channel_pair.has_waveforms)
+
+        if self.pulsar.sigouts_on_after_programming():
+            for awg_module in self._awg_modules:
+                for channel_id in awg_module.analog_channel_ids:
+                    channel_name = self.pulsar._id_channel(
+                        cid=channel_id,
+                        awg=self.awg.name,
+                    )
+                    self.sigout_on(channel_name)
+
+        if has_waveforms:
+            self.pulsar.add_awg_with_waveforms(self.awg.name)
+
 
 class MultiCoreCompilerQudevZI(MultiCoreCompiler):
     """
