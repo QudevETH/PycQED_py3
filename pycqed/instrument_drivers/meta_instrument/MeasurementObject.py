@@ -1,8 +1,6 @@
 import logging
 log = logging.getLogger(__name__)
 import numpy as np
-import scipy as sp
-import matplotlib.pyplot as plt
 from copy import deepcopy
 
 from qcodes.instrument.parameter import (
@@ -10,38 +8,7 @@ from qcodes.instrument.parameter import (
 from qcodes.utils import validators as vals
 from pycqed.instrument_drivers.instrument import Instrument
 
-from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
-from pycqed.measurement import detector_functions as det
-from pycqed.measurement import awg_sweep_functions as awg_swf
-from pycqed.measurement import awg_sweep_functions_multi_qubit as awg_swf2
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.sweep_points import SweepPoints
-from pycqed.measurement.calibration.calibration_points import CalibrationPoints
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
-from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
-from pycqed.measurement.pulse_sequences import fluxing_sequences as fsqs
-from pycqed.analysis_v3 import pipeline_analysis as pla
-from pycqed.analysis import measurement_analysis as ma
-from pycqed.analysis_v2 import timedomain_analysis as tda
-from pycqed.utilities.general import add_suffix_to_dict_keys
-from pycqed.utilities.general import temporary_value
-from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
-    import Qubit
-from pycqed.measurement import optimization as opti
-from pycqed.measurement import mc_parameter_wrapper
-import pycqed.analysis_v2.spectroscopy_analysis as sa
-from pycqed.utilities import math
-import pycqed.analysis.fitting_models as fit_mods
-import os
-import \
-    pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
-
-try:
-    import pycqed.simulations.readout_mode_simulations_for_CLEAR_pulse \
-        as sim_CLEAR
-except ModuleNotFoundError:
-    log.warning('"readout_mode_simulations_for_CLEAR_pulse" not imported.')
 
 
 class MeasurementObject(Instrument):
