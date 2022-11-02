@@ -105,5 +105,8 @@ def compute_accumulated_phase(t, pulse, qubits, states=('11', '20'),
     if state_freqs is None:
         state_freqs = compute_energy_levels_from_flux_pulse(t, pulse, qubits,
                                                             states)
-    diff_freq = state_freqs[1] - state_freqs[0]
+    if len(states) == 1:
+        diff_freq = state_freqs[0] - state_freqs[0][0]
+    else:
+        diff_freq = state_freqs[1] - state_freqs[0]
     return np.trapz(diff_freq, t) * 360
