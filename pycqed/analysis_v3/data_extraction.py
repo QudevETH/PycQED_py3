@@ -74,7 +74,8 @@ def get_timestamps(data_dict=None, t_start=None, t_stop=None,
 
 def extract_data_hdf(data_dict=None, timestamps=None,
                      params_dict=OrderedDict(), numeric_params=None,
-                     append_data=False, replace_data=False, **params):
+                     append_data=False, replace_data=False,
+                     add_param_method='replace', **params):
     """
     Extracts the data specified in params_dict and pumeric_params
     from each timestamp in timestamps and stores it into data_dict
@@ -116,7 +117,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
     if isinstance(timestamps, str):
         timestamps = [timestamps]
     hlp_mod.add_param('timestamps', timestamps, data_dict,
-                      add_param_method='replace')
+                      add_param_method=add_param_method)
 
     data_dict['folders'] = []
 
@@ -125,7 +126,8 @@ def extract_data_hdf(data_dict=None, timestamps=None,
         data_dict['folders'] += [folder]
 
         # extract the data array and add it as data_dict['measured_data'].
-        add_measured_data_hdf(data_dict, folder, append_data, replace_data)
+        data_dict = add_measured_data_hdf(
+            data_dict, folder, append_data, replace_data)
 
         # extract exp_metadata separately, then call
         # combine_metadata_list, then extract all other parameters.
@@ -156,7 +158,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
     hlp_mod.get_params_from_hdf_file(
         data_dict, params_dict=params_dict, numeric_params=numeric_params,
         folder=data_dict['folders'][-1],
-        add_param_method=params.get('add_param_method', 'replace'))
+        add_param_method=add_param_method)
 
     # add entries in data_dict for each readout channel and its corresponding
     # data array.
