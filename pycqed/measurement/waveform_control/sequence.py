@@ -55,6 +55,16 @@ class Sequence:
         for seg in segments:
             self.add(seg)
 
+    def upload(self, awgs_to_upload='all'):
+        """Upload the sequence to the AWG using self.pulsar instrument.
+        """
+        if awgs_to_upload != 'all':
+            log.warning('Sequence:upload: reducing upload overhead manually '
+                        'with awgs_to_upload is deprecated. Set '
+                        'pulsar.use_sequence_cache to True for automatic '
+                        'reduction of upload overhead.')
+        self.pulsar.program_awgs(self, awgs=awgs_to_upload)
+
     @Timer()
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
@@ -410,6 +420,10 @@ class Sequence:
         interleaved_seqs = len(seq_list_list) * len(seq_list_list[0]) * ['']
         for i in range(len(seq_list_list)):
             interleaved_seqs[i::len(seq_list_list)] = seq_list_list[i]
+
+        # rename sequences and timers
+        for i, seq in enumerate(interleaved_seqs):
+            seq.rename(f"Interleaved_Sequence_{i}")
 
         mc_points = [np.arange(interleaved_seqs[0].n_acq_elements()),
                      np.arange(len(interleaved_seqs))]
