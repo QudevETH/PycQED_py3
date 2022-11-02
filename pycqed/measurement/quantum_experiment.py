@@ -225,16 +225,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                   'data_type': data_type})
         self.waveform_viewer = None
 
-    def get_mobjs(self, mobj_names, strict=True):
-        if self.qubits:
-            return self.get_qubits(qb_names=mobj_names, strict=strict)
-        else:
-            mobjs = [mo for mo in self.meas_objs if mo.name in mobj_names]
-            if strict and len(mobjs) != len(mobj_names):
-                raise AssertionError(f"Some mobjs were not found.")
-            mobj_names = [mo.name for mo in mobjs]
-            return mobjs, mobj_names
-
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
         Creates a default list for self.meas_objs if meas_objs is not provided,
