@@ -45,6 +45,9 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
                 mobj = mobj[0]
                 sp = deepcopy(task['sweep_points'])
                 if sp.find_parameter('freq') is not None:
+                    # The readout frequency sweep points are defined by the
+                    # acquisition length, since the measurement does a
+                    # Fourier transform of timetraces
                     sp.remove_sweep_parameter('freq')
                 freqs = mobj.instr_acq.get_instr().get_sweep_points_spectrum(
                     mobj.acq_length(), mobj.ro_fixed_lo_freq())
