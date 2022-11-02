@@ -109,6 +109,55 @@ def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
     return param_value
 
 
+def get_param_from_analysis_group(param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extract the value of a parameter from the Analysis group of an HDF file.
+
+    This functions returns the value for the parameters whose paths in the
+    HDF file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
+    If only one match is found, the function returns the value corresponding
+    to that path.
+    If more than one match is found, this function returns a dict will all
+    matches.
+
+    Args:
+        param_name (str): name of the parameter to extract
+        timestamp (str): timestamp (YYYYMMDD_hhmmss) of the measurement. Will
+            be used to find the location of the HDF file
+        folder (str): path to the HDF file
+        **params: keyword arguments: not used but are here to allow pass-through
+
+    Returns:
+        if only one match was found: the value corresponding to param_name
+        if more than one match found: dict with HDF paths as keys and values
+            corresponding to those paths as values
+    """
+    if folder is None:
+        if timestamp is None:
+            raise ValueError('Please provide either timestamp or folder.')
+        folder = a_tools.get_folder(timestamp)
+
+    ana_group = get_params_from_hdf_file(
+        {}, {'ana_group': 'Analysis'}, folder=folder)
+    if 'ana_group' not in ana_group:
+        raise KeyError(f'There is no Analysis group in the HDF file.')
+
+    all_matches = find_all_in_dict(param_name, ana_group['ana_group'])
+    param_value = {}
+    for key_paths in all_matches:
+        split_kp = key_paths.split('.')
+        if param_name == split_kp[-1]:
+            param_value[key_paths] = all_matches[key_paths]
+
+    if len(param_value) == 0:
+        raise KeyError(f'Parameter {param_name} was not '
+                       f'found in the Analysis group.')
+    elif len(param_value) == 1:
+        param_value = list(param_value.values())[0]
+    return param_value
+
+
 def get_data_from_hdf_file(timestamp=None, data_file=None,
                            close_file=True, file_id=None, mode='r'):
     """
@@ -229,51 +278,6 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
                        f'{instr_name}.')
     return d['instr_param_val']
 
-def get_analysis_from_hdf_file(timestamp=None, param_name=None, file_id=None,
-                                  data_file=None, close_file=True, mode='r'):
-    """
-    Get a parameter with param_name from the 'Processed data' group in
-    the HDF5 file specified by timestamp, or return the whole group if
-    param_name is None.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :param param_name: (str) name of a key in 'Processed data' group
-    :param data_file: (HDF file) opened HDF5 file
-    :param close_file: (bool) whether to close the HDF5 file
-    :return: the value of the param_name or the whole 'Processed data'
-    dictionary
-    """
-    if data_file is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or data_file.')
-        folder = a_tools.get_folder(timestamp)
-        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-        data_file = h5py.File(h5filepath, mode)
-
-    try:
-        if param_name is None:
-            group = data_file['Analysis']
-            return read_dict_from_hdf5({}, group['Processed data'])
-
-        group = data_file['Analysis']['Processed data']
-        if param_name in group:
-            group = group[param_name]
-            param_value = OrderedDict()
-            if isinstance(group, h5py._hl.dataset.Dataset):
-                param_value = list(np.array(group).flatten())
-                param_value = [x.decode('utf-8') if isinstance(x, bytes)
-                               else x for x in param_value]
-            else:
-                param_value = read_dict_from_hdf5(param_value, group)
-        elif param_name in group.attrs:
-            param_value = get_hdf_param_value(group, param_name)
-        else:
-            raise KeyError(f'{param_name} was not found in analysis.')
-        if close_file:
-            data_file.close()
-    except Exception as e:
-        data_file.close()
-        raise e
-    return param_value
 
 def get_clf_params_from_hdf_file(timestamp, meas_obj_names, for_ge=True,
                                  **params):
