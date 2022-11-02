@@ -1216,7 +1216,8 @@ class BaseDataAnalysis(object):
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
-                    figsize=pdict.get('plotsize', None)
+                    figsize=pdict.get('plotsize', None),
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
                 )
                 if pdict.get('3d', False):
@@ -1923,7 +1924,9 @@ class BaseDataAnalysis(object):
 
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
-            axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+            axs.xaxis.set_ticklabels(plot_xtick_labels,
+                                     rotation=pdict.get(
+                                         'xlabels_rotation', 90))
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels)
         if plot_xtick_loc is not None:
