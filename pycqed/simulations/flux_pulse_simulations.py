@@ -25,7 +25,7 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states):
     """
     # mapping from basis = [ge, ef] to energy levels 0, 1, 2:
     sg_qb_mat = np.array([[0, 0], [1, 0], [1, 1]])
-    wf = [pulse.chan_wf(channel=qb.flux_pulse_channel(), t=t)
+    wf = [pulse.chan_wf(qb.flux_pulse_channel(), t)
           if qb.flux_pulse_channel() in pulse.channels else np.zeros_like(t)
           for qb in qubits]
     qb_freqs = np.reshape(np.array([np.reshape(qb.calculate_frequency(
