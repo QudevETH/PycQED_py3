@@ -10826,44 +10826,6 @@ class NDim_BaseDataAnalysis(ba.BaseDataAnalysis):
         sweep_points_ndim.update(task['ndim_sweep_points'])
         return sweep_points_ndim
 
-    def plot_slice(self, slicing_plotting_list=None, **kw):
-        """
-        Generic method to plot a 2-dim slice of an N-dim dataset from
-        self.proc_data_dict. Will generate a plot for each dict in
-        slicing_plotting_list.
-
-        Attributes:
-            slicing_plotting_list (list of dict): each dict can contain the
-            following items:
-            - mobjn: name of the mobjn whose data should be plotted
-            - data_key: key of the data in self.proc_data_dict
-            - sliceat: see SweepPoints.get_slice
-            - flip: if True, flips the x and y axes of the plot
-            - pcolor_kw: kwargs for plt.pcolor
-        """
-        slicing_plotting_list = self.slicing_plotting_list if \
-            slicing_plotting_list is None else slicing_plotting_list
-        if self.slicing_plotting_list is not None:
-            for d in slicing_plotting_list:
-                data_2D, sp_2D = sp_mod.SweepPoints.get_slice(
-                    self.proc_data_dict[d['data_key']][d['mobjn']],
-                    self.proc_data_dict['sweep_points'][d['mobjn']],
-                    d['sliceat']
-                )
-                # 'not' is just to match the orientation of plt.pcolor
-                if not d['flip']:
-                    data_2D = data_2D.T
-                xlabel = list(sp_2D[d['flip']])[0]
-                ylabel = list(sp_2D[1 - d['flip']])[0]
-                X, Y = np.meshgrid(sp_2D.get_values(xlabel),
-                                   sp_2D.get_values(ylabel))
-                plt.figure()
-                plt.pcolor(X, Y, data_2D, **d['pcolor_kw'])
-                plt.xlabel(xlabel)
-                plt.ylabel(ylabel)
-                plt.title(f"{d['mobjn']}: {d['data_key']}")
-                plt.colorbar()
-
 
 class MultiTWPA_SNR_Analysis(NDim_BaseDataAnalysis):
     """
