@@ -2108,6 +2108,16 @@ class ThermalPopulation(Rabi):
             qb_names=self.meas_obj_names, t_start=self.timestamp,
             **analysis_kwargs)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['task_list_fields'].update({
+            ThermalPopulation.__name__: odict({
+                'transition_name': (['ge', 'ef', 'fh'], 'ef'),
+            })
+        })
+        return d
+
 
 class Ramsey(SingleQubitGateCalibExperiment):
     """
