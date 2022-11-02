@@ -1,57 +1,39 @@
 #!/usr/bin/env python3
 
-# General imports
-import time
-from datetime import datetime
-
-
-t0 = time.time()  # to print how long init takes
-import logging
-from pprint import pprint
-
-import collections
-
-odict = collections.OrderedDict
-import itertools
-from copy import deepcopy
-from importlib import reload  # Useful for reloading while testing
-
-import numpy as np
-import matplotlib as mpl
-import lmfit
-import matplotlib.pyplot as plt
-import os
-import pickle
-import h5py
-
-
-
-# Std
-import argparse
-import collections
-import json
-import sys
-
-# External
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
-from PyQt6.QtGui import QAction
+
 
 class TextToTreeItem:
-
+    """
+    Helper class for the search feature of the class DictView.
+    """
     def __init__(self):
         self.text_list = []
         self.titem_list = []
 
     def append(self, text_list, titem):
+        """
+
+        Args:
+            text_list: stores
+            titem:
+        """
         for text in text_list:
             self.text_list.append(text)
             self.titem_list.append(titem)
 
     # Return model indices that match string
     def find(self, find_str):
+        """
 
+        Args:
+            find_str:
+
+        Returns:
+
+        """
         titem_list = []
         for i, s in enumerate(self.text_list):
             if find_str in s:
@@ -88,6 +70,9 @@ class DictView(QtWidgets.QWidget):
         self.recurse_pdata(pdata, root_item)
         self.tree_widget.addTopLevelItem(root_item)
 
+        root_item.setExpanded(True)
+        self.expandParameters(root_item)
+
         root_item.child(0).setHidden(True)
         root_item.child(0).setHidden(False)
 
@@ -106,8 +91,10 @@ class DictView(QtWidgets.QWidget):
         self._setMenuBar()
 
         # creates source text
-        self.tree_dir = QtWidgets.QLabel('')
-        self.tree_dir.setText(self.getDirtext(root_item.child(0)))
+        self.tree_dir = QtWidgets.QLabel('Root')
+
+        # creates numbers of attributes
+        self.attr_nr = QtWidgets.QLabel('Number of attributes:')
 
         # creates find text
         self.find_text = QtWidgets.QLabel('Keys and Values found:')
@@ -117,7 +104,7 @@ class DictView(QtWidgets.QWidget):
         layout.addWidget(self.tree_widget)
         # layout.addWidget(self.menuBar)
         layout.addWidget(self.tree_dir)
-
+        layout.addWidget(self.attr_nr)
 
         # Group box
 
@@ -147,38 +134,53 @@ class DictView(QtWidgets.QWidget):
         self.collapseAction = QtWidgets.QAction("Collapse all")
         self.expandBranchAction = QtWidgets.QAction("Expand Branch")
         self.collapseBranchAction = QtWidgets.QAction("Collapse Branch")
+        self.closeAction = QtWidgets.QAction("Close Window")
+        self.resetWindowAction = QtWidgets.QAction("Reset Window")
+        self.expandParametersAction = QtWidgets.QAction("Expand Parameters")
 
     def _connectActions(self):
+        root_item = self.tree_widget.topLevelItem(0)
         self.copyKeyAction.triggered.connect(lambda: self.copyContent(0))
         self.copyValueAction.triggered.connect(lambda: self.copyContent(1))
         self.hideAction.triggered.connect(self.hideItem)
-        self.hideAllAction.triggered.connect(lambda: self.hideAllEmpty(self.tree_widget.topLevelItem(0)))
-        self.showAllAction.triggered.connect(lambda: self.showAll(self.tree_widget.topLevelItem(0)))
+        self.hideAllAction.triggered.connect(
+            lambda: self.hideAllEmpty(root_item))
+        self.showAllAction.triggered.connect(
+            lambda: self.showAll(root_item))
         self.tree_widget.itemClicked.connect(self.setDirtext)
         self.tree_widget.itemActivated.connect(self.setDirtext)
-        self.collapseAction.triggered.connect(lambda: self.expandBranch(self.tree_widget.topLevelItem(0), expand=False))
+        self.tree_widget.itemClicked.connect(self.setNrAttributes)
+        self.tree_widget.itemActivated.connect(self.setNrAttributes)
+
+        self.collapseAction.triggered.connect(
+            lambda: self.expandBranch(root_item, expand=False))
         self.expandBranchAction.triggered.connect(
-            lambda: self.expandBranch(self.tree_widget.currentItem(), expand=True))
+            lambda: self.expandBranch(self.tree_widget.currentItem(), expand=True, display_vals=False))
         self.collapseBranchAction.triggered.connect(
             lambda: self.expandBranch(self.tree_widget.currentItem(), expand=False))
+        self.closeAction.triggered.connect(self.close)
+        self.resetWindowAction.triggered.connect(self.resetWindow)
+        self.expandParametersAction.triggered.connect(
+            lambda: self.expandParameters(root_item))
 
     def _setMenuBar(self):
         fileMenu = QtWidgets.QMenu("&File", self)
         editMenu = QtWidgets.QMenu("&Edit", self)
         viewMenu = QtWidgets.QMenu("&View", self)
 
-        fileMenu.addAction("test")
-        fileMenu.addAction(self.hideAction)
-        # self.menuBar.addMenu('test')
+        fileMenu.addAction(self.closeAction)
+        fileMenu.addAction(self.resetWindowAction)
 
         editMenu.addAction(self.copyKeyAction)
         editMenu.addAction(self.copyValueAction)
+        editMenu.addSeparator()
         editMenu.addAction(self.openContentAction)
 
         viewMenu.addAction(self.hideAction)
         viewMenu.addAction(self.hideAllAction)
         viewMenu.addAction(self.showAllAction)
         viewMenu.addAction(self.collapseAction)
+        viewMenu.addAction(self.expandParametersAction)
 
         self.menuBar.addMenu(fileMenu)
         self.menuBar.addMenu(editMenu)
@@ -190,16 +192,34 @@ class DictView(QtWidgets.QWidget):
 
         menu.addAction(self.copyKeyAction)
         menu.addAction(self.copyValueAction)
+        menu.addSeparator()
         menu.addAction(self.openContentAction)
+        menu.addSeparator()
         menu.addAction(self.hideAction)
         menu.addAction(self.expandBranchAction)
         menu.addAction(self.collapseBranchAction)
         menu.exec_(self.tree_widget.viewport().mapToGlobal(position))
 
-    def expandBranch(self, tree_item:QtWidgets.QTreeWidgetItem, expand=True):
-        tree_item.setExpanded(expand)
+    def resetWindow(self):
+        root_item = self.tree_widget.topLevelItem(0)
+        self.showAll(root_item)
+        self.expandBranch(root_item, expand=False)
+        root_item.setExpanded(True)
+        self.expandParameters(root_item)
+
+    def expandParameters(self, tree_item:QtWidgets.QTreeWidgetItem):
+        if tree_item.data(0,0) == 'parameters':
+            tree_item.setExpanded(True)
         for i in range(tree_item.childCount()):
-            self.expandBranch(tree_item.child(i), expand=expand)
+            self.expandParameters(tree_item.child(i))
+
+    def expandBranch(self, tree_item:QtWidgets.QTreeWidgetItem, expand=True, display_vals=True):
+        tree_item.setExpanded(expand)
+        if not display_vals:
+            if tree_item.data(0,0) == 'parameters':
+                return
+        for i in range(tree_item.childCount()):
+            self.expandBranch(tree_item.child(i), expand=expand, display_vals=display_vals)
 
     def setDirtext(self):
         self.tree_dir.setText(self.getDirtext(self.tree_widget.currentItem()))
@@ -210,7 +230,10 @@ class DictView(QtWidgets.QWidget):
             dir = self.getDirtext(tree_item.parent()) + ' > ' + dir
         except:
             pass
-        return (dir)
+        return dir
+
+    def setNrAttributes(self):
+        self.attr_nr.setText('Number of attributes: %s'%self.tree_widget.currentItem().childCount())
 
     def showAll(self, parent:QtWidgets.QTreeWidgetItem, hide=False):
         for i in range(parent.childCount()):
@@ -445,8 +468,13 @@ class AdditionalWindow(QtWidgets.QMainWindow):
     def __init__(self, dict_view):
         super(AdditionalWindow, self).__init__()
         self.setCentralWidget(tree(dict_view.tree_widget.currentItem()))
-        self.setWindowTitle(dict_view.tree_widget.currentItem().text(0))
+        # self.setWindowTitle(dict_view.tree_widget.currentItem().text(0))
+        self.setWindowTitle(dict_view.getDirtext(dict_view.tree_widget.currentItem()))
         self.setGeometry(200, 200, 500, 500)
+
+    def keyPressEvent(self, e):
+        if e.key() == QtCore.Qt.Key_Escape:
+            self.close()
 
 class DictViewerWindow(QtWidgets.QMainWindow):
 
