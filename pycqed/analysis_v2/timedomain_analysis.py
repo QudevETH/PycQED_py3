@@ -10911,7 +10911,7 @@ class MultiTWPA_SNR_Analysis(NDim_BaseDataAnalysis):
             mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
 
             # Will draw vertical lines at these values
-            ro_freqs = self.options_dict.get('ro_freqs', [])
+            ro_freqs = self.options_dict.get('ro_freqs', {}).get(mobjn, [])
             if not ro_freqs:
                 # An alternative way to define ro_freqs to plot is to pass
                 # TWPAs and qubits in the options_dict
