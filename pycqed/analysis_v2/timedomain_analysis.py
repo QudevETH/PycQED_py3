@@ -5048,7 +5048,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         if self.do_fitting:
             apd = self.proc_data_dict['analysis_params_dict']
             for outer_key, ramsey_pars_dict in apd.items():
-                if outer_key in ['qubit_frequencies', 'reparking_params']:
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
                     # This is only for ReparkingRamseyAnalysis.
                     # It is handled by prepare_fitting_qubit_freqs of that class
                     continue
@@ -5372,6 +5373,39 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
                     'linestyle': ''}
+
+
+class ResidualZZAnalysis(RamseyAnalysis):
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        task_list = self.get_param_value('task_list', default_value=[])
+        for task in task_list:
+            params_dict[f'qbc_of_' + task['qb']] = task['qbc']
+        self.raw_data_dict.update(params_dict)
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
+            OrderedDict()
+        for qbn in self.qb_names:
+            qbc = self.raw_data_dict[f'qbc_of_{qbn}']
+            for fk in self.fit_keys:
+                fit_res_base = self.fit_dicts[f'{fk}{qbn}_0']['fit_res']
+                fit_res_prep = self.fit_dicts[f'{fk}{qbn}_1']['fit_res']
+                self.proc_data_dict['analysis_params_dict']['residual_ZZs'][
+                        qbn] = {qbc:
+                            self.get_residual_zz(fit_res_base, fit_res_prep)}
+        hdf_group_name_suffix = self.get_param_value(
+            'hdf_group_name_suffix', '')
+        self.save_processed_data(key='analysis_params_dict' +
+                                     hdf_group_name_suffix)
+
+    def get_residual_zz(self, fit_res_base, fit_res_prep):
+        shift = fit_res_prep.best_values['frequency'] \
+                    - fit_res_base.best_values['frequency']
+        return {f'shift_Hz': shift}
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):

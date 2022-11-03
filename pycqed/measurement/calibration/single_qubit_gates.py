@@ -2547,6 +2547,44 @@ class ReparkingRamsey(Ramsey):
             fluxline(apd['reparking_params'][qubit.name]['new_ss_vals'][
                          'ss_volt'])
 
+
+class ResidualZZ(Ramsey):
+    task_mobj_keys = ['qbc', 'qb']
+
+    def update_sweep_points(self):
+        for task in self.preprocessed_task_list:
+            qbc = task['qbc']
+            ge_amp = self.dev.get_operation_dict()[f'X180 {qbc}']['amplitude']
+            self.sweep_points.add_sweep_parameter(
+                param_name=f'{qbc}_amplitude_ge',
+                values=np.array([0.0, ge_amp]),
+                unit='V',
+                label='amplitude ge')
+        return super().update_sweep_points()
+
+    def sweep_block(self, qbc, qb, sweep_points, **kw):
+        prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
+        prepend_pulse_dicts += [{'op_code': f'X180 {qbc}',
+                    'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}]
+
+        return super().sweep_block(qb, sweep_points,
+            prepend_pulse_dicts=prepend_pulse_dicts,
+            **kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.ResidualZZAnalysis(
+            qb_names=[task['qb'] for task in self.preprocessed_task_list],
+            t_start=self.timestamp, **analysis_kwargs)
+
+
 class T1(SingleQubitGateCalibExperiment):
     """
     T1 measurement for finding the lifetime (T1) associated with a transmon
