@@ -2280,7 +2280,7 @@ class Ramsey(SingleQubitGateCalibExperiment):
                                                     block_align='center')
         if center_block is not None:
             ramsey_block = self.simultaneous_blocks(f'main_with_center_{qb}',
-                                                [ramsey_block, echo_block],
+                                                [ramsey_block, center_block],
                                                 block_align='center')
 
         return self.sequential_blocks(f'ramsey_{qb}',
