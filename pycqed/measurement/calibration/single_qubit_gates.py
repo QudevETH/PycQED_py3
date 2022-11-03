@@ -3422,7 +3422,7 @@ class ActiveReset(CalibBuilder):
         # get preparation parameters for all qubits. Note: in the future we could
         # possibly modify prep_params to be different for each uhf, as long as
         # the number of readout is the same for all UHFs in the experiment
-        self.prep_params = deepcopy(self.get_prep_params())
+        self.prep_params = deepcopy(self.get_reset_params())
         # set explicitly some preparation params so that they can be retrieved
         # in the analysis
         for param in ('ro_separation', 'post_ro_wait'):
