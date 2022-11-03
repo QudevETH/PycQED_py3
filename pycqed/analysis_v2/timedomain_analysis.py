@@ -5377,6 +5377,10 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
 class ResidualZZAnalysis(RamseyAnalysis):
 
+    def __init__(self, echo=False, **kwargs):
+        self.echo = echo
+        super().__init__(**kwargs)
+
     def extract_data(self):
         super().extract_data()
         params_dict = {}
@@ -5387,25 +5391,109 @@ class ResidualZZAnalysis(RamseyAnalysis):
 
     def analyze_fit_results(self):
         super().analyze_fit_results()
-        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
-            OrderedDict()
+        residual_ZZs_dicts = OrderedDict()
         for qbn in self.qb_names:
-            qbc = self.raw_data_dict[f'qbc_of_{qbn}']
+            residual_ZZs_dicts[qbn] = OrderedDict()
             for fk in self.fit_keys:
                 fit_res_base = self.fit_dicts[f'{fk}{qbn}_0']['fit_res']
                 fit_res_prep = self.fit_dicts[f'{fk}{qbn}_1']['fit_res']
-                self.proc_data_dict['analysis_params_dict']['residual_ZZs'][
-                        qbn] = {qbc:
-                            self.get_residual_zz(fit_res_base, fit_res_prep)}
+                residual_ZZs_dicts[qbn][f'{fk}'] = \
+                    self.get_residual_zz(fit_res_base, fit_res_prep)
+        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
+            residual_ZZs_dicts
         hdf_group_name_suffix = self.get_param_value(
             'hdf_group_name_suffix', '')
         self.save_processed_data(key='analysis_params_dict' +
                                      hdf_group_name_suffix)
 
     def get_residual_zz(self, fit_res_base, fit_res_prep):
-        shift = fit_res_prep.best_values['frequency'] \
-                    - fit_res_base.best_values['frequency']
-        return {f'shift_Hz': shift}
+        freq_g = fit_res_base.best_values['frequency']
+        freq_e = fit_res_prep.best_values['frequency']
+        shift = freq_e - freq_g
+        stderr = np.sqrt(fit_res_prep.params['frequency'].stderr**2
+                         + fit_res_base.params['frequency'].stderr**2)
+        x = 2 if self.echo else 1
+        return {'freq_g': freq_g, 'freq_e': freq_e,
+                'shift_Hz': x*shift, 'shift_Hz_stderr': x*stderr}
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting:
+            apd = self.proc_data_dict['analysis_params_dict']
+            for qb, residual_zz_dict in apd['residual_ZZs'].items():
+                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                plot_name = f'ResidualZZ_{qb}_{qbc}'
+                textstr = ''
+                for fk, residual_zz in residual_zz_dict.items():
+                    key = fk.split('_')[0]
+                    textstr += f'$\Delta f_{{0_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_g"]:.3f} kHz\n'
+                    textstr += f'$\Delta f_{{1_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
+                    textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
+                               + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
+                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} kHz\n'
+                self.plot_dicts['text_msg'] = {
+                    'fig_id': plot_name,
+                    'ypos': -0.5,
+                    'xpos': -0.025,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'color': 'black',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
+
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
+                    'sweep_points']
+                dtf = self.proc_data_dict['data_to_fit'][qb]
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[0],
+                    data_label=f'{qbc} in g',
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qb+'fit0',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[1][:-self.num_cal_points],
+                    plot_cal_points=False,
+                    data_label=f'{qbc} in e',
+                    sweep_points=sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qb+'fit1',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+
+            for outer_key, ramsey_pars_dict in apd.items():
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # This is only for ReparkingRamseyAnalysis.
+                    # It is handled by prepare_fitting_qubit_freqs of that class
+                    continue
+                # outer_key is of the form qbn_i if TwoD else qbn.
+                # split into qbn and i. (outer_key + '_') is needed because if
+                # outer_key = qbn doing outer_key.split('_') will only have one
+                # output and assignment to two variables will fail.
+                qbn, ii = (outer_key + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                    'sweep_points']
+
+                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                plot_name = f'ResidualZZ_{qbn}_{qbc}'
+
+                for i, fit_type in enumerate(ramsey_pars_dict):
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}']['fit_res']
+                    self.plot_dicts[f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_fit,
+                        'fit_res': fit_res,
+                        'setlabel': 'exp decay fit' if i == 0 else
+                            'gauss decay fit',
+                        'do_legend': i,
+                        'color': 'r' if i == 0 else 'C4',
+                        'legend_bbox_to_anchor': (1, -0.15),
+                        'legend_pos': 'upper right'}
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
