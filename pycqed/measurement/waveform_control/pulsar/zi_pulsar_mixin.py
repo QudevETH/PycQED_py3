@@ -943,6 +943,12 @@ class ZIGeneratorModule:
                 for i, chid in enumerate(self.channel_ids):
                     wave[i] = chid_to_hash.get(chid, None)
 
+                if not upload:
+                    # _program_awg was called only to decide which
+                    # sub-AWGs are active, and the rest of this loop
+                    # can be skipped
+                    continue
+
                 # Flipping the sign of the Q channel waveform if specified
                 if wave[2] is not None and self._negate_q:
                     h_pos = wave[2]
@@ -976,12 +982,6 @@ class ZIGeneratorModule:
                         log.warning('Same codeword used for different '
                                     'waveforms. Using first waveform. '
                                     f'Ignoring element {element}.')
-
-                if not upload:
-                    # _program_awg was called only to decide which
-                    # sub-AWGs are active, and the rest of this loop
-                    # can be skipped
-                    continue
 
                 if self._use_placeholder_waves:
                     # If the wave is already assigned an index, we will point
