@@ -1072,9 +1072,9 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
         qb = self.qubit
         index = self.kw["index"]
 
-        if flux := self.get_param_value("flux_park") is not None:
+        if (flux := self.get_param_value("flux_park")) is not None:
             v_park = qb.calculate_voltage_from_flux(flux)
-        elif v_park_tmp := self.get_param_value("voltage_park") is not None:
+        elif (v_park_tmp := self.get_param_value("voltage_park")) is not None:
             v_park = v_park_tmp
         else:
             raise ValueError("No voltage or flux specified")
