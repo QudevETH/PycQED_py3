@@ -2229,7 +2229,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
         return task
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, transition_name, center_block=None,
+                    **kw):
         """
         This function creates the blocks for a single Ramsey/Echo measurement
         task, see the pulse sequence in the class docstring.
@@ -2237,6 +2238,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         :param sweep_points: SweepPoints instance
         :param transition_name: transmon transition to be tuned up. Can be
             "", "_ef", "_fh". See the docstring of parent method.
+        :param center_block: Block instance. This block is executed in the
+            center of the Ramsey sequence. Ignored if None. Defaults to None.
         :param kw: keyword arguments
             artificial_detuning: (float, default: 0) detuning of second pi-half
             pulse (X90_tr_name in the pulse sequence). Will be used to calculate
@@ -2275,6 +2278,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
             ramsey_block = self.simultaneous_blocks(f'main_{qb}',
                                                     [ramsey_block, echo_block],
                                                     block_align='center')
+        if center_block is not None:
+            ramsey_block = self.simultaneous_blocks(f'main_with_center_{qb}',
+                                                [ramsey_block, echo_block],
+                                                block_align='center')
 
         return self.sequential_blocks(f'ramsey_{qb}',
                                       prepend_blocks + [ramsey_block])
