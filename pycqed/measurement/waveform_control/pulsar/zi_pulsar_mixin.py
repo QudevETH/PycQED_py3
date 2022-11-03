@@ -946,6 +946,9 @@ class ZIGeneratorModule:
                 wave = [None, None, None, None]
                 for i, chid in enumerate(self.channel_ids):
                     wave[i] = chid_to_hash.get(chid, None)
+                    # Update self.has_waveforms flag of the corresponding
+                    # channel.
+                    self.has_waveforms[chid] |= wave[i] is not None
 
                 if not upload:
                     # _program_awg was called only to decide which
@@ -961,11 +964,6 @@ class ZIGeneratorModule:
                     waveforms[h_neg] = -waveforms[h_pos]
 
                 wave = tuple(wave)
-                # Update self.has_waveforms flag of the corresponding channel
-                # ID if there are waveforms defined.
-                for i, chid in enumerate(self.channel_ids):
-                    self.has_waveforms[chid] |= wave[i] is not None
-
                 # Skip this element if it has no waves defined on this
                 # channel/channel pair, or sine config instructs pulsar to
                 # ignore waveforms.
