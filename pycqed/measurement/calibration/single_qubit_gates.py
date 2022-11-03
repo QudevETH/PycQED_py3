@@ -2556,7 +2556,29 @@ class ReparkingRamsey(Ramsey):
 
 
 class ResidualZZ(Ramsey):
-    task_mobj_keys = ['qbc', 'qb']
+    task_mobj_keys = ['qb']
+
+    default_experiment_name = 'ResidualZZ'
+
+    def __init__(self, task_list=None, **kw):
+        try:
+            for task in task_list:
+                if 'qbc' in task and not isinstance(task['qbc'], str):
+                    task['qbc'] = task['qbc'].name
+            super().__init__(task_list, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects (e.g., qubits) of a task.
+        Should be overloaded in child classes if the default behavior
+        of returning all qubits found in the task is not desired.
+        :param task: a task dictionary
+        :return: list of all qubit objects (if available) or names
+        """
+        return self.find_qubits_in_tasks(self.qb_names, [task])
 
     def update_sweep_points(self):
         for task in self.preprocessed_task_list:
@@ -2570,11 +2592,18 @@ class ResidualZZ(Ramsey):
         return super().update_sweep_points()
 
     def sweep_block(self, qbc, qb, sweep_points, **kw):
+        center_block = None
         prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
-        prepend_pulse_dicts += [{'op_code': f'X180 {qbc}',
-                    'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}]
+        if self.echo:
+            center_block = self.block_from_pulse_dicts([{'op_code': f'X180 {qbc}',
+                        'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}],
+                                         block_name=f'excitation_{qbc}')
+        else:
+            prepend_pulse_dicts += [{'op_code': f'X180 {qbc}',
+                        'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}]
 
         return super().sweep_block(qb, sweep_points,
+            center_block=center_block,
             prepend_pulse_dicts=prepend_pulse_dicts,
             **kw)
 
