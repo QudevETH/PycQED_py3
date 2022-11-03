@@ -487,6 +487,9 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         """Flag that indicates whether internal modulation is turned on for 
         this device."""
 
+        self._device_type = 'hdawg'
+        """Device type of the generator."""
+
     def _generate_channel_ids(
             self,
             awg_nr

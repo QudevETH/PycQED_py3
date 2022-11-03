@@ -380,6 +380,9 @@ class SHFGeneratorModule(ZIGeneratorModule):
         # its specific realization of modulation and up-conversion.
         self._negate_q = True
 
+        self._device_type = 'shfsg'
+        """Device type of the generator."""
+
     def _generate_channel_ids(
             self,
             awg_nr

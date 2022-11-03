@@ -249,7 +249,7 @@ class ZIPulsarMixin:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        playback_string += self._zi_wait_trigger(name, device)
+        playback_string += self.zi_wait_trigger(name, device)
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
@@ -295,7 +295,7 @@ class ZIPulsarMixin:
             if not acq:
                 playback_string.append(f"prefetch({wname},{wname});")
 
-        playback_string += self._zi_wait_trigger(name, device)
+        playback_string += self.zi_wait_trigger(name, device)
 
         if codeword:
             # playback_string.append("playWaveDIO();")
@@ -308,7 +308,7 @@ class ZIPulsarMixin:
             playback_string.append("setTrigger(WINT_EN);")
         return playback_string, interleaves
 
-    def _zi_wait_trigger(self, name, device):
+    def zi_wait_trigger(self, name, device):
         playback_string = []
         trig_source = self.pulsar.get("{}_trigger_source".format(name))
         if trig_source == "Dig1":
@@ -576,6 +576,10 @@ class ZIGeneratorModule:
     ):
         self._awg = awg
         """Instrument driver of the parent device."""
+
+        self._device_type = "none"
+        """Device type of this generator. This parameter should be rewritten 
+        in the child classes."""
 
         self._awg_interface = awg_interface
         """Pulsar interface of the parent device."""
@@ -1047,7 +1051,10 @@ class ZIGeneratorModule:
                 )
                 first_element_of_segment = False
             else:
-                self._playback_strings.append('waitDigTrigger(1);')
+                self._playback_strings += self._awg_interface.zi_wait_trigger(
+                        name=self._awg.name,
+                        device=self._device_type,
+                    )
 
             self._playback_strings += \
                 ZIPulsarMixin.zi_playback_string_loop_end(metadata)
