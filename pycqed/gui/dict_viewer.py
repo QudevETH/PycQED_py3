@@ -10,34 +10,37 @@ class TextToTreeItem:
     Helper class for the search feature of the class DictView.
     """
     def __init__(self):
-        self.text_list = []
+        self.key_text_list = []
+        self.value_text_list = []
         self.titem_list = []
 
-    def append(self, text_list, titem):
+    def append(self, key_text_list, value_text_list, titem):
         """
 
         Args:
             text_list: stores
             titem:
         """
-        for text in text_list:
-            self.text_list.append(text)
+        for i, key_text in enumerate(key_text_list):
+            self.key_text_list.append(key_text)
+            self.value_text_list.append(value_text_list[i])
             self.titem_list.append(titem)
 
     # Return model indices that match string
-    def find(self, find_str):
-        """
-
-        Args:
-            find_str:
-
-        Returns:
-
-        """
+    def find(self, find_str, search_option=0):
         titem_list = []
-        for i, s in enumerate(self.text_list):
-            if find_str in s:
-                titem_list.append(self.titem_list[i])
+        if search_option==0:
+            for i, s in enumerate(self.key_text_list):
+                if find_str in s or find_str in self.value_text_list[i]:
+                    titem_list.append(self.titem_list[i])
+        if search_option == 1:
+            for i, s in enumerate(self.key_text_list):
+                if find_str in s:
+                    titem_list.append(self.titem_list[i])
+        if search_option == 2:
+            for i, s in enumerate(self.value_text_list):
+                if find_str in s:
+                    titem_list.append(self.titem_list[i])
 
         return titem_list
 
@@ -48,19 +51,21 @@ class DictView(QtWidgets.QWidget):
         super(DictView, self).__init__()
 
         self.find_box = None
+        self.find_text = None
         self.tree_widget = None
         self.text_to_titem = TextToTreeItem()
         self.find_str = ""
+        self.find_check_box_id = 0
         self.found_titem_list = []
         self.found_idx = 0
+        self.find_only_params = False
 
         pdata = snap
 
-        # Find UI
-        find_layout = self.make_find_ui()
+        # Load layouts
+        search_layout = self.make_search_ui()
 
         # Tree
-
         self.tree_widget = QtWidgets.QTreeWidget()
         self.tree_widget.setHeaderLabels(["Key", "Value"])
         self.tree_widget.header().setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
@@ -97,7 +102,7 @@ class DictView(QtWidgets.QWidget):
         self.attr_nr = QtWidgets.QLabel('Number of attributes:')
 
         # creates find text
-        self.find_text = QtWidgets.QLabel('Keys and Values found:')
+
 
         # Add table to layout
         layout = QtWidgets.QVBoxLayout()
@@ -112,8 +117,7 @@ class DictView(QtWidgets.QWidget):
         gbox.setLayout(layout)
 
         layout2 = QtWidgets.QVBoxLayout()
-        layout2.addLayout(find_layout)
-        layout2.addWidget(self.find_text)
+        layout2.addLayout(search_layout)
         layout2.addSpacing(10)
         layout2.addWidget(gbox)
         layout2.setMenuBar(self.menuBar)
@@ -263,7 +267,7 @@ class DictView(QtWidgets.QWidget):
     def openContent(self):
         print(self.tree_widget.currentItem().data(1,0))
 
-    def make_find_ui(self):
+    def make_search_ui(self):
         # creates UI layout for find box
         # Text box
         self.find_box = QtWidgets.QLineEdit()
@@ -273,11 +277,35 @@ class DictView(QtWidgets.QWidget):
         find_button = QtWidgets.QPushButton("Find")
         find_button.clicked.connect(self.find_button_clicked)
 
+        self.find_text = QtWidgets.QLabel('Entries found:')
+
+        # search options
+        find_checkboxoptions_list = [QtWidgets.QCheckBox('Key and Value'),
+                                     QtWidgets.QCheckBox('Key'),
+                                     QtWidgets.QCheckBox('Value')]
+        find_checkboxoptions_list[self.find_check_box_id].setChecked(True)
+        self.find_checkboxoptions = QtWidgets.QButtonGroup()
+        for id, w in enumerate(find_checkboxoptions_list):
+            self.find_checkboxoptions.addButton(w, id=id)
+        self.find_only_params_box = QtWidgets.QCheckBox('Search only in parameters')
+        self.find_only_params_box.setChecked(self.find_only_params)
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(self.find_box)
         layout.addWidget(find_button)
 
-        return layout
+        layout2 = QtWidgets.QHBoxLayout()
+        for w in self.find_checkboxoptions.buttons():
+            layout2.addWidget(w)
+        layout2.addSpacing(30)
+        layout2.addWidget(self.find_only_params_box)
+        layout2.addStretch()
+
+        layout3 = QtWidgets.QVBoxLayout()
+        layout3.addLayout(layout)
+        layout3.addLayout(layout2)
+        layout3.addWidget(self.find_text)
+
+        return layout3
 
     def showTitem(self, titem:QtWidgets.QTreeWidgetItem, expand=False):
         titem.setHidden(False)
@@ -290,16 +318,31 @@ class DictView(QtWidgets.QWidget):
     def find_button_clicked(self):
 
         find_str = self.find_box.text()
+        find_only_params=self.find_only_params_box.isChecked()
 
         # Very common for use to click Find on empty string
         if find_str == "":
             return
 
         # New search string
-        if find_str != self.find_str:
+        if find_str != self.find_str \
+                or self.find_check_box_id != self.find_checkboxoptions.checkedId()\
+                or self.find_only_params != find_only_params:
             self.find_str = find_str
-            self.found_titem_list = self.text_to_titem.find(self.find_str)
-            self.find_text.setText('Keys and Values found: %s'%(len(self.found_titem_list)))
+            self.find_check_box_id = self.find_checkboxoptions.checkedId()
+            self.find_only_params = find_only_params
+            self.found_titem_list = self.text_to_titem.find(
+                find_str=self.find_str, search_option=self.find_checkboxoptions.checkedId())
+            if find_only_params:
+                titem_list = []
+                for titem in self.found_titem_list:
+                    try:
+                        if titem.parent().data(0,0) == 'parameters':
+                            titem_list.append(titem)
+                    except:
+                        pass
+                self.found_titem_list = titem_list
+            self.find_text.setText('Entries found: %s'%(len(self.found_titem_list)))
             if not self.found_titem_list == []:
                 self.showAll(self.tree_widget.topLevelItem(0), hide=True)
                 for titem in self.found_titem_list:
@@ -307,7 +350,7 @@ class DictView(QtWidgets.QWidget):
                     self.showTitem(titem, expand=True)
             self.found_idx = 0
         elif not self.found_titem_list:
-            self.find_text.setText('Keys and Values found: %s' % (len(self.found_titem_list)))
+            self.find_text.setText('Entries found: %s' % (len(self.found_titem_list)))
             return
         else:
             item_num = len(self.found_titem_list)
@@ -345,10 +388,12 @@ class DictView(QtWidgets.QWidget):
 
     def tree_add_row_parameter(self, key, val, tree_widget):
 
-        text_list = []
+        key_text_list = []
+        value_text_list = []
 
         if isinstance(val, dict) or isinstance(val, list):
-            text_list.append(key)
+            key_text_list.append(key)
+            value_text_list.append('')
             vals = 'no value'
             try:
                 vals = str(val['value'])
@@ -358,35 +403,37 @@ class DictView(QtWidgets.QWidget):
             # tree_widget.itemDoubleClicked(row_item, 0)#.connect(testfct)
             #row_item.itemDoubleClicked.connect(testfct)
             if key=='parameters':
-                self.recure_parameters(val, row_item)
+                self.recurse_parameters(val, row_item)
             else:
                 self.recurse_pdata(val, row_item)
         else:
-            text_list.append(key)
-            text_list.append(str(val))
+            key_text_list.append(key)
+            value_text_list.append(str(val))
             row_item = QtWidgets.QTreeWidgetItem([key, str(val)])
 
         tree_widget.addChild(row_item)
-        self.text_to_titem.append(text_list, row_item)
+        self.text_to_titem.append(key_text_list, value_text_list, row_item)
 
     def tree_add_row(self, key, val, tree_widget):
 
-        text_list = []
+        key_text_list = []
+        value_text_list = []
 
         if isinstance(val, dict) or isinstance(val, list):
-            text_list.append(key)
+            key_text_list.append(key)
+            value_text_list.append('')
             row_item = QtWidgets.QTreeWidgetItem([key])
             if key=='parameters':
                 self.recurse_parameters(val, row_item)
             else:
                 self.recurse_pdata(val, row_item)
         else:
-            text_list.append(key)
-            text_list.append(str(val))
+            key_text_list.append(key)
+            value_text_list.append(str(val))
             row_item = QtWidgets.QTreeWidgetItem([key, str(val)])
 
         tree_widget.addChild(row_item)
-        self.text_to_titem.append(text_list, row_item)
+        self.text_to_titem.append(key_text_list, value_text_list, row_item)
 
 
 class tree(QtWidgets.QWidget):
