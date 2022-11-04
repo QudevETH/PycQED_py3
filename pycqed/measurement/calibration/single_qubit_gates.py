@@ -2556,6 +2556,44 @@ class ReparkingRamsey(Ramsey):
 
 
 class ResidualZZ(Ramsey):
+    """Measurement of the residual ZZ coupling between two qubits.
+
+    This is done by measuring two subsequent Ramsey experiments on the target
+    qubit, one of the Ramsey experiments leaves the control qubit in the ground
+    state and the other one excites it to the e state. The time at which the
+    second qubit is excited depends on whether one chooses to perform an echo
+    pulse as part of the Ramsey sequence or not. Without the echo pulse the
+    control qb is excited before the Ramsey sequence starts. In the echo case
+    the centers of the two X180 gates line up at the middle between the two
+    Ramsey X90 pulses. By comparing the detuning between the two Ramsey
+    experiments one can infer the residual coupling between the two qubits.
+
+    No echo:
+        qbc:    |X180| - ... -
+        qbt:     ... - |X90| - ... - |X90| -- |RO|
+                              sweep
+                            delay tau
+
+    Including echo:
+        qbc:          - ... - |X180| - ... -
+        qbt:    |X90| - ... - |X180| - ... - |X90| -- |RO|
+                       sweep          sweep
+                    delay tau/2    delay tau/2
+
+    See parent classes for parameters of the class and the task_list.
+    In addition to the target qubit (param name "qb") one needs to specify the
+    control qubit with the key "qbc".
+
+    Note: IT IS NOT RECOMMENDED TO RUN RESIDUAL ZZ MEASUREMENTS IN PARALLEL!
+    because of the influence between the individual measurments. Parallel
+    experiments are only supported for disjoint pairs of qubits,
+    e.g.    task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb7, 'qbc': qb8, ...}
+    but not task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb2, 'qbc': qb4, ...}
+    or      task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb3, 'qbc': qb2, ...}
+    """
     task_mobj_keys = ['qb']
 
     default_experiment_name = 'ResidualZZ'
