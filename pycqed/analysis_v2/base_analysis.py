@@ -1228,6 +1228,9 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
+        # Allows to specify a cax (axis for plotting a colorbar) by its
+        # index, instead of the axis object itself (since the axes are not
+        # created yet in the plot_dicts)
         ax_keys = ['cax']
         for key in key_list:
             pdict = self.plot_dicts[key]
@@ -2314,8 +2317,7 @@ class BaseDataAnalysis(object):
 
 class NDim_BaseDataAnalysis(BaseDataAnalysis):
 
-    def __init__(self, mobj_names=None, slicing_plotting_list=None, auto=True,
-                 **kwargs):
+    def __init__(self, mobj_names=None, auto=True, **kwargs):
         """
         Basic analysis class for NDimQuantumExperiment and child classes.
         Processes the data of several QuantumExperiment to reconstruct one or
@@ -2337,16 +2339,14 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         and is only meant as a convenience for the user and for plotting,
         so this could be modified.
 
+        This class does not take more arguments than BaseDataAnalysis.
         Child classes should override get_measurement_groups to indicate how
         to partition the timestamps into groups to reconstruct the
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
 
-        Args:
-            slicing_plotting_list (dict): see plot_slice
         """
 
-        self.slicing_plotting_list = slicing_plotting_list
         self.mobj_names = mobj_names
         super().__init__(**kwargs)
         if auto:
@@ -2398,8 +2398,12 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         the data as specified by post_proc_func.
 
         Args:
-            ana_ids: indices of timestamps whose data should be used
-            post_proc_func: specifies how to convert the raw data per channel
+            ana_ids (list of tuple): indices of timestamps whose data should be
+                used
+            post_proc_func (function): specifies how to convert the raw data
+                per channel
+            on_qb (bool): whether the measurement was run on a qubit instead
+                of a MeasurementObject (to be removed, see FIXME below)
         into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
 
         """

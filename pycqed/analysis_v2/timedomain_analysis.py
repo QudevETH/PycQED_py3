@@ -10672,6 +10672,15 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
     In addition to the datasets specified in get_measurement_groups,
     an 'SNR_rise' dataset is computed and added to self.proc_data_dict.
 
+    Args:
+        options_dict (dict): in addition to the keys used by the base class:
+        - ro_freqs: dict of the form {TWPA.name: [f1, f2, ...]} specifying
+            the readout frequencies of the qubits which are on a given feedline,
+            which will be indicated as vertical white lines on the
+            automatically generated plots
+        - TWPAs, qubits: respectively a list of MeasurementObject and qubit
+            objects, from which ro_freqs will be extracted if it does not exist
+
     FIXME for now mobj_names must be of the form
      [TWPA1.name, qb1.name, TWPA2.name...]
      where each characterized TWPA is followed by a qubit pertaining to the
