@@ -4714,6 +4714,118 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'colors': 'k'}
 
 
+class ThermalPopulationAnalysis(RabiAnalysis):
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        for qbn in self.qb_names:
+            s = 'Instrument settings.'+qbn
+            params_dict[f'ge_freq_'+qbn] = \
+                s + '.ge_freq'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
+    def _get_default_data_to_fit(self):
+        return {qbn: 'pf' for qbn in self.qb_names}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+
+        for qbn in self.qb_names:
+            # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+            # replace k with qbn_i or qbn
+            fit_res_th = self.fit_dicts[f'cos_fit_{qbn}_0']['fit_res']
+            fit_res_prep = self.fit_dicts[f'cos_fit_{qbn}_1']['fit_res']
+            self.proc_data_dict['analysis_params_dict'][qbn] = \
+                self.get_thermal_population(qbn, fit_res_th, fit_res_prep)
+        self.save_processed_data(key='analysis_params_dict')
+
+    def get_thermal_population(self, qbn, fit_res_th, fit_res_prep):
+        ratio = fit_res_th.best_values['amplitude'] \
+                    / fit_res_prep.best_values['amplitude']
+        peth = ratio / (1 + ratio)
+        ge_freq = self.raw_data_dict[f'ge_freq_'+qbn]
+        # We set E_g = 0 and assume p_fth = 0. This implies
+        # 1 = p_gth + p_eth + p_fth = 1/Z exp(0) + p_eth = 1/Z + p_eth,
+        # where Z is the partition function, Z=\sum_j exp(- E_j/(k_B T)).
+        # => Z = 1/(1-p_eth) => p_eth = (1 - p_eth) * exp(- h * f_ge / (k * T))
+        # and therefore:
+        T = ge_freq * sp.constants.h / (sp.constants.k * np.log(1/peth-1))
+        return {'peth': peth, 'temperature': T}
+
+    def prepare_plots(self):
+        if self.do_fitting:
+            for k, fit_dict in self.fit_dicts.items():
+                # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+                # replace k with qbn_i or qbn
+                k = k.replace('cos_fit_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                        'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x : f'{x:0.4f}')))
+                    daa = self.metadata.get('drive_amp_adaptation', {}).get(
+                        qbn, None)
+                    if daa is not None:
+                        sweep_points = sweep_points * daa[int(i)]
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = f'Rabi_{k}_{self.data_to_fit[qbn]}'
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
+                plot_cal_pts=int(i) if i != '' else True
+                data=dtf[int(i)] if i != '' else dtf
+                self.prepare_projected_data_plot(
+                    fig_name=base_plot_name,
+                    data=data if plot_cal_pts else data[:-self.num_cal_points],
+                    sweep_points=sweep_points if plot_cal_pts else sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qbn+'fit',
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix,
+                    plot_cal_points=plot_cal_pts,
+                )
+
+                self.plot_dicts['fit_' + k] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'cosine fit',
+                    'color': 'r',
+                    'do_legend': True,
+                    'legend_ncol': 2,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                ana_params_qb = self.proc_data_dict['analysis_params_dict'][qbn]
+                textstr = ('amplitude = {:.2f} %'.format(
+                    fit_dict['fit_res'].best_values['amplitude'] * 1e2) +
+                           '\noffset = {:.2f} %'.format(
+                    fit_dict['fit_res'].best_values['offset'] * 1e2) +
+                           '\n$P_{e, th.}$' + ' = {:.2f} %'.format(
+                    ana_params_qb['peth'] * 1e2) +
+                           '\n$T$ = {:.2f} mK'.format(
+                    ana_params_qb['temperature'] * 1e3))
+                self.plot_dicts['text_msg_' + k] = {
+                    'fig_id': base_plot_name,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
+
+
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
