@@ -109,6 +109,55 @@ def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
     return param_value
 
 
+def get_param_from_analysis_group(param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extract the value of a parameter from the Analysis group of an HDF file.
+
+    This functions returns the value for the parameters whose paths in the
+    HDF file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
+    If only one match is found, the function returns the value corresponding
+    to that path.
+    If more than one match is found, this function returns a dict will all
+    matches.
+
+    Args:
+        param_name (str): name of the parameter to extract
+        timestamp (str): timestamp (YYYYMMDD_hhmmss) of the measurement. Will
+            be used to find the location of the HDF file
+        folder (str): path to the HDF file
+        **params: keyword arguments: not used but are here to allow pass-through
+
+    Returns:
+        if only one match was found: the value corresponding to param_name
+        if more than one match found: dict with HDF paths as keys and values
+            corresponding to those paths as values
+    """
+    if folder is None:
+        if timestamp is None:
+            raise ValueError('Please provide either timestamp or folder.')
+        folder = a_tools.get_folder(timestamp)
+
+    ana_group = get_params_from_hdf_file(
+        {}, {'ana_group': 'Analysis'}, folder=folder)
+    if 'ana_group' not in ana_group:
+        raise KeyError(f'There is no Analysis group in the HDF file.')
+
+    all_matches = find_all_in_dict(param_name, ana_group['ana_group'])
+    param_value = {}
+    for key_paths in all_matches:
+        split_kp = key_paths.split('.')
+        if param_name == split_kp[-1]:
+            param_value[key_paths] = all_matches[key_paths]
+
+    if len(param_value) == 0:
+        raise KeyError(f'Parameter {param_name} was not '
+                       f'found in the Analysis group.')
+    elif len(param_value) == 1:
+        param_value = list(param_value.values())[0]
+    return param_value
+
+
 def get_data_from_hdf_file(timestamp=None, data_file=None,
                            close_file=True, file_id=None, mode='r'):
     """
