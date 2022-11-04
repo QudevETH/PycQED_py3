@@ -137,7 +137,7 @@ def simulate_circuits_1qb(nr_cycles, nr_seq, rots_qt, T1, T2,
 
 
 ## Calculation ##
-def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots, t_gate=None,
+def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
                                 Uvar=None, init_state=None):
     """
     Calculate circuits assuming ideal gate.
@@ -151,8 +151,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots, t_gate=None,
     """
 
     if init_state is None:
-        # print('here')
-        init_state = (g+e)/np.sqrt(2)
+        init_state = g
     if Uvar is None:
         Uvar = sqrtY
     if nr_cycles == 0:
