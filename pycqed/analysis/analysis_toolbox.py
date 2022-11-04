@@ -290,6 +290,9 @@ def measurement_filename(directory=os.getcwd(), file_id=None, ext='hdf5', **kw):
     if os.path.exists(os.path.join(directory, fn)):
         return os.path.join(directory, fn)
     else:
+        if kw.get('raise_errors', False):
+            raise FileNotFoundError("Data path '%s' does not exist" %
+                        os.path.join(directory, fn))
         log.warning("Data path '%s' does not exist" %
                         os.path.join(directory, fn))
         return None
