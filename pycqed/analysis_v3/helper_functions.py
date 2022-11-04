@@ -3,6 +3,7 @@ log = logging.getLogger(__name__)
 import re
 import os
 import h5py
+import traceback
 import itertools
 import numpy as np
 from numpy import array  # Needed for eval. Do not remove.
@@ -1279,77 +1280,77 @@ def read_from_hdf(data_dict, hdf_group):
     :param hdf_group: HDF group or file
     :return: nothing but updates data_dict with all values from hdf_group
     """
-    if not len(hdf_group) and not len(hdf_group.attrs):
-        path = hdf_group.name.split('/')[1:]
-        add_param('.'.join(path), {}, data_dict)
+    try:
+        if not len(hdf_group) and not len(hdf_group.attrs):
+            path = hdf_group.name.split('/')[1:]
+            add_param('.'.join(path), {}, data_dict)
 
-    for key, value in hdf_group.items():
-        if isinstance(value, h5py.Group):
-            read_from_hdf(data_dict, value)
-        else:
-            path = value.name.split('/')[1:]
-            if 'list_type' not in value.attrs:
-                val_to_store = value[()]
-            elif value.attrs['list_type'] == 'str':
-                # lists of strings needs some special care, see also
-                # the writing part in the writing function above.
-                val_to_store = [x[0] for x in value[()]]
+        for key, value in hdf_group.items():
+            if isinstance(value, h5py.Group):
+                read_from_hdf(data_dict, value)
             else:
-                val_to_store = list(value[()])
-            if path[-2] == path[-1]:
-                path = path[:-1]
-            was_array = isinstance(val_to_store, np.ndarray)
-            val_to_store = convert_attribute(val_to_store)
-            if was_array:
-                val_to_store = np.array(val_to_store)
+                path = value.name.split('/')[1:]
+                if 'list_type' not in value.attrs:
+                    val_to_store = value[()]
+                elif value.attrs['list_type'] == 'str':
+                    # lists of strings needs some special care, see also
+                    # the writing part in the writing function above.
+                    val_to_store = [x[0] for x in value[()]]
+                else:
+                    val_to_store = list(value[()])
+                if path[-2] == path[-1]:
+                    path = path[:-1]
+                was_array = isinstance(val_to_store, np.ndarray)
+                val_to_store = convert_attribute(val_to_store)
+                if was_array:
+                    val_to_store = np.array(val_to_store)
+                try:
+                    add_param('.'.join(path), val_to_store, data_dict)
+                except Exception:
+                    log.warning(f'Could not load path {".".join(path)}.')
+
+        path = hdf_group.name.split('/')[1:]
+        for key, value in hdf_group.attrs.items():
+            if isinstance(value, str):
+                # Extracts "None" as an exception as h5py does not support
+                # storing None, nested if statement to avoid elementwise
+                # comparison warning
+                if value == 'NoneType:__None__':
+                    value = None
+                elif value == 'NoneType:__emptylist__':
+                    value = []
+
+            temp_path = deepcopy(path)
+            if temp_path[-1] != key:
+                temp_path += [key]
+            if 'list_type' not in hdf_group.attrs:
+                value = convert_attribute(value)
+                if key == 'cal_points' and not isinstance(value, str):
+                    value = repr(value)
             try:
-                add_param('.'.join(path), val_to_store, data_dict)
+                add_param('.'.join(temp_path), value, data_dict)
             except Exception:
                 log.warning(f'Could not load path {".".join(path)}.')
 
-    path = hdf_group.name.split('/')[1:]
-    for key, value in hdf_group.attrs.items():
-        if isinstance(value, str):
-            # Extracts "None" as an exception as h5py does not support
-            # storing None, nested if statement to avoid elementwise
-            # comparison warning
-            if value == 'NoneType:__None__':
-                value = None
-            elif value == 'NoneType:__emptylist__':
-                value = []
-
-        temp_path = deepcopy(path)
-        if temp_path[-1] != key:
-            temp_path += [key]
-        if 'list_type' not in hdf_group.attrs:
-            value = convert_attribute(value)
-            if key == 'cal_points' and not isinstance(value, str):
-                value = repr(value)
-        try:
-            add_param('.'.join(temp_path), value, data_dict)
-        except Exception:
-            log.warning(f'Could not load path {".".join(path)}.')
-
-    if 'list_type' in hdf_group.attrs:
-        if (hdf_group.attrs['list_type'] == 'generic_list' or
-                hdf_group.attrs['list_type'] == 'generic_tuple'):
-            list_dict = pop_param('.'.join(path), data_dict)
-            data_list = []
-            for i in range(list_dict['list_length']):
-                data_list.append(list_dict[f'list_idx_{i}'])
-            if hdf_group.attrs['list_type'] == 'generic_tuple':
-                data_list = tuple(data_list)
-            if path[-1] == 'sweep_points':
-                data_list = sp_mod.SweepPoints(data_list)
-            try:
-                add_param('.'.join(path), data_list, data_dict,
-                          add_param_method='replace')
-            except Exception:
-                log.warning(f'Could not load path {".".join(path)}.')
-        else:
-            raise NotImplementedError('cannot read "list_type":"{}"'.format(
-                hdf_group.attrs['list_type']))
-
-
-
-
+        if 'list_type' in hdf_group.attrs:
+            if (hdf_group.attrs['list_type'] == 'generic_list' or
+                    hdf_group.attrs['list_type'] == 'generic_tuple'):
+                list_dict = pop_param('.'.join(path), data_dict)
+                data_list = []
+                for i in range(list_dict['list_length']):
+                    data_list.append(list_dict[f'list_idx_{i}'])
+                if hdf_group.attrs['list_type'] == 'generic_tuple':
+                    data_list = tuple(data_list)
+                if path[-1] == 'sweep_points':
+                    data_list = sp_mod.SweepPoints(data_list)
+                try:
+                    add_param('.'.join(path), data_list, data_dict,
+                              add_param_method='replace')
+                except Exception:
+                    log.warning(f'Could not load path {".".join(path)}.')
+            else:
+                raise NotImplementedError('cannot read "list_type":"{}"'.format(
+                    hdf_group.attrs['list_type']))
+    except Exception:
+        log.error(f"Unable to load: {hdf_group.name}.")
+        log.error(traceback.format_exc())
