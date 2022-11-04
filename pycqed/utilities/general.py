@@ -1130,8 +1130,6 @@ def get_zhinst_firmware_versions(zi_instruments=None):
 
     Args:
         zi_instruments (list or None): instances of ZI instrument drivers
-        exclude_mcc_inst (bool): whether to include the instruments that were
-            instantiated twice in order to be used with the MultiCoreCompiler.
 
     Returns:
         versions (dict): ZI instrument drivers as keys, dict with
@@ -1148,11 +1146,11 @@ def get_zhinst_firmware_versions(zi_instruments=None):
         versions[node] = {}
         for dev in zi_instruments:
             try:
-                versions[node][dev.devname] = dev.geti(node)
-            except Exception as e:
+                versions[node][f'{dev.name} - {dev.devname}'] = dev.geti(node)
+            except Exception:
                 try:
                     # for QCodes-based devices
-                    versions[node][dev.devname] = \
+                    versions[node][f'{dev.name} - {dev.devname}'] = \
                         dev.daq.getInt(f'{dev.devname}/system/fwrevision')
                 except Exception as e:
                     exceptions[f'{node} for {dev.devname}'] = e
