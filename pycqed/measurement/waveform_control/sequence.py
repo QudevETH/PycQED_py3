@@ -421,6 +421,10 @@ class Sequence:
         for i in range(len(seq_list_list)):
             interleaved_seqs[i::len(seq_list_list)] = seq_list_list[i]
 
+        # rename sequences and timers
+        for i, seq in enumerate(interleaved_seqs):
+            seq.rename(f"Interleaved_Sequence_{i}")
+
         mc_points = [np.arange(interleaved_seqs[0].n_acq_elements()),
                      np.arange(len(interleaved_seqs))]
 

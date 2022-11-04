@@ -634,7 +634,7 @@ class SingleQubitXEB(CrossEntropyBenchmarking):
     task_mobj_keys = ['qb']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
-                 nr_seqs=None, cycles=None, init_rotation='X90', **kw):
+                 nr_seqs=None, cycles=None, init_rotation=None, **kw):
         """
         Init of the SingleQubitXEB class.
         The experiment consists of applying
@@ -691,8 +691,10 @@ class SingleQubitXEB(CrossEntropyBenchmarking):
                 'values', self.sweep_type['seqs'], 'z_rots')[seq_idx][nrcyc_idx]
             l = [['Y90', f'Z{zang}'] for zang in z_angles]
             # flatten l, prepend init pulse, append to pulse_op_codes_list
-            pulse_op_codes_list += [[self.init_rotation] +
-                                    [e1 for e2 in l for e1 in e2]]
+            pulse_l_tmp = [] if self.init_rotation is None \
+                else [self.init_rotation]
+            pulse_l_tmp += [e1 for e2 in l for e1 in e2]
+            pulse_op_codes_list += [pulse_l_tmp]
 
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
