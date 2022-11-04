@@ -2608,6 +2608,26 @@ class ResidualZZ(Ramsey):
             self.exception = x
             traceback.print_exc()
 
+    def preprocess_task_list(self, **kw):
+        preprocessed_task_list =  super().preprocess_task_list(**kw)
+
+        # Warn the user when he is tryig to run parallel measurments
+        if len(preprocessed_task_list) > 1:
+            log.warning('It is not recommended to run residual ZZ measurements '
+                        'in parallel! Use at your own risk.')
+        # Check that the involved qubits are pairwise dijoint between tasks:
+        all_involved_qubits = []
+        for task in preprocessed_task_list:
+            if task['qb'] in all_involved_qubits \
+                    or task['qbc'] in all_involved_qubits:
+                raise NotImplementedError(f'Either {task["qb"]} or '
+                                          f'{task["qbc"]} is contained in more '
+                                          f'than one task. This is not '
+                                          f'supported by this experiment.')
+            else:
+                all_involved_qubits.append(task['qb'])
+                all_involved_qubits.append(task['qbc'])
+        return preprocessed_task_list
 
     def update_sweep_points(self):
         for task in self.preprocessed_task_list:
