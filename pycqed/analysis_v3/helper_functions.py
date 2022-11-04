@@ -158,6 +158,35 @@ def get_param_from_analysis_group(param_name, timestamp=None,
     return param_value
 
 
+def get_param_from_fit_res(param, fit_res, split_char='.'):
+    """
+    Extract the value of a parameter from a fit result object or dict.
+
+    Args:
+        param (str): of the form param_name + split_char + param_attribute where
+            param_name is the name of a fit parameter in fit_res, and
+            para_attribute is a fit attribute stored by lmfit, ex: value,
+            stderr, min, max, correl, init_value etc.
+        fit_res (instance of lmfit.model.ModelResult or dict):
+            contains the fit results. This parameter is a dict whenever it
+            is loaded from an HDF file.
+        split_char (str): the character around which to split param
+
+    Returns:
+        value corresponding to param
+    """
+    param_split = param.split(split_char)
+    try:
+        p = fit_res.params[param_split[0]]
+        p_name = param_split[1]
+        if p_name == 'value':
+            p_name = '_val'
+        return p.__dict__[p_name]
+    except AttributeError:
+        return get_param(f'params.{param}', fit_res, split_char=split_char,
+                         raise_error=True)
+
+
 def get_data_from_hdf_file(timestamp=None, data_file=None,
                            close_file=True, file_id=None, mode='r'):
     """
