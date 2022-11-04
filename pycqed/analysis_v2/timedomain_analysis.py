@@ -25,8 +25,6 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
-from pycqed.measurement import sweep_points as sp_mod
-import traceback
 import logging
 
 from pycqed.utilities import math
@@ -10773,12 +10771,12 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
             for idx_freq, pump_freq in enumerate(sp['pump_freq']):
                 x = sp['freq'] / 1e9
                 y = sp['pump_power']
-                Z1, _ = sp_mod.SweepPoints.get_slice(
+                Z1, _ = self.get_slice(
                     pdd['gain_on'][mobjn] - pdd['gain_off'][mobjn],
                     sp,
                     {'pump_freq': pump_freq},
                 )
-                Z2, _ = sp_mod.SweepPoints.get_slice(
+                Z2, _ = self.get_slice(
                     pdd['SNR_rise'][mobjn],
                     sp,
                     {'pump_freq': pump_freq},
