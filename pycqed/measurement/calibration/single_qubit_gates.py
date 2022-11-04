@@ -2608,15 +2608,6 @@ class ResidualZZ(Ramsey):
             self.exception = x
             traceback.print_exc()
 
-    def get_meas_objs_from_task(self, task):
-        """
-        Returns a list of all measure objects (e.g., qubits) of a task.
-        Should be overloaded in child classes if the default behavior
-        of returning all qubits found in the task is not desired.
-        :param task: a task dictionary
-        :return: list of all qubit objects (if available) or names
-        """
-        return self.find_qubits_in_tasks(self.qb_names, [task])
 
     def update_sweep_points(self):
         for task in self.preprocessed_task_list:
