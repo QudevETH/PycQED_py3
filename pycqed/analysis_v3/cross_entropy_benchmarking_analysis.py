@@ -32,11 +32,26 @@ xentropy_rhs = lambda pops_ideal, d: d*np.sum(
 xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(d*np.sum(
     np.array([pm*pi for pm, pi in zip(pops_meas, pops_ideal)]),
     axis=len(np.array(pops_meas).shape)-1) - 1)
-# xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(np.sum(
-#     d*pops_meas-1,
-#     axis=len(np.array(pops_meas).shape)-1))
 xentropy_fidelity = lambda pops_meas, pops_ideal, d: \
     xentropy_lhs(pops_meas, pops_ideal, d) / xentropy_rhs(pops_ideal, d)
+
+# calculate cross entropy fidelity as described in this paper:
+# https://journals.aps.org/prl/supplemental/10.1103/PhysRevLett.125.120504/supp.pdf
+crossEntropy = lambda p, q: np.sum(-(p*np.log(q)))
+entropy = lambda p: crossEntropy(p, p)
+def crossEntropyFidelity(pops_meas, pops_ideal, d):
+    pm = deepcopy(pops_meas)
+    pi = deepcopy(pops_ideal)
+    pops_incoh = 1/d/len(pi)
+    pm /= len(pm)
+    pm = pm.flatten()
+    pi /= len(pi)
+    pi = pi.flatten()
+    numerator = crossEntropy(pops_incoh, pi) - \
+                crossEntropy(pm, pi)
+    denominator = crossEntropy(pops_incoh, pi) - entropy(pi)
+    return numerator/denominator
+
 
 
 ### Single qubit XEB ###
@@ -239,7 +254,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                               sweep_type=None, save_processed_data=True,
                               probability_states=None, save_figures=True,
                               raw_keys_in=None, save=True, save_filename=None,
-                              renormalize=True, shots_selection_map=None):
+                              renormalize=True, shots_selection_map=None,
+                              **params):
 
     # (nr_seq, len(cycles), nr_cycles)
     # list with nr_seq lists; each sublist has length len(cycles)
@@ -263,7 +279,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
-        compression_factor = hlp_mod.get_param('compression_factor', data_dict)
+        compression_factor = hlp_mod.get_param('compression_factor', data_dict,
+                                               **params)
         shots_dict = hlp_mod.get_params_from_hdf_file(
             {},  {qbn: f'Instrument settings.{qbn}.acq_shots'
                   for qbn in meas_obj_names},
@@ -406,7 +423,7 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
             # calculate assuming ideal gate
             pops_ideal = calculate_ideal_circuit_1qb(
                 nr_cycles, nr_seq, z_rots, init_state=init_state)
-            fidelities[ii] = xentropy_fidelity(pops_meas, pops_ideal, d)
+            fidelities[ii] = crossEntropyFidelity(pops_meas, pops_ideal, d)
             purities[ii] = sqrt_purity(pops_meas, d)
 
         hlp_mod.add_param(f'{mobjn}.fidelities', fidelities, data_dict, **params)
@@ -993,6 +1010,8 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                              legend_kw=None, text_position=None, text_kw=None,
                              **params):
 
+    plot_mod.get_default_plot_params()
+    fig, ax = plt.subplots()
     try:
         if legend_kw is None:
             legend_kw = {}
@@ -1055,9 +1074,9 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 if apm is None:
                     params['add_param_method'] = 'replace'
 
-                guess_pars = {'A': {'value': 0.5},# 'min': -1, 'max': 1},
-                              'e': {'value': 0.01},# 'min': 0, 'max': 1},
-                              'B': {'value': 0.0}}# 'min': -1, 'max': 1}}
+                guess_pars = {'A': {'value': 0.5, 'min': -1, 'max': 1},
+                              'e': {'value': 0.01, 'min': 0, 'max': 1},
+                              'B': {'value': 0.0, 'min': -1, 'max': 1}}
 
                 # fit fidelities
                 guess_pars_to_use = deepcopy(guess_pars)
@@ -1092,9 +1111,6 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                     cz_error_rate = hlp_mod.get_param(
                         f'{mobjn}.cz_error_rate', data_dict)
 
-                plot_mod.get_default_plot_params()
-                fig, ax = plt.subplots()
-
                 if exclude_from_plot:
                     line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
                                       zorder=0)
@@ -1114,12 +1130,22 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
 
                     epc, epc_err = 100*fit_res_f.best_values["e"], \
                                    100*fit_res_f.params["e"].stderr
+                    hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
+                                      (epc/100, epc_err/100), data_dict,
+                                      **params)
                     ppc, ppc_err = 100*fit_res_p.best_values["e"], \
                                    100*fit_res_p.params["e"].stderr
+                    hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
+                                      (ppc/100, ppc_err/100), data_dict,
+                                      **params)
+                    ctrl_err = epc-ppc
                     ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
+                    hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
+                                      (ctrl_err/100, ctrl_err_err/100),
+                                      data_dict, **params)
                     textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
                               f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
-                              f'\n{epc-ppc:.3f}% $\\pm$ ' \
+                              f'\n{ctrl_err:.3f}% $\\pm$ ' \
                               f'{ctrl_err_err:.3f}% ctrl. errors per c.'
                     if cz_error_rate is not None:
                         textstr += f'\nCZ error: ' \
@@ -1144,7 +1170,6 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                     ax.set_ylim(None, 1.5)
                     fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
                 else:
-                    ax.set_ylim(-0.1, 1.1)
                     fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
 
                 xlims = params.get('xlims', None)
@@ -1184,7 +1209,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                             savefig=True, fmts=None, figure_width='1col',
                             figure_height=4.1, filename=None, filename_prefix='',
                             numcols=None, numrows=None, renormalize=True,
-                            show=False, **params):
+                            show=False, nr_sp_2d=None, **params):
     try:
         d = hlp_mod.get_param('dim_hilbert', data_dict, raise_error=True,
                               **params)
@@ -1206,7 +1231,8 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
         swpts = hlp_mod.get_measurement_properties(data_dict,
                                                    props_to_extract=['sp'])
         cycles = swpts.get_sweep_params_property('values', sweep_type['cycles'])
-        nr_seq = swpts.length(sweep_type['seqs'])
+        if nr_sp_2d is None:
+            nr_sp_2d = swpts.length(sweep_type['seqs'])
         renormalize = hlp_mod.get_param('renormalize', data_dict,
                                         default_value=renormalize)
 
@@ -1220,6 +1246,8 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                     numrows = len(cycles) // numr
                     break
         print(numrows, numcols)
+        if numcols == 1:
+            figure_width = 2
         return_dict = {}
         for mobjn in meas_obj_names:
             proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
@@ -1261,13 +1289,13 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
 
                 if len(proba_exp.shape) > 1:
                     # 2 qb case
-                    proba_exp = proba_exp.reshape(swpts.length(1),
+                    proba_exp = proba_exp.reshape(nr_sp_2d,
                                                   swpts.length(0),
                                                   proba_exp.shape[-1])
                     proba_exp = proba_exp[:, i, :]
                 else:
                     # 1 qb case
-                    proba_exp = proba_exp.reshape(swpts.length(1),
+                    proba_exp = proba_exp.reshape(nr_sp_2d,
                                                   swpts.length(0))
                     proba_exp = np.reshape(proba_exp[:, i],
                                            (len(proba_exp[:, i]), 1))
@@ -1292,8 +1320,12 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
 
             # add legend
             odd_nr_cols = numcols % 2 == 1
-            ax = axs[0, (numcols // 2 + odd_nr_cols) - 1] if \
-                hasattr(axs, "shape") else axs
+            if not hasattr(axs, "shape"):
+                ax = axs
+            elif len(axs.shape) == 1:
+                ax = axs[(numcols // 2 + odd_nr_cols) - 1]
+            else:
+                ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
             ax.legend(frameon=False, loc='lower center', ncol=2,
                       bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
 
@@ -1313,7 +1345,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                 fn = deepcopy(filename)
                 if fn is None:
                     fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
-                         f'{cycles[-1]}cycles_{nr_seq}seqs_' \
+                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
                          f'{timestamp}'
                 fn = f'{filename_prefix}{fn}'
                 for ext in fmts:
