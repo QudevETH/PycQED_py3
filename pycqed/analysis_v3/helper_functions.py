@@ -109,6 +109,55 @@ def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
     return param_value
 
 
+def get_param_from_analysis_group(param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extract the value of a parameter from the Analysis group of an HDF file.
+
+    This functions returns the value for the parameters whose paths in the
+    HDF file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
+    If only one match is found, the function returns the value corresponding
+    to that path.
+    If more than one match is found, this function returns a dict will all
+    matches.
+
+    Args:
+        param_name (str): name of the parameter to extract
+        timestamp (str): timestamp (YYYYMMDD_hhmmss) of the measurement. Will
+            be used to find the location of the HDF file
+        folder (str): path to the HDF file
+        **params: keyword arguments: not used but are here to allow pass-through
+
+    Returns:
+        if only one match was found: the value corresponding to param_name
+        if more than one match found: dict with HDF paths as keys and values
+            corresponding to those paths as values
+    """
+    if folder is None:
+        if timestamp is None:
+            raise ValueError('Please provide either timestamp or folder.')
+        folder = a_tools.get_folder(timestamp)
+
+    ana_group = get_params_from_hdf_file(
+        {}, {'ana_group': 'Analysis'}, folder=folder)
+    if 'ana_group' not in ana_group:
+        raise KeyError(f'There is no Analysis group in the HDF file.')
+
+    all_matches = find_all_in_dict(param_name, ana_group['ana_group'])
+    param_value = {}
+    for key_paths in all_matches:
+        split_kp = key_paths.split('.')
+        if param_name == split_kp[-1]:
+            param_value[key_paths] = all_matches[key_paths]
+
+    if len(param_value) == 0:
+        raise KeyError(f'Parameter {param_name} was not '
+                       f'found in the Analysis group.')
+    elif len(param_value) == 1:
+        param_value = list(param_value.values())[0]
+    return param_value
+
+
 def get_data_from_hdf_file(timestamp=None, data_file=None,
                            close_file=True, file_id=None, mode='r'):
     """
@@ -418,11 +467,7 @@ def get_data_to_process(data_dict, keys_in):
                 data = data_dict
                 for k in all_keys:
                     data = data[k]
-                if isinstance(data, dict):
-                    data_to_proc_dict = {f'{keyi}.{k}': deepcopy(data[k])
-                                         for k in data}
-                else:
-                    data_to_proc_dict[keyi] = deepcopy(data)
+                data_to_proc_dict[keyi] = deepcopy(data)
             except KeyError:
                 key_found = False
         if not key_found:
@@ -430,8 +475,37 @@ def get_data_to_process(data_dict, keys_in):
     return data_to_proc_dict
 
 
+def find_all_in_dict(str_to_match, data_dict, split_char='.', key_prev_lev=''):
+    """
+    Find all keys in data_dict that contain the string str_to_match.
+
+    Args:
+        str_to_match (str): substring of a key that this function tries to match
+        data_dict (dict): dict to be searched
+        split_char (str): the character inserted between keys of data_dict to
+            construct the key path
+        key_prev_lev (str): string to prepend to the found key, separated by
+            split_char
+
+    Returns:
+        dict of the form
+        {f'{key_prev_lev}{split_char}{found_key}': data_dict[found_key]}
+    """
+    if len(key_prev_lev) > 0:
+        key_prev_lev += split_char
+    search_res = {}
+    for k, v in data_dict.items():
+        if str_to_match in k:
+            search_res[f'{key_prev_lev}{k}'] = data_dict[k]
+
+        if isinstance(v, dict):
+            search_res.update(find_all_in_dict(
+                str_to_match, v, key_prev_lev=f'{key_prev_lev}{k}'))
+    return search_res
+
+
 def get_param(param, data_dict, default_value=None, split_char='.',
-              raise_error=False, error_message=None, **params):
+              raise_error=False, error_message=None, find_all=False, **params):
     """
     Get the value of the parameter "param" from params, data_dict, or metadata.
     :param name: name of the parameter being sought
@@ -440,6 +514,8 @@ def get_param(param, data_dict, default_value=None, split_char='.',
         it is not found.
     :param split_char: the character around which to split param
     :param raise_error: whether to raise error if the parameter is not found
+    :param find_all: whether to return values for all the keys in data_dict that
+        contain param
     :param params: keyword args where parameter is to be sough
     :return: the value of the parameter
     """
@@ -482,8 +558,13 @@ def get_param(param, data_dict, default_value=None, split_char='.',
             value = p.get(all_keys[-1],
                           dd.get(all_keys[-1],
                                  md.get(all_keys[-1], default_value)))
-
-    if raise_error and value is None:
+    if value is None:
+        if find_all:
+            value = find_all_in_dict(param, data_dict, split_char=split_char)
+            if len(value) == 0:
+                # find_all_in_dict returns empty list if no matches are found
+                value = None
+    if value is None and raise_error:
         if error_message is None:
             error_message = f'{param} was not found in either data_dict, or ' \
                             f'exp_metadata or input params.'
