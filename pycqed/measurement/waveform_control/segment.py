@@ -197,7 +197,6 @@ class Segment:
             # generate name to automatically detect the end of the init block
             self._init_end_name = new_pulse.pulse_obj.name[:-len('start')] + \
                                    'end'
-        # print("adding", new_pulse.pulse_obj.name)
         if self._algo_start['search'] is not None:
             if block_mod.check_pulse_by_pattern(
                     pars_copy, self._algo_start['search'],

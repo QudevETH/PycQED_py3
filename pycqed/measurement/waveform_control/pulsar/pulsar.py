@@ -604,7 +604,12 @@ class Pulsar(Instrument):
         self.add_parameter(
             'algorithm_start', initial_value='segment_start',
             parameter_class=ManualParameter, vals=vals.Strings(),
-            docstring="TODO")
+            docstring="Defines which pulse should be treated as the 0 point "
+                      "of the algorithm time axis. Can be 'segment_start' "
+                      "(first pulse in the main part of the segement, "
+                      "default), 'init_start' (first pulse in the init part "
+                      "of the segment), or a search pattern as described in "
+                      "the docstring of Block.build, param sweep_dicts_list.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names
