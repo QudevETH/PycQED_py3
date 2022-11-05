@@ -1529,7 +1529,7 @@ class ZI_base_instrument(Instrument):
             par(wf)
 
         t1 = time.time()
-        log.info('{self.devname}: Set all waveforms to zeros in {:.1f} ms'.format(1.0e3*(t1-t0)))
+        log.info(f"{self.devname}: Set all waveforms to zeros in {1.0e3 * (t1 - t0):.1f} ms")
 
     def configure_awg_from_string(self, awg_nr: int, program_string: str,
                                   timeout: float=15):
@@ -1551,7 +1551,7 @@ class ZI_base_instrument(Instrument):
 
         # This check (and while loop) is added as a workaround for #9
         while not success_and_ready:
-            # 3 lines different from Delft version: store and log statusstring (do not print)
+            # 3 lines different from Delft version: store and log statusstring
             new_statusstring = f'{self.devname}: Configuring AWG {awg_nr}...'
             log.info(new_statusstring)
             self.compiler_statusstring += new_statusstring
