@@ -98,8 +98,8 @@ class TestPulsarAWGInterface(TestCase):
                 # Common params defined in PulsarAWGInterface.create_awg_parameters()
                 parameters = [
                     "_active",
-                    "_minimize_sequencer_memory",
                     "_enforce_single_element",
+                    "_join_or_split_element",
                     "_granularity",
                     "_element_start_granularity",
                     "_min_length",

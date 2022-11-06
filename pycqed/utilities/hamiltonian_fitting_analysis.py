@@ -1027,8 +1027,9 @@ class HamiltonianFittingAnalysis:
             freq_std = data["Analysis"]["Processed data"][
                 "analysis_params_dict"
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
+            dc_source_key = fluxlines_dict[qubit_name].instrument.name
             voltage = float(
-                data["Instrument settings"]["DCSource"].attrs[
+                data["Instrument settings"][dc_source_key].attrs[
                     fluxlines_dict[qubit_name].name
                 ]
             )

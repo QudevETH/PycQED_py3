@@ -38,10 +38,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # Repeat pattern support is not yet implemented for the SHFQC, thus we
-        # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
-
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
@@ -96,20 +92,12 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         SHFGeneratorModulePulsar.program_awg(*args, **kwargs)
 
     def is_awg_running(self):
-        return SHFAcquisitionModulePulsar.is_awg_running(self) or \
+        return SHFAcquisitionModulePulsar.is_awg_running(self) and \
                SHFGeneratorModulePulsar.is_awg_running(self)
 
     def sigout_on(self, ch, on=True):
         id = self.pulsar.get(ch + '_id')
         return self._get_superclass(id).sigout_on(self, ch, on=on)
-
-    def start(self):
-        SHFAcquisitionModulePulsar.start(self)
-        SHFGeneratorModulePulsar.start(self)
-
-    def stop(self):
-        SHFAcquisitionModulePulsar.stop(self)
-        SHFGeneratorModulePulsar.stop(self)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         id = self.pulsar.get(ch + '_id')

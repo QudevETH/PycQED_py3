@@ -4,7 +4,7 @@ from pycqed.gui import qt_compat as qt
 from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
 from pycqed.measurement.waveform_control.pulsar import Pulsar
-from pycqed.gui.rc_params import GUI_RC_PARAMS
+from pycqed.gui import rc_params as gui_rc_params
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
 from pycqed.gui import gui_utilities as g_utils
 from matplotlib.backend_bases import _Mode
@@ -47,7 +47,7 @@ class WaveformViewer:
              default is 0
             rc_params (dict): modify the rc parameters of the matplotlib
                 plotting backend. By default (if rc_params=None is passed) the
-                rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
+                rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded,
                 but they are updated with the parameters passed in the
                 rc_params dictionary
             new_process (bool): If True the QApplication hosting the GUI
@@ -204,7 +204,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             segment_index (int): Index of the initially displayed segment.
             rc_params (dict): Modify the rc parameters of the matplotlib
                 plotting backend. By default (if rc_params=None is passed), the
-                rc parameters in pycqed.gui.rc_params.GUI_RC_PARAMS are loaded,
+                rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded,
                 but they are updated with the parameters passed in the
                 rc_params dictionary
             *args:
@@ -217,7 +217,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.experiment_name = experiment_name
         self.current_sequence_index = sequence_index
         self.current_segment_index = segment_index
-        self.rc_params = deepcopy(GUI_RC_PARAMS)
+        self.rc_params = gui_rc_params.gui_rc_params()
         if rc_params is not None:
             self.rc_params.update(rc_params)
         self._toolbar_memory = _Mode.NONE
@@ -526,7 +526,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         with plt.rc_context(self.rc_params):
             fig, axes = self.get_current_segment().plot(
                 channel_map=channel_map,
-                instruments=instruments,
+                trigger_groups=instruments,
                 **self.gui_kwargs
             )
             add_picker_to_line_artists(axes)

@@ -25,8 +25,11 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
     USER_REG_FIRST_SEGMENT = 5
     USER_REG_LAST_SEGMENT = 6
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, interface: str= '1GbE',
+                 server: str= 'localhost', **kwargs):
+        super().__init__(*args, interface=interface, server=server, **kwargs)
+        self.interface = interface
+        self.server = server
         self._snapshot_whitelist = {
             'IDN',
             'clockbase',

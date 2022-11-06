@@ -976,6 +976,10 @@ def calculate_meas_ops_and_covariations(
 
     if keys_out is None:
         keys_out = ['measurement_ops', 'cov_matrix_meas_obs']
+        keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                               **params)
+        if keys_out_container is not None:
+            keys_out = [f'{keys_out_container}.{keyo}' for keyo in keys_out]
     if len(keys_out) != 2:
         raise ValueError(f'keys_out must have length 2. {len(keys_out)} '
                          f'entries were given.')
@@ -1040,6 +1044,8 @@ def calculate_meas_ops_and_covariations_cal_points(
     Calculates the measurement operators corresponding to each observable and
         the expected covariance matrix between the operators from the
         observables and calibration points.
+    Applies readout correction based on calibration segments.
+
     :param data_dict: OrderedDict containing data to be processed and where
         processed data is to be stored
     :param keys_in: list of key names or dictionary keys paths in data_dict
@@ -1063,13 +1069,19 @@ def calculate_meas_ops_and_covariations_cal_points(
         - the measurement operators corresponding to each observable and the
             expected covariance matrix between the operators under keys_out
         - if keys_out is None, it will saves the aforementioned quantities
-            under  'measurement_ops' and 'cov_matrix_meas_obs'
+            under 'measurement_ops' and 'cov_matrix_meas_obs'
 
     Assumptions:
         - all qubits in CalibrationPoints have the same cal point indices
+        - There must be a calibration segment for each of the computational
+        basis states of the Hilbert space.
     """
     if keys_out is None:
         keys_out = ['measurement_ops', 'cov_matrix_meas_obs']
+        keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                               **params)
+        if keys_out_container is not None:
+            keys_out = [f'{keys_out_container}.{keyo}' for keyo in keys_out]
     if len(keys_out) != 2:
         raise ValueError(f'keys_out must have length 2. {len(keys_out)} '
                          f'entries were given.')
@@ -1105,7 +1117,7 @@ def calculate_meas_ops_and_covariations_cal_points(
 
     # find the means for all the products of the operators and the average
     # covariation of the operators
-    observables_data ={k: v for k, v in observables.items() if k != 'pre'}
+    observables_data = {k: v for k, v in observables.items() if k != 'pre'}
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
                                    **params)
     prod_obss = OrderedDict()
@@ -1304,13 +1316,16 @@ def extract_leakage_classified_shots(data_dict, keys_in, keys_out=None,
     proba_f['any_leaked'] = np.sum(ps_mean_corr*(np.sum(
         list(masks_f.values()), axis=0) > 0), axis=-1)
 
+    keys_out_container = hlp_mod.get_param(
+        'keys_out_container', data_dict,
+        default_value='extract_leakage_classified_shots', **params)
     if keys_out is None:
         for mobjn in meas_obj_names:
             hlp_mod.add_param(
-                f'extract_leakage_classified_shots.{mobjn}_leaked',
+                f'{keys_out_container}.{mobjn}_leaked',
                 proba_f[f'{mobjn}_leaked'], data_dict, **params)
 
-        hlp_mod.add_param(f'extract_leakage_classified_shots.any_leaked',
+        hlp_mod.add_param(f'{keys_out_container}.any_leaked',
                           proba_f['any_leaked'], data_dict, **params)
     else:
         if len(keys_out) != 1:
