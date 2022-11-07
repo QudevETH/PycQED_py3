@@ -10585,7 +10585,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             'msmt_sweep_points']
                         Delta = self.proc_data_dict['Delta'][qbH]
                         offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
-                        Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
+                        Delta_fine = np.linspace(-2*abs(min(Delta)-abs(offset_freq)), 2*(max(Delta)+offset_freq), steps) # for fit plotting
                         J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
                         offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
                         mmt_string = self.measurement_strings[qbH].partition('_')[0]
@@ -10610,7 +10610,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
                                 f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
                             J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
-                            xvals_fit = self.t_CARB(J, Delta_fine, n)  if actual_detuning else \
+                            xvals_fit = self.t_CARB(J, Delta_fine, n) if actual_detuning else \
                                 self.t_CARB(J, Delta_fine + offset_freq, n)
                             self.plot_dicts[f'{fit_plot_name}_main'] = {
                                 'plotfn': self.plot_line,
@@ -10635,8 +10635,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
                                 'plotfn': self.plot_line,
                                 'fig_id': base_plot_name,
-                                'xvals': xvals,
-                                'yvals': J*np.ones(len(xvals)) * (-1) ** negative_J - offset_freq * (1-actual_detuning),
+                                'xvals': [0, 2*xvals[-1]-xvals[-2]],
+                                'yvals': J*np.ones(2) * (-1) ** negative_J - offset_freq * (1-actual_detuning),
                                 'color': 'white',
                                 'marker': 'None',
                                 # 'setlabel': 'J',
