@@ -215,7 +215,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             Stored in self.measurement_strings which specify the plot title.
             The selected parameter must also be part of the split_params for
             that qubit.
-     - functionality to plot 1d slices from a 2D plot:
+     - functionality to plot 1d slices from a 2D plot: enabled by passing the
+        following parameters:
          - slice_idxs_1d_raw_plot (dict; default: None): slices indices of the
             raw data. If None, no slices are plotted.
          - slice_idxs_1d_proj_plot (dict; default: None): slices indices of the
@@ -227,6 +228,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'idx_start:idx_end' interpreted as standard list/array indexing
                 arr[idx_start:idx_end]
             Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
+        Note: to plot only 1D slices of 2D data, the standard plotting of raw
+            and projected data can be disabled via the flags `plot_raw_data` and
+            `plot_proj_data.`
 
     If an instance of SweepPoints (or its repr) is provided, then the
     corresponding meas_obj_sweep_points_map must also be specified in
@@ -2165,13 +2169,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Args:
             qb_name (str): qubit name
-            raw_data_dict (dict): the dictionary containing the raw data, with
-                qubit names as keys.
-                Typically proc_data_dict['meas_results_per_qb(_raw)'].
-            xvals (list/array): x-axis values. Typically the hard/1d sweep
+            raw_data_dict (dict): the dictionary containing the raw data, where
+                the keys are names of acquisition channels (usually the value
+                names created by the detector functions).
+                Typically, this dict corresponds to
+                proc_data_dict['meas_results_per_qb(_raw)'].
+            xvals (list/array): x-axis values. Typically, the hard/1d sweep
                 points
-            twod_data_idx (int): index of a slice in a 2D data array
-            twod_data_axis (int): axis of a 2D data array (0 for row, 1 for col)
+            twod_data_idx (int): index of a slice in a 2D data array. Will be
+                ignored if `None`. More details below argument list. Defaults
+                to `None`.
+            twod_data_axis (int): axis of a 2D data array (0 for row, 1 for
+                col). Will be ignored if `None`. More details below argument
+                list. Defaults to `None`.
             fig_name (str): name of the figure
             fig_suffix (str): suffix to the figure name. qb_name is
                 automatically inserted between fig_name and fig_suffix.
@@ -2181,10 +2191,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 sweep parameter
             TwoD (bool): whether to prepare a 2D plot
 
-        If the data is TwoD, and twod_data_idx and twod_data_axis are passed,
+        If the data is 2D, and twod_data_idx and twod_data_axis are passed,
         this function will prepare a 1D plot of the slice in the 2D data
-        at index twod_data_idx along axis twod_data_axis. TwoD should be False
-        in this case in order to avoid preparing a 2D plot in addition.
+        at index twod_data_idx along axis twod_data_axis. Parameter "TwoD"
+        should be False in this case in order to avoid preparing a 2D plot
+        in addition.
 
         If xlabel, xunit are None, they are taken from the SweepPoints or from
         the metadata as the ones corresponding to the hard/1d sweep parameter.
@@ -2220,7 +2231,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
                 if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
                     # Only prepare 2D plots when there is more than one soft
-                    # sweep points. When there is only one soft sweep point
+                    # sweep point. When there is only one soft sweep point
                     # we want to do 1D plots which are more meaningful
                     prep_1d_plot = False
                     for pn, ssp in sp2dd.items():
