@@ -10588,7 +10588,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
                         J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
                         offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
-                        t_CZ = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['t_CZ_Chevron']
+                        mmt_string = self.measurement_strings[qbH].partition('_')[0]
+                        t_CZ = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['t_CZ_'+mmt_string]
                         textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
                         textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
                         textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
