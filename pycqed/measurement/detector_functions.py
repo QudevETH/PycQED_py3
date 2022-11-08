@@ -676,12 +676,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 for n, p in enumerate(acq_paths[acq_dev_name]):
                     if p not in dataset[acq_dev_name]:
                         continue
-                    # print(data[acq_dev_name][n])
-                    # print(dataset[acq_dev_name][p])
                     data[acq_dev_name][n] = np.concatenate([
                         data[acq_dev_name][n], *dataset[acq_dev_name][p]])
                     n_data = len(data[acq_dev_name][n])
-                    print('poll:', n_data, np.shape(data[acq_dev_name][n]))
                     if n_data >= n_sp:
                         gotem[acq_dev_name][n] = True
                         if n_data > n_sp:
@@ -1628,22 +1625,16 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
         self.value_names = [f'{acq_dev.name}_hist_{b}' for b in self.bins]
         self.value_units = ['' for k in self.value_names]
-        print('TTTT0')
         self.progress_scaling = self.nr_shots
 
     def prepare(self, sweep_points=None):
         self.acq_dev.nb_bins = self.nr_bins
         # TODO peak_to_peak
-        print(sweep_points)
         super().prepare(sweep_points=sweep_points)
         # undo scaling done in super method because we receive only 1 histogram
         self.nr_sweep_points //= self.nr_shots
-        print('SSSSS', self.nr_sweep_points, self.values_per_point, self.acq_data_len_scaling)
 
     def process_data(self, data_raw):
-        print(np.shape(data_raw))
-        from pprint import pprint
-        pprint(data_raw)
         # TODO
         return [[data['data'][b] for data in data_raw[0]] for b in self.bins]
 
