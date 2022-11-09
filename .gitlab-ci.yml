@@ -33,8 +33,8 @@ before_script:
   - echo "$QUDEV_DOC_PRIVATE_SSH_KEY" | ssh-add -
   - mkdir -p ~/.ssh
   - chmod 700 ~/.ssh
-  - ssh-keyscan gitlab.ethz.ch/qudev >> ~/.ssh/known_hosts
-  - ssh-keyscan login.phys.ethz.ch >> ~/.ssh/known_hosts
+  - ssh-keyscan gitlab.ethz.ch >> ~/.ssh/known_hosts
+  - ssh-keyscan documentation.qudev.phys.ethz.ch >> ~/.ssh/known_hosts
   - chmod 644 ~/.ssh/known_hosts
 
 # Build the documentation, and copy it to the QuDev documentation webshare
@@ -44,9 +44,9 @@ pages:
     - make html
     # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
     - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
-    - ssh wwwqudevdoc@login.phys.ethz.ch "mkdir -p public/$DOC_UPLOAD_FOLDER"
-    - ssh wwwqudevdoc@login.phys.ethz.ch "rm -rf public/$DOC_UPLOAD_FOLDER/*"
-    - scp -r ./build/html/* "wwwqudevdoc@login.phys.ethz.ch:public/$DOC_UPLOAD_FOLDER"
+    - ssh wwwqudevdoc@documentation.qudev.phys.ethz.ch "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh wwwqudevdoc@documentation.qudev.phys.ethz.ch "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r ./build/html/* "wwwqudevdoc@documentation.qudev.phys.ethz.ch:public/$DOC_UPLOAD_FOLDER"
     - echo "Documentation accessible at https://documentation.qudev.phys.ethz.ch/$DOC_UPLOAD_FOLDER/index.html"
   only:
     # The documentation will only be built for the listed branches
