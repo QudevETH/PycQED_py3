@@ -1139,6 +1139,9 @@ class QuDev_transmon(Qubit):
         # other preparations
         self.update_detector_functions()
         self.set_readout_weights()
+        # provide classifier params to acqusition device
+        self.instr_acq.get_instr().set_classifier_params(
+            self.get_acq_int_channels(), self.acq_classifier_params())
         # set switches to the mode required for the measurement
         # See the docstring of switch_modes for an explanation of the
         # following modes.

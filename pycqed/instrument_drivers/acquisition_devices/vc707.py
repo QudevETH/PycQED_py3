@@ -42,8 +42,12 @@ class VC707(VC707_core, AcquisitionDevice):
         "avg": [], # averaged raw input (time trace) in V
         "int_avg": [
             "raw",
-            "digitized", # Single-shot readout
+            "digitized", # Single-shot qubit readout
+            "digitized_qutrit",  # Single-shot qutrit readout
         ],
+        "hist": [
+            "raw",
+        ]
         # "scope": [],
     }
     res_logging_indices = {#"raw": 1,  # raw integrated+averaged results
@@ -63,6 +67,7 @@ class VC707(VC707_core, AcquisitionDevice):
 
         self.initialize(devidx=devidx, clockmode=clockmode, verbose=verbose)
         self._acq_integration_weights = {}
+        self._acq_classifier_params = {}
         self._last_traces = []
         self.nb_bins = {}
         self._histogrammer_result_lookup = {}
@@ -149,6 +154,7 @@ class VC707(VC707_core, AcquisitionDevice):
             nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
             self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
+            # FIXME: shouldn't it be set(pair_lookup.values()) in the next line?
             pairs = OrderedDict({k: None for k in set(pair_lookup)})
             for pair_id in pairs:
                 if pair_id[0] != 0:
@@ -181,7 +187,7 @@ class VC707(VC707_core, AcquisitionDevice):
             nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
             nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
             if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
-                log.warning(f'TODO ')
+                log.warning(f'nb_triggers_pow4 got rounded up')  # TODO
             self.histogrammer.settings.nb_triggers_pow4 = nb_triggers_pow4
             integrator_lookup = {}
             for pair_nr, pair_id in enumerate(pairs):
@@ -214,26 +220,63 @@ class VC707(VC707_core, AcquisitionDevice):
             self.state_discriminator.upload_weights(discriminate=False)
 
         elif module == "state_discriminator":
-            self.state_discriminator_nb_samples.set(
-                self.convert_time_to_n_samples(acquisition_length)
-            )
-            self.state_discriminator_nb_segments.set(n_results)
-            # TODO: loop_cnt seems to be `self.nr_shots * self.nr_averages`, what
-            # exact value do we need to set. In list_ouput mode the FPGA will
-            # return exactly 4**nb_triggers_pow4 values.
-            self.state_discriminator_nb_triggers_pow4.set(
-                math.log(loop_cnt, 4)
-            )
-            self.state_discriminator_use_list_output.set(True)
+            nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
 
-            # TODO: configure fpga acquisition units properly
-            print("Don't forget to set discrimination units, and weights.")
-            # self.state_discriminator_units.set([])
-            # for ch, quadrature in channels:
-            #     self.state_discriminator_units.get().append(
-            #         DiscriminationUnit()
-            #     )
+
+            self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
+            pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
+            pairs = OrderedDict({k: None for k in set(pair_lookup.values())})
+            for pair_id in pairs:
+                if pair_id[0] != 0:
+                    raise NotImplementedError(
+                        'Histogrammer can only be used on physical channel 0 '
+                        'until someone fixes a bug in the FPGA.')
+                unit = DiscriminationUnit()
+                unit.nb_states = (
+                    3 if self._acq_data_type == 'digitized_qutrit' else 2)
+                unit.weights = [np.zeros(nb_samples) for i in range(
+                    4 if unit.nb_states == 3 else 2)]
+                unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
+                unit.source_adc = pair_id[0]
+                pairs[pair_id] = unit
+
+            n_ch_in_pair = {pair_id: 0 for pair_id in pairs}
+            for ch in self._acq_channels:
+                pair_id = pair_lookup[ch]
+                for i in range(2):
+                    w = self._acq_integration_weights[ch][i]
+                    p = max(nb_samples - len(w), 0)
+                    pairs[pair_id].weights[2*n_ch_in_pair[pair_id] + i] =\
+                        np.pad(w, p)[:nb_samples]
+                n_ch_in_pair[pair_id] += 1
+
+            for pair_id in pairs:
+                channels = [ch for ch in self._acq_channels
+                            if pair_lookup[ch] == pair_id]
+                pairs[pair_id].center_coordinates = tuple(
+                    self._acq_classifier_params[tuple(channels)]['means_'])
+
+            self.state_discriminator.settings.units = list(pairs.values())
+            self.state_discriminator.settings.nb_samples = nb_samples
+            self.state_discriminator.settings.use_list_output = True
+
+            self.state_discriminator.settings.nb_segments = (
+                self._acq_n_results // self._acq_loop_cnt)
+            nb_triggers = self._acq_n_results
+            nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
+            nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
+            if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
+                log.warning(f'nb_triggers_pow4 got rounded up')  # TODO
+            self.state_discriminator.settings.nb_triggers_pow4 = nb_triggers_pow4
+
+            # FIXME: Downscaling is set to zero here: state disc doesn't work
+            # if downscaling is not set to zero and we don't know why exactly
+            self.preprocessing_down_scaling(0)
+            # TODO does the order of configure and upload matter?
             self.state_discriminator.configure()
+            self.state_discriminator.upload_weights(discriminate=True)
+
+
 
     def acquisition_progress(self):
         return self._fpga.fpga_interface.trigger_counter()
@@ -268,10 +311,11 @@ class VC707(VC707_core, AcquisitionDevice):
 
     # TODO: Should take in list of tuple (acq_unit, quadrature)
     def set_classifier_params(self, channels, params):
-        if params is not None and 'means_' in params:
-            for qubit in self.state_discriminator_qubits.get():
-                if qubit.source_adc in [c[0] for c in channels]:
-                    qubit.center_coordinates = params['means_'].ravel()
+        self._acq_classifier_params[tuple(channels)] = params
+        # if params is not None and 'means_' in params:
+        #     for qubit in self.state_discriminator_qubits.get():
+        #         if qubit.source_adc in [c[0] for c in channels]:
+        #             qubit.center_coordinates = params['means_'].ravel()
 
     def _adapt_averager_results(self, raw_results) -> dict:
         """Format the FPGA averager results as expected by PycQED."""
@@ -296,10 +340,15 @@ class VC707(VC707_core, AcquisitionDevice):
 
         dataset = {}
 
-        # TODO: What format is expected? The doc says "returns fraction of shots
-        # based on the threshold defined in the UHFQC".
+        # FIXME: revisit this code if state disc with second physical
+        #  input is fixed at some point
         for i in self._acq_units_used:
-            dataset[i] = raw_results
+            int_channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
+            # FIXME: the following only works for a single qubit/qutrit.
+            #   If there are, e.g., 2 qubits, the states 00, 01, 10, 11 are
+            #   represented as 0, ..., 3 and this needs to be split up here
+            dataset.update({(i, ch): [raw_results]
+                            for n, ch in enumerate(int_channels)})
 
         return dataset
 
@@ -348,11 +397,11 @@ class VC707(VC707_core, AcquisitionDevice):
             return "averager"
         elif self._acq_mode == "int_avg":
             if self._acq_data_type == "raw":
-                if self._acq_averages > 1:
-                    return "averager"
-                else:
-                    return "histogrammer"
-            elif self._acq_data_type == "digitized":
+                # if self._acq_averages > 1:
+                return "averager"
+                # else:
+                #     return "histogrammer"
+            elif self._acq_data_type.startswith("digitized"):
                 return "state_discriminator"
         raise ValueError(f"Unknown FPGA mode for mode '{self._acq_mode}' "
                          f"and data type '{self._acq_data_type}'.")

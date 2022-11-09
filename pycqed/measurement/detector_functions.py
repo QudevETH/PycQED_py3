@@ -1149,6 +1149,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             values_per_point=values_per_point,
             values_per_point_suffix=values_per_point_suffix)
 
+        self._acq_mode = 'int_avg'
         self.single_int_avg = single_int_avg
         if self.single_int_avg:
             self.detector_control = 'soft'
@@ -1323,7 +1324,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             acquisition_length=self.integration_length,
             averages=self.nr_averages,
             loop_cnt=int(self.nr_shots * self.nr_averages),
-            mode='int_avg', data_type=self.data_type,
+            mode=self._acq_mode, data_type=self.data_type,
         )
 
 
@@ -1611,6 +1612,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
               use live plotting
         """
         super().__init__(acq_dev, nr_averages=1, **kw)
+        self._acq_mode = 'hist'
 
         self.name = '{}_integration_hist_det'.format(self.data_type)
         self.nr_shots = nr_shots

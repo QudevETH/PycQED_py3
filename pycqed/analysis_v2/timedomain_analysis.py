@@ -6961,6 +6961,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
 
+            # TODO add calculation for centroids here
+            # ana_params['means'][qbn] = ...
+
             self.save_processed_data()
 
     def prepare_plots(self):

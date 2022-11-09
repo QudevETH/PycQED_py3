@@ -267,12 +267,13 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 data_type='raw', **kw)
             for uhf in uhfs])
     elif df_name == 'dig_log_det':
+        kw.setdefault('data_type', 'digitized')
         return det.MultiPollDetector([
             det.IntegratingSingleShotPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG,
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                data_type='digitized', **kw)
+                **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det':
         return det.MultiPollDetector([
@@ -783,6 +784,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                 f"automatically.")
                 qb.acq_weights_basis(a.proc_data_dict['analysis_params_dict'
                     ]['optimal_weights_basis_labels'][qb.name])
+                # TODO: add this line after implementing it in the analysis
+                # TODO: find out whether this line will annoy ZI users
+                # qb.acq_classifier_params().update({'means_': a.proc_data_dict[
+                #     'analysis_params_dict']['means'][qb.name]})
         return a
 
 
