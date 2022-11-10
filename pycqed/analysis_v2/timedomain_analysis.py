@@ -25,7 +25,6 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
-import traceback
 import logging
 
 from pycqed.utilities import math
