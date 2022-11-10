@@ -19,6 +19,7 @@ except Exception:
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIGeneratorModule
 
 
 log = logging.getLogger(__name__)
@@ -77,8 +78,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = None
         self._init_mcc()
 
-        # dict for storing previously-uploaded waveforms
-        self._hdawg_waveform_cache = dict()
+        self._awg_modules = []
+        for awg_nr in self._hdawg_active_awgs():
+            channel_pair = HDAWGGeneratorModule(
+                awg=self.awg,
+                awg_interface=self,
+                awg_nr=awg_nr
+            )
+            self._awg_modules.append(channel_pair)
 
     def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
@@ -412,7 +419,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             return self.awg.get(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode')
         return g
 
-
     def get_divisor(self, chid, awg):
         """Divisor is 2 for modulated non-marker channels, 1 for other cases."""
 
@@ -424,291 +430,124 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
+        self._zi_program_generator_awg(
+            awg_sequence=awg_sequence,
+            waveforms=waveforms,
+            repeat_pattern=repeat_pattern,
+            channels_to_upload=channels_to_upload,
+            channels_to_program=channels_to_program,
+        )
 
-        self.wfms_to_upload = {}  # reset waveform upload memory
-        chids = [f'ch{i+1}{m}' for i in range(8) for m in ['','m']]
-        divisor = {chid: self.get_divisor(chid, self.awg.name) for chid in chids}
-        def with_divisor(h, ch):
-            return (h if divisor[ch] == 1 else (h, divisor[ch]))
+    def is_awg_running(self):
+        return all([self.awg.get('awgs_{}_enable'.format(awg_nr))
+                    for awg_nr in self._hdawg_active_awgs()
+                    if self.awg._awg_program[awg_nr] is not None])
 
-        ch_has_waveforms = {chid: False for chid in chids}
+    def clock(self):
+        return self.awg.clock_freq()
 
-        use_placeholder_waves = self.pulsar.get(f"{self.awg.name}_use_placeholder_waves")
+    def _hdawg_active_awgs(self):
+        return [0,1,2,3]
 
-        if not use_placeholder_waves:
-            if not self.zi_waves_clean():
-                self._zi_clear_waves()
+    def get_segment_filter_userregs(self, include_inactive=False):
+        return [(f'awgs_{i}_userregs_{self.awg.USER_REG_FIRST_SEGMENT}',
+                 f'awgs_{i}_userregs_{self.awg.USER_REG_LAST_SEGMENT}')
+                for i in range(4) if include_inactive or
+                self.awg._awg_program[i] is not None]
 
-        for awg_nr in self._hdawg_active_awgs():
-            defined_waves = (set(), dict()) if use_placeholder_waves else set()
-            codeword_table = {}
-            wave_definitions = []
-            codeword_table_defs = []
-            playback_strings = []
-            interleaves = []
+    def sigout_on(self, ch, on=True):
+        chid = self.pulsar.get(ch + '_id')
+        if chid[-1] != 'm':  # not a marker channel
+            self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
-            use_filter = any([e is not None and
-                              e.get('metadata', {}).get('allow_filter', False)
-                              for e in awg_sequence.values()])
-            if use_filter:
-                playback_strings += ['var i_seg = -1;']
-                wave_definitions += [
-                    f'var first_seg = getUserReg({self.awg.USER_REG_FIRST_SEGMENT});',
-                    f'var last_seg = getUserReg({self.awg.USER_REG_LAST_SEGMENT});',
-                ]
+    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+        # This wrapper method is needed because 'finalize_upload_after_mcc'
+        # method in 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms'
+        # method from device interfaces instead of from channel interfaces.
+        self._awg_modules[awg_nr].upload_waveforms(
+            wave_idx=wave_idx,
+            waveforms=waveforms,
+            wave_hashes=wave_hashes
+        )
 
-            ch1id = 'ch{}'.format(awg_nr * 2 + 1)
-            ch1mid = 'ch{}m'.format(awg_nr * 2 + 1)
-            ch2id = 'ch{}'.format(awg_nr * 2 + 2)
-            ch2mid = 'ch{}m'.format(awg_nr * 2 + 2)
-            chids = [ch1id, ch1mid, ch2id, ch2mid]
 
-            channels = [self.pulsar._id_channel(chid, self.awg.name)
-                        for chid in [ch1id, ch2id]]
-            if all([self.pulsar.get(f"{chan}_internal_modulation")
-                    for chan in channels]):
-                internal_mod = True
-            elif not any([self.pulsar.get(f"{chan}_internal_modulation")
-                for chan in channels]):
-                internal_mod = False
-            else:
-                raise NotImplementedError('Internal modulation can only be'
-                                          'specified per sub AWG!')
+class HDAWGGeneratorModule(ZIGeneratorModule):
+    """Pulsar interface for ZI HDAWG AWG modules. Each AWG module consists of
+    two analog channels and two marker channels. Please refer to ZI user manual
+    https://docs.zhinst.com/hdawg_user_manual/overview.html
+    for more details."""
 
-            counter = 1
-            next_wave_idx = 0
-            wave_idx_lookup = {}
-            current_segment = 'no_segment'
-            first_element_of_segment = True
-            for element in awg_sequence:
-                awg_sequence_element = deepcopy(awg_sequence[element])
-                if awg_sequence_element is None:
-                    current_segment = element
-                    playback_strings.append(f'// Segment {current_segment}')
-                    if use_filter:
-                        playback_strings.append('i_seg += 1;')
-                    first_element_of_segment = True
-                    continue
-                wave_idx_lookup[element] = {}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-                metadata = awg_sequence_element.pop('metadata', {})
-                trigger_groups = metadata['trigger_groups']
-                if not self.pulsar.check_channels_in_trigger_groups(
-                        set(channels), trigger_groups):
-                    continue
-                playback_strings.append(f'// Element {element}')
+        self._hdawg_internal_mod = False
+        # TODO: this attribute is used only when using the old internal
+        #  modulation implementation on HDAWG. Remove this attribute once the
+        #  new implementation is deployed.
+        """Flag that indicates whether internal modulation is turned on for 
+        this device."""
 
-                # The following line only has an effect if the metadata
-                # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_start(
-                    metadata, [ch1id, ch2id, ch1mid, ch2mid])
+        self._device_type = 'hdawg'
+        """Device type of the generator."""
 
-                nr_cw = len(set(awg_sequence_element.keys()) - \
-                            {'no_codeword'})
+    def _generate_channel_ids(
+            self,
+            awg_nr
+    ):
+        ch1id = 'ch{}'.format(awg_nr * 2 + 1)
+        ch1mid = 'ch{}m'.format(awg_nr * 2 + 1)
+        ch2id = 'ch{}'.format(awg_nr * 2 + 2)
+        ch2mid = 'ch{}m'.format(awg_nr * 2 + 2)
 
-                if nr_cw == 1:
-                    log.warning(
-                        f'Only one codeword has been set for {element}')
-                else:
-                    for cw in awg_sequence_element:
-                        if cw == 'no_codeword':
-                            if nr_cw != 0:
-                                continue
-                        chid_to_hash = awg_sequence_element[cw]
-                        wave = tuple(chid_to_hash.get(ch, None) for ch in chids)
-                        if wave == (None, None, None, None):
-                            continue
-                        if nr_cw != 0:
-                            w1, w2 = self._zi_waves_to_wavenames(wave)
-                            if cw not in codeword_table:
-                                codeword_table_defs += \
-                                    self._zi_codeword_table_entry(
-                                        cw, wave, use_placeholder_waves)
-                                codeword_table[cw] = (w1, w2)
-                            elif codeword_table[cw] != (w1, w2) \
-                                    and self.pulsar.reuse_waveforms():
-                                log.warning('Same codeword used for different '
-                                            'waveforms. Using first waveform. '
-                                            f'Ignoring element {element}.')
-                        ch_has_waveforms[ch1id] |= wave[0] is not None
-                        ch_has_waveforms[ch1mid] |= wave[1] is not None
-                        ch_has_waveforms[ch2id] |= wave[2] is not None
-                        ch_has_waveforms[ch2mid] |= wave[3] is not None
-                        if not len(channels_to_upload):
-                            # _program_awg was called only to decide which
-                            # sub-AWGs are active, and the rest of this loop
-                            # can be skipped
-                            continue
-                        if use_placeholder_waves:
-                            if wave in defined_waves[1].values():
-                                wave_idx_lookup[element][cw] = [
-                                    i for i, v in defined_waves[1].items()
-                                    if v == wave][0]
-                                continue
-                            wave_idx_lookup[element][cw] = next_wave_idx
-                            next_wave_idx += 1
-                            placeholder_wave_lengths = [
-                                waveforms[h].size for h in wave if h is not None
-                            ]
-                            if max(placeholder_wave_lengths) != \
-                               min(placeholder_wave_lengths):
-                                log.warning(f"Waveforms of unequal length on"
-                                            f"{self.awg.name}, vawg{awg_nr}, "
-                                            f"{current_segment}, {element}.")
-                            wave_definitions += self._zi_wave_definition(
-                                wave,
-                                defined_waves,
-                                max(placeholder_wave_lengths),
-                                wave_idx_lookup[element][cw])
-                        else:
-                            wave = tuple(
-                                with_divisor(h, chid) if h is not None
-                                else None for h, chid in zip(wave, chids))
-                            wave_definitions += self._zi_wave_definition(
-                                wave, defined_waves)
+        self.channel_ids = [ch1id, ch1mid, ch2id, ch2mid]
+        self.analog_channel_ids = [ch1id, ch2id]
+        self.marker_channel_ids = [ch1mid, ch2mid]
+        self._upload_idx = awg_nr
 
-                    if not len(channels_to_upload):
-                        # _program_awg was called only to decide which
-                        # sub-AWGs are active, and the rest of this loop
-                        # can be skipped
-                        continue
-                    if not internal_mod:
-                        if first_element_of_segment:
-                            prepend_zeros = self.pulsar.parameters[
-                                f"{self.awg.name}_prepend_zeros"]()
-                            if prepend_zeros is None:
-                                prepend_zeros = self.pulsar.prepend_zeros()
-                            elif isinstance(prepend_zeros, list):
-                                prepend_zeros = prepend_zeros[awg_nr]
-                        else:
-                            prepend_zeros = 0
-                        playback_strings += self._zi_playback_string(
-                            name=self.awg.name, device='hdawg', wave=wave,
-                            codeword=(nr_cw != 0),
-                            prepend_zeros=prepend_zeros,
-                            placeholder_wave=use_placeholder_waves,
-                            allow_filter=metadata.get('allow_filter', False))
-                    elif not use_placeholder_waves:
-                        pb_string, interleave_string = \
-                            self._zi_interleaved_playback_string(
-                                name=self.awg.name, device='hdawg',
-                                counter=counter, wave=wave,
-                                codeword=(nr_cw != 0)
-                            )
-                        counter += 1
-                        playback_strings += pb_string
-                        interleaves += interleave_string
-                    else:
-                        raise NotImplementedError("Placeholder waves in "
-                                                  "combination with internal "
-                                                  "modulation not implemented.")
-                    first_element_of_segment = False
-
-                # The following line only has an effect if the metadata
-                # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_end(metadata)
-
-            if not any([ch_has_waveforms[ch] for ch in chids]):
-                # prevent ZI_base_instrument.start() from starting this sub AWG
-                self.awg._awg_program[awg_nr] = None
-                continue
-            # tell ZI_base_instrument that it should not compile a
-            # program on this sub AWG (because we already do it here)
-            self.awg._awg_needs_configuration[awg_nr] = False
-            # tell ZI_base_instrument.start() to start this sub AWG
-            # (The base class will start sub AWGs for which _awg_program
-            # is not None. Since we set _awg_needs_configuration to False,
-            # we do not need to put the actual program here, but anything
-            # different from None is sufficient.)
-            self.awg._awg_program[awg_nr] = True
-
-            # Having determined whether the sub AWG should be started or
-            # not, we can now skip in case no channels need to be uploaded.
-            if channels_to_upload != 'all' and not any(
-                    [ch in channels_to_upload for ch in chids]):
-                continue
-
-            if not use_placeholder_waves:
-                waves_to_upload = {with_divisor(h, chid):
-                                   divisor[chid]*waveforms[h][::divisor[chid]]
-                                   for codewords in awg_sequence.values()
-                                       if codewords is not None
-                                   for cw, chids in codewords.items()
-                                       if cw != 'metadata'
-                                   for chid, h in chids.items()}
-                self._zi_write_waves(waves_to_upload)
-
-            awg_str = self._hdawg_sequence_string_template.format(
-                wave_definitions='\n'.join(wave_definitions+interleaves),
-                codeword_table_defs='\n'.join(codeword_table_defs),
-                playback_string='\n  '.join(playback_strings),
+    def _generate_divisor(self):
+        """Generate divisors for all channels. Divisor is 2 for non-modulated
+        marker channels, 1 for every other channel."""
+        for chid in self.channel_ids:
+            self._divisor[chid] = self._awg_interface.get_divisor(
+                chid=chid,
+                awg=self._awg.name,
             )
 
-            if not use_placeholder_waves or channels_to_program == 'all' or \
-                    any([ch in channels_to_program for ch in chids]):
-                run_compiler = True
-            else:
-                cached_lookup = self._hdawg_waveform_cache.get(
-                    f'{self.awg.name}_{awg_nr}_wave_idx_lookup', None)
-                try:
-                    np.testing.assert_equal(wave_idx_lookup, cached_lookup)
-                    run_compiler = False
-                except AssertionError:
-                    log.debug(f'{self.awg.name}_{awg_nr}: Waveform reuse pattern '
-                              f'has changed. Forcing recompilation.')
-                    run_compiler = True
+    def _update_internal_mod_config(
+            self,
+            awg_sequence,
+    ):
+        """Updates self._hdawg_internal_modulation flag according to the
+        setting specified in pulsar.
 
-            if run_compiler:
-                # We have to retrieve the following parameter to set it
-                # again after programming the AWG.
-                prev_dio_valid_polarity = self.awg.get(
-                    'awgs_{}_dio_valid_polarity'.format(awg_nr))
+        Args:
+            awg_sequence: A list of elements. Each element consists of a
+            waveform-hash for each codeword and each channel.
+        """
+        channels = [self.pulsar._id_channel(chid, self._awg.name)
+                    for chid in self.analog_channel_ids]
 
-                if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
-                    # Parallel seqc string compilation and upload
-                    self.multi_core_compiler.add_active_awg(self.awgs_mcc[awg_nr])
-                    self.multi_core_compiler.load_sequencer_program(
-                        self.awgs_mcc[awg_nr], awg_str)
-                else:
-                    if self.pulsar.use_mcc():
-                        log.warning(
-                            f'Parallel elf compilation not supported for '
-                            f'{self.awg.name} ({self.awg.devname}), see debug '
-                            f'log when adding the AWG to pulsar.')
-                    # Sequential seqc string upload
-                    self.awg.configure_awg_from_string(awg_nr, awg_str,
-                                                       timeout=600)
+        if all([self.pulsar.get(f"{chan}_internal_modulation")
+                for chan in channels]):
+            self._hdawg_internal_mod = True
+        elif not any([self.pulsar.get(f"{chan}_internal_modulation")
+                      for chan in channels]):
+            self._hdawg_internal_mod = False
+        else:
+            raise NotImplementedError('Internal modulation can only be'
+                                      'specified per sub AWG!')
 
-                self.awg.set('awgs_{}_dio_valid_polarity'.format(awg_nr),
-                        prev_dio_valid_polarity)
-                if use_placeholder_waves:
-                    self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'] = {}
-                    self._hdawg_waveform_cache[
-                        f'{self.awg.name}_{awg_nr}_wave_idx_lookup'] = \
-                        wave_idx_lookup
+    def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
+        awg_nr = self._awg_nr
 
-            if use_placeholder_waves:
-                for idx, wave_hashes in defined_waves[1].items():
-                    self._update_waveforms(awg_nr, idx, wave_hashes, waveforms)
-
-        if self.pulsar.sigouts_on_after_programming():
-            for ch in range(8):
-                self.awg.set('sigouts_{}_on'.format(ch), True)
-
-        if any(ch_has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(self.awg.name)
-
-    def _update_waveforms(self, awg_nr, wave_idx, wave_hashes, waveforms):
         if self.pulsar.use_sequence_cache():
-            if wave_hashes == self._hdawg_waveform_cache[
-                    f'{self.awg.name}_{awg_nr}'].get(wave_idx, None):
+            if wave_hashes == self.waveform_cache.get(wave_idx, None):
                 log.debug(
-                    f'{self.awg.name} awgs{awg_nr}: {wave_idx} same as in cache')
+                    f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
+                    f'cache')
                 return
-            self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
         log.debug(
-            f'{self.awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
@@ -732,61 +571,106 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
+        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
             # Parallel seqc compilation is used, which must take place before
             # waveform upload. Waveforms are added to self.wfms_to_upload and
             # will be uploaded to device in pulsar._program_awgs.
-            self.wfms_to_upload[(awg_nr, wave_idx)] = \
+            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
                 (wf_raw_combined, wave_hashes)
         else:
-            self.upload_waveforms(awg_nr, wave_idx, wf_raw_combined, wave_hashes)
+            self.upload_waveforms(wave_idx, wf_raw_combined, wave_hashes)
 
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
+    def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
         """
         Upload waveforms to an awg core (awg_nr).
 
         Args:
-            awg_nr (int): index of awg core (0, 1, 2, or 3)
             wave_idx (int): index of wave upload (0 or 1)
             waveforms (array): waveforms to upload
             wave_hashes: waveforms hashes
         """
         # Upload waveforms to awg
-        self.awg.setv(f'awgs/{awg_nr}/waveform/waves/{wave_idx}', waveforms)
+        self._awg.setv(f'awgs/{self._awg_nr}/waveform/waves/{wave_idx}',
+                       waveforms)
         # Save hashes in the cache memory after a successful waveform upload.
-        self._save_hashes(awg_nr, wave_idx, wave_hashes)
+        self._save_hashes(wave_idx, wave_hashes)
 
-    def _save_hashes(self, awg_nr, wave_idx, wave_hashes):
+    def _save_hashes(self, wave_idx, wave_hashes):
         """
         Save hashes in the cache memory after a successful waveform upload.
 
         Args:
-            awg_nr (int): index of awg core (0, 1, 2, or 3)
             wave_idx (int): index of wave upload (0 or 1)
             wave_hashes: waveforms hashes
         """
         if self.pulsar.use_sequence_cache():
-            self._hdawg_waveform_cache[f'{self.awg.name}_{awg_nr}'][
-                wave_idx] = wave_hashes
+            self.waveform_cache[wave_idx] = wave_hashes
 
-    def is_awg_running(self):
-        return all([self.awg.get('awgs_{}_enable'.format(awg_nr))
-                    for awg_nr in self._hdawg_active_awgs()
-                    if self.awg._awg_program[awg_nr] is not None])
+    def _update_awg_instrument_status(self):
+        # tell ZI_base_instrument that it should not compile a program on
+        # this sub AWG (because we already do it here)
+        self._awg._awg_needs_configuration[self._awg_nr] = False
+        # tell ZI_base_instrument.start() to start this sub AWG (The base
+        # class will start sub AWGs for which _awg_program is not None. Since
+        # we set _awg_needs_configuration to False, we do not need to put the
+        # actual program here, but anything different from None is sufficient.)
+        self._awg._awg_program[self._awg_nr] = True
 
-    def clock(self):
-        return self.awg.clock_freq()
+    def _generate_playback_string(
+            self,
+            wave,
+            codeword,
+            use_placeholder_waves,
+            metadata,
+            first_element_of_segment
+    ):
+        if not self._hdawg_internal_mod:
+            if first_element_of_segment:
+                prepend_zeros = self.pulsar.parameters[
+                    f"{self._awg.name}_prepend_zeros"]()
+                if prepend_zeros is None:
+                    prepend_zeros = self.pulsar.prepend_zeros()
+                elif isinstance(prepend_zeros, list):
+                    prepend_zeros = prepend_zeros[self._awg_nr]
+            else:
+                prepend_zeros = 0
+            self._playback_strings += self._awg_interface.zi_playback_string(
+                name=self._awg.name,
+                device='hdawg',
+                wave=wave,
+                codeword=codeword,
+                prepend_zeros=prepend_zeros,
+                placeholder_wave=use_placeholder_waves,
+                allow_filter=metadata.get('allow_filter', False)
+            )
+        elif not use_placeholder_waves:
+            pb_string, interleave_string = \
+                self._awg_interface._zi_interleaved_playback_string(
+                    name=self._awg.name,
+                    device='hdawg',
+                    counter=self._counter,
+                    wave=wave,
+                    codeword=codeword
+                )
+            self._counter += 1
+            self._playback_strings += pb_string
+            self._interleaves += interleave_string
+        else:
+            raise NotImplementedError("Placeholder waves in "
+                                      "combination with internal "
+                                      "modulation not implemented.")
 
-    def _hdawg_active_awgs(self):
-        return [0,1,2,3]
+    def _configure_awg_str(
+            self,
+            awg_str
+    ):
+        self._awg.configure_awg_from_string(
+            self._awg_nr,
+            program_string=awg_str,
+            timeout=600
+        )
 
-    def get_segment_filter_userregs(self, include_inactive=False):
-        return [(f'awgs_{i}_userregs_{self.awg.USER_REG_FIRST_SEGMENT}',
-                 f'awgs_{i}_userregs_{self.awg.USER_REG_LAST_SEGMENT}')
-                for i in range(4) if include_inactive or
-                self.awg._awg_program[i] is not None]
-
-    def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
-        if chid[-1] != 'm':  # not a marker channel
-            self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+    def _set_signal_output_status(self):
+        if self.pulsar.sigouts_on_after_programming():
+            for ch in range(8):
+                self._awg.set('sigouts_{}_on'.format(ch), True)
