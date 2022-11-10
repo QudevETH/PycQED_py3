@@ -944,10 +944,14 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             pulse_modifs = {'op_code=Spec': {'element_name': 'spec_el',}}
             if self._get_power_param(qubit)[0] is None:
                 # No external LO, use pulse to set the spec power
+                # The factors of 2 are needed here because the spec pulse is
+                # applied only to the I channel, which means that we get
+                # half the amplitude after upconversion.
                 if sweep_points.find_parameter('spec_power') is not None:
-                    amp = ParametricValue('spec_power', func=dbm_to_vp)
+                    amp = ParametricValue('spec_power',
+                                          func=lambda x: 2 * dbm_to_vp(x))
                 else:
-                    amp = dbm_to_vp(qubit.spec_power())
+                    amp = 2 * dbm_to_vp(qubit.spec_power())
                 pulse_modifs['op_code=Spec']['amplitude'] = amp
             spec = self.block_from_ops('spec', [f"Z0 {qb}", f"Spec {qb}"],
                                     pulse_modifs=pulse_modifs)
