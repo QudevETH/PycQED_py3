@@ -7,8 +7,10 @@ from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
 from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v2 import amplifier_characterization as ca
+from pycqed.instrument_drivers.meta_instrument.MeasurementObject import \
+    MeasurementObject
 
-class TWPAObject(qc.Instrument):
+class TWPAObject(MeasurementObject):
     """
     A meta-instrument containing the microwave generators needed for operating
     and characterizing the TWPA and the corresponding helper functions.
@@ -16,18 +18,12 @@ class TWPAObject(qc.Instrument):
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
-        self.msmt_suffix = '_' + self.name
 
         # Add instrument reference parameters
         self.add_parameter('instr_pump', parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_signal',
                            parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_lo', parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_acq',
-                           parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_mc', parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_pulsar',
-                           parameter_class=InstrumentRefParameter)
 
         # Add pump control parameters
         self.add_parameter('pump_freq', label='Pump frequency', unit='Hz',
@@ -77,19 +73,6 @@ class TWPAObject(qc.Instrument):
                            set_cmd=(lambda val, self=self:
                                     self.instr_signal.get_instr().status(val)))
 
-        # Add acquisition parameters
-        self.add_parameter('acq_length', parameter_class=ManualParameter,
-                           vals=vals.Numbers(0, 2.275e-6), unit='s',
-                           initial_value=2.275e-6)
-        self.add_parameter('acq_mod_freq', parameter_class=ManualParameter,
-                           vals=vals.Numbers(-900e6, 900e6), unit='Hz',
-                           label='Intermediate frequency',
-                           initial_value=225e6)
-        self.add_parameter('acq_averages', parameter_class=ManualParameter,
-                           vals=vals.Ints(0), initial_value=2**10)
-        self.add_parameter('acq_weights_type', parameter_class=ManualParameter,
-                           vals=vals.Enum('DSB', 'SSB'), initial_value='SSB')
-
         # add pulse parameters
         self.add_parameter('pulsed', parameter_class=ManualParameter,
                            vals=vals.Bool(), initial_value=True)
@@ -99,15 +82,27 @@ class TWPAObject(qc.Instrument):
         self.add_parameter('pulse_amplitude', parameter_class=ManualParameter,
                            vals=vals.Numbers(0, 1.0), unit='V',
                            initial_value=0.01)
+        self.add_parameter('acq_mod_freq', parameter_class=ManualParameter,
+                           vals=vals.Numbers(-900e6, 900e6), unit='Hz',
+                           label='Intermediate frequency',
+                           initial_value=225e6)
 
-    def get_idn(self):
-        return {'driver': str(self.__class__), 'name': self.name}
 
     def on(self):
         self.instr_pump.get_instr().on()
 
     def off(self):
         self.instr_pump.get_instr().off()
+
+    def get_operation_dict(self, operation_dict=None):
+        operation_dict = super().get_operation_dict(operation_dict)
+        operation_dict['I ' + self.name] = {
+            'pulse_type': 'VirtualPulse',
+            'operation_type': 'Virtual',
+        }
+        for code, op in operation_dict.items():
+            op['op_code'] = code
+        return operation_dict
 
     def prepare_readout(self):
         UHF = self.instr_acq.get_instr()
