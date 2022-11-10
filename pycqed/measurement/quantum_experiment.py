@@ -1100,7 +1100,9 @@ class NDimQuantumExperiment():
             idxs: indices of the experiments to instantiate,
             see self.get_experiment_indices
         """
+        # Extract sweep_point dimensions beyond the second dimension
         extra_sp = SweepPoints(sweep_points[2:])
+        # Extract first two dimensions of N dimensional sweep points
         current_sp = SweepPoints(sweep_points[:2])
         length = self.sweep_lengths[self.DUMMY_DIM]
         for dim, idx in enumerate(idxs):
