@@ -44,11 +44,12 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states):
 
 
 def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
-                     only_plot_additional_states=False):
+                     only_plot_additional_states=False, colors=dict()):
     fig = plt.figure()
     if not only_plot_additional_states:
         for i, state in enumerate(states):
-            plt.plot(1e9*t, 1e-9*state_freqs[i], label=state)
+            plt.plot(1e9*t, 1e-9*state_freqs[i], label=state,
+                color=colors.get(states[i], None))
     if additional_states_matrix is not None:
         additional_states_freqs = np.einsum('ij,jk', additional_states_matrix,
                                             state_freqs)
@@ -64,7 +65,8 @@ def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
                 else:
                     additional_states_labels[i] += f' {factor:+} * {states[j]}'
         for i, freqs in enumerate(additional_states_freqs):
-            plt.plot(1e9*t, 1e-9*freqs, label=additional_states_labels[i])
+            plt.plot(1e9*t, 1e-9*freqs, label=additional_states_labels[i],
+                color=colors.get(states[i], None))
     plt.ylabel('frequency $f$ (GHz)')
     plt.xlabel('time $t$ (ns)')
     plt.legend()
