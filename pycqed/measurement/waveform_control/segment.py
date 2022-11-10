@@ -530,10 +530,10 @@ class Segment:
             # internal modulation. If not, we will print a warning message
             # and disable internal modulation on this channel.
             if not self._internal_mod_check_pulse_type(channel=channel):
-                log.warning(f"Not all pulses supports internal modulation on "
-                            f"channel {channel}. Internal modulation of this "
-                            f"channel will be disabled.")
-                self.pulsar.set(enable_param, False)
+                log.warning(f"In segment {self.name}: not all pulses supports "
+                            f"internal modulation on channel {channel}. This "
+                            f"channel will not be internally modulated in the "
+                            f"current sequence.")
                 continue
 
             # Check if the configurations of all pulses are compatible with
@@ -541,11 +541,10 @@ class Segment:
             # print a warning message and disable internal modulation on this
             # channel.
             if not self._internal_mod_check_pulse_params(channel=channel)[0]:
-                log.warning(f"Pulse parameters are not compatible with each "
-                            f"other when internal modulation is turned on. "
-                            f"Internal modulation on {channel} will be "
-                            f"disabled.")
-                self.pulsar.set(enable_param, False)
+                log.warning(f"In segment {self.name}: internal modulation "
+                            f"parameters are not compatible among the pulses. "
+                            f"This channel will not be internally modulated "
+                            f"in the current sequence.")
                 continue
 
             # We have made sure that internal modulation is applicable to
@@ -716,8 +715,8 @@ class Segment:
                     pulse.alpha = 1
                     pulse.phi_skew = 0
 
-            self.element_metadata[elname]["mod_config"] = {
-                channel: deepcopy(channel_metadata)}
+            self.element_metadata[elname]["mod_config"][channel] = \
+                deepcopy(channel_metadata)
 
     def _internal_mod_find_init_phase(
             self,
