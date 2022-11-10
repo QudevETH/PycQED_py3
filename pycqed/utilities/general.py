@@ -926,6 +926,8 @@ def save_zibugreport(interactive=True, save_folder=None):
     Saves a detailed bug report of ZI devices.
 
     For each ZI device in the running kernel, it saves the following:
+        - firmware git revision
+        - bitstream git revision
         - awg source string
         - compiler status string
         - errors on the device
@@ -1003,6 +1005,36 @@ def save_zibugreport(interactive=True, save_folder=None):
     versions_devs, exceps = get_zhinst_firmware_versions(instruments)
     exceptions.update(exceps)
     write_logfile('versions', repr(versions_devs))
+
+    # save the firmware git revision
+    for dev in instruments:
+        try:
+            fw_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/firmware"
+            fw_git_revision_string = \
+                dev.daq.get(fw_git_revision_node, flat=True)[
+                    fw_git_revision_node][0]['vector']
+            fw_git_revision_dict = json.loads(fw_git_revision_string)
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_firmware_revision'),
+                repr(fw_git_revision_dict))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
+
+    # save the bitstream git revision
+    for dev in instruments:
+        try:
+            bs_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/bitstream"
+            bs_git_revision_string = \
+                dev.daq.get(bs_git_revision_node, flat=True)[
+                    bs_git_revision_node][0]['vector']
+            bs_git_revision_dict = json.loads(bs_git_revision_string)
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_bitstream_revision'),
+                repr(bs_git_revision_dict))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
 
     # save awg_source_strings
     for dev in instruments:
