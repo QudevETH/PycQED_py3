@@ -228,9 +228,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'idx_start:idx_end' interpreted as standard list/array indexing
                 arr[idx_start:idx_end]
             Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
-        Note: to plot only 1D slices of 2D data, the standard plotting of raw
+        Note:
+            - to plot only 1D slices of 2D data, the standard plotting of raw
             and projected data can be disabled via the flags `plot_raw_data` and
             `plot_proj_data.`
+            - to plot 1D slices of 2D data using an instance of this class that
+            has already run self.process_data(), use the methods
+            'plot_raw_1d_slices' and 'plot_projected_1d_slices'
 
     If an instance of SweepPoints (or its repr) is provided, then the
     corresponding meas_obj_sweep_points_map must also be specified in
@@ -2583,6 +2587,76 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 for plot_name in plot_names_cal:
                     plot_dict_cal = self.plot_dicts.pop(plot_name)
                     self.plot_dicts[plot_name] = plot_dict_cal
+
+    def _plot_1d_slices_of_2d_data(self, plot_type, slice_idxs_1d_plot):
+        """
+        Prepares figures for 1D slices of 2D data, and plots them.
+
+        Args:
+            plot_type (str): can be either "raw" or "proj", indicating whether
+                to plot 1D slices of raw data or projected data
+            slice_idxs_1d_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        if plot_type == 'raw':
+            key1, key2 = 'slice_idxs_1d_raw_plot', 'plot_raw_data'
+            prepare_plots_func = self.prepare_raw_data_plots
+        elif plot_type == 'proj':
+            key1, key2 = 'slice_idxs_1d_proj_plot', 'plot_proj_data'
+            prepare_plots_func = self.prepare_projected_data_plots
+        else:
+            raise ValueError(f'Unrecognized plot_type "{plot_type}." Please '
+                             f'use either "raw" or "proj."')
+        # Store self.default_options
+        default_options = deepcopy(self.default_options)
+        # Update self.default_options to ensure that only 1D slice plots
+        # are prepared. It is important to update this attribute instead of
+        # overwriting it, since the TwoD flag is added there by BaseDataAnalysis
+        self.default_options.update({key1: slice_idxs_1d_plot, key2: False})
+        # Store self.plot_dicts (deepcopy not allowed here because the plot
+        # dicts contain functions)
+        plot_dicts = {}
+        plot_dicts.update(self.plot_dicts)
+        # Remove existing entries from self.plot_dicts such that we only plot
+        # the 1D slices
+        self.plot_dicts = {}
+        # Prepare the 1D slice plots
+        prepare_plots_func()
+        # Plot 1D slices
+        self.plot()
+        # Save the figures
+        self.save_figures(close_figs=self.options_dict.get('close_figs', False))
+        # Update the self.plot_dicts with what was there originally
+        self.plot_dicts.update(plot_dicts)
+        # Reset the self.default_options
+        self.default_options = default_options
+
+    def plot_raw_1d_slices(self, slice_idxs_1d_raw_plot):
+        """
+        Helper function to prepare and plot figures of 1D slices of
+        2D raw data.
+
+        'projected_data_dict' must exist in self.proc_data_dict.
+
+        Args:
+            slice_idxs_1d_raw_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        self._plot_1d_slices_of_2d_data('raw', slice_idxs_1d_raw_plot)
+
+    def plot_projected_1d_slices(self, slice_idxs_1d_proj_plot):
+        """
+        Helper function to prepare and plot figures of 1D slices of
+        2D projected data.
+
+        'meas_results_per_qb_raw' or 'meas_results_per_qb' must exist
+        in self.proc_data_dict.
+
+        Args:
+            slice_idxs_1d_proj_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        self._plot_1d_slices_of_2d_data('proj', slice_idxs_1d_proj_plot)
 
     def get_1d_slice_params(self, qb_name, slice_idxs):
         """
