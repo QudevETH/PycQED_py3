@@ -2667,7 +2667,7 @@ class ResidualZZ(Ramsey):
             analysis_kwargs = {}
         self.analysis = tda.ResidualZZAnalysis(
             qb_names=[task['qb'] for task in self.preprocessed_task_list],
-            t_start=self.timestamp, **analysis_kwargs)
+            t_start=self.timestamp, echo=self.echo, **analysis_kwargs)
 
 
 class T1(SingleQubitGateCalibExperiment):
