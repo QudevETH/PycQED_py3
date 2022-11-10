@@ -1442,7 +1442,12 @@ class ZIGeneratorModule:
         return self._awg
 
 
-def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
+def diff_and_combine_dicts(
+        new,
+        combined,
+        excluded_keys=tuple(),
+        first_new_dict: bool = True,
+):
     """Recursively adds entries in dict new to the combined dict and
     checks if the values on the lowest level are the same in combined
     and new.
@@ -1455,6 +1460,9 @@ def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
         excluded_keys (list[str], optional): List of dict keys (str)
             that will not be added to combined and not be tested to have
             the same values in new and combined. Defaults to tuple().
+        first_new_dict (bool): Bool that indicates whether this is the first
+            new dict to be combined. If True, combined dict (which is assumed to
+            be empty) will copy all entries from the new dict.
 
     Returns:
         bool: Whether all values for all keys in new (except
@@ -1466,14 +1474,37 @@ def diff_and_combine_dicts(new, combined, excluded_keys=tuple()):
             return False
         else:
             return True
+
+    if first_new_dict:
+        if len(combined) == 0:
+            combined.update(new)
+            return True
+        else:
+            raise RuntimeError(
+                "The combined dictionary should be empty before including the "
+                "first new dictionary."
+            )
+
+    # TODO: see if this is compatible with Kilian's spectroscopy
+    #  measurements. To be more specific -- if some elements in spectroscopy
+    #  measurements are left with empty modulation configurations. They do
+    #  not play a role in configuring the device, but will result in an error
+    #  when comparing the dicts.
+    if new.keys() != combined.keys():
+        return False
+
     for key in new.keys():
         if key in excluded_keys:
             # we do not care if this is the same in all dicts
             continue
         if key in combined.keys():
-            if not diff_and_combine_dicts(new[key], combined[key],
-                                          excluded_keys):
+            if not diff_and_combine_dicts(
+                    new[key],
+                    combined[key],
+                    excluded_keys,
+                    first_new_dict=False,
+            ):
                 return False
         else:
-            combined[key] = new[key]
+            return False
     return True
