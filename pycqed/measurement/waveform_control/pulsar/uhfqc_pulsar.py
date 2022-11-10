@@ -173,7 +173,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                                for cw, chids in codewords.items()
                                    if cw != 'metadata'
                                for h in chids.values()}
-        self._zi_write_waves(waves_to_upload)
+        self.zi_write_waves(waves_to_upload)
 
         defined_waves = set()
         wave_definitions = []
@@ -206,7 +206,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             metadata = awg_sequence_element.pop('metadata', {})
             # The following line only has an effect if the metadata specifies
             # that the segment should be repeated multiple times.
-            playback_strings += self._zi_playback_string_loop_start(
+            playback_strings += self.zi_playback_string_loop_start(
                 metadata, ['ch1', 'ch2'])
             if list(awg_sequence_element.keys()) != ['no_codeword']:
                 raise NotImplementedError("UHFQC sequencer does currently not "
@@ -215,8 +215,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
             wave = (chid_to_hash.get('ch1', None), None,
                     chid_to_hash.get('ch2', None), None)
-            wave_definitions += self._zi_wave_definition(wave,
-                                                         defined_waves)
+            wave_definitions += self.zi_wave_definition(wave,
+                                                        defined_waves)
 
             acq = metadata.get('acq', False)
             # Remark on allow_filter in the call to _zi_playback_string:
@@ -225,13 +225,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             # element metadata allows segment filtering. (Use case for
             # calling play_element with allow_filter=False: repeat patterns,
             # see below.)
-            playback_strings += self._zi_playback_string(
+            playback_strings += self.zi_playback_string(
                 name=self.awg.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
             # The following line only has an effect if the metadata specifies
             # that the segment should be repeated multiple times.
-            playback_strings += self._zi_playback_string_loop_end(metadata)
+            playback_strings += self.zi_playback_string_loop_end(metadata)
 
             ch_has_waveforms['ch1'] |= wave[0] is not None
             ch_has_waveforms['ch2'] |= wave[2] is not None
