@@ -200,7 +200,7 @@ class SegmentSoftSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self._is_first_sweep_point = True
 
     def set_parameter(self, val, **kw):
-        self.sequence = self.sequence_list[val]
+        self.sequence = self.sequence_list[int(val)]
         if self._is_first_sweep_point and val == 0:
             # upload has been done in self.prepare or by the hard sweep
             pass
