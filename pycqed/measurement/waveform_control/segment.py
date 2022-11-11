@@ -696,7 +696,7 @@ class Segment:
                         f"'{param}' has repetitive definition from segment "
                         f"initialization parameters and from pulse "
                         f"parameters. This may be caused by enabling"
-                        f"'{channel}_enable_internal_modulation' "
+                        f"'{channel}_internal_modulation' "
                         f"while doing spectroscopy measurement. Please "
                         f"disable the parameter when doing spectroscopy "
                         f"measurements."
