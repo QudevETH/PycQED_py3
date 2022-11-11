@@ -84,7 +84,7 @@ class ZIPulsarMixin:
         else:
             return ""
 
-    def _zi_wave_definition(
+    def zi_wave_definition(
             self,
             wave,
             defined_waves=None,
