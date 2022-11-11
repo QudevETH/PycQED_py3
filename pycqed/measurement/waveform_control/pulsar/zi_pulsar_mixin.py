@@ -917,7 +917,11 @@ class ZIGeneratorModule:
         first_new_dict = True
         for element in awg_sequence:
             awg_sequence_element = awg_sequence[element]
-            if awg_sequence_element is None:
+            # Check if there is a valid sequence element and if this element is
+            # played on this channel. If no, then this element is irrevalent and
+            # we will not consider its modulation parameters.
+            if awg_sequence_element is None or \
+                    not self.is_element_on_this_module(awg_sequence_element):
                 continue
             metadata = awg_sequence_element.get('metadata', {})
             element_config = metadata.get(config_name, {})
@@ -1562,7 +1566,7 @@ class ZIGeneratorModule:
                 be empty) will copy all entries from the new dict.
 
         Returns:
-            bool: Whether all values for all keys in new (except
+            compatible (bool): Whether all values for all keys in new (except
                 excluded_keys) that already existed in combined are the
                 same for new and combined.
         """
@@ -1588,14 +1592,34 @@ class ZIGeneratorModule:
             if key in excluded_keys:
                 # we do not care if this is the same in all dicts
                 continue
-            if key in combined.keys():
-                if not self.diff_and_combine_dicts(
-                        new[key],
-                        combined[key],
-                        excluded_keys,
-                        first_new_dict=False,
-                ):
-                    return False
-            else:
+            if not self.diff_and_combine_dicts(
+                    new[key],
+                    combined[key],
+                    excluded_keys,
+                    first_new_dict=False,
+            ):
                 return False
         return True
+
+    def is_element_on_this_module(
+            self,
+            awg_sequence_element,
+    ):
+        """Test whether an element is played on this module.
+
+        Args:
+            awg_sequence_element: element information stored in
+                awg_sequence data.
+
+        Returns:
+            on_this_module (bool): whether this element is played on this AWG
+                module
+        """
+        for cw in awg_sequence_element:
+            chid_to_hash = awg_sequence_element[cw]
+            wave = [None, None, None, None]
+            for i, chid in enumerate(self.channel_ids):
+                wave[i] = chid_to_hash.get(chid, None)
+            if any(wave):
+                return True
+        return False
