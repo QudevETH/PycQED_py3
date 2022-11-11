@@ -355,7 +355,7 @@ class ZIPulsarMixin:
                 self._zi_clear_waves()
 
         has_waveforms = False
-        for channel_pair in self._awg_modules:
+        for channel_pair in self.awg_modules:
             upload = channels_to_upload == 'all' or \
                 any([ch in channels_to_upload
                      for ch in channel_pair.channel_ids])
@@ -371,7 +371,7 @@ class ZIPulsarMixin:
             has_waveforms |= any(channel_pair.has_waveforms)
 
         if self.pulsar.sigouts_on_after_programming():
-            for awg_module in self._awg_modules:
+            for awg_module in self.awg_modules:
                 for channel_id in awg_module.analog_channel_ids:
                     channel_name = self.pulsar._id_channel(
                         cid=channel_id,
