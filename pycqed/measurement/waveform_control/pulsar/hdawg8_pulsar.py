@@ -576,29 +576,42 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 awg=self._awg.name,
             )
 
-    def _update_internal_mod_config(
+    def _upload_modulation_config(
             self,
-            awg_sequence,
+            mod_config,
     ):
-        """Updates self._hdawg_internal_modulation flag according to the
-        setting specified in pulsar.
+        if not mod_config:
+            # Modulation configuration is empty
+            return
 
-        Args:
-            awg_sequence: A list of elements. Each element consists of a
-            waveform-hash for each codeword and each channel.
-        """
-        channels = [self.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self.analog_channel_ids]
+        awg_nr = self._awg_nr
+        # Set digital modulation to "mixer" mode.
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 6)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 6)
 
-        if all([self.pulsar.get(f"{chan}_internal_modulation")
-                for chan in channels]):
-            self._hdawg_internal_mod = True
-        elif not any([self.pulsar.get(f"{chan}_internal_modulation")
-                      for chan in channels]):
-            self._hdawg_internal_mod = False
-        else:
-            raise NotImplementedError('Internal modulation can only be'
-                                      'specified per sub AWG!')
+        # Configure gain matrix for mixer calibration.
+        alpha = mod_config.get("alpha", 1.0)
+        phi_skew = mod_config.get("phi_skew", 0.0)
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew))
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew))
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1/alpha)
+
+        # Choose oscillators, set phases and modulation frequencies.
+        # TODO: check if we can set negative frequencies to the oscillators
+        mod_frequency = mod_config.get("mod_frequency", 0.0)
+        osc_nr = mod_config.get("osc_nr", awg_nr * 4)
+        self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
+        self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
+        self.awg.set(f'sines_{awg_nr * 2}_phaseshift', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', 90)
+
+        # Disable direct output of sine waves.
+        self.awg.set(f'sines_{awg_nr * 2}_enables_0', 0)
+        self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_1', 0)
 
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr

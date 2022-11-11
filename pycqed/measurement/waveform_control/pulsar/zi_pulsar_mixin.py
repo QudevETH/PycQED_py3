@@ -616,6 +616,9 @@ class ZIGeneratorModule:
         self.marker_channel_ids = None
         """A list of all marker channel IDs of this AWG channel/channel pair."""
 
+        self.i_channel_name = None
+        """Full name of the I channel in this AWG module."""
+
         self._upload_idx = None
         """Node index on the ZI data server."""
 
@@ -666,6 +669,9 @@ class ZIGeneratorModule:
         self._use_filter = False
         # TODO: check if this docstring is correct
         """Whether to use filter programmed to the device."""
+
+        self._use_internal_mod = False
+        """Whether to use digital modulation when generating waveforms."""
 
         self._divisor = {}
         # TODO: check if this docstring is correct
@@ -811,11 +817,40 @@ class ZIGeneratorModule:
             self,
             awg_sequence,
     ):
+        self._update_i_channel_name()
         self._update_use_placeholder_wave_flag()
         self._update_use_filter_flag(awg_sequence=awg_sequence)
         self._update_use_command_table_flag()
-        self._update_internal_mod_config(awg_sequence=awg_sequence)
-        self._update_sine_generation_config(awg_sequence=awg_sequence)
+        self._update_use_internal_mod_flag()
+
+        # Resolve and upload internal modulation configurations to the device
+        # Note that self._use_internal_mod flag will be False when using
+        # hardware sweep for spectroscopy measurements. This is to
+        # distinguish internal modulation activated for spectroscopy
+        # measurements and for time-domain measurements.
+        mod_config = self._resolve_channel_config(
+            awg_sequence=awg_sequence,
+            config_name="mod_config",
+            excluded_keys=tuple() if self._use_internal_mod
+            else ('mod_freq', 'mod_phase'),
+        )
+        self._upload_modulation_config(
+            mod_config=mod_config.get(self.i_channel_name, dict()))
+
+        # Resolve and upload sine wave generation configurations to the device
+        sine_config = self._resolve_channel_config(
+            awg_sequence=awg_sequence,
+            config_name="sine_config"
+        )
+        self._upload_sine_generation_config(
+            sine_config=sine_config.get(self.i_channel_name, dict()))
+
+    def _update_i_channel_name(self):
+        """Get I channel name from self.pulsar.channels ."""
+        self.i_channel_name = self.pulsar._id_channel(
+            cid=self.analog_channel_ids[0],
+            awg=self._awg.name
+        )
 
     def _update_use_filter_flag(
             self,
@@ -837,7 +872,7 @@ class ZIGeneratorModule:
 
     def _update_use_command_table_flag(self):
         self._use_command_table = \
-            self.pulsar.get(f"{self._awg.name}_use_command_table")
+            self.pulsar.get(f"{self.i_channel_name}_use_command_table")
 
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
@@ -851,28 +886,77 @@ class ZIGeneratorModule:
         param = f"{self.i_channel_name}_internal_modulation"
         self._use_internal_mod = self.pulsar.get(param) \
             if hasattr(self.pulsar, param) else False
+
+    def _resolve_channel_config(
             self,
             awg_sequence,
+            config_name: str,
+            excluded_keys: tuple = tuple(),
     ):
-        """Updates internal modulation configuration according to the settings
-        specified in awg_sequence.
+        """Collects and combines a specific configuration setting in 
+        awg_sequence. If settings from different elements are coherent with 
+        each other, the combined setting will be programmed to the channel.
 
         Args:
-            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
-                from ``Sequence.generate_waveforms_sequences``.
+            awg_sequence: A list of elements. Each element consists of a
+                waveform-hash for each codeword and each channel.
+            config_name (str): name of the configuration to resolve.
+            excluded_keys (tuple): keys to be excluded from the element
+                metadata.
+
+        Returns:
+            channel_config (dict): Dict that contains channel-specific
+                configurations. It is grouped as
+                {"channel_name": modulation_configuration}
+        """
+        # For the moment we only collect settings on the I channel.
+        channel_config = dict()
+
+        # Combine internal modulation configurations from all elements in
+        # the sequence into one and check if they are compatible with each other
+        first_new_dict = True
+        for element in awg_sequence:
+            awg_sequence_element = awg_sequence[element]
+            if awg_sequence_element is None:
+                continue
+            metadata = awg_sequence_element.get('metadata', {})
+            element_config = metadata.get(config_name, {})
+            if not self.diff_and_combine_dicts(
+                    element_config,
+                    channel_config,
+                    excluded_keys=excluded_keys,
+                    first_new_dict=first_new_dict,
+            ):
+                raise Exception(
+                    f"On {self._awg.name}: Configuration {config_name} in "
+                    f"metadata is incompatible between different elements in "
+                    f"same sequence."
+                )
+            first_new_dict = False
+
+        return channel_config
+
+    def _upload_modulation_config(
+            self,
+            mod_config: dict,
+    ):
+        """Upload modulation configurations to the device.
+
+        Args:
+            mod_config (dict): Dict that contains internal modulation configuration
+                to be uploaded.
         """
         pass
 
-    def _update_sine_generation_config(
+    def _upload_sine_generation_config(
             self,
-            awg_sequence,
+            sine_config,
     ):
-        """Updates sine wave generation according to the metadata specified
-        in awg_sequence.
+        """Upload sine generation configurations to the device.
 
         Args:
-            awg_sequence (Dict): AWG sequence data (not waveforms) as returned
-                from ``Sequence.generate_waveforms_sequences``.
+            sine_config (dict): Dict that contains sine generation configuration
+                to be uploaded.
         """
         pass
 
@@ -1441,75 +1525,76 @@ class ZIGeneratorModule:
     def _with_divisor(self, h, ch):
         return h if self._divisor[ch] == 1 else (h, self._divisor[ch])
 
+    def get_i_channel(self):
+        """Helper function that returns I channel name of this AWG module."""
+        return self.pulsar._id_channel(
+            cid=self.analog_channel_ids[0],
+            awg=self._awg.name
+        )
+
     @property
     def awg(self):
         """Returns AWG instrument driver of this channel."""
         return self._awg
 
+    def diff_and_combine_dicts(
+            self,
+            new,
+            combined,
+            excluded_keys=tuple(),
+            first_new_dict: bool = False,
+    ):
+        """Recursively adds entries in dict new to the combined dict and
+        checks if the values on the lowest level are the same in combined
+        and new.
 
-def diff_and_combine_dicts(
-        new,
-        combined,
-        excluded_keys=tuple(),
-        first_new_dict: bool = True,
-):
-    """Recursively adds entries in dict new to the combined dict and
-    checks if the values on the lowest level are the same in combined
-    and new.
+        Args:
+            new (dict): Dict with new values that will be added to the
+                combined dict after testing if the values for existing keys
+                match with the ones in combined.
+            combined (dict): Dict to which the items in new will be added.
+            excluded_keys (list[str], optional): List of dict keys (str)
+                that will not be added to combined and not be tested to have
+                the same values in new and combined. Defaults to tuple().
+            first_new_dict (bool): Bool that indicates whether this is the first
+                new dict to be combined. If True, combined dict (which is assumed to
+                be empty) will copy all entries from the new dict.
 
-    Args:
-        new (dict): Dict with new values that will be added to the
-            combined dict after testing if the values for existing keys
-            match with the ones in combined.
-        combined (dict): Dict to which the items in new will be added.
-        excluded_keys (list[str], optional): List of dict keys (str)
-            that will not be added to combined and not be tested to have
-            the same values in new and combined. Defaults to tuple().
-        first_new_dict (bool): Bool that indicates whether this is the first
-            new dict to be combined. If True, combined dict (which is assumed to
-            be empty) will copy all entries from the new dict.
+        Returns:
+            bool: Whether all values for all keys in new (except
+                excluded_keys) that already existed in combined are the
+                same for new and combined.
+        """
+        if not (isinstance(new, dict) and isinstance(combined, dict)):
+            if new != combined:
+                return False
+            else:
+                return True
 
-    Returns:
-        bool: Whether all values for all keys in new (except
-            excluded_keys) that already existed in combined are the
-            same for new and combined.
-    """
-    if not (isinstance(new, dict) and isinstance(combined, dict)):
-        if new != combined:
-            return False
-        else:
-            return True
-
-    if first_new_dict:
-        if len(combined) == 0:
+        if first_new_dict:
             combined.update(new)
             return True
-        else:
-            raise RuntimeError(
-                "The combined dictionary should be empty before including the "
-                "first new dictionary."
-            )
 
-    # TODO: see if this is compatible with Kilian's spectroscopy
-    #  measurements. To be more specific -- if some elements in spectroscopy
-    #  measurements are left with empty modulation configurations. They do
-    #  not play a role in configuring the device, but will result in an error
-    #  when comparing the dicts.
-    if new.keys() != combined.keys():
-        return False
-
-    for key in new.keys():
-        if key in excluded_keys:
-            # we do not care if this is the same in all dicts
-            continue
-        if key in combined.keys():
-            if not diff_and_combine_dicts(
-                    new[key],
-                    combined[key],
-                    excluded_keys,
-                    first_new_dict=False,
-            ):
-                return False
-        else:
+        # TODO: see if this is compatible with Kilian's spectroscopy
+        #  measurements. To be more specific -- if some elements in spectroscopy
+        #  measurements are left with empty modulation configurations. They do
+        #  not play a role in configuring the device, but will result in an
+        #  error when comparing the dicts.
+        if new.keys() != combined.keys():
             return False
-    return True
+
+        for key in new.keys():
+            if key in excluded_keys:
+                # we do not care if this is the same in all dicts
+                continue
+            if key in combined.keys():
+                if not self.diff_and_combine_dicts(
+                        new[key],
+                        combined[key],
+                        excluded_keys,
+                        first_new_dict=False,
+                ):
+                    return False
+            else:
+                return False
+        return True
