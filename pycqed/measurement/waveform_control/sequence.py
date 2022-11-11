@@ -257,20 +257,20 @@ class Sequence:
         """Harmonize amplitude on one AWG."""
         scaling_factors = dict()
 
-        # harmonize_amplitude only affects AWGs whose command table wave
-        # sequencing is enabled.
-        if not hasattr(self.pulsar, f"{awg}_use_command_table") \
-                or not self.pulsar.get(f"{awg}_use_command_table"):
-            return dict()
-
         # Command table wave sequencing is only implemented for
         # AWG interfaces that have awg_modules attribute.
         awg_interface = self.pulsar.awg_interfaces[awg]
         if not hasattr(awg_interface, "awg_modules"):
             return dict()
-        awg_modules = awg_interface.awg_modules
 
+        awg_modules = awg_interface.awg_modules
         for awg_module in awg_modules:
+            # harmonize_amplitude only affects AWGs whose command table wave
+            # sequencing is enabled.
+            i_channel = awg_module.get_i_channel()
+            if not hasattr(self.pulsar, f"{i_channel}_use_command_table") \
+                    or not self.pulsar.get(f"{i_channel}_use_command_table"):
+                continue
             # Only check analog channels
             channel_ids = awg_module.analog_channel_ids
             # Collects all elements that are relevant to this AWG module.

@@ -149,6 +149,13 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                           "generators will be turned off."
             )
 
+            self.pulsar.add_parameter(
+                f"{ch_name}_use_command_table",
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter
+            )
+
         # TODO: Not all AWGs provide an initial value. Should it be the case?
         self.pulsar[f"{ch_name}_amp"].set(1)
 

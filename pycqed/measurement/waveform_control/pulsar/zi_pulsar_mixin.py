@@ -845,7 +845,12 @@ class ZIGeneratorModule:
         self._use_placeholder_waves = self.pulsar.get(
             f"{self._awg.name}_use_placeholder_waves")
 
-    def _update_internal_mod_config(
+    def _update_use_internal_mod_flag(self):
+        """Updates self._use_internal_mod flag with the setting specified in
+        pulsar."""
+        param = f"{self.i_channel_name}_internal_modulation"
+        self._use_internal_mod = self.pulsar.get(param) \
+            if hasattr(self.pulsar, param) else False
             self,
             awg_sequence,
     ):
