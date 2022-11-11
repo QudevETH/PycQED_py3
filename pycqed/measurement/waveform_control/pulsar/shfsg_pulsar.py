@@ -662,7 +662,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave_index: int,
             amplitude: float = 1.0,
             phase: float = 0.0,
-            sideband: str = 'left',
+            sideband: str = 'right',
     ):
         """Generates a command table entry in the format specified
         by ZI. Details of the command table can be found in
@@ -695,6 +695,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
             # Configures the correct sideband by flipping the sign of the
             # corresponding off-diagonal element for digital up-conversion.
+            # TODO: we can always set sideband to 'right' if the digital
+            #  oscillator accepts negative frequency. Check if this is true.
             if sideband == 'right':
                 amplitude[1] *= -1
             elif sideband == 'left':

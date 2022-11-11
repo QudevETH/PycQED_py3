@@ -927,10 +927,10 @@ class ZIGeneratorModule:
                     excluded_keys=excluded_keys,
                     first_new_dict=first_new_dict,
             ):
-                raise Exception(
+                raise RuntimeError(
                     f"On {self._awg.name}: Configuration {config_name} in "
                     f"metadata is incompatible between different elements in "
-                    f"same sequence."
+                    f"the same sequence."
                 )
             first_new_dict = False
 
