@@ -576,6 +576,15 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 awg=self._awg.name,
             )
 
+    def _generate_oscillator_seq_code(self):
+        mod_config = self._mod_config.get(self.i_channel_name, {})
+        if mod_config.get('internal_mod', False):
+            # Reset the starting phase of all oscillators at the beginning
+            # of a sequence using the resetOscPhase instruction. This
+            # ensures that the carrier-envelope offset, and thus the final
+            # output signal, is identical from one repetition to the next.
+            self._playback_strings.append(f'resetOscPhase();\n')
+
     def _upload_modulation_config(
             self,
             mod_config,
@@ -612,6 +621,9 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_1', 0)
+
+        # Enable Oscillator control from the sequencer code
+        self.awg.set(f'awgs_{awg_nr}_enable', 1)
 
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr
