@@ -97,16 +97,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.check_hard_sweep_compatibility()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
-        if len(self.sweep_points_pulses[0]) == 0:
-            # Create a single segement if no hard sweep points are provided.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_hard_sweep',
-                                                         [0], dimension=0)
-        if self.force_2D_sweep and len(self.sweep_points_pulses[1]) == 0:
-            # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-            # With this dummy soft sweep, exactly one sequence will be created
-            # and the data format will be the same as for a true soft sweep.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_soft_sweep',
-                                                         [0], dimension=1)
 
         self._fill_temporary_values()
         # temp value ensure that mod_freqs etc are set corretcly

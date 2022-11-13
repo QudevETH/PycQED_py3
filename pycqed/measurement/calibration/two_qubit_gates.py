@@ -435,15 +435,16 @@ class MultiTaskingExperiment(QuantumExperiment):
                 'all', self.all_main_blocks)
         else:
             self.all_main_blocks = self.all_main_blocks[0]
-        if len(self.sweep_points[0]) == 0:
+        sweep_points = self.get_sweep_points_for_sweep_n_dim()
+        if len(sweep_points[0]) == 0:
             # Create a single segement if no hard sweep points are provided.
-            self.sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
-                                                  dimension=0)
-        if self._min_sweep_dims == 2 and len(self.sweep_points[1]) == 0:
+            sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
+                                             dimension=0)
+        if self._min_sweep_dims == 2 and len(sweep_points[1]) == 0:
             # With this dummy soft sweep, exactly one sequence will be created
             # and the data format will be the same as for a true soft sweep.
-            self.sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
-                                                  dimension=1)
+            sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
+                                             dimension=1)
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
@@ -451,7 +452,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                            if f'RO {m}' not in op_codes
                            and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
-        return self.sweep_n_dim(self.get_sweep_points_for_sweep_n_dim(),
+        return self.sweep_n_dim(sweep_points,
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points, **kw)
 
