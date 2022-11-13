@@ -300,6 +300,12 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
+        # check whether new sweep points increase the total number of sweep
+        # dimensions
+        if (l := len(task.get('sweep_points', []))) > self._min_sweep_dims:
+            self._min_sweep_dims = l
+            while len(global_sweep_points) < self._min_sweep_dims:
+                global_sweep_points.add_sweep_dimension()
 
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point

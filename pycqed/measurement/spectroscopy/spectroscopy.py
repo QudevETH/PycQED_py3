@@ -86,6 +86,10 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.grouped_tasks = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        # new sweep points created from kws might increase the total number of
+        # sweep dimensions: extend sweep_points_pulses if needed
+        while len(self.sweep_points_pulses) < self._min_sweep_dims:
+            self.sweep_points_pulses.add_sweep_dimension()
 
         self.group_tasks()
         self.check_all_freqs_per_lo()
