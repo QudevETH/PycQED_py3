@@ -613,6 +613,9 @@ class MeasurementControl(Instrument):
         if np.size(x) != len(self.sweep_functions):
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
+        # The following will be set to True (in the second-last iteration,
+        # sweep dimension 1) if the sweep point can be skipped (in the
+        # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
             # If statement below tests if the value is different from the
@@ -633,7 +636,7 @@ class MeasurementControl(Instrument):
                 # always set the first point
                 set_val = sweep_function.set_parameter(swp_pt)
             else:
-                # start_idx -1 refers to the last written value
+                # ::-1 as in the for loop (outer dimensions first)
                 prev_swp_pt = self.last_sweep_pts[::-1][i]
                 if swp_pt != prev_swp_pt and not filter_out:
                     # only set if not equal to previous point
@@ -656,12 +659,16 @@ class MeasurementControl(Instrument):
             if index is not None and i == len(self.sweep_functions) - 2:
                 fsw = getattr(sweep_function, 'filtered_sweep', None)
                 if fsw is not None:
+                    # calculate the index within sweep dimension 0
                     xindex = index % self.xlen
+                    # set filter_out to True if filtered_sweep indicates
+                    # that the point can be skipped
                     filter_out = (xindex < len(fsw) and not fsw[xindex])
         
         # used for next iteration
         if filter_out and self.iteration > 0:
-            self.last_sweep_pts[:-1] = x[:-1]
+            # do not update dimension 0 if the sweep point was not set above
+            self.last_sweep_pts[1:] = x[1:]
         else:
             self.last_sweep_pts = x
         datasetshape = self.dset.shape
