@@ -3,8 +3,8 @@ import logging
 from qcodes import ManualParameter
 import qcodes.utils.validators as vals
 
-from .shfqa_pulsar import SHFAcquisitionModulePulsar
-from .shfsg_pulsar import SHFGeneratorModulePulsar
+from .shfqa_pulsar import SHFAcquisitionModulesPulsar
+from .shfsg_pulsar import SHFGeneratorModulesPulsar
 
 try:
     from zhinst.qcodes import SHFQC as SHFQC_core
@@ -14,7 +14,7 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
+class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
     """ZI SHFQC specific Pulsar module"""
     AWG_CLASSES = [SHFQC_core]
 
@@ -38,10 +38,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # Repeat pattern support is not yet implemented for the SHFQC, thus we
-        # remove this parameter added in super().create_awg_parameters()
-        del pulsar.parameters[f"{name}_minimize_sequencer_memory"]
-
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter)
@@ -61,15 +57,15 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                        'spectroscopies on the SG channels ',
                              vals=vals.Bool())
 
-        SHFAcquisitionModulePulsar._create_all_channel_parameters(
+        SHFAcquisitionModulesPulsar._create_all_channel_parameters(
             self, channel_name_map)
-        SHFGeneratorModulePulsar._create_all_channel_parameters(
+        SHFGeneratorModulesPulsar._create_all_channel_parameters(
             self, channel_name_map)
 
     @classmethod
     def _get_superclass(cls, id):
-        return SHFAcquisitionModulePulsar if 'qa' in id \
-            else SHFGeneratorModulePulsar
+        return SHFAcquisitionModulesPulsar if 'qa' in id \
+            else SHFGeneratorModulesPulsar
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
@@ -92,24 +88,16 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         kwargs = dict(repeat_pattern=repeat_pattern,
                       channels_to_upload=channels_to_upload,
                       channels_to_program=channels_to_program)
-        SHFAcquisitionModulePulsar.program_awg(*args, **kwargs)
-        SHFGeneratorModulePulsar.program_awg(*args, **kwargs)
+        SHFAcquisitionModulesPulsar.program_awg(*args, **kwargs)
+        SHFGeneratorModulesPulsar.program_awg(*args, **kwargs)
 
     def is_awg_running(self):
-        return SHFAcquisitionModulePulsar.is_awg_running(self) or \
-               SHFGeneratorModulePulsar.is_awg_running(self)
+        return SHFAcquisitionModulesPulsar.is_awg_running(self) and \
+               SHFGeneratorModulesPulsar.is_awg_running(self)
 
     def sigout_on(self, ch, on=True):
         id = self.pulsar.get(ch + '_id')
         return self._get_superclass(id).sigout_on(self, ch, on=on)
-
-    def start(self):
-        SHFAcquisitionModulePulsar.start(self)
-        SHFGeneratorModulePulsar.start(self)
-
-    def stop(self):
-        SHFAcquisitionModulePulsar.stop(self)
-        SHFGeneratorModulePulsar.stop(self)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         id = self.pulsar.get(ch + '_id')

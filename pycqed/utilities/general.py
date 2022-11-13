@@ -786,7 +786,7 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
     Args:
         qubits (list of qubit objects): The qubits for which the readout
             should be configured.
-        lo_freqs_dict (dict): A dict where each key identifies a drive LO
+        lo_freqs_dict (dict): A dict where each key identifies a readout LO
             in one of the formats as returned by qb.get_ro_lo_identifier,
             and the corresponding value determines the LO frequency that
             this LO should use.

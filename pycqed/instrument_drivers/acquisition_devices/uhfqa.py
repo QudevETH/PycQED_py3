@@ -51,8 +51,11 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                              # detector object.
     }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, interface: str = '1GbE',
+                 server: str = 'localhost', **kwargs):
+        super().__init__(*args, interface=interface, server=server, **kwargs)
+        self.interface = interface
+        self.server = server
         self._snapshot_whitelist = {
             'IDN',
             'clockbase',}
@@ -174,6 +177,9 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             self._n_acquisition_progress_add += 2 ** 18
         self._n_acquisition_progress_last = n_acq
         return n_acq + self._n_acquisition_progress_add
+
+    def get_awg_control_object(self):
+        return self, self.name
 
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()

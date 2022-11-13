@@ -78,6 +78,9 @@ class UploadingSweepFunction(Sweep_function):
                 only one unique segment and do not need to be synchronized to
                 other AWGs and therefore do not need to be stopped when
                 switching to the next segment in the sweep. Defaults to False.
+                FIXME: Check whether start_pulsar can be removed in the future
+                 by instead letting measurements configure the detector
+                 functions such that it starts pulsar.
             start_exclude_awgs (collection[str], optional):
                 A collection of AWG names that will not be started directly
                 after upload in case start_pulsar is True. Defaults to empty
@@ -118,11 +121,11 @@ class UploadingSweepFunction(Sweep_function):
                 Defaults to False.
 
         Raises:
-            ValueError: Raised if sequence is None.
+            ValueError: Raised if sequence is None and force_upload is True.
         """
-        if self.sequence is None:
+        if self.sequence is None and force_upload:
             raise ValueError('Cannot upload with sequence being None')
-        if self.upload or force_upload:
+        if (self.upload or force_upload) and self.sequence is not None:
             self.sequence.upload()
             if self.upload_finished_callback is not None:
                 self.upload_finished_callback()
@@ -139,12 +142,13 @@ class UploadingSweepFunction(Sweep_function):
             start_pulsar (bool, optional): Defaults to True.
 
         Returns:
-            bool: True, because UploadingSweepFunction can upload sequences.
+            bool: True if a sequence to upload is stored in the
+                UploadingSweepFunction, and False otherwise
         """
         self.upload = upload
         self.upload_first = upload_first
         self.start_pulsar = start_pulsar
-        return True
+        return self.sequence is not None
 
 
 class Soft_Sweep(Sweep_function):
@@ -372,12 +376,13 @@ class multi_sweep_function(Soft_Sweep):
                 qcodes.Parameter object is passed it will be converted to a
                 Sweep_function beforehand.
         """
-        if self.sweep_functions and self.sweep_functions[0].sweep_control != \
-                sweep_function.sweep_control:
+        if not self.sweep_functions:
+            self.sweep_control = sweep_function.sweep_control
+        elif self.sweep_control != sweep_function.sweep_control:
             raise ValueError(f'Sweep control "{sweep_function.sweep_control}" '
                              f'of added sweep function does not match the '
                              f'sweep control of the previously added functions '
-                             f'("{self.sweep_functions[0].sweep_control}"). '
+                             f'("{self.sweep_control}"). '
                              f'All sweep functions must have the same '
                              f'sweep_control.')
 
@@ -510,7 +515,7 @@ class Indexed_Sweep(Transformed_Sweep):
                  unit=''):
         self.values = values
         super().__init__(sweep_function,
-                 transformation=lambda i, v=self.values : v[i],
+                 transformation=lambda i, v=self.values : v[int(i)],
                  name=name, parameter_name=parameter_name, unit=unit)
 
     def default_param_name(self):

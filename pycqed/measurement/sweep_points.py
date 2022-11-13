@@ -471,6 +471,19 @@ class SweepPoints(list):
         dim = self.find_parameter(param_name)
         return self.get_sweep_params_property('values', dim, param_names=param_name)
 
+    def prune_constant_values(self):
+        """
+        Removes constant sweep parameters (Note: does not delete the
+        corresponding dimensions if they are left empty)
+
+        """
+
+        param_names = [p for dim in self for p in dim]
+        for p in param_names:
+            vals = self.get_values(p)
+            if not any(vals - np.min(vals)):  # If constant
+                self.remove_sweep_parameter(p)
+
     def subset(self, i, dimension=0):
         """
         Returns a new SweepPoints object with one of the dimensions reduced

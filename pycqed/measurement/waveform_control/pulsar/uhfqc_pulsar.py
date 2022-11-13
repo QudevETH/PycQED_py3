@@ -10,13 +10,13 @@ except Exception:
     UHFQA = type(None)
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin
+from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
+class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA]
@@ -53,15 +53,51 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         "}}\n"
     )
 
+    def __init__(self, pulsar, awg):
+        super().__init__(pulsar, awg)
+        try:
+            # Here we instantiate a zhinst.qcodes-based UHFQA in addition to
+            # the one based on the ZI_base_instrument because the parallel
+            # uploading of elf files is only supported by the qcodes driver
+            from pycqed.instrument_drivers.physical_instruments. \
+                ZurichInstruments.zhinst_qcodes_wrappers import UHFQA
+            kw = {'server': 'emulator'} if awg.server == 'emulator' else {}
+            self._awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
+                                  host='localhost', interface=awg.interface,
+                                  **kw)
+            if getattr(self.awg.daq, 'server', None) == 'emulator':
+                # This is a hack for virtual setups to make sure that the
+                # ready node is in sync between the two mock DAQ servers.
+                path = f'/{self.awg.devname}/awgs/0/ready'
+                self._awg_mcc._session.daq_server.nodes[
+                    path] = self.awg.daq.nodes[path]
+        except ImportError as e:
+            log.debug(f'Error importing zhinst-qcodes: {e}.')
+            log.debug(f'Parallel elf compilation will not be available for '
+                      f'{awg.name} ({awg.devname}).')
+            self._awg_mcc = None
+
+        self._init_mcc()
+
+    def _get_awgs_mcc(self) -> list:
+        if self._awg_mcc is not None:
+            return list(self._awg_mcc.awgs)
+        else:
+            return []
+
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
         name = self.awg.name
 
-        # TODO: Check if it is meaningful that this AWG has a different initial
-        # value for this parameter
-        pulsar.set(f"{name}_minimize_sequencer_memory", True)
+        pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
+                             initial_value=True, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Minimizes the sequencer memory by "
+                                       "repeating specific sequence patterns "
+                                       "(eg. readout) passed in "
+                                       "'repeat dictionary'.")
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
@@ -137,7 +173,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                                for cw, chids in codewords.items()
                                    if cw != 'metadata'
                                for h in chids.values()}
-        self._zi_write_waves(waves_to_upload)
+        self.zi_write_waves(waves_to_upload)
 
         defined_waves = set()
         wave_definitions = []
@@ -170,7 +206,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             metadata = awg_sequence_element.pop('metadata', {})
             # The following line only has an effect if the metadata specifies
             # that the segment should be repeated multiple times.
-            playback_strings += self._zi_playback_string_loop_start(
+            playback_strings += self.zi_playback_string_loop_start(
                 metadata, ['ch1', 'ch2'])
             if list(awg_sequence_element.keys()) != ['no_codeword']:
                 raise NotImplementedError("UHFQC sequencer does currently not "
@@ -179,8 +215,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
             wave = (chid_to_hash.get('ch1', None), None,
                     chid_to_hash.get('ch2', None), None)
-            wave_definitions += self._zi_wave_definition(wave,
-                                                         defined_waves)
+            wave_definitions += self.zi_wave_definition(wave,
+                                                        defined_waves)
 
             acq = metadata.get('acq', False)
             # Remark on allow_filter in the call to _zi_playback_string:
@@ -189,13 +225,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # element metadata allows segment filtering. (Use case for
             # calling play_element with allow_filter=False: repeat patterns,
             # see below.)
-            playback_strings += self._zi_playback_string(
+            playback_strings += self.zi_playback_string(
                 name=self.awg.name, device='uhf', wave=wave, acq=acq,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
             # The following line only has an effect if the metadata specifies
             # that the segment should be repeated multiple times.
-            playback_strings += self._zi_playback_string_loop_end(metadata)
+            playback_strings += self.zi_playback_string_loop_end(metadata)
 
             ch_has_waveforms['ch1'] |= wave[0] is not None
             ch_has_waveforms['ch2'] |= wave[2] is not None
@@ -314,11 +350,8 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         el_played = el_played + 1
                     return el_played, playback_strings, wave_definitions
 
-
-
             el_played, playback_strings, wave_definitions = repeat_func(repeat_pattern, 0, 0,
                                                   playback_strings, wave_definitions)
-
 
             if el_played != 'variable' and int(el_played) != int(el_total):
                 log.error(
@@ -326,7 +359,6 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     f'({el_played}) does not match the total number of '
                     f'elements ({el_total}).')
                 raise ValueError('Check number of sequences in repeat pattern')
-
 
         if not (ch_has_waveforms['ch1'] or ch_has_waveforms['ch2']):
             return
@@ -345,7 +377,20 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg._awg_needs_configuration[0] = False
         self.awg._awg_program[0] = True
 
-        self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str, timeout=600)
+        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
+            # Parallel seqc string compilation and upload
+            self.multi_core_compiler.add_active_awg(self.awgs_mcc[0])
+            self.multi_core_compiler.load_sequencer_program(
+                self.awgs_mcc[0], awg_str)
+        else:
+            if self.pulsar.use_mcc():
+                log.warning(
+                    f'Parallel elf compilation not supported for '
+                    f'{self.awg.name} ({self.awg.devname}), see debug '
+                    f'log when adding the AWG to pulsar.')
+            # Sequential seqc string upload
+            self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,
+                                               timeout=600)
 
     def is_awg_running(self):
         return self.awg.awgs_0_enable() != 0
