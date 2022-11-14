@@ -122,7 +122,7 @@ class Sequence:
         # want to execute 'self.harmonize_amplitude' once. Otherwise,
         # we will have wrong pulse amplitudes and scaling parameters.
         for awg in awgs:
-            if awg not in self.awg_scaling_factors.values():
+            if awg not in self.awg_scaling_factors.keys():
                 self.awg_scaling_factors[awg] = \
                     self.harmonize_amplitude(awg=awg)
 
