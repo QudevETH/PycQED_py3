@@ -548,10 +548,6 @@ class SHFGeneratorModule(ZIGeneratorModule):
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         assert mc is None # marker not yet supported on SG
 
-        # Q channel sign needs to be flipped for SHFSG/QC
-        if a2 is not None:
-            a2 = -a2
-
         waveforms = zhinst.toolkit.waveform.Waveforms()
         waveforms.assign_waveform(wave_idx, a1, a2)
 
