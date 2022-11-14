@@ -737,16 +737,10 @@ class SHFGeneratorModule(ZIGeneratorModule):
                     f"/{self._awg_nr}/awg/commandtable/data"
         daq.setVector(data_node, json.dumps(command_table_list_upload))
 
-        # check if the command table has been properly uploaded
-        status_node = f"/{device_id}/sgchannels" \
-                      f"/{self._awg_nr}/awg/commandtable/status"
-        status = daq.getInt(status_node)
-
         if not isinstance(daq, MockDAQServer):
-            # This is a DAQ server for actual devices. We request upload
-            # status from the device and check if it is successful.
-            status_node = f"/{device_id}/awgs" \
-                          f"/{self._awg_nr}/commandtable/status"
+            # check if the command table has been properly uploaded
+            status_node = f"/{device_id}/sgchannels" \
+                          f"/{self._awg_nr}/awg/commandtable/status"
             status = daq.getInt(status_node)
 
             if status != 1:
