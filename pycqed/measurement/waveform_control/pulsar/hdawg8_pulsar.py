@@ -797,10 +797,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         hdawg_command_table_entry = {
             "index": entry_index,
             "waveform": {"index": wave_index},
-            "amplitude0": amplitude[0],
-            "amplitude1": amplitude[1],
-            "phase0": phase[0],
-            "phase1": phase[1],
+            "amplitude0": {"value": amplitude[0]},
+            "amplitude1": {"value": amplitude[1]},
+            "phase0": {"value": phase[0]},
+            "phase1": {"value": phase[1]},
         }
 
         return hdawg_command_table_entry
@@ -812,8 +812,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
         # add a wrapper outside the command table list
         command_table_list_upload = {
-            "$schema": "https://docs.zhinst.com/hdawg/commandtable/v2/schema",
-            "header": {"version": "0.2"},
+            "$schema": "https://json-schema.org/draft-04/schema#",
+            "header": {"version": "1.0.0"},
             "table": self._command_table
         }
 
