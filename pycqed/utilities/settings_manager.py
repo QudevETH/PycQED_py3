@@ -1,6 +1,7 @@
-# General imports
-# why this import: Instrument class uses own class definition inside Instrument.add_submodule
-# see https://stackoverflow.com/questions/42845972/typed-python-using-the-classes-own-type-inside-class-definition
+# Importing annotations is required because Instrument class uses own class
+# definition inside Instrument.add_submodule
+# see https://stackoverflow.com/questions/42845972/
+#   typed-python-using-the-classes-own-type-inside-class-definition
 # for more details.
 from __future__ import annotations
 import sys
@@ -124,8 +125,8 @@ class Parameter(DelegateAttributes):
 
 class Instrument(DelegateAttributes):
     """
-    Instrument class which mocks Instrument class of QCodes. An instrument object contains given parameters.
-    Submodules are instruments themselves.
+    Instrument class which mocks Instrument class of QCodes. An instrument
+    object contains given parameters. Submodules are instruments themselves.
     """
 
     delegate_attr_dicts = ['parameters', 'submodules']
@@ -140,17 +141,18 @@ class Instrument(DelegateAttributes):
         self.parameters = {}
         self.functions = {}
         self.submodules = {}
-        # QCodes instruments store the respective Class name of an instrument,
-        # e.g. pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon.QuDev_transmon
+        # QCodes instruments store the respective Class name of an
+        # instrument, e.g. pycqed.instrument_drivers.meta_instrument
+        # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
 
     def snapshot(self) -> dict[any, any]:
         """
-        Creates recursively a snapshot (dictionary) which has the same structure as the snapshot
-        from QCodes instruments.
+        Creates recursively a snapshot (dictionary) which has the same structure
+        as the snapshot from QCodes instruments.
 
-        Returns (dict): Returns a snapshot as a dictionary with keys 'functions', 'submodules', 'parameters',
-            '__class__' and 'name'
+        Returns (dict): Returns a snapshot as a dictionary with keys
+            'functions', 'submodules', 'parameters', '__class__' and 'name'
 
         """
         param: dict[any, any] = {}
@@ -180,7 +182,8 @@ class Instrument(DelegateAttributes):
         if namestr in self.parameters.keys():
             raise RuntimeError(
                 f'Cannot add parameter "{namestr}", because a '
-                'parameter of that name is already registered to the instrument')
+                'parameter of that name is already registered to '
+                'the instrument')
         self.parameters[namestr] = param
 
     def add_classname(self, name: str):
@@ -188,9 +191,10 @@ class Instrument(DelegateAttributes):
 
     def add_submodule(self, name: str, submod: Instrument):
         """
-        Adds a submodule (aka channel) which is an instrument themselves. We make no distinction between submodules
-        and channels (unlike QCodes).
-        To force submod to be an Instrument, from __future__ import annotations has to be added at the beginning.
+        Adds a submodule (aka channel) which is an instrument themselves.
+        We make no distinction between submodules and channels (unlike QCodes).
+        To force submod to be an Instrument, from __future__ import
+        annotations has to be added at the beginning.
         Args:
             name (str): name of the respective submodule or channel
             submod (Instrument): Instrument object of the respective submodule.
@@ -201,19 +205,24 @@ class Instrument(DelegateAttributes):
 
 class Station(DelegateAttributes):
     """
-    Station class which mocks Station class of QCodes. Station contains all given instruments and parameters.
+    Station class which mocks Station class of QCodes. Station contains all
+    given instruments and parameters.
     """
 
     delegate_attr_dicts = ['components']
 
     def __init__(self, timestamp: str = None):
         """
-        Initialization of the station. Each station is characterized by the timestamp.
-        Note that inside the station all instruments are added to the components attribute.
-        When snapshotting the station, the snapshot of the instruments can be found in the "instrument" keys and
-        all other items of the components attribute are in the "components" key.
+        Initialization of the station. Each station is characterized by the
+        timestamp.
+        Note that inside the station all instruments are added to the components
+        attribute.
+        When snapshotting the station, the snapshot of the instruments can be
+        found in the "instrument" keys and all other items of the components
+        attribute are in the "components" key.
         Args:
-            timestamp (str): For accepted formats of the timestamp see a_tools.verify_timestamp(str)
+            timestamp (str): For accepted formats of the timestamp see
+            a_tools.verify_timestamp(str)
         """
         self.instruments: dict = {}
         self.parameters: dict = {}
@@ -227,9 +236,11 @@ class Station(DelegateAttributes):
 
     def snapshot(self) -> dict[any, any]:
         """
-        Returns a snapshot as a dictionary of the entire station based on the structure of QCodes.
+        Returns a snapshot as a dictionary of the entire station based on the
+        structure of QCodes.
         Instrument snapshots are saved in "instrument" key of the dictionary.
-        Returns (dict): snapshot of the station with keys 'instruments', 'parameters', 'components' and 'config'
+        Returns (dict): snapshot of the station with keys
+            'instruments', 'parameters', 'components' and 'config'
         """
         inst: dict[any, any] = {}
         components: dict[any, any] = {}
@@ -254,8 +265,8 @@ class Station(DelegateAttributes):
 
     def add_component(self, inst: Instrument):
         """
-        Adds a given instrument to the station under the constriction that there exists no instrument with the
-        same name.
+        Adds a given instrument to the station under the constriction that
+        there exists no instrument with the same name.
         Args:
             inst (Instrument): Instrument object
         """
@@ -276,9 +287,10 @@ class SettingsManager:
 
     def __init__(self, stat: Station = None):
         """
-        Initialization of SettingsManager instance. Can be called with a preexisting station.
+        Initialization of SettingsManager instance. Can be called with a
+        preexisting station.
         Args:
-            stat (Station): optional, adds given station to the settings manager.
+            stat (Station): optional, adds given station to the settings manager
         """
         if stat == None:
             self.stations = {}
@@ -290,8 +302,9 @@ class SettingsManager:
         Adds a given station with a timestamp as its unique name.
         Args:
             station (Station): Station object which will be added.
-            Either QCodes station or Station class from this module
-            timestamp (str): Timestamp to call the station. Is converted into unified format.
+                Either QCodes station or Station class from this module
+            timestamp (str): Timestamp to call the station.
+                Is converted into unified format.
 
         """
         timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
@@ -301,14 +314,17 @@ class SettingsManager:
             raise TypeError(f'Cannot add station "{timestamp}", because the '
                             'station is not a QCode or Mock station class')
 
-    def load_from_file(self, timestamp: str, filetype='msgpack', compression=False):
+    def load_from_file(self, timestamp: str, filetype='msgpack',
+                       compression=False):
         """
         Loads station into the settings manager from saved files.
-        Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5 representation of the snapshot.
+        Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5
+        representation of the snapshot.
         Args:
             timestamp (str): Supports all formats from a_tools.get_folder
             filetype (str): 'hdf5', 'pickle' or 'msgpack'
-            compression: Set True if files are compressed by blosc2 (only for pickle and msgpack)
+            compression: Set True if files are compressed by blosc2
+                (only for pickle and msgpack)
 
         Returns: Station which was created by the saved data.
 
@@ -316,7 +332,8 @@ class SettingsManager:
         if filetype not in ['hdf5', 'pickle', 'msgpack']:
             raise Exception('File type not supported!')
         if filetype == 'hdf5':
-            # hdf5 files are not saved as a dictionary. If follows another loading scheme.
+            # hdf5 files are not saved as a dictionary.
+            # If follows another loading scheme.
             self.load_from_hdf5(timestamp=timestamp)
             return
         if filetype == 'pickle':
@@ -333,7 +350,8 @@ class SettingsManager:
             stat.add_component(inst)
 
         for comp_name, comp_dict in snap['components'].items():
-            # So far, components are not considered. Loader.load_component is a hollow function.
+            # So far, components are not considered.
+            # Loader.load_component is a hollow function.
             comp = Loader.load_component(comp_name, comp_dict)
             if comp is not None:
                 stat.add_component(comp)
@@ -345,12 +363,12 @@ class SettingsManager:
         """
         Loads settings from an hdf5 file into a station.
         Args:
-            timestamp (str): Uniquelily identifies the file. If file with timestamp not in a_toold.datadir,
-            a_tools tries to fetch from a_tools.fetch_data_dir.
+            timestamp (str): Uniquelily identifies the file. If file with
+                timestamp not in a_toold.datadir, a_tools tries to fetch
+                from a_tools.fetch_data_dir.
             h5mode: 'r' for read only mode.
 
         Returns: station
-
         """
         loader = HDFLoader(timestamp=timestamp)
 
@@ -368,14 +386,16 @@ class SettingsManager:
         """
         Opens a gui window to display the snapshot of the given station.0
         Args:
-            timestamp (str): address the station which is already loaded onto the settings manager.
+            timestamp (str): address the station which is already loaded onto
+                the settings manager.
 
         Returns:
 
         """
         snap = self.stations[timestamp].snapshot()
         qt_app = QtWidgets.QApplication(sys.argv)
-        snap_viewer = dict_viewer.DictViewerWindow(snap, 'Snapshot timestamp: %s' % timestamp)
+        snap_viewer = dict_viewer.DictViewerWindow(
+            snap, 'Snapshot timestamp: %s' % timestamp)
         qt_app.exec_()
 
 
@@ -388,13 +408,16 @@ class Loader:
 
     def get_filepath(self, timestamp=None, filepath=None, extension=None):
         """
-        If no explicit filepath is given, a_tools.get_folder tries to get the directory based on the timestamp and
-        the directory defined by a_tools.datadir, a_tools.fetch_data_dir, respectively.
+        If no explicit filepath is given, a_tools.get_folder tries to get the
+        directory based on the timestamp and the directory defined by
+        a_tools.datadir, a_tools.fetch_data_dir, respectively.
         Args:
             timestamp (str): timestring in a format which is accepted by a_tools
-            filepath (str): explicit filepath. If given, filepath is set to this value.
-            extension (str): extension of the filetype, usually 'hdf5' for hdf5, 'obj' for pickle and 'msg' for msgpack.
-            'objc' and 'msgc' for compressed pickle and msgpack files.
+            filepath (str): explicit filepath. If given, filepath is set to
+                this value
+            extension (str): extension of the filetype, usually 'hdf5' for hdf5,
+                'obj' for pickle and 'msg' for msgpack.
+                'objc' and 'msgc' for compressed pickle and msgpack files.
 
         Returns: filepath as a string
 
@@ -429,14 +452,16 @@ class Loader:
             if k not in inst_dict:
                 continue
             for submod_name, submod_dict in inst_dict[k].items():
-                submod_inst = PickleLoader.load_instrument(submod_name, submod_dict)
+                submod_inst = PickleLoader.load_instrument(
+                    submod_name, submod_dict)
                 inst.add_submodule(submod_name, submod_inst)
         return inst
 
     @staticmethod
     def load_component(comp_name, comp):
         """
-        Hollow function. Can be used in the future to load components which are not instruments.
+        Hollow function. Can be used in the future to load components which are
+        not instruments.
         Args:
             comp_name:
             comp:
@@ -466,12 +491,15 @@ class HDFLoader(Loader):
         inst = Instrument(inst_name)
         # load parameters
         for param_name in list(inst_group.attrs):
-            param_value = BaseDataAnalysis.get_hdf_datafile_param_value(inst_group, param_name)
+            param_value = BaseDataAnalysis.get_hdf_datafile_param_value(
+                inst_group, param_name)
             par = Parameter(param_name, param_value)
             inst.add_parameter(par)
         # load class name
         if '__class__' in inst_group:
-            inst.add_classname(BaseDataAnalysis.get_hdf_datafile_param_value(inst_group, '__class__'))
+            inst.add_classname(
+                BaseDataAnalysis.get_hdf_datafile_param_value(
+                    inst_group, '__class__'))
         # load submodules
         for submod_name, submod_group in list(inst_group.items()):
             submod_inst = HDFLoader.load_instrument(submod_name, submod_group)
@@ -489,9 +517,11 @@ class PickleLoader(Loader):
         super().__init__()
         self.compression = compression
         if self.compression:
-            self.filepath = self.get_filepath(timestamp, filepath, extension='objc')
+            self.filepath = self.get_filepath(
+                timestamp, filepath, extension='objc')
         else:
-            self.filepath = self.get_filepath(timestamp, filepath, extension='obj')
+            self.filepath = self.get_filepath(
+                timestamp, filepath, extension='obj')
 
     def get_snapshot(self):
         """
@@ -514,9 +544,11 @@ class MsgLoader(Loader):
         super().__init__()
         self.compression = compression
         if self.compression:
-            self.filepath = self.get_filepath(timestamp, filepath, extension='msgc')
+            self.filepath = self.get_filepath(
+                timestamp, filepath, extension='msgc')
         else:
-            self.filepath = self.get_filepath(timestamp, filepath, extension='msg')
+            self.filepath = self.get_filepath(
+                timestamp, filepath, extension='msg')
 
     def get_snapshot(self):
         """
@@ -528,10 +560,15 @@ class MsgLoader(Loader):
                 byte_data = blosc2.decompress(f.read())
             else:
                 byte_data = f.read()
-            # To avoid problems with lists while unpacking use_list has to be set to false. Otherwise, msgpack arrays
-            # are converted to Python lists. To allow for tuples as dict keys, strict_map_key has to be set to false.
-            # For more information https://stackoverflow.com/questions/66835419/msgpack-dictionary-with-tuple-keys
-            # and https://github.com/msgpack/msgpack-python#major-breaking-changes-in-msgpack-10
-            snap = msgpack.unpackb(byte_data, use_list=False, strict_map_key=False)
+            # To avoid problems with lists while unpacking use_list has to be
+            # set to false. Otherwise, msgpack arrays are converted to Python
+            # lists. To allow for tuples as dict keys, strict_map_key has to
+            # be set to false. For more information
+            # https://stackoverflow.com/questions/66835419/msgpack-dictionary
+            # -with-tuple-keys and
+            # https://github.com/msgpack/msgpack-python#major-breaking
+            # -changes-in-msgpack-10
+            snap = msgpack.unpackb(
+                byte_data, use_list=False, strict_map_key=False)
             f.close()
         return snap
