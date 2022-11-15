@@ -338,7 +338,6 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                     save_figures=save_figures, filename=save_filename)
         return pp, meas_obj_names, cycles, nr_seq
     except Exception:
-        print('HERE')
         traceback.print_exc()
         return pp, None, None, None
 
@@ -866,6 +865,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         xeb_data[depth] = 0
     i = 0
     while i < len(cycles):
+        print(cycles[i])
         pops_meas = proba_exp[i::len(cycles)]
         current_circuits = circuits[i::len(cycles)]
         p_m = sqrt_purity(pops_meas, d)
