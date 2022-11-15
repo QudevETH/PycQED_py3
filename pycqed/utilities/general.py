@@ -1,11 +1,11 @@
 import os
 import sys
-import ast
 import numpy as np
 import h5py
 import json
+import time
 import datetime
-from contextlib import contextmanager
+import pickle
 from pycqed.measurement import hdf5_data as h5d
 from pycqed.analysis import analysis_toolbox as a_tools
 import errno
@@ -18,8 +18,10 @@ import subprocess
 from functools import reduce  # forward compatibility for Python 3
 import operator
 import string
-from collections import OrderedDict  # for eval in load_settings
 import functools
+from zipfile import ZipFile
+
+
 from copy import deepcopy
 log = logging.getLogger(__name__)
 try:
@@ -921,6 +923,43 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     file.close()
 
 
+def write_logfile(filename, content, directory):
+    """
+
+    Creates a file filename.log in directory.
+
+    Args:
+        filename (str): name of .log file
+        content (str): content of the .log file
+        directory (str): path where the .log file will be created
+
+    Returns:
+        full path to the .log file
+    """
+    logfile = os.path.join(directory, f"{filename}.log")
+    f = open(logfile, 'a+')
+    f.write(content)
+    f.write("\n")
+    f.close()
+    return logfile
+
+
+def zipfolder(zip_filename, folder, directory):
+    """
+    Creates a compressed file from folder.
+
+    Args:
+        zip_filename (str): name of the compressed file
+        folder (str): path to folder that will be compressed
+        directory (str): path where the compressed file will be created
+    """
+    with ZipFile(os.path.join(directory, f'{zip_filename}.zip'), 'w') as zipObj:
+        for folderName, subfolders, filenames in os.walk(folder):
+            for filename in filenames:
+                filePath = os.path.join(folderName, filename)
+                zipObj.write(filePath, os.path.relpath(filePath, folder))
+
+
 def save_zibugreport(interactive=True, save_folder=None):
     """
     Saves a detailed bug report of ZI devices.
@@ -952,31 +991,11 @@ def save_zibugreport(interactive=True, save_folder=None):
     Returns:
         exceptions (dict): exceptions raised while trying to dump the bug report
     """
-    from zipfile import ZipFile
-    import json
-    import pickle
-    import time
+    exceptions = {}
 
     # get the pulsar instance
     from pycqed.measurement.waveform_control import pulsar as ps
     pulsar = ps.Pulsar.get_instance()
-
-    exceptions = {}
-
-    def write_logfile(logfile, content):
-        logfile = os.path.join(brdir, f"{logfile}.log")
-        f = open(logfile, 'a+')
-        f.write(content)
-        f.write("\n")
-        f.close()
-        return logfile
-
-    def zipfolder(zipfile, folder):
-        with ZipFile(os.path.join(brdir, f'{zipfile}.zip'), 'w') as zipObj:
-            for folderName, subfolders, filenames in os.walk(folder):
-                for filename in filenames:
-                    filePath = os.path.join(folderName, filename)
-                    zipObj.write(filePath, os.path.relpath(filePath, folder))
 
     # create the save folder
     if save_folder is None:
@@ -989,7 +1008,7 @@ def save_zibugreport(interactive=True, save_folder=None):
     # save the waveform files
     try:
         zipfolder('waves', pulsar.awg_interfaces[
-            list(pulsar.awg_interfaces)[0]]._zi_wave_dir())
+            list(pulsar.awg_interfaces)[0]]._zi_wave_dir(), brdir)
     except Exception as e:
         exceptions['waves'] = e
 
@@ -999,12 +1018,12 @@ def save_zibugreport(interactive=True, save_folder=None):
     # save versions of zhinst modules
     versions_zhinst, exceps = get_zhinst_modules_versions()
     exceptions.update(exceps)
-    write_logfile('versions_zhinst', repr(versions_zhinst))
+    write_logfile('versions_zhinst', repr(versions_zhinst), brdir)
 
     # save firmware and fpgs versions
     versions_devs, exceps = get_zhinst_firmware_versions(instruments)
     exceptions.update(exceps)
-    write_logfile('versions', repr(versions_devs))
+    write_logfile('versions', repr(versions_devs), brdir)
 
     # save the firmware git revision
     for dev in instruments:
@@ -1017,7 +1036,7 @@ def save_zibugreport(interactive=True, save_folder=None):
             fw_git_revision_dict = json.loads(fw_git_revision_string)
             write_logfile(os.path.join(
                 brdir, f'{dev.name}_{dev.devname}_firmware_revision'),
-                repr(fw_git_revision_dict))
+                repr(fw_git_revision_dict), brdir)
         except Exception as e:
             exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
 
@@ -1032,7 +1051,7 @@ def save_zibugreport(interactive=True, save_folder=None):
             bs_git_revision_dict = json.loads(bs_git_revision_string)
             write_logfile(os.path.join(
                 brdir, f'{dev.name}_{dev.devname}_bitstream_revision'),
-                repr(bs_git_revision_dict))
+                repr(bs_git_revision_dict), brdir)
         except Exception as e:
             exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
 
@@ -1041,7 +1060,7 @@ def save_zibugreport(interactive=True, save_folder=None):
         try:
             write_logfile(os.path.join(
                 brdir, f'{dev.name}_{dev.devname}_awg_source_strings'),
-                repr(getattr(dev, '_awg_source_strings', {})))
+                repr(getattr(dev, '_awg_source_strings', {})), brdir)
         except Exception as e:
             exceptions[f'{dev.name}_{dev.devname}_awg_source_strings'] = e
 
@@ -1050,7 +1069,7 @@ def save_zibugreport(interactive=True, save_folder=None):
         try:
             write_logfile(os.path.join(
                 brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
-                getattr(dev, 'compiler_statusstring', ''))
+                getattr(dev, 'compiler_statusstring', ''), brdir)
         except Exception as e:
             exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
 
@@ -1059,7 +1078,7 @@ def save_zibugreport(interactive=True, save_folder=None):
         try:
             write_logfile(
                 os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
-                repr(dev.snapshot()))
+                repr(dev.snapshot()), brdir)
         except Exception as e:
             exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
 
@@ -1068,7 +1087,7 @@ def save_zibugreport(interactive=True, save_folder=None):
         try:
             write_logfile(
                 os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                repr(json.loads(dev.getv('raw/error/json/errors'))))
+                repr(json.loads(dev.getv('raw/error/json/errors'))), brdir)
         except Exception as e:
             try:
                 # for QCodes-based devices
@@ -1078,7 +1097,7 @@ def save_zibugreport(interactive=True, save_folder=None):
                     'raw']['error']['json']['errors'][0]['vector']
                 write_logfile(
                     os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                    repr(json.loads(err_str)))
+                    repr(json.loads(err_str)), brdir)
             except Exception as e:
                 exceptions[f'{dev.name}_{dev.devname}_errors'] = e
 
@@ -1097,7 +1116,7 @@ def save_zibugreport(interactive=True, save_folder=None):
     # prompt user to save std output into a textfile
     if interactive:
         try:
-            f = write_logfile('stdout', 'COPY AND PASTE STDOUT HERE')
+            f = write_logfile('stdout', 'COPY AND PASTE STDOUT HERE', brdir)
             print(
                 'Please look for the open notepad window and paste the output '
                 'of the last running cell.')
