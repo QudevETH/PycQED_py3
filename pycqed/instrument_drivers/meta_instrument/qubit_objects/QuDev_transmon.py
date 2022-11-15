@@ -1536,8 +1536,12 @@ class QuDev_transmon(Qubit):
                 if hard_sweep or self.instr_ge_lo() is None:
                     # No external LO, use pulse to set the spec power
                     # The factor of 2 is needed here because the spec pulse is
-                    # applied only to the I channel, which means that we get
-                    # half the amplitude after upconversion.
+                    # applied only to the I channel. This means that we get
+                    # half the amplitude after upconversion when the
+                    # outputamplitude node is set to 0.5, which is the reasonable
+                    # setting to use for digital IQ modulation in time-domain
+                    # experiments (output pulse has the programmed pulse
+                    # amplitude).
                     spec_pulse["amplitude"] = 2 * dbm_to_vp(self.spec_power())
                 seq = sq.pulse_list_list_seq([[empty_trigger,
                                                spec_pulse,
