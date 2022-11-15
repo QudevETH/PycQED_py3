@@ -228,12 +228,15 @@ class MultiTaskingExperiment(QuantumExperiment):
         # SweepPoints object). This copy will then be extended with prefixed
         # task-specific sweep_points.
         self.sweep_points = SweepPoints(given_sweep_points)
-        # Internally, all sweeps need to be handled as 2D sweeps if
-        # force_2D_sweep is True or if any of the SweepPoints objects is 2D.
-        self._min_sweep_dims = 2 if self.force_2D_sweep else max(
+        # Internally, all sweeps need to be handled as 2D sweeps (i.e.,
+        # _num_sweep_dims = 2) if force_2D_sweep is True. Otherwise,
+        # the number of sweep dimensions _num_sweep_dims is the largest
+        # number of dimensions in any of the (global or task-specific)
+        # SweepPoints objects.
+        self._num_sweep_dims = 2 if self.force_2D_sweep else max(
             [len(t.get('sweep_points', [])) for t in self.task_list]
             + [len(self.sweep_points)])
-        while len(self.sweep_points) < self._min_sweep_dims:
+        while len(self.sweep_points) < self._num_sweep_dims:
             self.sweep_points.add_sweep_dimension()
         preprocessed_task_list = []
         for task in self.task_list:
@@ -302,9 +305,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         self.generate_kw_sweep_points(task)
         # check whether new sweep points increase the total number of sweep
         # dimensions
-        if (l := len(task.get('sweep_points', []))) > self._min_sweep_dims:
-            self._min_sweep_dims = l
-            while len(global_sweep_points) < self._min_sweep_dims:
+        if (l := len(task.get('sweep_points', []))) > self._num_sweep_dims:
+            self._num_sweep_dims = l
+            while len(global_sweep_points) < self._num_sweep_dims:
                 global_sweep_points.add_sweep_dimension()
 
         # Add all task sweep points to the current_sweep_points object.
@@ -321,9 +324,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Save the current_sweep_points object to the preprocessed task
         task['sweep_points'] = current_sweep_points
 
-        while len(current_sweep_points) < self._min_sweep_dims:
+        while len(current_sweep_points) < self._num_sweep_dims:
             current_sweep_points.add_sweep_dimension()
-        while len(params_to_prefix) < self._min_sweep_dims:
+        while len(params_to_prefix) < self._num_sweep_dims:
             params_to_prefix.append([])
         # for all sweep dimensions
         for gsp, csp, params in zip(global_sweep_points,
@@ -440,7 +443,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             # Create a single segement if no hard sweep points are provided.
             sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
                                              dimension=0)
-        if self._min_sweep_dims == 2 and len(sweep_points[1]) == 0:
+        if self._num_sweep_dims == 2 and len(sweep_points[1]) == 0:
             # With this dummy soft sweep, exactly one sequence will be created
             # and the data format will be the same as for a true soft sweep.
             sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
