@@ -641,6 +641,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                             "filter_segments_mask.")
             elif (self.filter_segments_mask is not None and
                   sweep_func_1st_dim.sweep_control == 'hard'):
+                # We need a FilteredSegmentSweep, which allows programming
+                # all segments and then playing only a subset of them
+                # (according to the mask for each 2nd dimension sweep point).
                 mask = np.array(self.filter_segments_mask)
                 # Only segments with indices included in the mask can be
                 # filtered out. The others will always be measured.
@@ -672,6 +675,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 sweep_func_2nd_dim = swf.FilteredSegmentSweep(
                         self.sequences[0], filter_lookup, [sweep_func_2nd_dim])
             elif self.filter_segments_mask is not None:
+                # We need a FilteredSoftSweep, which allows communicating
+                # all 1st dimension soft sweep points to MC and then
+                # recording data only a subset of them (according to the mask
+                # for each 2nd dimension sweep point).
                 mask = np.array(self.filter_segments_mask)
                 filter_lookup = {
                     mcp: mask[:, i] if i < mask.shape[1] else []

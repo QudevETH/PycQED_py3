@@ -657,6 +657,10 @@ class MeasurementControl(Instrument):
                     # a sweep function.
                     x[-i] = set_val
             if index is not None and i == len(self.sweep_functions) - 2:
+                # We are performing a static measurement and are in the
+                # second-to-last iteration of the loop, i.e., second sweep
+                # dimesion (according to the original ordering of sweep
+                # dimensions from innermost to outermost).
                 fsw = getattr(sweep_function, 'filtered_sweep', None)
                 if fsw is not None:
                     # calculate the index within sweep dimension 0
