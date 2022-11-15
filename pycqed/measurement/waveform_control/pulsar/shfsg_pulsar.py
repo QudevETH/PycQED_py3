@@ -139,10 +139,31 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             )
 
             self.pulsar.add_parameter(
+                f"{ch_name}_use_placeholder_waves",
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter,
+                docstring="Configures whether to use digital modulation"
+                          "sequencing on this AWG module. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_internal_modulation is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use internal modulation irrespective"
+                          "of the channel-specific setting."
+            )
+
+            self.pulsar.add_parameter(
                 f"{ch_name}_use_command_table",
                 initial_value=False,
                 vals=vals.Bool(),
-                parameter_class=ManualParameter
+                parameter_class=ManualParameter,
+                docstring="Configures whether to use command table for wave"
+                          "sequencing on this AWG module. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_use_command_table is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use command table irrespective "
+                          "of the channel-specific setting."
             )
 
             param_name = f"{ch_name}_internal_modulation"
@@ -151,8 +172,13 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 initial_value=False,
                 vals=vals.Bool(),
                 parameter_class=ManualParameter,
-                docstring="Configure on/off stage of internal modulation "
-                          "on this channel."
+                docstring="Configures whether to use command table for wave"
+                          "sequencing on this AWG module. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_use_command_table is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use command table irrespective "
+                          "of the channel-specific setting."
             )
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
@@ -411,10 +437,38 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use placeholder "
+                                       "waves in combination with binary "
+                                       "waveform uploadon this device. If set "
+                                       "to True, placeholder waves "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and programs command table on a "
+                                       "per-sub-AWG basis.")
         pulsar.add_parameter(f"{name}_use_command_table",
                              initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use command table"
+                                       "for waveform sequencing on this "
+                                       "device. If set to True, command table "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and programs command table on a "
+                                       "per-sub-AWG basis.")
+        pulsar.add_parameter(f"{name}_internal_modulation",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use digital "
+                                       "modulation for waveform generation on "
+                                       "this  device. If set to True, internal "
+                                       "modulation will be enabled on all AWG "
+                                       "modules on this device. If set to "
+                                       "False, pulsar will check "
+                                       "channel-specific settings and programs "
+                                       "command table on a per-sub-AWG basis.")
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "DIO", "ZSync"),

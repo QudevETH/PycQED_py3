@@ -38,12 +38,6 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        pulsar.add_parameter(f"{name}_use_placeholder_waves",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_use_command_table",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1",),
@@ -59,6 +53,49 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
                                        'sweeper should be used in for '
                                        'spectroscopies on the SG channels ',
                              vals=vals.Bool())
+        pulsar.add_parameter(
+            f"{name}_use_placeholder_waves",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to use placeholder "
+                      "waves in combination with binary "
+                      "waveform uploadon this device. If set "
+                      "to True, placeholder waves "
+                      "will be enabled on all AWG modules on "
+                      "this device. If set to False, pulsar "
+                      "will check channel-specific settings "
+                      "and programs command table on a "
+                      "per-sub-AWG basis."
+        )
+        pulsar.add_parameter(
+            f"{name}_use_command_table",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring = "Configures whether to use command table"
+                        "for waveform sequencing on this "
+                        "device. If set to True, command table "
+                        "will be enabled on all AWG modules on "
+                        "this device. If set to False, pulsar "
+                        "will check channel-specific settings "
+                        "and programs command table on a "
+                        "per-sub-AWG basis."
+        )
+        pulsar.add_parameter(
+            f"{name}_internal_modulation",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to use digital "
+                      "modulation for waveform generation on "
+                      "this device. If set to True, internal "
+                      "modulation will be enabled on all AWG "
+                      "modules on this device. If set to "
+                      "False, pulsar will check "
+                      "channel-specific settings and programs "
+                      "command table on a per-sub-AWG basis."
+        )
 
         SHFAcquisitionModulesPulsar._create_all_channel_parameters(
             self, channel_name_map)

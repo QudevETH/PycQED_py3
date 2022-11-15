@@ -118,7 +118,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use placeholder "
+                                       "waves in combination with binary "
+                                       "waveform uploadon this device. If set "
+                                       "to True, placeholder waves "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and programs command table on a "
+                                       "per-sub-AWG basis."
+                             )
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "DIO", "ZSync"),
@@ -132,6 +142,26 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                              vals=vals.MultiType(vals.Enum(None), vals.Ints(),
                                                  vals.Lists(vals.Ints())),
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_use_command_table",initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to use command table"
+                                       "for waveform sequencing on this "
+                                       "device. If set to True, command table "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and programs command table on a "
+                                       "per-sub-AWG basis.")
+        pulsar.add_parameter(f"{name}_internal_modulation", initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to use digital "
+                                       "modulation for waveform generation on "
+                                       "this  device. If set to True, internal "
+                                       "modulation will be enabled on all AWG "
+                                       "modules on this device. If set to "
+                                       "False, pulsar will check "
+                                       "channel-specific settings and programs "
+                                       "command table on a per-sub-AWG basis.")
 
         group = []
         for ch_nr in range(8):
@@ -167,9 +197,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 initial_value=1.0,
                 docstring=f"Scales the AWG output of channel by a given factor."
             )
-            pulsar.add_parameter(f"{ch_name}_internal_modulation",
-                                 initial_value=False, vals=vals.Bool(),
-                                 parameter_class=ManualParameter)
 
             awg_nr = (int(id[2:]) - 1) // 2
             output_nr = (int(id[2:]) - 1) % 2
@@ -233,10 +260,45 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 )
 
                 pulsar.add_parameter(
+                    f"{ch_name}_use_placeholder_waves",
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use placeholder waves"
+                              "on this AWG module. Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_use_placeholder_waves is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use placeholder waves irrespective "
+                              "of the channel-specific setting."
+                )
+
+                pulsar.add_parameter(
                     f"{ch_name}_use_command_table",
                     initial_value=False,
                     vals=vals.Bool(),
-                    parameter_class=ManualParameter
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use command table for wave"
+                              "sequencing on this AWG module. Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_use_command_table is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use command table irrespective "
+                              "of the channel-specific setting."
+                )
+
+                pulsar.add_parameter(
+                    f"{ch_name}_internal_modulation",
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use digital modulation"
+                              "sequencing on this AWG module. Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_internal_modulation is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use internal modulation irrespective"
+                              "of the channel-specific setting."
                 )
 
 

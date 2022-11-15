@@ -871,21 +871,41 @@ class ZIGeneratorModule:
         )
 
     def _update_use_command_table_flag(self):
-        self._use_command_table = \
-            self.pulsar.get(f"{self.i_channel_name}_use_command_table")
+        device_param = f"{self._awg.name}_use_command_table"
+        device_value = self.pulsar.get(device_param) \
+            if hasattr(self.pulsar, device_param) else False
+
+        channel_param = f"{self.i_channel_name}_use_command_table"
+        channel_value = self.pulsar.get(channel_param) \
+            if hasattr(self.pulsar, channel_param) else False
+
+        self._use_command_table = device_value | channel_value
 
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
         in pulsar."""
-        self._use_placeholder_waves = self.pulsar.get(
-            f"{self._awg.name}_use_placeholder_waves")
+        device_param = f"{self._awg.name}_use_placeholder_waves"
+        device_value = self.pulsar.get(device_param) \
+            if hasattr(self.pulsar, device_param) else False
+
+        channel_param = f"{self.i_channel_name}_use_placeholder_waves"
+        channel_value = self.pulsar.get(channel_param) \
+            if hasattr(self.pulsar, channel_param) else False
+
+        self._use_placeholder_waves = device_value | channel_value
 
     def _update_use_internal_mod_flag(self):
         """Updates self._use_internal_mod flag with the setting specified in
         pulsar."""
-        param = f"{self.i_channel_name}_internal_modulation"
-        self._use_internal_mod = self.pulsar.get(param) \
-            if hasattr(self.pulsar, param) else False
+        device_param = f"{self._awg.name}_internal_modulation"
+        device_value = self.pulsar.get(device_param) \
+            if hasattr(self.pulsar, device_param) else False
+
+        channel_param = f"{self.i_channel_name}_internal_modulation"
+        channel_value = self.pulsar.get(channel_param) \
+            if hasattr(self.pulsar, channel_param) else False
+
+        self._use_internal_mod = device_value | channel_value
 
     def _resolve_channel_config(
             self,
