@@ -1172,11 +1172,14 @@ class ZIGeneratorModule:
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
                     )
+                    phase=metadata.get('mod_config', {})\
+                        .get(self.i_channel_name, {}).get("phase", 0)
+
                     entry = self._generate_command_table_entry(
                         entry_index=entry_index,
                         wave_index=self._wave_idx_lookup[element][cw],
                         amplitude=amplitude,
-                        phase=0.0
+                        phase=phase,
                     )
                     update_entry = True
 

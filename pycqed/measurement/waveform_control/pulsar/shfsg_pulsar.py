@@ -533,14 +533,15 @@ class SHFGeneratorModule(ZIGeneratorModule):
     ):
         # Configure internal modulation for each channel. For the SG modules we
         # take config of the I channel and ignore the Q channel configuration
-        config = mod_config.get(self.i_channel_name, dict())
+        enable = True if mod_config else False
         self._awg.configure_internal_mod(
             chid=self.pulsar.get(self.i_channel_name + '_id'),
-            enable=config.get('internal_mod', False),
-            osc_index=config.get('osc', 0),
-            osc_frequency=config.get('mod_frequency', None),
-            sine_generator_index=config.get('sine', 0),
-            gains=config.get('gains', (1.0, - 1.0, 1.0, 1.0))
+            enable=enable,
+            osc_index=mod_config.get('osc', 0),
+            osc_frequency=mod_config.get('mod_fre.quency', None),
+            sine_generator_index=mod_config.get('sine', 0),
+            gains=mod_config.get('gains', (1.0, - 1.0, 1.0, 1.0)),
+            global_amp=1.0,
         )
 
         self._mod_config = mod_config

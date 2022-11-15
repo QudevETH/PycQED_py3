@@ -499,11 +499,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     def get_divisor(self, chid, awg):
         """Divisor is 2 for modulated non-marker channels, 1 for other cases."""
 
-        name = self.pulsar._id_channel(chid, awg)
-        if chid[-1]!='m' and self.pulsar.get(f"{name}_internal_modulation"):
-            return 2
-        else:
-            return 1
+        return 1
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
@@ -666,7 +662,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew))
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew))
         self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
-        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1/alpha)
+        # TODO: check if alpha is always >= 1
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1.0/alpha)
 
         # Choose oscillators, set phases and modulation frequencies.
         # TODO: check if we can set negative frequencies to the oscillators
@@ -847,8 +844,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                              f"value, accepts float or array-like object with "
                              f"length 2.")
 
-        if isinstance(phase, float):
-            phase = [phase, phase]
+        if isinstance(phase, float) or isinstance(phase, int):
+            phase = [float(phase), float(phase)]
         elif not ((isinstance(phase, np.ndarray) or
                    isinstance(phase, list)) and len(phase) == 2):
             raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
@@ -862,7 +859,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             "amplitude0": {"value": amplitude[0]},
             "amplitude1": {"value": amplitude[1]},
             "phase0": {"value": phase[0]},
-            "phase1": {"value": phase[1]},
+            "phase1": {"value": phase[1] + 90},
         }
 
         return hdawg_command_table_entry
