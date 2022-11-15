@@ -1919,7 +1919,7 @@ class MeasurementControl(Instrument):
         numpy.set_printoptions(**opt)
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
-                                  instrument, missing_in_whitelist=False):
+                                  instrument):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
         If inst_snapshot contains "submodules," a new subgroup inside the
@@ -1930,9 +1930,6 @@ class MeasurementControl(Instrument):
             structure where to write to.
         :param instrument: (obj) instrument whose snapshot is saved (or
             submodule/channel in recursive calls)
-        :param missing_in_whitelist: (bool) only used in recursive calls to
-            indicate that a submodule/channel is not on the whitelist of
-            its parent (if such a whitelist exists).
         """
 
         # If a whitelist exists, we store only children (submodules, channels,
@@ -1940,8 +1937,6 @@ class MeasurementControl(Instrument):
         # channels are by default stored including all their children,
         # except if the submodule/channel again has a whitelist specifying
         # that only a subset of its children should be stored.
-        # Note that we still have to do parameters checks even for parameters
-        # that are not whitelisted (or whose parent is not whitelisted).
         sp_wl = getattr(instrument, '_snapshot_whitelist', None)
 
         for k in ['submodules', 'channels']:
@@ -1950,7 +1945,6 @@ class MeasurementControl(Instrument):
             # store the parameters from the items in submodules, which
             # are snapshots of QCoDeS instruments
             for key, submod_snapshot in inst_snapshot[k].items():
-                submod_missing_in_whitelist = missing_in_whitelist
                 if k == 'channels':
                     subins = [ch for ch in instrument if ch.name == key][0]
                 else:  # submodules
@@ -1958,37 +1952,25 @@ class MeasurementControl(Instrument):
                 if getattr(subins, 'snapshot_exclude', False):
                     # qcodes does not implement snapshot_exclude for
                     # submodules and channels, so we implement it here.
-                    # However, we treat it in the same way as submodules/
-                    # channels that are not whitelisted as this will allow us
-                    # to run parameter checks on parameters inside the
-                    # submodules/channel.
-                    submod_missing_in_whitelist = True
+                    continue
                 if sp_wl is not None and key not in sp_wl:
                     # If a whitelist exists, only include submodules/channels
                     # that are in the snapshot_whitelist
-                    submod_missing_in_whitelist = True
-                if submod_missing_in_whitelist:
-                    # call recursively for parameter checks, but do not write
-                    # to HDF
-                    submod_grp = None
-                else:
-                    submod_grp = entry_point.create_group(key)
+                    continue
+                submod_grp = entry_point.create_group(key)
                 self.store_snapshot_parameters(
-                    submod_snapshot, entry_point=submod_grp, instrument=subins,
-                    missing_in_whitelist=submod_missing_in_whitelist)
+                    submod_snapshot, entry_point=submod_grp, instrument=subins)
 
         if 'parameters' in inst_snapshot:
             par_snap = inst_snapshot['parameters']
             parameter_list = dict_to_ordered_tuples(par_snap)
             for (p_name, p) in parameter_list:
-                param_missing_in_whitelist = missing_in_whitelist
                 if sp_wl is not None and p_name not in sp_wl:
                     # If a whitelist exists, only include parameters that are
                     # in the snapshot_whitelist.
-                    param_missing_in_whitelist = True
+                    continue
                 val = repr(p.get('value', ''))
-                if not param_missing_in_whitelist:
-                    entry_point.attrs[p_name] = val
+                entry_point.attrs[p_name] = val
         entry_point.attrs["__class__"] = inst_snapshot['__class__']
 
     def save_MC_metadata(self, data_object=None, *args):
