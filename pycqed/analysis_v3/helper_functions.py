@@ -315,44 +315,99 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
     return d['instr_param_val']
 
 
-def get_clf_params_from_hdf_file(timestamp, meas_obj_names, for_ge=True,
-                                 **params):
+def get_clf_params_from_hdf_file(timestamp, meas_obj_names,
+                                 classifier_params=None, for_ge=False,
+                                 from_analysis_group=False, **params):
     """
-    Extracts the acquistion classifier parameters for the meas_obj_names from
+    Extracts the acquisition classifier parameters for the meas_obj_names from
     an HDF file.
-    First tries to take them from the Analysis group (timestamp corresponds to
-    an ssro calibration measurement). If a key error is raised, it will take
-    them from the qubit parameter acq_classifier_params.
-    :param timestamp: timestamp string
-    :param meas_obj_names: list of measured object names
-    :param for_ge: flag indicating whether to ignore the f-level classification
-        (sets means to 1000 for the f-level)
-    :param params: keyword arguments passed to get_params_from_hdf_file
-    :return: dict with meas_obj_names as keys and classifier params as values
+
+    If the classifier params are not found for a measurement object, then a
+    KeyError is raised.
+
+    Args:
+        timestamp (str): timestamp string
+        meas_obj_names (list): of measured object names
+        classifier_params (dict): with meas_obj_names as keys and classifier
+            params as values. This function will only extract the classifier
+            params for a measurement object if they don't already exist in
+            classifier_params.
+        for_ge (bool): indicating whether to ignore the f-level classification
+            (sets means to 1000 for the f-level)
+        from_analysis_group (bool): if True, it will take the
+            classifier_params from the Analysis group (timestamp corresponds
+            to an ssro calibration measurement). If False, it will take the
+            qubit parameter acq_classifier_params.
+        **params: keyword arguments to allow pass-through
+
+    Returns:
+        dict with meas_obj_names as keys and classifier params or None as values
     """
+    if classifier_params is None:
+        classifier_params = {}
+    for mobjn in meas_obj_names:
+        if classifier_params.get(mobjn, None) is None:
+            if from_analysis_group:
+                # get_param_from_analysis_group will return {qbn: clf_pars}
+                # for whichever qubit was in the Analysis group (might not
+                # be part of meas_obj_names).
+                classifier_params[mobjn] = get_param_from_analysis_group(
+                    'classifier_params', timestamp).get(mobjn, None)
+            else:
+                classifier_params[mobjn] = get_instr_param_from_hdf_file(
+                    mobjn, 'acq_classifier_params', timestamp)
 
-    try:
-        params_dict = {}
-        params_dict.update({f'{qbn}':
-                                f'Analysis.Processed data.analysis_params.'
-                                f'classifier_params.{qbn}'
-                            for qbn in meas_obj_names})
-        classifier_params = get_params_from_hdf_file(
-            {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
-    except KeyError:
-        params_dict = {}
-        params_dict.update({f'{qbn}':
-                                f'Instrument settings.{qbn}.'
-                                f'acq_classifier_params'
-                            for qbn in meas_obj_names})
-        classifier_params = get_params_from_hdf_file(
-            {},  params_dict, folder=a_tools.get_folder(timestamp), **params)
-
-    if for_ge:
-        for qbn in classifier_params:
-            classifier_params[qbn]['means_'][2, :] = [1000, 1000]
-
+        if for_ge and classifier_params[mobjn] is not None and \
+                len(classifier_params[mobjn]['weights_']) == 3:
+            classifier_params[mobjn]['means_'][2, :] = [1000, 1000]
     return classifier_params
+
+
+def get_state_prob_mtxs_from_hdf_file(timestamp, meas_obj_names,
+                                      state_prob_mtxs=None,
+                                      from_analysis_group=False, **params):
+    """
+    Extracts the state assignment probability matrices for the meas_obj_names
+    from an HDF file.
+
+    If the state assignment probability matrix is not found for a measurement
+    object, then this function returns None for that measurement object.
+
+    Args:
+        timestamp (str): timestamp string
+        meas_obj_names (list): of measured object names
+        state_prob_mtxs (dict): with meas_obj_names as keys and state assignment
+            probability matrices as values. This function will only extract the
+            state assignment probability matrix for a measurement object if
+            it doesn't already exist in state_prob_mtxs.
+        from_analysis_group (bool): if True, it will take the
+            state_prob_mtx_masked from the Analysis group (timestamp corresponds
+            to an ssro calibration measurement). If False, it will take the
+            qubit parameter acq_state_prob_mtx.
+
+        **params: keyword arguments to allow pass-through
+
+    Returns:
+        dict with meas_obj_names as keys and state assignment probability
+        matrices or None as values
+    """
+    if state_prob_mtxs is None:
+        state_prob_mtxs = {}
+    for mobjn in meas_obj_names:
+        if state_prob_mtxs.get(mobjn, None) is None:
+            if from_analysis_group:
+                # get_param_from_analysis_group will return {qbn: clf_pars}
+                # for whichever qubit was in the Analysis group (might not
+                # be part of meas_obj_names).
+                state_prob_mtxs[mobjn] = get_param_from_analysis_group(
+                    'state_prob_mtx_masked', timestamp).get(mobjn, None)
+            else:
+                try:
+                    state_prob_mtxs[mobjn] = get_instr_param_from_hdf_file(
+                        mobjn, 'acq_state_prob_mtx', timestamp)
+                except KeyError:
+                    state_prob_mtxs[mobjn] = None
+    return state_prob_mtxs
 
 
 def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
