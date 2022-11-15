@@ -100,7 +100,10 @@ class DictView(QtWidgets.QWidget):
         self.tree_widget.header().setSectionResizeMode(
             QtWidgets.QHeaderView.Interactive)
 
-        self.tree_widget.header().resizeSection(0, 400)
+        # initializes the width of the column: 0.4*screen_size.width() is the
+        # width of the entire window defined in DictViewerWindow
+        screen_size = QtWidgets.QApplication.desktop().screenGeometry()
+        self.tree_widget.header().resizeSection(0, .5*.4*screen_size.width())
         self.tree_widget.setExpandsOnDoubleClick(True)
         self.tree_widget.setSortingEnabled(True)
 
@@ -152,6 +155,7 @@ class DictView(QtWidgets.QWidget):
         # to the top of the layout
         layout2 = QtWidgets.QVBoxLayout()
         layout2.addLayout(search_layout)
+
         layout2.addSpacing(10)
         layout2.addWidget(gbox)
         layout2.setMenuBar(self.menuBar)
@@ -603,7 +607,10 @@ class TreeItemViewer(QtWidgets.QWidget):
         self.tree_widget.setHeaderLabels(["Key", "Value"])
         self.tree_widget.header().setSectionResizeMode(
             QtWidgets.QHeaderView.Interactive)
-        self.tree_widget.header().resizeSection(0, 200)
+        screen_geom = QtWidgets.QApplication.desktop().screenGeometry()
+        # initializes the width of the column: 0.3*screen_size.width() is the
+        # width of the entire window defined in AdditionalWindow
+        self.tree_widget.header().resizeSection(0, .5*.3 * screen_geom.width())
         self.tree_widget.setExpandsOnDoubleClick(True)
         self.tree_widget.setSortingEnabled(True)
 
@@ -683,7 +690,10 @@ class AdditionalWindow(QtWidgets.QMainWindow):
             TreeItemViewer(dict_view.tree_widget.currentItem()))
         self.setWindowTitle(
             dict_view.getDirtext(dict_view.tree_widget.currentItem()))
-        self.setGeometry(200, 200, 500, 500)
+        screen_geom = QtWidgets.QApplication.desktop().screenGeometry()
+        # layout options (x-coordinate, y-coordinate, width, height) in px
+        self.setGeometry(0.2 * screen_geom.width(), 0.2 * screen_geom.height(),
+                         0.3 * screen_geom.width(), 0.3 * screen_geom.height())
 
     def keyPressEvent(self, e):
         """
@@ -719,7 +729,10 @@ class DictViewerWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(dict_view)
         self.setWindowTitle("Snapshot Viewer")
-        self.setGeometry(100, 100, 800, 800)
+        screen_geom = QtWidgets.QApplication.desktop().screenGeometry()
+        # layout options (x-coordinate, y-coordinate, width, height) in px
+        self.setGeometry(0.1*screen_geom.width(), 0.1*screen_geom.height(),
+                         0.4*screen_geom.width(), 0.7*screen_geom.height())
 
         self.show()
 
