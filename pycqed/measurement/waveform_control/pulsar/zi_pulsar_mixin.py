@@ -831,7 +831,7 @@ class ZIGeneratorModule:
         mod_config = self._resolve_channel_config(
             awg_sequence=awg_sequence,
             config_name="mod_config",
-            excluded_keys=tuple() if self._use_internal_mod
+            excluded_keys=('phase') if self._use_internal_mod
             else ('mod_freq', 'mod_phase'),
         )
         self._upload_modulation_config(
