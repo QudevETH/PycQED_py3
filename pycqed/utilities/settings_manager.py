@@ -15,6 +15,8 @@ from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
 import PyQt5.QtWidgets as QtWidgets
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
+import logging
+logger = logging.getLogger(__name__)
 
 # To save and load numpy arrays in msgpack.
 # Note that numpy arrays deserialized by msgpack-numpy are read-only
@@ -113,10 +115,10 @@ class Parameter(DelegateAttributes):
 
     def snapshot(self) -> dict[any, any]:
         """
-        Creates a dictionary out of vals attribute
+        Creates a dictionary out of value attribute
         Returns: dictionary
         """
-        snap: dict[any, any] = self._vals
+        snap: dict[any, any] = self._value
         return snap
 
     def __call__(self, *args, **kwargs):
@@ -342,7 +344,7 @@ class SettingsManager:
                             'station is not a QCode or Mock station class '
                             'or is not snapshotable.')
 
-    def load_from_file(self, timestamp: str, filetype='msgpack',
+    def load_from_file(self, timestamp: str, file_format='msgpack',
                        compression=False):
         """
         Loads station into the settings manager from saved files.
@@ -350,63 +352,24 @@ class SettingsManager:
         representation of the snapshot.
         Args:
             timestamp (str): Supports all formats from a_tools.get_folder
-            filetype (str): 'hdf5', 'pickle' or 'msgpack'
+            file_format (str): 'hdf5', 'pickle' or 'msgpack'
             compression: Set True if files are compressed by blosc2
                 (only for pickle and msgpack)
 
         Returns: Station which was created by the saved data.
 
         """
-        if filetype not in ['hdf5', 'pickle', 'msgpack']:
-            raise Exception('File type not supported!')
-        if filetype == 'hdf5':
-            # hdf5 files are not saved as a dictionary.
-            # If follows another loading scheme.
-            self.load_from_hdf5(timestamp=timestamp)
-            return
-        if filetype == 'pickle':
+        if file_format == 'hdf5':
+            loader = HDF5Loader(timestamp=timestamp)
+        elif file_format == 'pickle':
             loader = PickleLoader(timestamp=timestamp, compression=compression)
-        if filetype == 'msgpack':
+        elif file_format == 'msgpack':
             loader = MsgLoader(timestamp=timestamp, compression=compression)
+        else:
+            raise NotImplementedError(f"File format '{file_format}' "
+                                      f"not supported!")
 
-        snap = loader.get_snapshot()
-
-        stat = Station(timestamp=timestamp)
-
-        for inst_name, inst_dict in snap['instruments'].items():
-            inst = Loader.load_instrument(inst_name, inst_dict)
-            stat.add_component(inst)
-
-        for comp_name, comp_dict in snap['components'].items():
-            # So far, components are not considered.
-            # Loader.load_component is a hollow function.
-            comp = Loader.load_component(comp_name, comp_dict)
-            if comp is not None:
-                stat.add_component(comp)
-
-        self.add_station(stat, timestamp)
-        return stat
-
-    def load_from_hdf5(self, timestamp: str, h5mode='r'):
-        """
-        Loads settings from an hdf5 file into a station.
-        Args:
-            timestamp (str): Uniquelily identifies the file. If file with
-                timestamp not in a_toold.datadir, a_tools tries to fetch
-                from a_tools.fetch_data_dir.
-            h5mode: 'r' for read only mode.
-
-        Returns: station
-        """
-        loader = HDFLoader(timestamp=timestamp)
-
-        data_file = h5py.File(loader.filepath, h5mode)
-        stat = Station(timestamp=timestamp)
-        instr_settings = data_file['Instrument settings']
-
-        for inst_name, inst_group in list(instr_settings.items()):
-            inst = loader.load_instrument(inst_name, inst_group)
-            stat.add_component(inst)
+        stat = loader.get_station()
         self.add_station(stat, timestamp)
         return stat
 
@@ -432,8 +395,9 @@ class Loader:
     Generic class to load instruments and parameters from a file.
     """
 
-    def __init__(self):
+    def __init__(self, timestamp: str = None):
         self.filepath = None
+        self.timestamp = timestamp
 
     def get_filepath(self, timestamp=None, filepath=None, extension=None):
         """
@@ -470,8 +434,8 @@ class Loader:
         inst = Instrument(inst_name)
         # load parameters
         if 'parameters' in inst_dict:
-            for param_name, param_vals in inst_dict['parameters'].items():
-                par = Parameter(param_name, param_vals)
+            for param_name, param_values in inst_dict['parameters'].items():
+                par = Parameter(param_name, param_values)
                 inst.add_parameter(par)
         # load class name
         if '__class__' in inst_dict:
@@ -499,11 +463,38 @@ class Loader:
         """
         pass
 
+    def get_station(self):
+        """
+        Returns a station build from a snapshot. This snapshot is loaded from
+        a file using self.get_snapshot() and the timestamp given by the
+        initialization of the Loader object.
+        Returns (Station): station build from the snapshot.
+        """
+        stat = Station(timestamp=self.timestamp)
+        snap = self.get_snapshot()
+        for inst_name, inst_dict in snap['instruments'].items():
+            inst = Loader.load_instrument(inst_name, inst_dict)
+            stat.add_component(inst)
 
-class HDFLoader(Loader):
+        for comp_name, comp_dict in snap['components'].items():
+            # So far, components are not considered.
+            # Loader.load_component is a hollow function.
+            logger.warning('Components are not considered. '
+                           'Loader.load_component is a hollow function.')
+            comp = Loader.load_component(comp_name, comp_dict)
+            if comp is not None:
+                stat.add_component(comp)
+
+        return stat
+
+    def get_snapshot(self):
+        return dict()
+
+
+class HDF5Loader(Loader):
 
     def __init__(self, timestamp=None, filepath=None):
-        super().__init__()
+        super().__init__(timestamp=timestamp)
         self.filepath = self.get_filepath(timestamp, filepath, extension='hdf5')
 
     @staticmethod
@@ -531,7 +522,7 @@ class HDFLoader(Loader):
                     inst_group, '__class__'))
         # load submodules
         for submod_name, submod_group in list(inst_group.items()):
-            submod_inst = HDFLoader.load_instrument(submod_name, submod_group)
+            submod_inst = HDF5Loader.load_instrument(submod_name, submod_group)
             inst.add_submodule(submod_name, submod_inst)
         return inst
 
@@ -539,18 +530,36 @@ class HDFLoader(Loader):
     def load_component(comp_name, comp):
         pass
 
+    def get_station(self, h5mode='r'):
+        """
+        Loads settings from an hdf5 file into a station.
+        Args:
+            h5mode: 'r' for read only mode.
+
+        Returns:
+
+        """
+        with h5py.File(self.filepath, h5mode) as data_file:
+            stat = Station(timestamp=self.timestamp)
+            instr_settings = data_file['Instrument settings']
+
+            for inst_name, inst_group in list(instr_settings.items()):
+                inst = self.load_instrument(inst_name, inst_group)
+                stat.add_component(inst)
+        return stat
+
 
 class PickleLoader(Loader):
 
     def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__()
+        super().__init__(timestamp=timestamp)
         self.compression = compression
         if self.compression:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='objc')
+                timestamp, filepath, extension='picklec')
         else:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='obj')
+                timestamp, filepath, extension='pickle')
 
     def get_snapshot(self):
         """
@@ -563,14 +572,13 @@ class PickleLoader(Loader):
                 snap = pickle.loads(byte_data)
             else:
                 snap = pickle.load(f)
-            f.close()
         return snap
 
 
 class MsgLoader(Loader):
 
     def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__()
+        super().__init__(timestamp=timestamp)
         self.compression = compression
         if self.compression:
             self.filepath = self.get_filepath(
@@ -599,5 +607,4 @@ class MsgLoader(Loader):
             # -changes-in-msgpack-10
             snap = msgpack.unpackb(
                 byte_data, use_list=False, strict_map_key=False)
-            f.close()
         return snap
