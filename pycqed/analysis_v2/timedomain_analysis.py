@@ -5376,8 +5376,23 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
 
 class ResidualZZAnalysis(RamseyAnalysis):
+    """
+    Analysis for a ResidualZZ measurement.
+
+    Extracts the residual ZZ couling by comparing the frequencies of two Ramsey
+    measurements and adds one additional plot for each residual ZZ measurement
+    to display the extracted residual ZZ couling.
+    """
 
     def __init__(self, echo=False, **kwargs):
+        """
+        Args:
+            echo (bool, optional): Whether the Ramsey sequence included an echo
+                pulse or not. This is relevant for the analysis as this causes a
+                factor of 1/2 in the frequency difference between the two Ramsey
+                measurements compared to the measurements without echo pulse.
+                Defaults to False.
+        """
         self.echo = echo
         super().__init__(**kwargs)
 
@@ -5469,8 +5484,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
             for outer_key, ramsey_pars_dict in apd.items():
                 if outer_key in ['qubit_frequencies', 'reparking_params',
                                  'residual_ZZs']:
-                    # This is only for ReparkingRamseyAnalysis.
-                    # It is handled by prepare_fitting_qubit_freqs of that class
+                    # We only care about the fit types saved in the apd.
                     continue
                 # outer_key is of the form qbn_i if TwoD else qbn.
                 # split into qbn and i. (outer_key + '_') is needed because if
