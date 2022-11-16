@@ -98,21 +98,19 @@ class Parameter(DelegateAttributes):
 
     def __init__(self,
                  name: str,
-                 vals=None) -> None:
+                 value=None,
+                 gettable=True,
+                 settable=False) -> None:
         """
         Parameter has a (unique) name and a respective value
         Args:
             name: Name of parameter (str)
-            vals: Value of parameter (any type)
+            value: Value of parameter (any type)
         """
         self._name = str(name)
-        self._vals = vals
-
-    def get_name(self):
-        return self._name
-
-    def get_value(self):
-        return self._vals
+        self._value = value
+        self.gettable = gettable
+        self.settable = settable
 
     def snapshot(self) -> dict[any, any]:
         """
@@ -121,6 +119,30 @@ class Parameter(DelegateAttributes):
         """
         snap: dict[any, any] = self._vals
         return snap
+
+    def __call__(self, *args, **kwargs):
+        if len(args) == 0 and len(kwargs) == 0:
+            if self.gettable:
+                return self.get()
+            else:
+                raise NotImplementedError('no get cmd found in' +
+                                          f' Parameter {self._name}')
+        else:
+            if self.settable:
+                self.set(*args, **kwargs)
+                return None
+            else:
+                raise NotImplementedError('no set cmd found in' +
+                                          f' Parameter {self._name}')
+
+    def get_name(self):
+        return self._name
+
+    def get(self):
+        return self._value
+
+    def set(self, value):
+        self._value = value
 
 
 class Instrument(DelegateAttributes):
