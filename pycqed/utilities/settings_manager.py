@@ -15,7 +15,6 @@ from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
 import PyQt5.QtWidgets as QtWidgets
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
-import qcodes as qc
 
 # To save and load numpy arrays in msgpack.
 # Note that numpy arrays deserialized by msgpack-numpy are read-only
@@ -302,22 +301,24 @@ class Station(DelegateAttributes):
 
 class SettingsManager:
     """
-    Class which contains different station which are loaded from saved settings.
-    Supported file types: hdf5, pickle (.obj), msgpack (.msg)
+    Class which contains different station. Stations can be added in two ways:
+    1. Loaded from saved settings in a given file. Supported file types:
+        hdf5, pickle (.obj), msgpack (.msg)
+    2. Added from a preexisting station. Either settings_manager.Station or
+        QCodes.Station (or any other snapshotable type)
     Snapshot of stations can be displayed via dict_viewer module.
     """
 
-    def __init__(self, stat: Station = None):
+    def __init__(self, stat=None, timestamp: str = None):
         """
         Initialization of SettingsManager instance. Can be called with a
-        preexisting station.
+        preexisting station (settings_manager.Station or QCodes.Station)
         Args:
             stat (Station): optional, adds given station to the settings manager
         """
-        if stat == None:
-            self.stations = {}
-        else:
-            self.stations = {stat.timestamp: stat}
+        self.stations = {}
+        if stat is not None:
+            self.add_station(stat, timestamp)
 
     def add_station(self, station, timestamp: str):
         """
@@ -329,12 +330,17 @@ class SettingsManager:
                 Is converted into unified format.
 
         """
-        timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
-        if isinstance(station, Station) or isinstance(station, qc.Station):
+        if timestamp is not None:
+            timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
+        else:
+            raise TypeError(f'Cannot add station, because the timestamp is '
+                            f'not specified.')
+        if hasattr(station, 'snapshot'):
             self.stations[timestamp] = station
         else:
             raise TypeError(f'Cannot add station "{timestamp}", because the '
-                            'station is not a QCode or Mock station class')
+                            'station is not a QCode or Mock station class '
+                            'or is not snapshotable.')
 
     def load_from_file(self, timestamp: str, filetype='msgpack',
                        compression=False):
@@ -425,6 +431,7 @@ class Loader:
     """
     Generic class to load instruments and parameters from a file.
     """
+
     def __init__(self):
         self.filepath = None
 
