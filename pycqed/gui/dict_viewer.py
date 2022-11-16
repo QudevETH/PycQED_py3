@@ -370,7 +370,7 @@ class DictView(qt.QtWidgets.QWidget):
             titem (QTreeWidgetItem): Item to start hiding empty keys recursively
         """
         if titem.childCount() == 0:
-            if titem.data(1, 0) == None:
+            if titem.data(1, 0) is None:
                 titem.setHidden(True)
         else:
             for i in range(titem.childCount()):
@@ -571,11 +571,10 @@ class DictView(qt.QtWidgets.QWidget):
             # is shown on the row of the parameter
             # for more see docstring of dict_to_titem()
             if param:
-                value_text = 'no value'
-                try:
-                    value_text = str(val['value'])
-                except:
-                    pass
+                # if parameter has a key called 'value'. the value of this
+                # entry is displayed at the level of the parameter. Otherwise,
+                # the entire parameter value content is displayed.
+                value_text = str(val.get('value', val))
             row_item = qt.QtWidgets.QTreeWidgetItem([key, value_text])
             if key == 'parameters':
                 self.dict_to_titem(val, row_item, param=True)
