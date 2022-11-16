@@ -3,6 +3,7 @@ import pickle
 import traceback
 import qcodes as qc
 import time
+import weakref
 
 import logging
 log = logging.getLogger(__name__)
@@ -49,6 +50,8 @@ class RemoteInstrument():
             self._id = self.remote_call([self._name, 'id', '', [], []])
         self._remote_instruments[self._id] = self
         self._submodules = (None, 0)
+        # qc.Instrument._all_instruments[name] = weakref.ref(self)
+        Instrument._all_instruments[name] = self
         # self.instr_ref = instr_ref
 
     #         if self.instr_ref:
@@ -62,9 +65,9 @@ class RemoteInstrument():
         return RemoteInstrument(name, self.host, self.port, id=id)
 
     def __getattr__(self, p):
-        # print(self._name, 'get', p, flush=True)
-        if self._name in Instrument._all_instruments:
-            return getattr(Instrument._all_instruments[self._name], p)
+        # # print(self._name, 'get', p, flush=True)
+        # if self._name in qc.Instrument._all_instruments:
+        #     return getattr(qc.Instrument._all_instruments[self._name](), p)
         if p == 'submodules' and  time.time() - self._submodules[1] < \
                 SUBMODULE_CACHE_TIME:
             return self._submodules[0]
@@ -97,10 +100,10 @@ class RemoteInstrument():
             def get_instr(p=p):
                 remote_instr = self.remote_call([self._name, None, p, [], {}])
                 # print(remote_instr)
-                if remote_instr in Instrument._all_instruments:
-                    return Instrument._all_instruments[remote_instr]
-                else:
-                    return self._create_instr(remote_instr)
+                # if remote_instr in Instrument._all_instruments:
+                #     return Instrument._all_instruments[remote_instr]
+                # else:
+                return self._create_instr(remote_instr)
 
             f.get_instr = get_instr
             return f
@@ -132,10 +135,10 @@ class RemoteInstrument():
     #     def _instance(self):
     #         return self
 
-    def get_instance(self):
-        if self._name in Instrument._all_instruments:
-            return Instrument._all_instruments[self._name].get_instance()
-        return self
+    # def get_instance(self):
+    #     if self._name in Instrument._all_instruments:
+    #         return Instrument._all_instruments[self._name].get_instance()
+    #     return self
 
     #     def get_instr(self):
     #         print(self._name)
@@ -154,8 +157,8 @@ class RemoteInstrument():
         if p not in ['_name', 'host', 'port', '_id', '_submodules'
                      # 'instr_ref'
                      ]:
-            if self._name in Instrument._all_instruments:
-                return setattr(Instrument._all_instruments[self._name], p, v)
+            # if self._name in qc.Instrument._all_instruments:
+            #     return setattr(qc.Instrument._all_instruments[self._name](), p, v)
             # print('x', p)
             self.remote_call([self._name, 'set', p, v, []])
         else:
