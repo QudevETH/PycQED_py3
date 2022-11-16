@@ -3,7 +3,6 @@
 # see https://stackoverflow.com/questions/42845972/typed-python-using-the-classes-own-type-inside-class-definition
 # for more details.
 from __future__ import annotations
-import sys
 
 import blosc2
 import h5py
@@ -12,7 +11,6 @@ import msgpack
 import msgpack_numpy
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
-import PyQt5.QtWidgets as QtWidgets
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
 import logging
 logger = logging.getLogger(__name__)
@@ -25,6 +23,7 @@ msgpack_numpy.patch()
 
 class DelegateAttributes:
     """
+    Copied from QCodes.utils.helpers (version 0.35.0)
     Mixin class to create attributes of this object by
     delegating them to one or more dictionaries and/or objects.
 
@@ -382,11 +381,15 @@ class SettingsManager:
         Returns:
 
         """
-        snap = self.stations[timestamp].snapshot()
-        qt_app = QtWidgets.QApplication(sys.argv)
-        snap_viewer = dict_viewer.DictViewerWindow(
-            snap, 'Snapshot timestamp: %s' % timestamp)
-        qt_app.exec_()
+        # snap = self.stations[timestamp].snapshot()
+        # qt_app = QtWidgets.QApplication(sys.argv)
+        # snap_viewer = dict_viewer.DictViewerWindow(
+        #     snap, 'Snapshot timestamp: %s' % timestamp)
+        # qt_app.exec_()
+        snapshot_viewer = dict_viewer.SnapshotViewer(
+            snapshot = self.stations[timestamp].snapshot(),
+            timestamp = timestamp)
+        snapshot_viewer.spawn_snapshot_viewer()
 
 
 class Loader:

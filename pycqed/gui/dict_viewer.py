@@ -1,4 +1,5 @@
 from pycqed.gui import qt_compat as qt
+import sys
 
 class TextToTreeItem:
     """
@@ -763,3 +764,15 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
             for d in self.dialogs:
                 d.close()
             self.close()
+
+
+class SnapshotViewer:
+    def __init__(self, snapshot:dict, timestamp:str):
+        self.snapshot = snapshot
+        self.timestamp = timestamp
+
+    def spawn_snapshot_viewer(self):
+        qt_app = qt.QtWidgets.QApplication(sys.argv)
+        snap_viewer = DictViewerWindow(
+            self.snapshot, 'Snapshot timestamp: %s' % self.timestamp)
+        qt_app.exec_()
