@@ -3,6 +3,7 @@ import pickle
 import traceback
 import qcodes as qc
 import time
+from pycqed.instrument_drivers.instrument import FurtherInstrumentsDictMixIn
 
 import logging
 log = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class RemoteParameter():
         self.instrument.set(self.name, value)
 
 
-class RemoteInstrument():
+class RemoteInstrument(FurtherInstrumentsDictMixIn):
     _remote_instruments = {}
 
     def __init__(self, name,
@@ -47,6 +48,7 @@ class RemoteInstrument():
         else:
             self._id = self.remote_call([self._name, 'id', '', [], []])
         self._remote_instruments[self._id] = self
+        self._further_instruments[name] = self
         self._submodules = (None, 0)
         Instrument._all_instruments[name] = self
 
