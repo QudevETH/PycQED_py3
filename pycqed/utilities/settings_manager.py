@@ -1,7 +1,6 @@
 # Importing annotations is required because Instrument class uses own class
 # definition inside Instrument.add_submodule
-# see https://stackoverflow.com/questions/42845972/
-#   typed-python-using-the-classes-own-type-inside-class-definition
+# see https://stackoverflow.com/questions/42845972/typed-python-using-the-classes-own-type-inside-class-definition
 # for more details.
 from __future__ import annotations
 import sys
