@@ -5434,6 +5434,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
                     textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
                                + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
                                + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} kHz\n'
+                    textstr += f'target: {qb}, control: {qbc}'
                 self.plot_dicts['text_msg'] = {
                     'fig_id': plot_name,
                     'ypos': -0.5,
@@ -5463,7 +5464,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
                     sweep_points=sweep_points[:-self.num_cal_points],
                     plot_name_suffix=qb+'fit1',
                     qb_name=qb, TwoD=False,
-                    title_suffix="")
+                    title_suffix=qbc)
 
             for outer_key, ramsey_pars_dict in apd.items():
                 if outer_key in ['qubit_frequencies', 'reparking_params',
