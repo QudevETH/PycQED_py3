@@ -13,6 +13,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
 import logging
+
 logger = logging.getLogger(__name__)
 
 # To save and load numpy arrays in msgpack.
@@ -106,7 +107,7 @@ class Parameter(DelegateAttributes):
             name: Name of parameter (str)
             value: Value of parameter (any type)
         """
-        self._name = str(name)
+        self.name = name
         self._value = value
         self.gettable = gettable
         self.settable = settable
@@ -125,17 +126,14 @@ class Parameter(DelegateAttributes):
                 return self.get()
             else:
                 raise NotImplementedError('no get cmd found in' +
-                                          f' Parameter {self._name}')
+                                          f' Parameter {self.name}')
         else:
             if self.settable:
                 self.set(*args, **kwargs)
                 return None
             else:
                 raise NotImplementedError('no set cmd found in' +
-                                          f' Parameter {self._name}')
-
-    def get_name(self):
-        return self._name
+                                          f' Parameter {self.name}')
 
     def get(self):
         return self._value
@@ -199,7 +197,7 @@ class Instrument(DelegateAttributes):
         Args:
             param: Parameter object which is added to the instrument.
         """
-        namestr = param.get_name()
+        namestr = param.name
         if namestr in self.parameters.keys():
             raise RuntimeError(
                 f'Cannot add parameter "{namestr}", because a '
@@ -249,7 +247,7 @@ class Station(DelegateAttributes):
         self.parameters: dict = {}
         self.components: dict = {}
         self.config: dict = {}
-        if timestamp == None:
+        if timestamp is None:
             self.timestamp = ''
         else:
             # a_tools.verify_timestamp returns unified version of the timestamps
@@ -309,16 +307,17 @@ class SettingsManager:
     Snapshot of stations can be displayed via dict_viewer module.
     """
 
-    def __init__(self, stat=None, timestamp: str = None):
+    def __init__(self, station=None, timestamp: str = None):
         """
         Initialization of SettingsManager instance. Can be called with a
         preexisting station (settings_manager.Station or QCodes.Station)
         Args:
-            stat (Station): optional, adds given station to the settings manager
+            station (Station or qcodes.Station): optional, adds given station
+                to the settings manager
         """
         self.stations = {}
-        if stat is not None:
-            self.add_station(stat, timestamp)
+        if station is not None:
+            self.add_station(station, timestamp)
 
     def add_station(self, station, timestamp: str):
         """
@@ -358,7 +357,7 @@ class SettingsManager:
 
         """
         if file_format == 'hdf5':
-            loader = HDF5Loader(timestamp=timestamp)
+            loader = HDF5Loader(timestamp=timestamp, h5mode='r')
         elif file_format == 'pickle':
             loader = PickleLoader(timestamp=timestamp, compression=compression)
         elif file_format == 'msgpack':
@@ -367,9 +366,9 @@ class SettingsManager:
             raise NotImplementedError(f"File format '{file_format}' "
                                       f"not supported!")
 
-        stat = loader.get_station()
-        self.add_station(stat, timestamp)
-        return stat
+        station = loader.get_station()
+        self.add_station(station, timestamp)
+        return station
 
     def spawn_snapshot_viewer(self, timestamp):
         """
@@ -387,8 +386,8 @@ class SettingsManager:
         #     snap, 'Snapshot timestamp: %s' % timestamp)
         # qt_app.exec_()
         snapshot_viewer = dict_viewer.SnapshotViewer(
-            snapshot = self.stations[timestamp].snapshot(),
-            timestamp = timestamp)
+            snapshot=self.stations[timestamp].snapshot(),
+            timestamp=timestamp)
         snapshot_viewer.spawn_snapshot_viewer()
 
 
@@ -397,19 +396,17 @@ class Loader:
     Generic class to load instruments and parameters from a file.
     """
 
-    def __init__(self, timestamp: str = None):
-        self.filepath = None
+    def __init__(self, timestamp: str = None, filepath: str = None):
+        self.filepath = filepath
         self.timestamp = timestamp
 
-    def get_filepath(self, timestamp=None, filepath=None, extension=None):
+    def get_filepath(self, timestamp=None, extension=None):
         """
         If no explicit filepath is given, a_tools.get_folder tries to get the
         directory based on the timestamp and the directory defined by
         a_tools.datadir, a_tools.fetch_data_dir, respectively.
         Args:
             timestamp (str): timestring in a format which is accepted by a_tools
-            filepath (str): explicit filepath. If given, filepath is set to
-                this value
             extension (str): extension of the filetype, usually 'hdf5' for hdf5,
                 'obj' for pickle and 'msg' for msgpack.
                 'objc' and 'msgc' for compressed pickle and msgpack files.
@@ -417,10 +414,11 @@ class Loader:
         Returns: filepath as a string
 
         """
-        if filepath is not None:
-            return filepath
+        if self.filepath is not None:
+            return self.filepath
         folder_dir = a_tools.get_folder(timestamp, suppress_printing=False)
-        return a_tools.measurement_filename(folder_dir, ext=extension)
+        self.filepath = a_tools.measurement_filename(folder_dir, ext=extension)
+        return self.filepath
 
     @staticmethod
     def load_instrument(inst_name, inst_dict):
@@ -458,8 +456,8 @@ class Loader:
         Hollow function. Can be used in the future to load components which are
         not instruments.
         Args:
-            comp_name:
-            comp:
+            comp_name (str): Component name (key of the snapshot/dictionary)
+            comp (dict): Component values given as a dictionary
 
         Returns:
         """
@@ -472,22 +470,22 @@ class Loader:
         initialization of the Loader object.
         Returns (Station): station build from the snapshot.
         """
-        stat = Station(timestamp=self.timestamp)
+        station = Station(timestamp=self.timestamp)
         snap = self.get_snapshot()
         for inst_name, inst_dict in snap['instruments'].items():
-            inst = Loader.load_instrument(inst_name, inst_dict)
-            stat.add_component(inst)
+            inst = self.load_instrument(inst_name, inst_dict)
+            station.add_component(inst)
 
         for comp_name, comp_dict in snap['components'].items():
             # So far, components are not considered.
             # Loader.load_component is a hollow function.
             logger.warning('Components are not considered. '
                            'Loader.load_component is a hollow function.')
-            comp = Loader.load_component(comp_name, comp_dict)
+            comp = self.load_component(comp_name, comp_dict)
             if comp is not None:
-                stat.add_component(comp)
+                station.add_component(comp)
 
-        return stat
+        return station
 
     def get_snapshot(self):
         return dict()
@@ -495,9 +493,11 @@ class Loader:
 
 class HDF5Loader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None):
-        super().__init__(timestamp=timestamp)
-        self.filepath = self.get_filepath(timestamp, filepath, extension='hdf5')
+    def __init__(self, timestamp=None, filepath=None, h5mode='r'):
+        super().__init__(timestamp=timestamp, filepath=filepath)
+
+        self.filepath = self.get_filepath(timestamp, extension='hdf5')
+        self.h5mode = h5mode
 
     @staticmethod
     def load_instrument(inst_name, inst_group):
@@ -532,36 +532,31 @@ class HDF5Loader(Loader):
     def load_component(comp_name, comp):
         pass
 
-    def get_station(self, h5mode='r'):
+    def get_station(self):
         """
         Loads settings from an hdf5 file into a station.
-        Args:
-            h5mode: 'r' for read only mode.
-
-        Returns:
-
         """
-        with h5py.File(self.filepath, h5mode) as data_file:
-            stat = Station(timestamp=self.timestamp)
+        with h5py.File(self.filepath, self.h5mode) as data_file:
+            station = Station(timestamp=self.timestamp)
             instr_settings = data_file['Instrument settings']
 
             for inst_name, inst_group in list(instr_settings.items()):
                 inst = self.load_instrument(inst_name, inst_group)
-                stat.add_component(inst)
-        return stat
+                station.add_component(inst)
+        return station
 
 
 class PickleLoader(Loader):
 
     def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__(timestamp=timestamp)
+        super().__init__(timestamp=timestamp, filepath=filepath)
         self.compression = compression
         if self.compression:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='picklec')
+                timestamp, extension='picklec')
         else:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='pickle')
+                timestamp, extension='pickle')
 
     def get_snapshot(self):
         """
@@ -580,14 +575,14 @@ class PickleLoader(Loader):
 class MsgLoader(Loader):
 
     def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__(timestamp=timestamp)
+        super().__init__(timestamp=timestamp, filepath=filepath)
         self.compression = compression
         if self.compression:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='msgc')
+                timestamp, extension='msgc')
         else:
             self.filepath = self.get_filepath(
-                timestamp, filepath, extension='msg')
+                timestamp, extension='msg')
 
     def get_snapshot(self):
         """
