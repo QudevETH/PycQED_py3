@@ -19,7 +19,6 @@ import pycqed.measurement.waveform_control.pulse_library as pl
 import pycqed.measurement.waveform_control.pulsar as ps
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
-from pycqed.measurement.waveform_control.pulse_library import SSB_DRAG_pulse
 
 
 class Segment:
@@ -36,9 +35,6 @@ class Segment:
     trigger_pulse_length = 20e-9
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
-
-    # Pulse types in this list allows internal modulation in hardware.
-    internal_mod_allowed_pulse_types = [SSB_DRAG_pulse]
 
     # When internal modulation of a channel is turned on, the following
     # parameters should be the same for all pulses on this channel.
@@ -589,10 +585,8 @@ class Segment:
                     awg_channel=channel,
                 ):
                     continue
-                pulse_allow_internal_mod = False
-                for pulse_type in self.internal_mod_allowed_pulse_types:
-                    pulse_allow_internal_mod |= isinstance(pulse, pulse_type)
-                if not pulse_allow_internal_mod:
+                if not hasattr(pulse, "SUPPORT_INTERNAL_MOD") or \
+                        not pulse.SUPPORT_INTERNAL_MOD:
                     return False
         return True
 

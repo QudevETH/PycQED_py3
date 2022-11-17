@@ -66,6 +66,10 @@ class Pulse:
         self.trigger_channels = kw.pop('trigger_channels', []) or []
         self.trigger_pars = kw.pop('trigger_pars', {}) or {}
 
+        self.SUPPORT_INTERNAL_MOD = False
+        """Indicating whether this pulse is supposed to use hardware 
+        modulation of generator AWGs."""
+
         # Set default pulse_params and overwrite with params in keyword argument
         # list if applicable
         for k, v in self.pulse_params().items():

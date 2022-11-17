@@ -50,6 +50,7 @@ class SSB_DRAG_pulse(pulse.Pulse):
 
         self.I_channel = I_channel
         self.Q_channel = Q_channel
+        self.SUPPORT_INTERNAL_MOD = True
 
         self.phaselock = kw.pop('phaselock', True)
 
