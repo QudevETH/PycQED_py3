@@ -296,9 +296,10 @@ class Sequence:
                                     in channel_ids
                                     for channel in pulse.channels]):
                             continue
-                        if getattr(pulse, "amplitude", 0) > current_max_amp:
-                            current_max_amp = getattr(
-                                pulse, "amplitude", 0.0)
+                        if abs(getattr(pulse, "amplitude", 0)) > \
+                                current_max_amp:
+                            current_max_amp = abs(
+                                getattr(pulse, "amplitude"  , 0.0))
                     element_max_amp[elname] = current_max_amp
 
             if not len(element_max_amp) or \
