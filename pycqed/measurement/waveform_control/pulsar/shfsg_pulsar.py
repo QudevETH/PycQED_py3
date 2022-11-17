@@ -538,7 +538,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             chid=self.pulsar.get(self.i_channel_name + '_id'),
             enable=enable,
             osc_index=mod_config.get('osc', 0),
-            osc_frequency=mod_config.get('mod_fre.quency', None),
+            osc_frequency=mod_config.get('mod_frequency', None),
             sine_generator_index=mod_config.get('sine', 0),
             gains=mod_config.get('gains', (1.0, - 1.0, 1.0, 1.0)),
             global_amp=1.0,
