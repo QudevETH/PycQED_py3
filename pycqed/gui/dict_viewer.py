@@ -5,18 +5,19 @@ import sys
 class TextToTreeItem:
     """
     Helper class for the search feature of the class DictView.
-    Class connects QTreeItemWidgets with their data saved as strings.
+    Class connects QTreeItemWidgets with strings that identifies the data
+    (these strings are used to search for these QTreeItemWidgets, e.g. their
+    data of the columns).
     It contains a list of all QTreeItemWidgets from the QTreeWidget
-    and their key and value saved on two seperated lists.
+    and a dictionary of lists of strings, which are used to search for the
+    QTreeItemWidget.
     """
 
     def __init__(self, search_options):
-        self.key_text_list = []
-        self.value_text_list = []
         self.titem_list = []
         self.find_list = {key: [] for key in search_options}
 
-    def append(self, key_text, value_text, titem):
+    def append(self, search_string_dict:dict, titem):
         """
         Appends a QTreeWidgetItem and its data to the lists.
         Args:
@@ -26,44 +27,31 @@ class TextToTreeItem:
                 i.e. second column entry of the QTreeWidgetItem.
             titem (QTreeItemWidget): TreeItemWidget
         """
-        self.find_list['Key'].append(key_text)
-        self.find_list['Value'].append(value_text)
+        for key, item in search_string_dict.items():
+            self.find_list[key].append(item)
+        # self.find_list['Key'].append(search_string_dict)
+        # self.find_list['Value'].append(value_text)
         self.titem_list.append(titem)
 
-    def find(self, find_str, search_keys: tuple, search_option=0):
+    def find(self, find_str, search_keys: list):
         """
         Finds and returns all QTreeWidgetItems which contain the find_str.
         Args:
             find_str (str): String which is looked up in the list of
                 QTreeWidgetItems.
-            search_option (int): 0 - search in first and second column
-                (key and value)
-                1 - search in first column (key only)
-                2 - search in second column (value only)
+            search_keys (list): Keys of the lists in self.find_list which are
+                used for the search
 
         Returns: list of QTreeWidgetItem which contain find_str and the
         respective column set by search_option.
 
         """
-        titem_list = set()
+        titem_list = []
 
         for key in search_keys:
             for i, s in enumerate(self.find_list.get(key)):
                 if find_str in s:
-                    titem_list.add(self.titem_list[i])
-        #
-        # if search_option == 0:
-        #     for i, s in enumerate(self.key_text_list):
-        #         if find_str in s or find_str in self.value_text_list[i]:
-        #             titem_list.append(self.titem_list[i])
-        # if search_option == 1:
-        #     for i, s in enumerate(self.key_text_list):
-        #         if find_str in s:
-        #             titem_list.append(self.titem_list[i])
-        # if search_option == 2:
-        #     for i, s in enumerate(self.value_text_list):
-        #         if find_str in s:
-        #             titem_list.append(self.titem_list[i])
+                    titem_list.append(self.titem_list[i])
 
         return titem_list
 
@@ -92,12 +80,12 @@ class DictView(qt.QtWidgets.QWidget):
         self.find_text = None
         self.tree_widget = None
         self.search_options = ['Key', 'Value']
+        self.current_search_options = ['Key']
         self.text_to_titem = TextToTreeItem(self.search_options)
         # Default values
         self.find_str = ""
-        self.find_check_box_id = 0
-        self.find_check_box_list = []
         self.found_titem_list = []
+        self.find_check_box_dict = {}
         self.found_idx = 0
 
         # set to True if search should only include parameters
@@ -428,24 +416,7 @@ class DictView(qt.QtWidgets.QWidget):
         # 'Entries Found' QLabel
         self.find_text = qt.QtWidgets.QLabel('Entries found:')
 
-        # search options
-        self.find_check_box_list = \
-            [qt.QtWidgets.QCheckBox(key) for key in self.search_options]
-        # [qt.QtWidgets.QCheckBox('Key and Value'),
-        #                              qt.QtWidgets.QCheckBox('Key'),
-        #                              qt.QtWidgets.QCheckBox('Value')]
-        # # set default search option
-        self.find_check_box_list[self.find_check_box_id].setChecked(True)
-        # group options in QButtonGroup that only one button can be checked at
-        # any given time (exclusive)
-        self.find_checkboxoptions = qt.QtWidgets.QButtonGroup()
-        for id, w in enumerate(self.find_check_box_list):
-            self.find_checkboxoptions.addButton(w, id=id)
-
-        # adding additional search options
-        self.find_only_params_box = qt.QtWidgets.QCheckBox(
-            'Search only in parameters')
-        self.find_only_params_box.setChecked(self.find_only_params)
+        self.make_find_checkbox()
 
         # adding widgets to layout
         layout = qt.QtWidgets.QHBoxLayout()
@@ -453,8 +424,8 @@ class DictView(qt.QtWidgets.QWidget):
         layout.addWidget(find_button)
 
         layout2 = qt.QtWidgets.QHBoxLayout()
-        for w in self.find_check_box_list:
-            layout2.addWidget(w)
+        for key, check_box in self.find_check_box_dict.items():
+            layout2.addWidget(check_box)
         layout2.addSpacing(30)
         layout2.addWidget(self.find_only_params_box)
         layout2.addStretch()
@@ -465,6 +436,26 @@ class DictView(qt.QtWidgets.QWidget):
         layout3.addWidget(self.find_text)
 
         return layout3
+
+    def make_find_checkbox(self):
+        # search options
+        self.find_check_box_dict = \
+            {key: qt.QtWidgets.QCheckBox(key) for key in self.search_options}
+        # set default search option
+        for key in self.current_search_options:
+            self.find_check_box_dict[key].setChecked(True)
+
+        # adding additional search options
+        self.find_only_params_box = qt.QtWidgets.QCheckBox(
+            'Search only in parameters')
+        self.find_only_params_box.setChecked(self.find_only_params)
+
+    def get_current_search_options(self):
+        search_options = []
+        for key, check_box in self.find_check_box_dict.items():
+            if check_box.isChecked():
+                search_options.append(key)
+        return search_options
 
     def find_button_clicked(self):
         """
@@ -486,17 +477,17 @@ class DictView(qt.QtWidgets.QWidget):
         # only starts a new search if search parameters changed.
         # Otherwise, the next item in self.found_titem_list is activated.
         if find_str != self.find_str \
-                or self.find_check_box_id != \
-                self.find_checkboxoptions.checkedId() \
+                or self.current_search_options != \
+                self.get_current_search_options() \
                 or self.find_only_params != find_only_params:
             self.find_str = find_str
-            self.find_check_box_id = self.find_checkboxoptions.checkedId()
+            self.current_search_options = self.get_current_search_options()
             self.find_only_params = find_only_params
             # saves the QTreeWidgetItems which fulfill the search criteria
             # in a list
             self.found_titem_list = self.text_to_titem.find(
                 find_str=self.find_str,
-                search_option=self.find_checkboxoptions.checkedId())
+                search_keys=self.current_search_options)
             # If user wants to search only in parameters
             if find_only_params:
                 titem_list = []
@@ -534,8 +525,8 @@ class DictView(qt.QtWidgets.QWidget):
             # for the current search
             self.tree_widget.setCurrentItem(
                 self.found_titem_list[self.found_idx])
-            self.tree_dir.setText(
-                self.getDirtext(self.tree_widget.currentItem()))
+            self.setDirtext()
+            self.setNrAttributes()
         except:
             # if found index is out of range of found_titem_list
             # (should not happen)
@@ -601,7 +592,10 @@ class DictView(qt.QtWidgets.QWidget):
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
 
         tree_widget.addChild(row_item)
-        self.text_to_titem.append(key, value_text, row_item)
+        search_str_dict = {key: '' for key in self.search_options}
+        search_str_dict['Key'] = key
+        search_str_dict['Value'] = value_text
+        self.text_to_titem.append(search_str_dict, row_item)
 
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
@@ -723,7 +717,7 @@ class AdditionalWindow(qt.QtWidgets.QMainWindow):
         Args:
             e:
         """
-        if e.key() == qt.QtCore.Qt.Key_Escape:
+        if e.key() == qt.QtCore.Qt.Key.Key_Escape:
             self.close()
 
 
@@ -777,7 +771,7 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         Args:
             e:
         """
-        if e.key() == qt.QtCore.Qt.Key_Escape:
+        if e.key() == qt.QtCore.Qt.Key.Key_Escape:
             for d in self.dialogs:
                 d.close()
             self.close()
