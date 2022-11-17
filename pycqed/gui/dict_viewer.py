@@ -5,12 +5,12 @@ import sys
 class TextToTreeItem:
     """
     Helper class for the search feature of the class DictView.
-    Class connects QTreeItemWidgets with strings that identifies the data
-    (these strings are used to search for these QTreeItemWidgets, e.g. their
+    Class connects QTreeWidgetItems with strings that identifies the data
+    (these strings are used to search for these QTreeWidgetItems, e.g. their
     data of the columns).
-    It contains a list of all QTreeItemWidgets from the QTreeWidget
+    It contains a list of all QTreeWidgetItems from the QTreeWidget
     and a dictionary of lists of strings, which are used to search for the
-    QTreeItemWidget.
+    QTreeWidgetItem.
     """
 
     def __init__(self, search_options):
@@ -21,29 +21,29 @@ class TextToTreeItem:
         """
         Appends a QTreeWidgetItem and its data to the lists.
         Args:
-            key_text (str): String of the key, i.e. first column entry of
-                the QTreeWidgetItem
-            value_text (str): String of the value,
-                i.e. second column entry of the QTreeWidgetItem.
-            titem (QTreeItemWidget): TreeItemWidget
+            search_string_dict (dict): dictionary of strings which characterize
+                the QTreeWidgetItem (e.g. data of the columns). These strings
+                are used in self.find() to search for a QTreeWidgetItem with a
+                given search string.
+            titem (QTreeWidgetItem): TreeItemWidget
         """
         for key, item in search_string_dict.items():
             self.find_list[key].append(item)
-        # self.find_list['Key'].append(search_string_dict)
-        # self.find_list['Value'].append(value_text)
+
         self.titem_list.append(titem)
 
     def find(self, find_str, search_keys: list):
         """
-        Finds and returns all QTreeWidgetItems which contain the find_str.
+        Finds and returns all QTreeWidgetItems of which the search_string_dict
+        entry contains the find_str. Search_keys need to be specified.
         Args:
             find_str (str): String which is looked up in the list of
                 QTreeWidgetItems.
             search_keys (list): Keys of the lists in self.find_list which are
                 used for the search
 
-        Returns: list of QTreeWidgetItem which contain find_str and the
-        respective column set by search_option.
+        Returns: list of QTreeWidgetItem which connected entries in
+        search_string_dict contain find_str conditioned in the search_keys.
 
         """
         titem_list = []
@@ -72,6 +72,7 @@ class DictView(qt.QtWidgets.QWidget):
                 is displayed
             title (str): title which is displayed in the header and in the
                 layout.
+            screen (QScreen): Screen properties of the primary screen.
         """
         super(DictView, self).__init__()
         self.title = title
@@ -79,15 +80,14 @@ class DictView(qt.QtWidgets.QWidget):
         self.find_box = None
         self.find_text = None
         self.tree_widget = None
+        # Default values for the search bar
         self.search_options = ['Key', 'Value']
         self.current_search_options = ['Key']
         self.text_to_titem = TextToTreeItem(self.search_options)
-        # Default values
         self.find_str = ""
         self.found_titem_list = []
         self.find_check_box_dict = {}
         self.found_idx = 0
-
         # set to True if search should only include parameters
         self.find_only_params = False
 
@@ -100,8 +100,8 @@ class DictView(qt.QtWidgets.QWidget):
         # initializes the width of the column: 0.4*screen_size.width() is the
         # width of the entire window defined in DictViewerWindow
         screen_size = screen.size()
-        self.tree_widget.header().resizeSection(0,
-                                                .5 * .4 * screen_size.width())
+        self.tree_widget.header().resizeSection(
+            0, .5 * .4 * screen_size.width())
         self.tree_widget.setExpandsOnDoubleClick(True)
         self.tree_widget.setSortingEnabled(True)
 
@@ -137,7 +137,7 @@ class DictView(qt.QtWidgets.QWidget):
         # QLabel with text of tree directory
         self.tree_dir = qt.QtWidgets.QLabel('Root')
 
-        # QLabel with text of number of attributes in QTreeItemWidget
+        # QLabel with text of number of attributes in QTreeWidgetItem
         self.attr_nr = qt.QtWidgets.QLabel('Number of attributes:')
 
         # 1st step: positioning QTreeWidget, QLabel (tree directory) and
@@ -609,7 +609,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
         """
         Initialization of the TreeItemViewer
         Args:
-            treeitem (QTreeItemWidget): Tree item whose children are displayed
+            treeitem (QTreeWidgetItem): Tree item whose children are displayed
             in a QTreeWidget
         """
         super(TreeItemViewer, self).__init__()
