@@ -155,7 +155,7 @@ class DictView(qt.QtWidgets.QWidget):
         # to the top of the layout
         layout2 = qt.QtWidgets.QVBoxLayout()
         layout2.addLayout(search_layout)
-
+        # adding 10 pixels vertically between two widgets
         layout2.addSpacing(10)
         layout2.addWidget(gbox)
         layout2.setMenuBar(self.menuBar)
@@ -426,6 +426,8 @@ class DictView(qt.QtWidgets.QWidget):
         layout2 = qt.QtWidgets.QHBoxLayout()
         for key, check_box in self.find_check_box_dict.items():
             layout2.addWidget(check_box)
+        # adding 30 pixels horizontally between the buttons to distinguish
+        # visually between find_check_box_dict boxes and find_only_params_box
         layout2.addSpacing(30)
         layout2.addWidget(self.find_only_params_box)
         layout2.addStretch()
