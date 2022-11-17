@@ -371,7 +371,7 @@ class DictView(qt.QtWidgets.QWidget):
             titem (QTreeWidgetItem): Item to start hiding empty keys recursively
         """
         if titem.childCount() == 0:
-            if titem.data(1, 0) is None:
+            if titem.data(1, 0) == '':
                 titem.setHidden(True)
         else:
             for i in range(titem.childCount()):
