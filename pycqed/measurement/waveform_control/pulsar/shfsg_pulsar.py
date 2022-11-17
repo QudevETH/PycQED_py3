@@ -370,7 +370,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         # This method is needed because 'finalize_upload_after_mcc' method in
         # 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms' method
         # from device interfaces instead of from channel interfaces.
-        self._awg_modules[awg_nr].upload_waveforms(
+        self.awg_modules[awg_nr].upload_waveforms(
             wave_idx=wave_idx,
             waveforms=waveforms,
             wave_hashes=wave_hashes
