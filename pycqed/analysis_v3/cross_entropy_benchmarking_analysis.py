@@ -122,7 +122,7 @@ def simulate_circuits_1qb(nr_cycles, nr_seq, rots_qt, T1, T2,
 
 
 ## Calculation ##
-def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots, t_gate=None,
+def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
                                 Uvar=None, init_state=None):
     """
     Calculate circuits assuming ideal gate.
@@ -136,8 +136,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots, t_gate=None,
     """
 
     if init_state is None:
-        # print('here')
-        init_state = (g+e)/np.sqrt(2)
+        init_state = g
     if Uvar is None:
         Uvar = sqrtY
     if nr_cycles == 0:
@@ -234,8 +233,8 @@ def avg_loss(angles, grad):
 
 ### Analysis functions ###
 def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
-                              meas_obj_names=None,
-                              state_prob_mtxs=None, correct_ro=True,
+                              meas_obj_names=None, state_prob_mtxs=None,
+                              correct_readout=(True,),
                               sweep_type=None, save_processed_data=True,
                               probability_states=None, save_figures=True,
                               raw_keys_in=None, save=True, save_filename=None,
@@ -248,6 +247,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
     # len(z_angles) == nr_seq
     # len(z_angles[i]) == len(cycles)
     # [len(z_angles[i][j]) == nr_cycles for nr_cycles in cycles]
+    pp = pp_mod.ProcessingPipeline(add_param_method='replace')
     try:
         if meas_obj_names is None:
             meas_obj_names = hlp_mod.get_param_from_metadata_group(timestamp,
@@ -264,11 +264,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
-        shots_dict = hlp_mod.get_params_from_hdf_file(
-            {},  {qbn: f'Instrument settings.{qbn}.acq_shots'
-                  for qbn in meas_obj_names},
-            folder=data_dict['folders'][0])
-        n_shots = shots_dict[meas_obj_names[0]]
+        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+            meas_obj_names[0], 'acq_shots', timestamp)
 
         nr_swpts0 = swpts.length(0)
         # nr_swpts1 = swpts.length(1)
@@ -277,36 +274,35 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         nr_swpts1 = data_size // n_shots // nr_swpts0
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor
-        print(n_sequences, n_shots, n_segments)
+        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
 
-        pp = pp_mod.ProcessingPipeline(add_param_method='replace')
-        params_dict = {}
-        if classifier_params is None:
-            classifier_params = {}
-            params_dict.update({f'{qbn}.acq_classifier_params':
-                                    f'Instrument settings.{qbn}.acq_classifier_params'
-                                for qbn in meas_obj_names})
-        if state_prob_mtxs is None:
-            params_dict.update({f'{qbn}.state_prob_mtx':
-                                    f'Instrument settings.{qbn}.acq_state_prob_mtx'
-                                for qbn in meas_obj_names})
-            sa_mtx_shape = hlp_mod.get_params_from_hdf_file(
-                {},
-                {qbn: f'Instrument settings.{qbn}.acq_state_prob_mtx'
-                 for qbn in meas_obj_names},
-                folder=data_dict['folders'][0])[meas_obj_names[0]].shape
-        else:
-            sa_mtx_shape = state_prob_mtxs[meas_obj_names[0]].shape
+        classifier_params = hlp_mod.get_clf_params_from_hdf_file(
+            timestamp, meas_obj_names, classifier_params)
+        state_prob_mtxs = hlp_mod.get_state_prob_mtxs_from_hdf_file(
+            timestamp, meas_obj_names, state_prob_mtxs)
+        for mobjn, mtx in state_prob_mtxs.items():
+            if mtx is None:
+                if any(correct_readout):
+                    log.warning(f'The acq_state_prob_mtx was not provided '
+                                f'for {mobjn}. The acq_state_prob_mtxs '
+                                f'must be specified for both qubits in '
+                                f'order to perform readout correction.')
+                if False in correct_readout:
+                    # only do the readout-uncorrected analysis if the user
+                    # wanted this originally
+                    correct_readout = (False,)
+                else:
+                    # no analysis to run
+                    return pp, None, None, None
 
         # get probability_states
         if probability_states is None:
             probability_states = ['pg', 'pe']
-            if sa_mtx_shape[0] == 3:
+            if len(classifier_params[meas_obj_names[0]]['weights_']) == 3:
                 probability_states += ['pf']
         print('probability_states: ', probability_states)
 
-        pp.add_node('extract_data_hdf', timestamps=timestamp,
-                    params_dict=params_dict)
+        pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
             pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
@@ -322,7 +318,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                         keys_out=[f'{mobjn}.average_data.{ps}'
                                   for ps in probability_states],
                         meas_obj_names=mobjn)
-            if correct_ro:
+            if any(correct_readout):
                 pp.add_node('correct_readout',
                             keys_in='previous',
                             state_prob_mtxs=state_prob_mtxs,
@@ -343,7 +339,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         return pp, meas_obj_names, cycles, nr_seq
     except Exception:
         traceback.print_exc()
-        return
+        return pp, None, None, None
 
 
 def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
@@ -720,7 +716,7 @@ def calculate_ideal_circuit_2qb(nr_cycles, nr_seq, circuits_list, Uvar=None,
 ## Analysis ##
 def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                            meas_obj_names=None, renormalize=True,
-                           state_prob_mtxs=None, correct_ro=True,
+                           state_prob_mtxs=None, correct_readout=(True,),
                            sweep_type=None, save_processed_data=True,
                            probability_states=None, save_figures=True,
                            raw_keys_in=None, save_filename=None, save=True):
@@ -742,49 +738,45 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
-        shots_dict = hlp_mod.get_params_from_hdf_file(
-            {},  {qbn: f'Instrument settings.{qbn}.acq_shots'
-                  for qbn in meas_obj_names},
-            folder=data_dict['folders'][0])
-        n_shots = shots_dict[meas_obj_names[0]]
+        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+            meas_obj_names[0], 'acq_shots', timestamp)
 
         nr_swpts0 = swpts.length(0)
-        # nr_swpts1 = swpts.length(1)
         data_size = len(data_dict[meas_obj_names[0]][
                             list(data_dict[meas_obj_names[0]])[0]])
         nr_swpts1 = data_size // n_shots // nr_swpts0
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor
-        print(n_sequences, n_shots, n_segments)
+        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
 
-        params_dict = {}
-        if classifier_params is None:
-            classifier_params = {}
-            params_dict.update({f'{qbn}.acq_classifier_params':
-                                    f'Instrument settings.{qbn}.acq_classifier_params'
-                                for qbn in meas_obj_names})
-        if state_prob_mtxs is None:
-            params_dict.update({f'{qbn}.state_prob_mtx':
-                                    f'Instrument settings.{qbn}.acq_state_prob_mtx'
-                                for qbn in meas_obj_names})
-            sa_mtx_shape = hlp_mod.get_params_from_hdf_file(
-                {},
-                {qbn: f'Instrument settings.{qbn}.acq_state_prob_mtx'
-                 for qbn in meas_obj_names},
-                folder=data_dict['folders'][0])[meas_obj_names[0]].shape
-        else:
-            sa_mtx_shape = state_prob_mtxs[meas_obj_names[0]].shape
+        classifier_params = hlp_mod.get_clf_params_from_hdf_file(
+            timestamp, meas_obj_names, classifier_params)
+        state_prob_mtxs = hlp_mod.get_state_prob_mtxs_from_hdf_file(
+            timestamp, meas_obj_names, state_prob_mtxs)
+        for mobjn, mtx in state_prob_mtxs.items():
+            if mtx is None:
+                if any(correct_readout):
+                    log.warning(f'The acq_state_prob_mtx was not provided '
+                                f'for {mobjn}. The acq_state_prob_mtxs '
+                                f'must be specified for both qubits in '
+                                f'order to perform readout correction.')
+                if False in correct_readout:
+                    # only do the readout-uncorrected analysis if the user
+                    # wanted this originally
+                    correct_readout = (False,)
+                else:
+                    # no analysis to run
+                    return pp, None, None, None
 
         # get probability_states
         if probability_states is None:
             probability_states = ['pg', 'pe']
-            if sa_mtx_shape[0] == 3:
+            if len(classifier_params[meas_obj_names[0]]['weights_']) == 3:
                 probability_states += ['pf']
         print('probability_states: ', probability_states)
         nr_states = len(probability_states)**len(meas_obj_names)
 
-        pp.add_node('extract_data_hdf', timestamps=timestamp,
-                    params_dict=params_dict)
+        pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
             pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
@@ -820,7 +812,7 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                     keys_out=[f'{container}.average_data'],
                     joint_processing=True,
                     meas_obj_names=meas_obj_names)
-        if correct_ro:
+        if any(correct_readout):
             pp.add_node('correct_readout',
                         keys_in=[f'{container}.average_data'],
                         keys_out=[f'{container}.correct_readout'],
@@ -873,6 +865,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         xeb_data[depth] = 0
     i = 0
     while i < len(cycles):
+        print(cycles[i])
         pops_meas = proba_exp[i::len(cycles)]
         current_circuits = circuits[i::len(cycles)]
         p_m = sqrt_purity(pops_meas, d)

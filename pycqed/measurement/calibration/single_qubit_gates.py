@@ -1964,7 +1964,8 @@ class Rabi(SingleQubitGateCalibExperiment):
                 # experiment name
                 self.experiment_name += f'{n_list[0]}'
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, transition_name,
+                    prep_transition=True, **kw):
         """
         This function creates the blocks for a single Rabi measurement task,
         see the pulse sequence in the class docstring.
@@ -1972,14 +1973,18 @@ class Rabi(SingleQubitGateCalibExperiment):
         :param sweep_points: SweepPoints instance
         :param transition_name: transmon transition to be tuned up. Can be
             "", "_ef", "_fh". See the docstring of parent method.
+        :param prep_transition: Whether to prepare the initial state of the
+            transition or not. This feature is required, e.g. by the thermal
+            population measurement which is sweeping the pulse amplitude of
+            the preparation pulse. Defaults to True.
         :param kw: keyword arguments
             n: (int, default: 1) number of Rabi pulses (X180_tr_name in the
                 pulse sequence). Amplitude of all these pulses will be swept.
         """
 
         # create prepended pulses
-        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
-                                             **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points,
+            transition_name=transition_name if prep_transition else '', **kw)
         n = kw.get('n', 1)
         # add rabi block of n x X180_tr_name pulses
         rabi_block = self.block_from_ops(f'rabi_pulses_{qb}',
@@ -2040,6 +2045,76 @@ class Rabi(SingleQubitGateCalibExperiment):
                     'sigma': 's',
                 },
             }
+        })
+        return d
+
+
+class ThermalPopulation(Rabi):
+    """
+    Experiment to determine the residual thermal population in the e state by
+    performing two subsequent Rabi experiments on the ef transition. For one of
+    them we prepare the e state before each ef Rabi pulse and for the other,
+    the qubit starts out in the thermal equilibrium state. By comparing the
+    amplitudes of the two Rabi oscillations, one can infer the thermal e
+    state population.
+
+    TODO: extend to states other than the e state
+    """
+    default_experiment_name = 'Thermal Population'
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 amps=None, **kw):
+        try:
+            transition_name = kw.pop('transition_name', 'ef')
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             transition_name=transition_name,
+                             amps=amps, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        for qbn in self.qb_names:
+            ge_amp = self.dev.get_operation_dict()[f'X180 {qbn}']['amplitude']
+            self.sweep_points.add_sweep_parameter(
+                param_name=f'{qbn}_amplitude_ge',
+                values=np.array([0.0, ge_amp]),
+                unit='V',
+                label='amplitude ge')
+        return super().update_sweep_points()
+
+    def sweep_block(self, qb, sweep_points, **kw):
+        prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
+        prepend_pulse_dicts += [{'op_code': f'X180 {qb}',
+                    'amplitude': ParametricValue(f'{qb}_amplitude_ge')}]
+
+        transition_name = kw.pop('transition_name', '_ef')
+
+        return super().sweep_block(qb, sweep_points, transition_name,
+            prep_transition=False, prepend_pulse_dicts=prepend_pulse_dicts,
+            **kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.ThermalPopulationAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['task_list_fields'].update({
+            ThermalPopulation.__name__: odict({
+                'transition_name': (['ge', 'ef', 'fh'], 'ef'),
+            })
         })
         return d
 
