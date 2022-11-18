@@ -4,11 +4,6 @@
 # for more details.
 from __future__ import annotations
 
-import blosc2
-import h5py
-import pickle
-import msgpack
-import msgpack_numpy
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
@@ -16,10 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# To save and load numpy arrays in msgpack.
-# Note that numpy arrays deserialized by msgpack-numpy are read-only
-# and must be copied if they are to be modified
-msgpack_numpy.patch()
+
 
 
 class DelegateAttributes:
@@ -536,6 +528,8 @@ class HDF5Loader(Loader):
         """
         Loads settings from an hdf5 file into a station.
         """
+        import h5py
+
         with h5py.File(self.filepath, self.h5mode) as data_file:
             station = Station(timestamp=self.timestamp)
             instr_settings = data_file['Instrument settings']
@@ -563,8 +557,11 @@ class PickleLoader(Loader):
         Opens the pickle file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
         """
+        import pickle
+
         with open(self.filepath, 'rb') as f:
             if self.compression:
+                import blosc2
                 byte_data = blosc2.decompress(f.read())
                 snap = pickle.loads(byte_data)
             else:
@@ -589,8 +586,16 @@ class MsgLoader(Loader):
         Opens the pickle file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
         """
+        import msgpack
+        import msgpack_numpy
+        # To save and load numpy arrays in msgpack.
+        # Note that numpy arrays deserialized by msgpack-numpy are read-only
+        # and must be copied if they are to be modified
+        msgpack_numpy.patch()
+
         with open(self.filepath, 'rb') as f:
             if self.compression:
+                import blosc2
                 byte_data = blosc2.decompress(f.read())
             else:
                 byte_data = f.read()
