@@ -334,7 +334,7 @@ class SettingsManager:
                             'or is not snapshotable.')
 
     def load_from_file(self, timestamp: str, file_format='msgpack',
-                       compression=False):
+                       compression=False, extension=None):
         """
         Loads station into the settings manager from saved files.
         Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5
@@ -342,18 +342,24 @@ class SettingsManager:
         Args:
             timestamp (str): Supports all formats from a_tools.get_folder
             file_format (str): 'hdf5', 'pickle' or 'msgpack'
-            compression: Set True if files are compressed by blosc2
+            compression (bool): Set True if files are compressed by blosc2
                 (only for pickle and msgpack)
+            extension (str): possibility to specify the extension of the file
+                if is not matching the default extension (see respective loader
+                class for default extensions)
 
         Returns: Station which was created by the saved data.
 
         """
         if file_format == 'hdf5':
-            loader = HDF5Loader(timestamp=timestamp, h5mode='r')
+            loader = HDF5Loader(timestamp=timestamp, h5mode='r',
+                                extension=extension)
         elif file_format == 'pickle':
-            loader = PickleLoader(timestamp=timestamp, compression=compression)
+            loader = PickleLoader(timestamp=timestamp, compression=compression,
+                                  extension=extension)
         elif file_format == 'msgpack':
-            loader = MsgLoader(timestamp=timestamp, compression=compression)
+            loader = MsgLoader(timestamp=timestamp, compression=compression,
+                               extension=extension)
         else:
             raise NotImplementedError(f"File format '{file_format}' "
                                       f"not supported!")
@@ -388,28 +394,26 @@ class Loader:
     Generic class to load instruments and parameters from a file.
     """
 
-    def __init__(self, timestamp: str = None, filepath: str = None):
+    def __init__(self, timestamp: str = None, filepath: str = None,
+                 extension=None):
         self.filepath = filepath
         self.timestamp = timestamp
+        self.extension = extension
 
-    def get_filepath(self, timestamp=None, extension=None):
+    def get_filepath(self):
         """
         If no explicit filepath is given, a_tools.get_folder tries to get the
         directory based on the timestamp and the directory defined by
         a_tools.datadir, a_tools.fetch_data_dir, respectively.
-        Args:
-            timestamp (str): timestring in a format which is accepted by a_tools
-            extension (str): extension of the filetype, usually 'hdf5' for hdf5,
-                'obj' for pickle and 'msg' for msgpack.
-                'objc' and 'msgc' for compressed pickle and msgpack files.
 
         Returns: filepath as a string
 
         """
         if self.filepath is not None:
             return self.filepath
-        folder_dir = a_tools.get_folder(timestamp, suppress_printing=False)
-        self.filepath = a_tools.measurement_filename(folder_dir, ext=extension)
+        folder_dir = a_tools.get_folder(self.timestamp, suppress_printing=False)
+        self.filepath = a_tools.measurement_filename(folder_dir,
+                                                     ext=self.extension)
         return self.filepath
 
     @staticmethod
@@ -485,10 +489,14 @@ class Loader:
 
 class HDF5Loader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, h5mode='r'):
-        super().__init__(timestamp=timestamp, filepath=filepath)
+    def __init__(self, timestamp=None, filepath=None, h5mode='r',
+                 extension=None):
+        super().__init__(timestamp=timestamp, filepath=filepath,
+                         extension=extension)
 
-        self.filepath = self.get_filepath(timestamp, extension='hdf5')
+        if self.extension is None:
+            self.extension = 'hdf5'
+        self.filepath = self.get_filepath()
         self.h5mode = h5mode
 
     @staticmethod
@@ -542,15 +550,24 @@ class HDF5Loader(Loader):
 
 class PickleLoader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__(timestamp=timestamp, filepath=filepath)
+    def __init__(self, timestamp=None, filepath=None, compression=False,
+                 extension=None):
+        super().__init__(timestamp=timestamp, filepath=filepath,
+                         extension=extension)
+
         self.compression = compression
-        if self.compression:
-            self.filepath = self.get_filepath(
-                timestamp, extension='picklec')
-        else:
-            self.filepath = self.get_filepath(
-                timestamp, extension='pickle')
+        if self.extension is None:
+            if self.compression:
+                self.extension='picklec'
+            else:
+                self.extension='pickle'
+        self.filepath = self.get_filepath()
+        # if self.compression:
+        #     self.filepath = self.get_filepath(
+        #         timestamp, extension='picklec')
+        # else:
+        #     self.filepath = self.get_filepath(
+        #         timestamp, extension='pickle')
 
     def get_snapshot(self):
         """
@@ -571,15 +588,18 @@ class PickleLoader(Loader):
 
 class MsgLoader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, compression=False):
-        super().__init__(timestamp=timestamp, filepath=filepath)
+    def __init__(self, timestamp=None, filepath=None, compression=False,
+                 extension=None):
+        super().__init__(timestamp=timestamp, filepath=filepath,
+                         extension=extension)
+
         self.compression = compression
-        if self.compression:
-            self.filepath = self.get_filepath(
-                timestamp, extension='msgc')
-        else:
-            self.filepath = self.get_filepath(
-                timestamp, extension='msg')
+        if self.extension is None:
+            if self.compression:
+                self.extension='msgc'
+            else:
+                self.extension='msg'
+        self.filepath = self.get_filepath()
 
     def get_snapshot(self):
         """
