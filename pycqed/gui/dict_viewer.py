@@ -1,6 +1,6 @@
 from pycqed.gui import qt_compat as qt
 import sys
-
+from pycqed.utilities import timer
 
 class TextToTreeItem:
     """
@@ -81,8 +81,8 @@ class DictView(qt.QtWidgets.QWidget):
         self.find_text = None
         self.tree_widget = None
         # Default values for the search bar
-        self.search_options = ['Key', 'Value']
-        self.current_search_options = ['Key']
+        self.search_options = ['key', 'value']
+        self.current_search_options = ['key']
         self.text_to_titem = TextToTreeItem(self.search_options)
         self.find_str = ""
         self.found_titem_list = []
@@ -442,7 +442,8 @@ class DictView(qt.QtWidgets.QWidget):
     def make_find_checkbox(self):
         # search options
         self.find_check_box_dict = \
-            {key: qt.QtWidgets.QCheckBox(key) for key in self.search_options}
+            {key: qt.QtWidgets.QCheckBox(key.capitalize())
+             for key in self.search_options}
         # set default search option
         for key in self.current_search_options:
             self.find_check_box_dict[key].setChecked(True)
@@ -471,6 +472,30 @@ class DictView(qt.QtWidgets.QWidget):
         find_str = self.find_box.text()
         find_only_params = self.find_only_params_box.isChecked()
 
+        # tm = timer.Timer("timer", verbose=False)
+        # for i in range(10):
+        #     self.found_titem_list = self.tree_widget.findItems(
+        #         find_str,
+        #         qt.QtCore.Qt.MatchFlag.MatchContains | qt.QtCore.Qt.MatchFlag.MatchRecursive,
+        #         column=0)
+        # tm.checkpoint('current_end')
+        # print(tm.duration())
+        #
+        # tm = timer.Timer("timer2", verbose=False)
+        #
+        # for i in range(10):
+        #     self.found_titem_list = self.text_to_titem.find(
+        #             find_str=self.find_str,
+        #             search_keys=self.current_search_options)
+        # tm.checkpoint('current_end')
+        # print(tm.duration())
+        # items = self.tree_widget.findItems(
+        #     find_str,
+        #     qt.QtCore.Qt.MatchFlag(65),
+        #                             column=0)
+        # print(items)
+
+
         # If action fund_button_clicked is called, but the user did not enter
         # a string to search for, the action does nothing
         if find_str == "":
@@ -487,9 +512,13 @@ class DictView(qt.QtWidgets.QWidget):
             self.find_only_params = find_only_params
             # saves the QTreeWidgetItems which fulfill the search criteria
             # in a list
-            self.found_titem_list = self.text_to_titem.find(
-                find_str=self.find_str,
-                search_keys=self.current_search_options)
+            # self.found_titem_list = self.text_to_titem.find(
+            #     find_str=self.find_str,
+            #     search_keys=self.current_search_options)
+            self.found_titem_list = self.tree_widget.findItems(
+                find_str,
+                qt.QtCore.Qt.MatchFlag.MatchContains | qt.QtCore.Qt.MatchFlag.MatchRecursive,
+                column=0)
             # If user wants to search only in parameters
             if find_only_params:
                 titem_list = []
@@ -595,8 +624,8 @@ class DictView(qt.QtWidgets.QWidget):
 
         tree_widget.addChild(row_item)
         search_str_dict = {key: '' for key in self.search_options}
-        search_str_dict['Key'] = key
-        search_str_dict['Value'] = value_text
+        search_str_dict['key'] = key
+        search_str_dict['value'] = value_text
         self.text_to_titem.append(search_str_dict, row_item)
 
 
