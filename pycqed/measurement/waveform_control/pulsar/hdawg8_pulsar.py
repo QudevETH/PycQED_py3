@@ -588,6 +588,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             is_i_channel (str): whether this channel has the smaller number
             in its channel pair.
         """
+        if ch[-1] == 'm':
+            return False
         ch_idx = int(ch[-1])
         return ch_idx <= 8 and ch_idx % 2 == 1
 
