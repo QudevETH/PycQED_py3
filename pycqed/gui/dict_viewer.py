@@ -1,6 +1,6 @@
 from pycqed.gui import qt_compat as qt
 import sys
-from pycqed.utilities import timer
+import uuid
 
 
 class TextToTreeItem:
@@ -81,6 +81,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.find_box = None
         self.find_text = None
         self.tree_widget = None
+        self.titem_dict = {}
         # Default values for the search bar
         self.search_options = ['key', 'value']
         self.current_search_options = ['key']
@@ -107,6 +108,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.tree_widget.setExpandsOnDoubleClick(True)
 
         root_item = qt.QtWidgets.QTreeWidgetItem(["Root"])
+        root_item.uuid = uuid.uuid4()
         # build up the tree recursively from a dictionary
         self.dict_to_titem(snap, root_item)
         self.tree_widget.addTopLevelItem(root_item)
@@ -505,15 +507,19 @@ class DictView(qt.QtWidgets.QWidget):
             self.find_str = find_str
             self.current_search_options = self.get_current_search_options()
             self.find_only_params = find_only_params
-            self.found_titem_list = []
+
+            found_titem_set = set()
             for column in self.get_current_search_options(as_int=True):
-                self.found_titem_list = \
-                    self.found_titem_list + \
-                    self.tree_widget.findItems(
+                for titem in self.tree_widget.findItems(
                         find_str,
                         qt.QtCore.Qt.MatchFlag.MatchContains |
                         qt.QtCore.Qt.MatchFlag.MatchRecursive,
-                        column=column)
+                        column=column):
+                    found_titem_set.add(titem.uuid)
+
+            self.found_titem_list = \
+                [self.titem_dict[uuid] for uuid in found_titem_set]
+
             # If user wants to search only in parameters
             if find_only_params:
                 titem_list = []
@@ -720,6 +726,8 @@ class DictView(qt.QtWidgets.QWidget):
             value_text = str(val)
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
 
+        row_item.uuid = uuid.uuid4()
+        self.titem_dict.update({row_item.uuid: row_item})
         tree_widget.addChild(row_item)
         search_str_dict = {key: '' for key in self.search_options}
         search_str_dict['key'] = key
