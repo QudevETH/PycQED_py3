@@ -103,7 +103,6 @@ class DictView(qt.QtWidgets.QWidget):
         self.tree_widget.header().resizeSection(
             0, .5 * .4 * screen_size.width())
         self.tree_widget.setExpandsOnDoubleClick(True)
-        self.tree_widget.setSortingEnabled(True)
 
         root_item = qt.QtWidgets.QTreeWidgetItem(["Root"])
         # build up the tree recursively from a dictionary
@@ -114,6 +113,11 @@ class DictView(qt.QtWidgets.QWidget):
         # expand all parameter branches by default
         self.expandParameters(root_item)
 
+        # sorting needs to be set after initialization of tree elements
+        # lets user choose which column is used to sort
+        self.tree_widget.setSortingEnabled(True)
+        # default is first column in ascending order
+        self.tree_widget.sortByColumn(0, qt.QtCore.Qt.SortOrder.AscendingOrder)
         self.create_menus()  # creates context menu and menu bar
         self.make_layout()  # creates layout
 
