@@ -617,7 +617,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
     def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
         """
-        Upload a wavefor to this awg module.
+        Upload a waveform to this awg module.
 
         Args:
             wave_idx (int): index of wave upload (0 or 1)
