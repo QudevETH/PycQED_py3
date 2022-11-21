@@ -89,12 +89,13 @@ class DictView(qt.QtWidgets.QWidget):
         self.found_titem_list = []
         self.find_check_box_dict = {}
         self.found_idx = 0
+        self.column_header = ['Key', 'Value']
         # set to True if search should only include parameters
         self.find_only_params = False
 
         # set up the tree
         self.tree_widget = qt.QtWidgets.QTreeWidget()
-        self.tree_widget.setHeaderLabels(["Key", "Value"])
+        self.tree_widget.setHeaderLabels(self.column_header)
         self.tree_widget.header().setSectionResizeMode(
             qt.QtWidgets.QHeaderView.ResizeMode.Interactive)
 
@@ -412,11 +413,11 @@ class DictView(qt.QtWidgets.QWidget):
         """
         # Text box
         self.find_box = qt.QtWidgets.QLineEdit()
-        self.find_box.returnPressed.connect(self.find_button_clicked)
+        self.find_box.returnPressed.connect(self.find_button_clicked_2)
 
         # Find Button
         find_button = qt.QtWidgets.QPushButton("Find")
-        find_button.clicked.connect(self.find_button_clicked)
+        find_button.clicked.connect(self.find_button_clicked_2)
 
         # 'Entries Found' QLabel
         self.find_text = qt.QtWidgets.QLabel('Entries found:')
@@ -458,12 +459,105 @@ class DictView(qt.QtWidgets.QWidget):
             'Search only in parameters')
         self.find_only_params_box.setChecked(self.find_only_params)
 
-    def get_current_search_options(self):
+    def get_current_search_options(self, as_int=False):
+        """
+        Returns the current search options set by the checkboxes.
+        Args:
+            as_int (bool): If true, returns the current search options as a
+                integer. The integer corresponds to the index of the string
+                in the list self.search_options
+
+        Returns:
+
+        """
         search_options = []
         for key, check_box in self.find_check_box_dict.items():
             if check_box.isChecked():
-                search_options.append(key)
+                if as_int:
+                    search_options.append(self.search_options.index(key))
+                else:
+                    search_options.append(key)
         return search_options
+
+    def find_button_clicked_2(self):
+        """
+        Action (function) which is started after find_button was clicked.
+        Function searches for QTreeWidgetItems and displays only these items
+        in the QTreeWidget. Multiple calls of the function with the same
+        parameters (search_string, search options) sets the current
+        QTreeWidgetItem to the next item which fulfills the search criteria.
+        """
+        # Sets the current string and search options
+        find_str = self.find_box.text()
+        find_only_params = self.find_only_params_box.isChecked()
+
+        # If action fund_button_clicked is called, but the user did not enter
+        # a string to search for, the action does nothing
+        if find_str == "":
+            return
+
+        # only starts a new search if search parameters changed.
+        # Otherwise, the next item in self.found_titem_list is activated.
+        if find_str != self.find_str \
+                or self.current_search_options != \
+                self.get_current_search_options() \
+                or self.find_only_params != find_only_params:
+            self.find_str = find_str
+            self.current_search_options = self.get_current_search_options()
+            self.find_only_params = find_only_params
+            self.found_titem_list = []
+            for column in self.get_current_search_options(as_int=True):
+                self.found_titem_list = \
+                    self.found_titem_list + \
+                    self.tree_widget.findItems(
+                        find_str,
+                        qt.QtCore.Qt.MatchFlag.MatchContains |
+                        qt.QtCore.Qt.MatchFlag.MatchRecursive,
+                        column=column)
+            # If user wants to search only in parameters
+            if find_only_params:
+                titem_list = []
+                for titem in self.found_titem_list:
+                    try:
+                        if titem.parent().data(0, 0) == 'parameters':
+                            titem_list.append(titem)
+                    except:
+                        pass
+                self.found_titem_list = titem_list
+            self.find_text.setText('Entries found: %s'
+                                   % (len(self.found_titem_list)))
+            # If search is not empty, only QTreeWidgetItem which are found
+            # are displayed
+            if not self.found_titem_list == []:
+                self.showAll(self.tree_widget.topLevelItem(0), hide=True)
+                for titem in self.found_titem_list:
+                    titem.setHidden(False)
+                    self.showTitem(titem, expand=True)
+            self.found_idx = 0
+        # if list of found QTreeWidgetItems is empty and no search parameters
+        # are changed, 'Entries found = 0' is displayed,
+        # but QTreeWidget stays unchanged
+        elif not self.found_titem_list:
+            self.find_text.setText('Entries found: %s'
+                                   % (len(self.found_titem_list)))
+            return
+        else:
+            # if no search parameters are changed, current item is changed
+            # to the next item in the list
+            item_num = len(self.found_titem_list)
+            self.found_idx = (self.found_idx + 1) % item_num
+        try:
+            # set current item and display how many entries are found
+            # for the current search
+            self.tree_widget.setCurrentItem(
+                self.found_titem_list[self.found_idx])
+            self.setDirtext()
+            self.setNrAttributes()
+        except:
+            # if found index is out of range of found_titem_list
+            # (should not happen)
+            self.find_text.setText('Entries found: %s'
+                                   % (len(self.found_titem_list)))
 
     def find_button_clicked(self):
         """

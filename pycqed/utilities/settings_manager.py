@@ -12,8 +12,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
-
 class DelegateAttributes:
     """
     Copied from QCodes.utils.helpers (version 0.35.0)
@@ -558,9 +556,9 @@ class PickleLoader(Loader):
         self.compression = compression
         if self.extension is None:
             if self.compression:
-                self.extension='picklec'
+                self.extension = 'picklec'
             else:
-                self.extension='pickle'
+                self.extension = 'pickle'
         self.filepath = self.get_filepath()
         # if self.compression:
         #     self.filepath = self.get_filepath(
@@ -596,9 +594,9 @@ class MsgLoader(Loader):
         self.compression = compression
         if self.extension is None:
             if self.compression:
-                self.extension='msgc'
+                self.extension = 'msgc'
             else:
-                self.extension='msg'
+                self.extension = 'msg'
         self.filepath = self.get_filepath()
 
     def get_snapshot(self):
