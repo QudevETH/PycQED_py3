@@ -2,6 +2,7 @@ from pycqed.gui import qt_compat as qt
 import sys
 from pycqed.utilities import timer
 
+
 class TextToTreeItem:
     """
     Helper class for the search feature of the class DictView.
@@ -17,7 +18,7 @@ class TextToTreeItem:
         self.titem_list = []
         self.find_list = {key: [] for key in search_options}
 
-    def append(self, search_string_dict:dict, titem):
+    def append(self, search_string_dict: dict, titem):
         """
         Appends a QTreeWidgetItem and its data to the lists.
         Args:
@@ -499,7 +500,6 @@ class DictView(qt.QtWidgets.QWidget):
         #                             column=0)
         # print(items)
 
-
         # If action fund_button_clicked is called, but the user did not enter
         # a string to search for, the action does nothing
         if find_str == "":
@@ -825,3 +825,49 @@ class SnapshotViewer:
             title='Snapshot timestamp: %s' % self.timestamp,
             screen=screen)
         qt_app.exec_()
+
+
+if __name__ == "__main__":
+    import argparse
+    import pycqed.utilities.settings_manager as sm
+    import pycqed.analysis.analysis_toolbox as a_tools
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", help="Directory of the settings.")
+    parser.add_argument("--fetch-data-dir",
+                        help="Directory of the fetch drive.")
+    parser.add_argument("--timestamp", help="Timestamp of the settings.",
+                        required=True,
+                        type=str)
+    parser.add_argument("--file-format",
+                        help="File format of the settings: "
+                             "hdf5, pickle or msgpack.",
+                        required=True,
+                        type=str)
+    parser.add_argument("--compression",
+                        help="Set to True if file is compressed with blosc2",
+                        type=bool,
+                        default=False)
+    parser.add_argument("--extension",
+                        help="Extension of the file if not standardized: "
+                             "hdf5: .hdf5, pickle: .pickle, msgpack: .msgpack "
+                             "and an extra c at the end for compressed files.")
+    args = parser.parse_args()
+
+    if args.data_dir is not None:
+        a_tools.datadir = args.data_dir
+
+    if args.fetch_data_dir is not None:
+        a_tools.fetch_data_dir = args.fetch_data_dir
+
+    if (args.data_dir is None) and (args.fetch_data_dir is None):
+        raise NotImplementedError("Data directory or fetch directory needs "
+                                  "to be initialized")
+
+    settings_manager = sm.SettingsManager()
+    settings_manager.load_from_file(timestamp=args.timestamp,
+                                    file_format=args.file_format,
+                                    compression=args.compression,
+                                    extension=args.extension)
+
+    settings_manager.spawn_snapshot_viewer(timestamp=args.timestamp)
