@@ -541,7 +541,9 @@ class SHFGeneratorModule(ZIGeneratorModule):
             osc_frequency=mod_config.get('mod_frequency', None),
             sine_generator_index=mod_config.get('sine', 0),
             gains=mod_config.get('gains', (1.0, - 1.0, 1.0, 1.0)),
-            global_amp=1.0,
+            # Observation: we need twice as much drive amplitude to drive the
+            # same pi pulse when internal modulation is turned on.
+            global_amp=1.0 if enable is True else 0.5,
         )
 
         self._mod_config = mod_config
