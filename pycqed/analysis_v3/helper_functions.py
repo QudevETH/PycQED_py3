@@ -77,8 +77,6 @@ def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
     dictionary
     """
     if data_file is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or data_file.')
         folder = a_tools.get_folder(timestamp)
         h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
         data_file = h5py.File(h5filepath, mode)
@@ -135,8 +133,6 @@ def get_param_from_analysis_group(param_name, timestamp=None,
             corresponding to those paths as values
     """
     if folder is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or folder.')
         folder = a_tools.get_folder(timestamp)
 
     ana_group = get_params_from_hdf_file(
@@ -199,8 +195,6 @@ def get_data_from_hdf_file(timestamp=None, data_file=None,
     :return: numpy array with measurement data
     """
     if data_file is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or data_file.')
         folder = a_tools.get_folder(timestamp)
         h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
         data_file = h5py.File(h5filepath, mode)
@@ -300,8 +294,6 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
     :return: value corresponding to param_name
     """
     if folder is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or folder.')
         folder = a_tools.get_folder(timestamp)
 
     d = {}
