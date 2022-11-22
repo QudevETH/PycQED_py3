@@ -159,6 +159,14 @@ def get_param_from_fit_res(param, fit_res, split_char='.'):
     """
     Extract the value of a parameter from a fit result object or dict.
 
+    When a fit result is loaded from an HDF file, it is loaded as a dict, and
+    the way to access the relevant fit parameters is therefore slightly
+    different compared to accessing them from a lmfit.ModelResult instance. This
+    function returns the desired parameters from either a ModelResult instance
+    or a dict, so it is convenient to use in analyses notebooks for example,
+    where the data you process can be either a ModelResult instance or a
+    loaded fit results dict.
+
     Args:
         param (str): of the form param_name + split_char + param_attribute where
             param_name is the name of a fit parameter in fit_res, and
