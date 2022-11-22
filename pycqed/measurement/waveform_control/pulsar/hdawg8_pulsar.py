@@ -649,11 +649,14 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             self,
             mod_config,
     ):
+        awg_nr = self._awg_nr
+
         if not mod_config:
             # Modulation configuration is empty
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
             return
 
-        awg_nr = self._awg_nr
         # Set digital modulation to "mixer" mode.
         self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 6)
         self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 6)
@@ -668,7 +671,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1.0/alpha)
 
         # Choose oscillators, set phases and modulation frequencies.
-        # TODO: check if we can set negative frequencies to the oscillators
         mod_frequency = mod_config.get("mod_frequency", 0.0)
         osc_nr = mod_config.get("osc_nr", awg_nr * 4)
         self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
