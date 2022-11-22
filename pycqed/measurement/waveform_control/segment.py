@@ -728,13 +728,21 @@ class Segment:
             init_phase (float): initial phase of the first pulse. If there is no
                 actual pulse on the channel within this element, returns 0.
         """
+        init_phase = 0.0
         for pulse in self.elements[elname]:
             if self.pulsar.is_pulse_on_channel(
                     pulse=pulse,
                     awg_channel=channel
             ):
-                return pulse.phase
-        return 0.0
+                init_phase = pulse.phase
+                break
+
+        # init_phase will be included in the command table entries when internal
+        # modulation is on.
+        for pulse in self.elements[elname]:
+            pulse.phase = round(pulse.phase - init_phase, 5)
+
+        return init_phase
 
     def _initialize_element_metadata(self):
         """Create metadata dictionary entries for all elements in this
@@ -1435,6 +1443,11 @@ class Segment:
             if pulse.basis is not None:
                 pulse.pulse_obj.phase = pulse.original_phase - \
                                         basis_phases.get(pulse.basis, 0)
+
+            # Avoid creating repetitive waveforms due to small rounding errors
+            if hasattr(pulse.pulse_obj, "phase"):
+                pulse.pulse_obj.phase = round(
+                    round(pulse.pulse_obj.phase, 5) % 360.0, 5)
 
     def element_start_length(self, element, trigger_group):
         """

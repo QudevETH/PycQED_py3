@@ -335,8 +335,9 @@ class Sequence:
                         # three orders of magnitude smaller than the AWG
                         # output precision.
                         pulse.amplitude = round(
-                            pulse.amplitude / element_scaling_factor, 9
-                        ) if element_scaling_factor != 0 else sequence_max_amp
+                            pulse.amplitude / element_scaling_factor, 7
+                        ) if element_scaling_factor != 0 else \
+                            round(sequence_max_amp, 7)
 
         return scaling_factors
 
