@@ -39,7 +39,6 @@ class Segment:
     # When internal modulation of a channel is turned on, the following
     # parameters should be the same for all pulses on this channel.
     internal_mod_pulse_params_to_check = [
-        "mod_frequency",
         "phi_skew",
         "alpha"
     ]
@@ -665,6 +664,8 @@ class Segment:
             # No internal modulation configuration for this channel.
             return
 
+        major_mod_frequency = self._internal_mod_find_major_frequency(
+            channel=channel)
         for elname in self.elements_on_channel[channel]:
             channel_metadata = dict()
 
@@ -705,7 +706,8 @@ class Segment:
                     pulse=pulse,
                     awg_channel=channel,
                 ):
-                    pulse.mod_frequency = 0
+                    pulse.mod_frequency = round(
+                        pulse.mod_frequency - major_mod_frequency, 3)
                     pulse.alpha = 1
                     pulse.phi_skew = 0
 
@@ -747,6 +749,33 @@ class Segment:
                 pulse.phase = round(pulse.phase - init_phase, 5)
 
         return init_phase
+
+    def _internal_mod_find_major_frequency(
+            self,
+            channel: str,
+    ):
+        """Find the maximum pulse modulation frequency on this channel. For
+        typical qubit/qutrit drive pulses, this frequency is the
+        ge-transition modulation frequency.
+
+        Args:
+            channel (str): channel name.
+
+        Returns:
+            major_freq (float): max modulation frequency.
+        """
+        # Use a dictionary as a counter for modulation frequencies
+        frequency_bin = dict()
+        for elname in self.elements_on_channel[channel]:
+            for pulse in self.elements[elname]:
+                # Round frequency to Hz to avoid duplicates due to floating
+                # point rounding errors.
+                rounded_freq = round(pulse.mod_frequency, 4)
+                if rounded_freq in frequency_bin.keys():
+                    frequency_bin[rounded_freq] += 1
+                else:
+                    frequency_bin[rounded_freq] = 1
+        return max(frequency_bin.keys())
 
     def _initialize_element_metadata(self):
         """Create metadata dictionary entries for all elements in this
