@@ -1153,7 +1153,15 @@ class Pulsar(Instrument):
                                  '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
+                                 '{}_join_or_split_elements',
                                  'prepend_zeros']
+            # Some of the settings are specified for each generator AWG module.
+            # We should check these parameters as well.
+            generator_settings_to_check = [
+                "{}_use_placeholder_waves",
+                "{}_use_command_table",
+                "{}_use_internal_modulation",
+            ]
             settings = {}
             metadata = {}
             for awg, seq in awg_sequences.items():
@@ -1162,6 +1170,18 @@ class Pulsar(Instrument):
                         self.get(s.format(awg))
                         if s.format(awg) in self.parameters else None)
                     for s in settings_to_check}
+
+                # check channel-specific parameters
+                awg_interface = self.awg_interfaces[awg]
+                if hasattr(awg_interface, "awg_modules"):
+                    for awg_module in awg_interface.awg_modules:
+                        for s in generator_settings_to_check:
+                            i_channel = awg_module.i_channel_name
+                            settings[awg][s.format(i_channel)] = \
+                                self.get(s.format(i_channel)) \
+                                if s.format(i_channel) in self.parameters \
+                                else None
+
                 metadata[awg] = {
                     elname: (
                         el.get('metadata', {}) if el is not None else None)

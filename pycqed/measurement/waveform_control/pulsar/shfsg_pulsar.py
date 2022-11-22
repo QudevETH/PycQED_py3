@@ -642,10 +642,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _generate_oscillator_seq_code(self):
-        mod_config = self._mod_config.get(self.i_channel_name, {})
-        sine_config = self._sine_config.get(self.i_channel_name, {})
-        if mod_config.get('internal_mod', False) \
-                or sine_config.get('continuous', False):
+        if self._mod_config.get('internal_mod', False) \
+                or self._sine_config.get('continuous', False):
             # Reset the starting phase of all oscillators at the beginning
             # of a sequence using the resetOscPhase instruction. This
             # ensures that the carrier-envelope offset, and thus the final
@@ -771,7 +769,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             "amplitude01": {"value": amplitude[1]},
             "amplitude10": {"value": amplitude[2]},
             "amplitude11": {"value": amplitude[3]},
-            "phase": {"value": [phase]}
+            "phase": {"value": phase}
         }
 
         return shfsg_command_table_entry

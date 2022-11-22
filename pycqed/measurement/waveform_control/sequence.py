@@ -292,9 +292,10 @@ class Sequence:
                         # the current channel pair. If not, skip this pulse.
                         # TODO: check if this sanity check makes sense in
                         #  actual setups.
-                        if not all([self.pulsar.get(f'{channel}_id')
-                                    in channel_ids
-                                    for channel in pulse.channels]):
+                        if len(pulse.channels) == 0 or \
+                                not all([self.pulsar.get(f'{channel}_id')
+                                         in channel_ids
+                                         for channel in pulse.channels]):
                             continue
                         if abs(getattr(pulse, "amplitude", 0)) > \
                                 current_max_amp:
@@ -323,9 +324,10 @@ class Sequence:
                             element_scaling_factor
 
                     for pulse in seg.elements[elname]:
-                        if not all([self.pulsar.get(f'{channel}_id')
-                                    in channel_ids
-                                    for channel in pulse.channels]):
+                        if len(pulse.channels) == 0 or \
+                                not all([self.pulsar.get(f'{channel}_id')
+                                         in channel_ids
+                                         for channel in pulse.channels]):
                             continue
                         # Round amplitude to allow reusing waveform in
                         # the presence of finite numerical precision.
