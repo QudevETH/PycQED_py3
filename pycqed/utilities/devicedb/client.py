@@ -8,6 +8,7 @@ from device_db_client import model
 from device_db_client.api import api_api
 from pycqed.utilities.devicedb import decorators, utils
 
+PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES = "qb_qb_coupl_res" # TODO: Where is the best place to store such pynames? I.e. how can I access a certain type in the database without knowing its id?
 
 class Config:
     @decorators.at_least_one_not_none(['username', 'token'])
@@ -68,6 +69,11 @@ class Client:
             access_token=self.config.token,
         )
         self.api_client = device_db_client.ApiClient(self.api_config)
+
+        if not self.successful_connection():
+            raise RuntimeError(f"Failed to connect to database")
+        else:
+            print("Succesfully connected to the device database")
 
     @property
     def db_device(self):
@@ -187,6 +193,37 @@ class Client:
             log.debug(f"Found an already existing device")
             return maybe_device
 
+    def get_or_create_device_design(
+        self,
+        device_design: device_db_client.model.device_design.DeviceDesign,
+    ):
+        """Gets a device design from the DB, creates it if not found.
+
+        This function will get a device design from the database, if it exists, based
+        on the uniquely identifying fields of the class. If such an instance of
+        device doesn't exist on the database, it will be created.
+
+        This is useful when running scripts or code that may fail and thus
+        partially create entries on the database. If the model instance was
+        created on the database, a duplicate will not be created when the script
+        is re-run.
+
+        Args:
+            device_design (device_db_client.model.device_design.DeviceDesign): the device design to get from the db, or create
+
+        Returns:
+            device_design: the updated device_design instance from the database
+        """
+        utils.throw_if_not_db_model(device_design)
+        maybe_device_design = self.get_device_design_for(name=device_design.name,
+                                           log_empty_list=False)
+        if maybe_device_design is None:
+            log.info(f"Could not find a device design, creating one instead")
+            return self.get_api_instance().create_device_design(device_design=device_design)
+        else:
+            log.debug(f"Found an already existing device design")
+            return maybe_device_design
+
     def get_or_create_component_type(
         self,
         component_type: device_db_client.model.component_type.ComponentType,
@@ -220,13 +257,13 @@ class Client:
             log.debug(f"Found an already existing component_type")
             return maybe_component_type
 
-    def get_or_create_property_type(
+    def get_or_create_device_property_type(
         self,
-        property_type: device_db_client.model.property_type.PropertyType,
+        device_property_type: device_db_client.model.device_property_type.DevicePropertyType,
     ):
-        """Gets a property type from the DB, creates it if not found.
+        """Gets a device property type from the DB, creates it if not found.
 
-        This function will get a property type from the database, if it exists,
+        This function will get a device property type from the database, if it exists,
         based on the uniquely identifying fields of the class. If such an
         instance of property type doesn't exist on the database, it will be
         created.
@@ -237,21 +274,21 @@ class Client:
         is re-run.
 
         Args:
-            property_type (device_db_client.model.property_type.PropertyType): the property type to get from the db, or create
+            device_property_type (device_db_client.model.device_property_type.DevicePropertyType): the device property type to get from the db, or create
 
         Returns:
-            property_type: the updated property type instance from the database
+            device_property_type: the updated device property type instance from the database
         """
-        utils.throw_if_not_db_model(property_type)
-        maybe_property_type = self.get_property_type_for(
-            py_name=property_type.py_name, log_empty_list=False)
-        if maybe_property_type is None:
-            log.info(f"Could not find a property_type, creating one instead")
-            return self.get_api_instance().create_property_type(
-                property_type=property_type)
+        utils.throw_if_not_db_model(device_property_type)
+        maybe_device_property_type = self.get_device_property_type_for(
+            py_name=device_property_type.py_name, log_empty_list=False)
+        if maybe_device_property_type is None:
+            log.info(f"Could not find a device_property_type, creating one instead")
+            return self.get_api_instance().create_device_property_type(
+                property_type=device_property_type)
         else:
-            log.debug(f"Found an already existing property_type")
-            return maybe_property_type
+            log.debug(f"Found an already existing device_property_type")
+            return maybe_device_property_type
 
     def get_or_create_filefolder_raw_data(
         self,
@@ -375,7 +412,7 @@ class Client:
         """
         utils.throw_if_not_db_model(component)
         maybe_component = self.get_component_for(type=component.type,
-                                                 device=component.device,
+                                                 devicedesign=component.devicedesign,
                                                  number=component.number,
                                                  log_empty_list=False)
         if maybe_component is None:
@@ -383,7 +420,7 @@ class Client:
             return self.get_api_instance().create_component(
                 component=component)
         else:
-            log.debug(f"Found an already existing component")
+            log.debug(f"Found an already existing component for DeviceDesign id {component.devicedesign}, type {component.type} and number {component.number}")
             return maybe_component
 
     def get_or_create_coupling(
@@ -475,12 +512,40 @@ class Client:
                 return None
         return device
 
+    @decorators.at_least_one_not_none(['id', 'name'])
+    def get_device_design_for(self, id=None, name=None, **kwargs):
+        """Get the device design for the provided search terms
+
+        Args:
+            id (int|str): the primary key of the device design instance on the database
+            name (str): the identifying name for the device design
+        """
+        search_kwargs = {
+            "name": name,
+        }
+        api = self.get_api_instance()
+        if id is None:
+            search_kwargs = utils.noneless(**search_kwargs)
+            device_designs_list = api.list_device_designs(**search_kwargs)
+            device_design = utils.find_model_from_list(
+                device_designs_list,
+                'device_design',
+                search_kwargs,
+                **kwargs,
+            )
+        else:
+            try:
+                device_design = api.retrieve_device_design(id=str(id))
+            except device_db_client.exceptions.NotFoundException:
+                return None
+        return device_design
+
     @decorators.only_one_not_none(['id', 'type', 'py_name_num'])
-    @decorators.all_or_none(['type', 'device', 'number'])
+    @decorators.all_or_none(['type', 'devicedesign', 'number'])
     def get_component_for(self,
                           id=None,
                           type=None,
-                          device=None,
+                          devicedesign=None,
                           number=None,
                           py_name_num=None,
                           **kwargs):
@@ -490,13 +555,13 @@ class Client:
         "<component_type.py_name><number>" and `Client.has_db_device()` must be
         `True. `py_name_num` is then processed by
         :func:`numbered_py_name_to_type_and_num`. The groups of parameters that
-        must be 'not None' together are: (`id`), (`type`, `device`, `number`),
+        must be 'not None' together are: (`id`), (`type`, `devicedesign`, `number`),
         and (`py_name_num`).
 
         Args:
             id (int|str): the primary key of the component instance on the database
             type (int): the id of the component type for the component
-            device (int): the id of the device for the component
+            devicedesign (int): the id of the device design for the component
             number (int): the identifying number for this component
             py_name_num (str): the pythonic name for this component, with a number suffix
         """
@@ -527,15 +592,17 @@ class Client:
             # Get the component
             component = self.get_component_for(
                 type=str(component_type.id),
-                device=str(self.db_device.id),
+                devicedesign=str(self.db_device.devicedesign), # Get the id of the design that is related to the device (TODO: Check if this concatenation works)
                 number=str(number),
             )
             return component
         elif type is not None:
-            log.debug("Getting component using type, device, and number")
+            log.debug("Getting component using type, devicedesign, and number")
+            if number == None:
+                raise SyntaxError("When calling get_component_for() without a py_name_num argument, a number has to be provided.")
             search_kwargs = {
                 "type": str(type),
-                "device": str(device),
+                "devicedesign": str(devicedesign),
                 "number": str(number),
             }
             search_kwargs = utils.noneless(**search_kwargs)
@@ -618,13 +685,13 @@ class Client:
 
     @decorators.at_least_one_not_none(
         ['id', 'name', 'verbose_name', 'py_name'])
-    def get_property_type_for(self,
+    def get_device_property_type_for(self,
                               id=None,
                               name=None,
                               verbose_name=None,
                               py_name=None,
                               **kwargs):
-        """Get the property type for the provided search terms
+        """Get the device property type for the provided search terms
 
         Args:
             id (int|str): the primary key of the property_type instance on the database
@@ -640,23 +707,65 @@ class Client:
         api = self.get_api_instance()
         if id is None:
             log.debug(
-                "Getting property type using either name, verbose_name, or py_name"
+                "Getting device property type using either name, verbose_name, or py_name"
             )
             search_kwargs = utils.noneless(**search_kwargs)
-            property_type_list = api.list_property_types(**search_kwargs)
-            property_type = utils.find_model_from_list(
-                property_type_list,
-                'property_type',
+            device_property_type_list = api.list_device_property_types(**search_kwargs)
+            device_property_type = utils.find_model_from_list(
+                device_property_type_list,
+                'device_property_type',
                 search_kwargs,
                 **kwargs,
             )
         else:
-            log.debug("Getting property type using id")
+            log.debug("Getting device property type using id")
             try:
-                property_type = api.retrieve_property_type(id=str(id))
+                device_property_type = api.retrieve_device_property_type(id=str(id))
             except device_db_client.exceptions.NotFoundException:
                 return None
-        return property_type
+        return device_property_type
+
+    @decorators.at_least_one_not_none(
+        ['id', 'name', 'verbose_name', 'py_name'])
+    def get_device_design_property_type_for(self,
+                              id=None,
+                              name=None,
+                              verbose_name=None,
+                              py_name=None,
+                              **kwargs):
+        """Get the device design property type for the provided search terms
+
+        Args:
+            id (int|str): the primary key of the property_type instance on the database
+            name (str): the human readable name of the property type
+            verbose_name (str): the human readable verbose (long) name of the property type
+            py_name (str): the pythonic name of the property type
+        """
+        search_kwargs = {
+            "name": name,
+            "verbose_name": verbose_name,
+            "py_name": py_name,
+        }
+        api = self.get_api_instance()
+        if id is None:
+            log.debug(
+                "Getting device design property type using either name, verbose_name, or py_name"
+            )
+            search_kwargs = utils.noneless(**search_kwargs)
+            device_design_property_type_list = api.list_device_design_property_types(**search_kwargs)
+            device_design_property_type = utils.find_model_from_list(
+                device_design_property_type_list,
+                'device_design_property_type',
+                search_kwargs,
+                **kwargs,
+            )
+        else:
+            log.debug("Getting device design property type using id")
+            try:
+                device_design_property_type = api.retrieve_device_design_property_type(id=str(id))
+            except device_db_client.exceptions.NotFoundException:
+                return None
+        return device_design_property_type
 
     @decorators.at_least_one_not_none(['id', 'name'])
     def get_unit_for(self, id=None, name=None, **kwargs):
@@ -782,53 +891,53 @@ class Client:
 
     @decorators.only_one_not_none(['component', 'coupling'])
     @decorators.at_least_one_not_none(['property_type'])
-    def __validate_get_property_value_arguments(self,
+    def __validate_get_device_property_value_arguments(self,
                                                 component=None,
                                                 coupling=None,
-                                                property_type=None):
-        """Internal helper function to determine if the input arguments to `Client.get_property_value_for` are valid.
+                                                device_property_type=None):
+        """Internal helper function to determine if the input arguments to `Client.get_device_property_value_for` are valid.
 
-        Only one of `component` and `coupling` can be None, the other must be defined. `property_type` is required.
+        Only one of `component` and `coupling` can be None, the other must be defined. `device_property_type` is required.
 
         Args:
-            component (int, optional): the component id for the property value, or None
-            coupling (int, optional): the coupling id for the property value, or None
-            property_type (int): the property type id for the property value
+            component (int, optional): the component id for the device property value, or None
+            coupling (int, optional): the coupling id for the device property value, or None
+            device_property_type (int): the device property type id for the device property value
             
         Raises:
             ValueError: if any of the inputs are invalid
         """
         pass
 
-    @decorators.only_one_not_none(['id', 'property_type'])
-    def get_property_value_for(self,
+    @decorators.only_one_not_none(['id', 'device_property_type'])
+    def get_device_property_value_for(self,
                                id=None,
                                component=None,
                                coupling=None,
-                               property_type=None,
+                               device_property_type=None,
                                **kwargs):
-        """Get the property_value for the provided search terms
+        """Get the device_property_value for the provided search terms
         
-        If `id` is not provided, `component` or `coupling`, and `property_type`
+        If `id` is not provided, `component` or `coupling`, and `device_property_type`
         must be provided. If these three parameters are given, it is assumed
         that only _accepted_ property values are requested.
         
         Args:
-            id (int|str, optional): the primary key of the property_value instance on the database
-            component (int|str, optional): the primary key of the component for this property value
-            coupling (int|str, optional): the primary key of the coupling for this property value
-            property_type (int|str, optional): the primary key of the property type for this property value
+            id (int|str, optional): the primary key of the device_property_value instance on the database
+            component (int|str, optional): the primary key of the component for this device property value
+            coupling (int|str, optional): the primary key of the coupling for this device property value
+            device_property_type (int|str, optional): the primary key of the device property type for this device property value
         """
-        # Validate input arguments for `component`, `coupling`, and `property_type`.
+        # Validate input arguments for `component`, `coupling`, and `device_property_type`.
         if id is None:
-            self.__validate_get_property_value_arguments(
+            self.__validate_get_device_property_value_arguments(
                 component=component,
                 coupling=coupling,
-                property_type=property_type)
+                device_property_type=device_property_type)
         api = self.get_api_instance()
         if id is None:
             search_kwargs = {
-                "type": str(property_type),
+                "type": str(device_property_type),
                 "is_accepted_value": 'True',
             }
             if component is not None:
@@ -836,69 +945,69 @@ class Client:
             if coupling is not None:
                 search_kwargs['coupling'] = str(coupling)
             print(search_kwargs)
-            property_values = api.list_property_values(**search_kwargs)
-            print(property_values)
-            property_value = utils.find_model_from_list(
-                property_values,
-                'PropertyValue',
+            device_property_values = api.list_device_property_values(**search_kwargs)
+            print(device_property_values)
+            device_property_value = utils.find_model_from_list(
+                device_property_values,
+                'DevicePropertyValue',
                 search_kwargs,
                 **kwargs,
             )
         else:
             try:
-                property_value = api.retrieve_property_value(id=str(id))
+                device_property_value = api.retrieve_device_property_value(id=str(id))
             except device_db_client.exceptions.NotFoundException:
                 return None
-        return property_value
+        return device_property_value
 
     @decorators.only_one_not_none(['component', 'coupling'])
-    def get_all_property_values_for(self,
-                                    property_type,
+    def get_all_device_property_values_for(self,
+                                    device_property_type,
                                     component=None,
                                     coupling=None,
                                     **kwargs):
-        """Get all property values for the provided search terms
+        """Get all device property values for the provided search terms
 
         One of `component` and `coupling` must always be None and the other an
         id.
 
         Args:
-            component (int|str, optional): the primary key of the component for this property value
-            coupling (int|str, optional): the primary key of the coupling for this property value
-            property_type (int|str, optional): the primary key of the property type for this property value
+            component (int|str, optional): the primary key of the component for this device property value
+            coupling (int|str, optional): the primary key of the coupling for this device property value
+            device_property_type (int|str, optional): the primary key of the property type for this device property value
         """
-        # Validate input arguments for `component`, `coupling`, and `property_type`.
+        # Validate input arguments for `component`, `coupling`, and `device_property_type`.
         if id is None:
-            self.__validate_get_property_value_arguments(
+            self.__validate_get_device_property_value_arguments(
                 component=component,
                 coupling=coupling,
-                property_type=property_type)
+                device_property_type=device_property_type)
         api = self.get_api_instance()
         search_kwargs = {
-            "type": str(property_type),
+            "type": str(device_property_type),
         }
         if component is not None:
             search_kwargs['component'] = str(component)
         if coupling is not None:
             search_kwargs['coupling'] = str(coupling)
-        property_values = api.list_property_values(**search_kwargs)
-        return property_values
+        device_property_values = api.list_device_property_values(**search_kwargs)
+        return device_property_values
 
-    def create_property_value(
-            self, property_value: model.property_value.PropertyValue):
-        """Creates a property value, and returns its new instance (with an id)
+    def create_device_property_value(
+            self, device_property_value: model.device_property_value.DevicePropertyValue):
+        """Creates a device property value, and returns its new instance (with an id)
 
         Args:
-            property_value (model.property_value.PropertyValue): the PropertyValue instance to create
+            device_property_value (model.device_property_value.DevicePropertyValue): the DevicePropertyValue instance to create
 
         Returns:
-            PropertyValue: the new property value that was created in the database
+            DevicePropertyValue: the new device property value that was created in the database
         """
-        return self.get_api_instance().create_property_value(
-            property_value=property_value)
+        return self.get_api_instance().create_device_property_value(
+            device_property_value=device_property_value)
 
-    def __get_property_value_from_param_args_for_associated_component(
-            self, qubit, property_type, associated_component_type):
+    def __get_device_property_value_from_param_args_for_associated_component(
+            self, qubit, device_property_type, associated_component_type):
         # Nothing to do if there are no associated components
         if len(qubit.associated_components) == 0:
             return None
@@ -927,50 +1036,50 @@ class Client:
             return None
 
         # A valid associated component was found
-        return self.get_property_value_for(component=assoc_comp.id,
-                                           property_type=property_type.id)
+        return self.get_device_property_value_for(component=assoc_comp.id,
+                                           device_property_type=device_property_type.id)
 
-    def get_property_value_from_param_args(
+    def get_device_property_value_from_param_args(
             self,
             qubit_py_name_num,
-            property_type_py_name,
+            device_property_type_py_name,
             associated_component_type_hint=None):
-        """Finds an accepted property value, from a py_name, for a qubit or an associated component
+        """Finds an accepted device property value, from a py_name, for a qubit or an associated component
         
         This is a utilities function to easily interface with the settings functionality for automated calibration routines.
         
         Example:
             .. code-block:: python
                 # Get the ge_pi_half_amp for qubit 1
-                property_value = get_property_value_from_param_args(
+                device_property_value = get_device_property_value_from_param_args(
                     qubit_py_name_num = 'qb1',
-                    property_type_py_name = 'ge_pi_half_amp',
+                    device_property_type_py_name = 'ge_pi_half_amp',
                 )
                 
                 # Get the ro_res_freq for the ro_res associated with qubit 1
-                property_value = get_property_value_from_param_args(
+                device_property_value = get_device_property_value_from_param_args(
                     qubit_py_name_num = 'qb1',
-                    property_type_py_name = 'ro_res_freq',
+                    device_property_type_py_name = 'ro_res_freq',
                     associated_component_type_hint = 'ro_res',
                 )
                 
-                # Get the raw floating value for the property value instance
-                value = property_value.value
+                # Get the raw floating value for the device property value instance
+                value = device_property_value.value
 
         Returns:
-            PropertyValue: the property value instance found, None if not found
+            DevicePropertyValue: the device property value instance found, None if not found
         """
         # Get the qubit
         qubit = self.get_component_for(py_name_num=qubit_py_name_num)
         if qubit is None:
             raise ValueError(f"Could not find qubit {qubit_py_name_num}")
 
-        # Get the property type
-        property_type = self.get_property_type_for(
-            py_name=property_type_py_name)
-        if property_type is None:
+        # Get the device property type
+        device_property_type = self.get_device_property_type_for(
+            py_name=device_property_type_py_name)
+        if device_property_type is None:
             log.error(
-                f"Could not find a property type with py_name {property_type_py_name}. Make sure it's added to the database."
+                f"Could not find a device property type with py_name {device_property_type_py_name}. Make sure it's added to the database."
             )
             return None
 
@@ -983,35 +1092,35 @@ class Client:
                     f"Associated component type hint {associated_component_type_hint} does not identify a valid component type on the database"
                 )
             else:
-                property_value = self.__get_property_value_from_param_args_for_associated_component(
+                device_property_value = self.__get_device_property_value_from_param_args_for_associated_component(
                     qubit=qubit,
-                    property_type=property_type,
+                    device_property_type=device_property_type,
                     associated_component_type=assoc_comp_type)
-                if property_value is not None:
+                if device_property_value is not None:
                     log.debug(
-                        f"Found a property value for the associated component")
-                    return property_value
+                        f"Found a device property value for the associated component")
+                    return device_property_value
                 else:
                     log.debug(
-                        f"Could not find a property value for an associated component of qubit, will try on the qubit itself"
+                        f"Could not find a device property value for an associated component of qubit, will try on the qubit itself"
                     )
 
-        # Try find a property value for the type on the qubit
-        property_value = self.get_property_value_for(
-            component=qubit.id, property_type=property_type.id)
-        if property_value is None:
+        # Try find a device property value for the type on the qubit
+        device_property_value = self.get_device_property_value_for(
+            component=qubit.id, device_property_type=device_property_type.id)
+        if device_property_value is None:
             log.debug(
-                f"Could not find a property value of type {property_type_py_name} for qubit {qubit}"
+                f"Could not find a device property value of type {device_property_type_py_name} for qubit {qubit}"
             )
             return None
         else:
             log.debug(
-                f"Found a property value of type {property_type_py_name} on qubit {qubit}"
+                f"Found a device property value of type {device_property_type_py_name} on qubit {qubit}"
             )
-            return property_value
+            return device_property_value
 
-    def __get_all_property_value_from_param_args_for_associated_component(
-            self, qubit, property_type, associated_component_type):
+    def __get_all_device_property_value_from_param_args_for_associated_component(
+            self, qubit, device_property_type, associated_component_type):
         # Nothing to do if there are no associated components
         if len(qubit.associated_components) == 0:
             return None
@@ -1040,39 +1149,39 @@ class Client:
             return None
 
         # A valid associated component was found
-        return self.get_all_property_values_for(component=assoc_comp.id,
-                                                property_type=property_type.id)
+        return self.get_all_device_property_values_for(component=assoc_comp.id,
+                                                device_property_type=device_property_type.id)
 
-    def get_all_property_values_from_param_args(
+    def get_all_device_property_values_from_param_args(
             self,
             qubit_py_name_num,
-            property_type_py_name,
+            device_property_type_py_name,
             associated_component_type_hint=None):
-        """Finds all accepted property values, from a py_name, for a qubit or an associated component
+        """Finds all accepted device property values, from a py_name, for a qubit or an associated component
 
         This is a utilities function to easily interface with the settings functionality for automated calibration routines.
         
         Example:
             .. code-block:: python
                 # Get the ge_pi_half_amp for qubit 1
-                property_values = get_all_property_values_from_param_args(
+                device_property_values = get_all_device_property_values_from_param_args(
                     qubit_py_name_num = 'qb1',
-                    property_type_py_name = 'ge_pi_half_amp',
+                    device_property_type_py_name = 'ge_pi_half_amp',
                 )
                 
                 # Get the ro_res_freq for the ro_res associated with qubit 1
-                property_values = get_all_property_values_from_param_args(
+                device_property_values = get_all_device_property_values_from_param_args(
                     qubit_py_name_num = 'qb1',
-                    property_type_py_name = 'ro_res_freq',
+                    device_property_type_py_name = 'ro_res_freq',
                     associated_component_type_hint = 'ro_res',
                 )
                 
                 # Get the raw floating value for the property value instance
-                for i,property_value in enumerate(property_values):
-                    print(f"[{i}]: value: {property_value.value}")
+                for i,device_property_value in enumerate(device_property_values):
+                    print(f"[{i}]: value: {device_property_value.value}")
 
         Returns:
-            list: list of property values found, empty list if none were found
+            list: list of device property values found, empty list if none were found
         """
         # Get the qubit
         qubit = self.get_component_for(py_name_num=qubit_py_name_num)
@@ -1080,11 +1189,11 @@ class Client:
             raise ValueError(f"Could not find qubit {qubit_py_name_num}")
 
         # Get the property type
-        property_type = self.get_property_type_for(
-            py_name=property_type_py_name)
-        if property_type is None:
+        device_property_type = self.get_device_property_type_for(
+            py_name=device_property_type_py_name)
+        if device_property_type is None:
             log.error(
-                f"Could not find a property type with py_name {property_type_py_name}. Make sure it's added to the database."
+                f"Could not find a property type with py_name {device_property_type_py_name}. Make sure it's added to the database."
             )
             return None
 
@@ -1097,20 +1206,94 @@ class Client:
                     f"Associated component type hint {associated_component_type_hint} does not identify a valid component type on the database"
                 )
             else:
-                property_value = self.__get_property_value_from_param_args_for_associated_component(
+                device_property_value = self.__get_device_property_value_from_param_args_for_associated_component(
                     qubit=qubit,
-                    property_type=property_type,
+                    device_property_type=device_property_type,
                     associated_component_type=assoc_comp_type)
-                if property_value is not None:
+                if device_property_value is not None:
                     log.debug(
-                        f"Found a property value for the associated component")
-                    return property_value
+                        f"Found a device property value for the associated component")
+                    return device_property_value
                 else:
                     log.debug(
-                        f"Could not find a property value for an associated component of qubit, will try on the qubit itself"
+                        f"Could not find a device property value for an associated component of qubit, will try on the qubit itself"
                     )
 
         # Try find property values for the type on the qubit
-        property_values = self.get_all_property_values_for(
-            component=qubit.id, property_type=property_type.id)
-        return property_values
+        device_property_values = self.get_all_device_property_values_for(
+            component=qubit.id, device_property_type=device_property_type.id)
+        return device_property_values
+
+    @decorators.only_one_not_none(['id', 'name'])
+    def get_device_design_connectivity_graph(self, name=None, id=None):
+        """Returns the connectivity graph of a device design
+
+        Args:
+            id (int|str): id of the device design
+            name (str): name of the device design
+
+        Returns:
+            list: list of tuples, representing the connectivity graph of the device design
+        """
+        api = self.get_api_instance()
+
+        # if id is None, a name has to be provided instead and we can find the id over the name
+        if id==None:
+            try:
+                device_design = self.get_device_design_for(name=name)
+                id = device_design.id
+            except Exception as e:
+                log.warning(
+                    f"Could not find the device design related to the name {name}. Exception: {e}"
+                )
+                return False
+
+        # Get the id of the component type for qubit qubit coupling resonators
+        try:
+            component_type = self.get_component_type_for(py_name=PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES)
+        except Exception as e:
+            log.warning(
+                f"Could not find the qubit-qubit coupling resonator component type in the database. Exception: {e}"
+            )
+            return False
+
+        # Get the list of all the qubit qubit coupling resonators on that design
+        try:
+            component_list = api.list_components(type=str(component_type.id), devicedesign=str(id))
+        except Exception as e:
+            log.warning(
+                f"Could not get the component list of qubit-qubit coupling resonators. Exception: {e}"
+            )
+            return False
+
+        connectivity_graph = [] # Array which stores qubit connections
+
+        # Iterate over every coupling resonator, find the two qubits connected to the resonator and add the to the connectivity graph
+        for component in component_list: # Find qubits for coupling resonator {component.id}
+            coupling_list = api.list_couplings(components=str(component.id))
+            if len(coupling_list) > 2:
+                raise SystemError("Found more than two qubits connected to a qubit-qubit coupling resonator. How can that happen?")
+            elif len(coupling_list) < 2:
+                raise SystemError("Could not find two qubits that are connected to a qubit-qubit coupling resonator. How can that happen?")
+            else:
+                qbs_list = []
+                for coupling in coupling_list: # There are two couplings associated to one coupling resonator: One coupling to the one qubit and one coupling to the other qubit
+                    if len(coupling["components"]) != 2: # Consistency check
+                        raise SystemError("A coupling instance contains more or less than 2 elements. How can that happen? It should always contain exactly 2 elements.")
+                    
+                    # Check what of the two elements is the coupling resonator and what is the qubit
+                    el1 = coupling["components"][0]
+                    el2 = coupling["components"][1]
+                    if el1 == component.id:
+                        qb = el2
+                    elif el2 == component.id:
+                        qb = el1
+                    else:
+                        print("This should not happen.")
+
+                    # Instead of the component id of the qubit in the database, find the number of the qubit on the device design
+                    qb_id_on_design = api.retrieve_component(id=str(qb))
+                    qbs_list.append(qb_id_on_design.number)
+                connectivity_graph.append((qbs_list[0], qbs_list[1])) # For having tuples. Otherwise one can also just use connectivity_graph.append(qbs_list)
+
+        return connectivity_graph

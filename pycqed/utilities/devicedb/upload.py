@@ -1,11 +1,12 @@
 import logging
+import sys
 from datetime import datetime
 
 import device_db_client
 
 from .client import Client
 from .filters import filtered_out_for_all_filters
-from .validator import PropertyValuesDictValidator
+from .validator import DevicePropertyValuesDictValidator
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def WalkValueNodes(property_values_dict, filters=[]):
     Yields:
         value_node (dict): any value nodes found in the property values dictionary
     """
-    validator = PropertyValuesDictValidator()
+    validator = DevicePropertyValuesDictValidator()
     if validator.is_step_node(
             property_values_dict) and not filtered_out_for_all_filters(
                 property_values_dict, filters):
@@ -34,7 +35,8 @@ def WalkValueNodes(property_values_dict, filters=[]):
 
 
 def WalkLastUniqueValueNodes(property_values_dict, filters=[]):
-    """Iterator for the last value node - per unique `qubits`, `component_type`, and `property_type` combination - in the property values dictionary
+    """Iterator for the last value node - per unique `qubits`, `component_type`, 
+    and `property_type` combination - in the property values dictionary
 
     This iterator will only output the last value nodes for each combination of
     `qubits`, `component_type`, and `property_type`. This way, if multiple steps
@@ -68,7 +70,7 @@ def WalkLastUniqueValueNodes(property_values_dict, filters=[]):
         yield node
 
 
-class PropertyValueUploader:
+class DevicePropertyValueUploader:
     def __init__(self,
                  client: Client,
                  property_values_dict,
@@ -77,12 +79,12 @@ class PropertyValueUploader:
                  host="Q",
                  only_upload_latest=True,
                  filters: list = []):
-        """Creates a `PropertyValueUploader` to assist with uploading a property values dictionary to the device database
+        """Creates a `DevicePropertyValueUploader` to assist with uploading a property values dictionary to the device database
 
         Args:
             client (Client): the device database client for uploading property values
-            property_values_dict (dict): the property values dictionary to upload
-            experiment_comments (str, optional): an optional comment to use when creating a experiment when uploading from this PropertyValueUploader instance. Defaults to None.
+            property_values_dict (dict): the device property values dictionary to upload
+            experiment_comments (str, optional): an optional comment to use when creating a experiment when uploading from this DevicePropertyValueUploader instance. Defaults to None.
             db_experiment (device_db_client.model.experiment.Experiment, optional): optional experiment instance to use instead of creating one. Defaults to None.
             host (str, optional): the 'host' to use for all `FileFolderRawData` instances. If raw data is not stored on the Q-Drive, set this to the hostname of the machine. Defaults to "Q".
             only_upload_latest (bool, optional): whether to filter value nodes in `property_values_dict` to only the last unique nodes. Defaults to True.
@@ -91,11 +93,11 @@ class PropertyValueUploader:
         Raises:
             ValueError: if `client` doesn't have a device in the database
             ValueError: if any input argument is of an incorrect type
-            ValueError: if `property_values_dict` is not a valid property values dictionary
+            ValueError: if `device_property_values_dict` is not a valid device property values dictionary
         """
         self.client = client
-        self.validator = PropertyValuesDictValidator()
-        self.property_values_dict = property_values_dict
+        self.validator = DevicePropertyValuesDictValidator()
+        self.device_property_values_dict = property_values_dict
         self.experiment_comments = experiment_comments
         self.not_uploaded_value_nodes = []
         self.uploaded_value_nodes = []
@@ -122,7 +124,7 @@ class PropertyValueUploader:
         else:
             self.db_experiment = db_experiment
         # Validate property values dict
-        if not self.validator.is_valid(self.property_values_dict):
+        if not self.validator.is_valid(self.device_property_values_dict):
             raise ValueError(f"Property values dictionary is not valid")
 
         # Extract value nodes so we can deal with `not_uploaded_value_nodes` and `uploaded_value_nodes` instead of property_values_dict
@@ -145,14 +147,14 @@ class PropertyValueUploader:
             Experiment: the `Experiment` instance
         """
         # validate property_values_dict
-        if not self.validator.is_valid(self.property_values_dict):
+        if not self.validator.is_valid(self.device_property_values_dict):
             raise ValueError(
                 f"property_values_dict is not valid, cannot create an experiment instance"
             )
         experiment = device_db_client.model.experiment.Experiment(
             datetime_taken=self.__timestamp_to_datetime(
-                self.property_values_dict['timestamp']),
-            type=self.property_values_dict['step_type'],
+                self.device_property_values_dict['timestamp']),
+            type=self.device_property_values_dict['step_type'],
             comments=experiment_comments,
         )
         experiment = self.client.get_api_instance().create_experiment(
@@ -174,7 +176,7 @@ class PropertyValueUploader:
             iterator = WalkLastUniqueValueNodes
         else:
             iterator = WalkValueNodes
-        for value_node in iterator(self.property_values_dict, self.filters):
+        for value_node in iterator(self.device_property_values_dict, self.filters):
             if value_node is not None:
                 self.not_uploaded_value_nodes.append(value_node)
             else:
@@ -225,11 +227,21 @@ class PropertyValueUploader:
                     py_name_num=qubit_py_name_num)
             else:
                 # If the component type is not a qubit, the property value is for an associated component
-                component_type = self.client.get_component_type_for(
-                    py_name=value_node['component_type'])
+                try:
+                    component_type = self.client.get_component_type_for(
+                        py_name=value_node['component_type'])
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to get the component type. Failed with error {e}"
+                    )
                 # get the qubit
-                qubit = self.client.get_component_for(
-                    py_name_num=qubit_py_name_num)
+                try:
+                    qubit = self.client.get_component_for(
+                        py_name_num=qubit_py_name_num)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to get the qubit. Failed with error {e}"
+                    )
                 # Search for component in associated components
                 component = None
                 for associated_component in [
@@ -245,47 +257,53 @@ class PropertyValueUploader:
                     raise ValueError(
                         f"Could not find an associated component of type {value_node['component_type']} for qubits {value_node['qubits']}"
                     )
-            # Get the property type
-            property_type = self.client.get_property_type_for(
+            # Get the device property type
+            device_property_type = self.client.get_device_property_type_for(
                 py_name=value_node['property_type'])
-            if property_type is None:
+            if device_property_type is None:
                 raise ValueError(
-                    f"Could not find a property type with py_name {value_node['property_type']}"
+                    f"Could not find a device property type with py_name {value_node['property_type']}"
                 )
 
-            # Check that the value_node value is within the property type range
-            if property_type.min_value is not None and value_node[
-                    'value'] < property_type.min_value:
+            # Check that the value_node value is within the device property type range
+            if device_property_type.min_value is not None and value_node[
+                    'value'] < device_property_type.min_value:
                 raise ValueError(
-                    f"Value node's value is smaller than the allowed minimum value for the property type:\n\tvalue = {value_node['value']} < {property_type.min_value} = min_value"
+                    f"Value node's value is smaller than the allowed minimum value for the device property type:\n\tvalue = {value_node['value']} < {device_property_type.min_value} = min_value"
                 )
-            if property_type.max_value is not None and value_node[
-                    'value'] > property_type.max_value:
+            if device_property_type.max_value is not None and value_node[
+                    'value'] > device_property_type.max_value:
                 raise ValueError(
-                    f"Value node's value is larger than the allowed maximum value for the property type:\n\tvalue = {value_node['value']} > {property_type.max_value} = max_value"
+                    f"Value node's value is larger than the allowed maximum value for the device property type:\n\tvalue = {value_node['value']} > {device_property_type.max_value} = max_value"
                 )
 
             # Create objects on the database
             if not dry_run:
-                # We now have the component for the raw_data and property value
-                raw_data = device_db_client.model.file_folder_raw_data.FileFolderRawData(
-                    host=self.host,
-                    path=value_node['rawdata_folder_path'],
-                    is_file=False,
-                    timestamp=value_node['timestamp'],
-                )
-                raw_data = self.client.get_or_create_filefolder_raw_data(
-                    raw_data)
-                property_value = device_db_client.model.property_value.PropertyValue(
-                    value=float(value_node['value']),
-                    type=property_type.id,
-                    experiment=self.db_experiment.id,
-                    raw_data=[raw_data.id],
-                    component=component.id,
-                )
+                # We now have the component for the raw_data and device property value
                 try:
-                    property_value = self.client.create_property_value(
-                        property_value=property_value)
+                    raw_data = device_db_client.model.file_folder_raw_data.FileFolderRawData(
+                        host=self.host,
+                        path=value_node['rawdata_folder_path'],
+                        is_file=False,
+                        timestamp=value_node['timestamp'],
+                    )
+                    raw_data = self.client.get_or_create_filefolder_raw_data(
+                        raw_data)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to create the raw data object. Failed with error {e}"
+                    )
+                try:
+                    device_property_value = device_db_client.model.device_property_value.DevicePropertyValue(
+                        value=float(value_node['value']),
+                        type=device_property_type.id,
+                        experiment=self.db_experiment.id,
+                        raw_data=[raw_data.id],
+                        component=component.id,
+                        device=self.client.db_device.id,
+                    )
+                    device_property_value = self.client.create_device_property_value(
+                        device_property_value=device_property_value)
                 except Exception as e:
                     raise RuntimeError(
                         f"Failed to create the property value. Failed with error {e}"
@@ -293,8 +311,8 @@ class PropertyValueUploader:
                 if set_accepted:
                     try:
                         self.client.get_api_instance(
-                        ).set_accepted_property_value(
-                            id=str(property_value.id))
+                        ).set_accepted_device_property_value(
+                            id=str(device_property_value.id))
                     except Exception as e:
                         raise RuntimeError(
                             f"Failed to set property value as accepted, with error {e}"
@@ -307,6 +325,7 @@ class PropertyValueUploader:
         except Exception as e:
             log.error(f"Failed to upload value node with error {e}")
             log.error(f"value node is '{value_node}'")
+            log.error(f"Exception raised in line {sys.exc_info()[2].tb_lineno} in upload.py")
             return False
 
     def upload(
@@ -317,7 +336,7 @@ class PropertyValueUploader:
         """Upload all value nodes in `self.not_uploaded_value_nodes`
 
         `self.not_uploaded_value_nodes` should contain all value nodes from
-        `self.property_values_dict` after instantiation. Use `dry_run=True` to test for
+        `self.device_property_values_dict` after instantiation. Use `dry_run=True` to test for
         which values will be uploaded. Under dry-run, `upload()` will print
         each value node, that would have been uploaded, to the console.
 
