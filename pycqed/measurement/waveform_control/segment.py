@@ -740,7 +740,11 @@ class Segment:
         # init_phase will be included in the command table entries when internal
         # modulation is on.
         for pulse in self.elements[elname]:
-            pulse.phase = round(pulse.phase - init_phase, 5)
+            if self.pulsar.is_pulse_on_channel(
+                    pulse=pulse,
+                    awg_channel=channel
+            ):
+                pulse.phase = round(pulse.phase - init_phase, 5)
 
         return init_phase
 
