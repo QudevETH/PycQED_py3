@@ -668,6 +668,7 @@ class Segment:
             channel=channel)
         for elname in self.elements_on_channel[channel]:
             channel_metadata = dict()
+            channel_metadata["mod_frequency"] = major_mod_frequency
 
             # Find the phase of the first pulse on this channel. Pass this
             # channel initial phase to element metadata.
@@ -770,11 +771,15 @@ class Segment:
             for pulse in self.elements[elname]:
                 # Round frequency to Hz to avoid duplicates due to floating
                 # point rounding errors.
-                rounded_freq = round(pulse.mod_frequency, 4)
-                if rounded_freq in frequency_bin.keys():
-                    frequency_bin[rounded_freq] += 1
-                else:
-                    frequency_bin[rounded_freq] = 1
+                if self.pulsar.is_pulse_on_channel(
+                        pulse=pulse,
+                        awg_channel=channel
+                ):
+                    rounded_freq = round(pulse.mod_frequency, 4)
+                    if rounded_freq in frequency_bin.keys():
+                        frequency_bin[rounded_freq] += 1
+                    else:
+                        frequency_bin[rounded_freq] = 1
         return max(frequency_bin.keys())
 
     def _initialize_element_metadata(self):
