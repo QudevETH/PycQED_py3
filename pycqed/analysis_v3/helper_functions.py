@@ -44,15 +44,20 @@ def get_hdf_param_value(group, param_name):
     return convert_attribute(s)
 
 
-def get_value_names_from_timestamp(timestamp, file_id=None, mode='r'):
+def get_value_names_from_timestamp(timestamp, **params):
     """
-    Returns value_names from the HDF5 file specified by timestamp.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :return: list of value_names
+    Returns value_names from an HDF5 file.
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        list of value_names
     """
-    folder = a_tools.get_folder(timestamp)
-    h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-    data_file = h5py.File(h5filepath, mode)
+
+    data_file = open_hdf_file(timestamp, **params)
     try:
         channel_names = get_hdf_param_value(data_file['Experimental Data'],
                                             'value_names')
@@ -63,24 +68,29 @@ def get_value_names_from_timestamp(timestamp, file_id=None, mode='r'):
         raise e
 
 
-def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
-                                  data_file=None, close_file=True, mode='r'):
+def get_param_from_metadata_group(timestamp=None, param_name=None,
+                                  data_file=None, close_file=True, **params):
     """
     Get a parameter with param_name from the Experimental Metadata group in
-    the HDF5 file specified by timestamp, or return the whole group if
+    an HDF5 file, or return the whole group if
     param_name is None.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :param param_name: (str) name of a key in Experimental Metadata group
-    :param data_file: (HDF file) opened HDF5 file
-    :param close_file: (bool) whether to close the HDF5 file
-    :return: the value of the param_name or the whole experimental metadata
-    dictionary
-    """
-    if data_file is None:
-        folder = a_tools.get_folder(timestamp)
-        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-        data_file = h5py.File(h5filepath, mode)
 
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        param_name (str): name of a key in Experimental Metadata group. If None,
+            the function returns the whole Experimental Metadata group as a dict
+        data_file (open HDF file): measurement file from which to load data
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        the value of the param_name or the whole experimental metadata
+        dictionary
+    """
+
+    if data_file is None:
+        data_file = open_hdf_file(timestamp, **params)
     try:
         if param_name is None:
             group = data_file['Experimental Data']
@@ -192,20 +202,25 @@ def get_param_from_fit_res(param, fit_res, split_char='.'):
                          raise_error=True)
 
 
-def get_data_from_hdf_file(timestamp=None, data_file=None,
-                           close_file=True, file_id=None, mode='r'):
+def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
+                           **params):
     """
-    Return the measurement data stored in Experimental Data group of the file
-    specified by timestamp.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :param data_file: (HDF file) opened HDF5 file
-    :param close_file: (bool) whether to close the HDF5 file
-    :return: numpy array with measurement data
+    Return the measurement data stored in the Experimental Data group of an
+    HDF file.
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        data_file (open HDF file): measurement file from which to load data
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        numpy array with the dataset
     """
+
     if data_file is None:
-        folder = a_tools.get_folder(timestamp)
-        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-        data_file = h5py.File(h5filepath, mode)
+        data_file = open_hdf_file(timestamp, **params)
     try:
         group = data_file['Experimental Data']
         if 'Data' in group:
@@ -220,26 +235,31 @@ def get_data_from_hdf_file(timestamp=None, data_file=None,
     return dataset
 
 
-def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r', file_id=None):
+def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
+                  file_id=None, **params):
     """
-    Opens the hdf5 file with flexible input parameters. If no parameter is given,
-    opens the  hdf5 of the last measurement in reading mode.
-    Args:
-        :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-        :param folder: (str) path to file location
-        :param mode filepath: (str) path to hdf5 file. Overwrites timestamp
-            and folder
-        :param mode: (str) mode to open the file ('r' for read),
-            ('r+' for read/write)
-        :param file_id: (str) file id
-    :return: opened HDF5 file
+    Opens an HDF file.
 
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        folder (str): path to file location without the filename + extension
+        filepath (str): path to HDF file, including the filename + extension.
+            Overwrites timestamp and folder.
+        mode (str): mode in which to open the file ('r' for read,
+            'w' for write, 'r+' for read/write).
+        file_id (str): suffix of the file name
+        **params: keyword arguments passed to measurement_filename,
+            see docstring there for acceptable input parameters
+
+    Returns:
+        open HDF file
     """
     if filepath is None:
         if folder is None:
             assert timestamp is not None
             folder = a_tools.get_folder(timestamp)
-        filepath = a_tools.measurement_filename(folder, file_id=file_id)
+        filepath = a_tools.measurement_filename(folder, file_id=file_id,
+                                                **params)
     return h5py.File(filepath, mode)
 
 
@@ -446,8 +466,7 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
             folder = folder[-1]
 
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
-    h5filepath = a_tools.measurement_filename(folder, **params)
-    data_file = h5py.File(h5filepath, h5mode)
+    data_file = open_hdf_file(folder=folder, mode=h5mode, **params)
 
     try:
         for save_par, file_par in params_dict.items():
@@ -1287,33 +1306,29 @@ def check_equal(value1, value2):
                     return value1 == value2
 
 
-def read_analysis_file(timestamp=None, filepath=None, data_dict=None,
-                       file_id=None, ana_file=None, close_file=True, mode='r',
-                       raise_errors=False):
+def read_analysis_file(timestamp=None, data_dict=None, ana_file=None,
+                       close_file=True, **params):
     """
     Creates a data_dict from an AnalysisResults file as generated by analysis_v3
-    :param timestamp: str with a measurement timestamp
-    :param filepath: (str) path to file
-    :param data_dict: dict where to store the file entries
-    :param file_id: suffix to the usual HDF measurement file found from giving
-        a measurement timestamp. Defaults to '_AnalysisResults,' the standard
-        suffix created by analysis_v3
-    :param ana_file: HDF file instance
-    :param close_file: whether to close the HDF file at the end
-    :param mode: str specifying the HDF read mode (if ana_file is None)
-    :return: the data dictionary
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        data_dict (dict): where to store the file entries
+        ana_file (open HDF file): AnalysisResults file from which to load
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        the data_dict
     """
+
     if data_dict is None:
         data_dict = {}
     try:
         if ana_file is None:
-            if filepath is None:
-                if file_id is None:
-                    file_id = 'AnalysisResults'
-                folder = a_tools.get_folder(timestamp)
-                filepath = a_tools.measurement_filename(folder,
-                    file_id=f'_{file_id}', raise_errors=raise_errors)
-            ana_file = h5py.File(filepath, mode)
+            ana_file = open_hdf_file(timestamp, file_id='_AnalysisResults',
+                                     **params)
         read_from_hdf(data_dict, ana_file)
         if close_file:
             ana_file.close()
