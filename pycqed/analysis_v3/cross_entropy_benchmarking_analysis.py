@@ -901,7 +901,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         p_m = sqrt_purity(pops_meas, d)
         purity[cycles[i]] = p_m
         prob_ideal = proba_from_all_circuits(current_circuits)
-        xeb = xentropy_fidelity(pops_meas, np.array(prob_ideal), d)
+        xeb = crossEntropyFidelity(pops_meas, np.array(prob_ideal), d)
         xeb_data[cycles[i]] = xeb
         i += 1
 
