@@ -15,9 +15,6 @@ import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 
-# import sys
-# pp_mod.search_modules.add(sys.modules[__name__])
-
 
 
 convert_to_mhz = lambda freq_angle, t: freq_angle/2/np.pi/t
@@ -35,11 +32,27 @@ xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(d*np.sum(
 xentropy_fidelity = lambda pops_meas, pops_ideal, d: \
     xentropy_lhs(pops_meas, pops_ideal, d) / xentropy_rhs(pops_ideal, d)
 
-# calculate cross entropy fidelity as described in this paper:
-# https://journals.aps.org/prl/supplemental/10.1103/PhysRevLett.125.120504/supp.pdf
 crossEntropy = lambda p, q: np.sum(-(p*np.log(q)))
 entropy = lambda p: crossEntropy(p, p)
 def crossEntropyFidelity(pops_meas, pops_ideal, d):
+    """
+    Calculate cross entropy fidelity as described in this paper:
+    https://journals.aps.org/prl/supplemental/10.1103/PhysRevLett.125.120504/supp.pdf
+
+    Args:
+        pops_meas (array): measured qubit populations for a fixed XEB sequence
+            length. Should have shape (nr_xeb_seqs, n), where n is the number of
+            states. The columns should correspond to the order [pg, pe] for
+            one qubit, and [pgg, pge, peg, pee] for two qubits.
+        pops_ideal (array): calculated qubit populations for a fixed XEB
+            sequence length. Should have shape (nr_xeb_seqs, n), where n is the
+            number of states. The columns should correspond to the order
+            [pg, pe] for one qubit, and [pgg, pge, peg, pee] for two qubits.
+        d (int): dimension of the Hilbert space (2**n for n qubits)
+
+    Returns:
+        the cross-entropy fidelity between pops_meas and pops_ideal
+    """
     pm = deepcopy(pops_meas)
     pi = deepcopy(pops_ideal)
     pops_incoh = 1/d/len(pi)
