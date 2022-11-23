@@ -1177,6 +1177,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                     ax.set_ylim(None, 1.5)
                     fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
                 else:
+                    ax.set_ylim(-0.1, 1.1)
                     fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
 
                 xlims = params.get('xlims', None)
