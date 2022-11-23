@@ -1080,9 +1080,9 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 if apm is None:
                     params['add_param_method'] = 'replace'
 
-                guess_pars = {'A': {'value': 0.5, 'min': -1, 'max': 1},
-                              'e': {'value': 0.01, 'min': 0, 'max': 1},
-                              'B': {'value': 0.0, 'min': -1, 'max': 1}}
+                guess_pars = {'A': {'value': 1.0},
+                              'e': {'value': 0.01},
+                              'B': {'value': 0.0}}
 
                 # fit fidelities
                 guess_pars_to_use = deepcopy(guess_pars)
