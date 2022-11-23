@@ -264,7 +264,7 @@ class DictView(qt.QtWidgets.QWidget):
         menu.addAction(self.hideAction)
         menu.addAction(self.expandBranchAction)
         menu.addAction(self.collapseBranchAction)
-        menu.exec(self.tree_widget.viewport().mapToGlobal(position))
+        menu.exec_(self.tree_widget.viewport().mapToGlobal(position))
 
     def resetWindow(self):
         """
@@ -806,7 +806,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
         menu = qt.QtWidgets.QMenu()
         menu.addAction(self.copyKeyAction)
         menu.addAction(self.copyValueAction)
-        menu.exec(self.tree_widget.viewport().mapToGlobal(position))
+        menu.exec_(self.tree_widget.viewport().mapToGlobal(position))
 
     def _copyContent(self, column: int):
         """
