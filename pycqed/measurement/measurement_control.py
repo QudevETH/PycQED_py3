@@ -103,6 +103,12 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Bool(),
                            initial_value=live_plot_enabled)
+        self.add_parameter(
+            'live_plot_2D_update', parameter_class=ManualParameter,
+            vals=vals.Enum('on', 'row', 'off'), initial_value='on',
+            docstring='Whether the 2D plotmon should be updated whenever new '
+                      'data is available ("on"), only once per row ("row"), '
+                      'or not at all ("off").')
         self.add_parameter('plotting_interval',
                            unit='s',
                            vals=vals.Numbers(min_value=0.001),
@@ -459,7 +465,7 @@ class MeasurementControl(Instrument):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
             for i, sweep_point in enumerate(self.sweep_points):
-                self.measurement_function(sweep_point)
+                self.measurement_function(sweep_point, index=i)
 
     def measure_soft_adaptive(self, method=None):
         '''
@@ -598,7 +604,7 @@ class MeasurementControl(Instrument):
         self.print_progress()
         return new_data
 
-    def measurement_function(self, x):
+    def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
         '''
@@ -607,6 +613,10 @@ class MeasurementControl(Instrument):
         if np.size(x) != len(self.sweep_functions):
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
+        # The following will be set to True (in the second-last iteration,
+        # sweep dimension 1) if the sweep point can be skipped (in the
+        # last iteration, sweep dimension 0) in a filtered sweep.
+        filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
@@ -626,9 +636,9 @@ class MeasurementControl(Instrument):
                 # always set the first point
                 set_val = sweep_function.set_parameter(swp_pt)
             else:
-                # start_idx -1 refers to the last written value
+                # ::-1 as in the for loop (outer dimensions first)
                 prev_swp_pt = self.last_sweep_pts[::-1][i]
-                if swp_pt != prev_swp_pt:
+                if swp_pt != prev_swp_pt and not filter_out:
                     # only set if not equal to previous point
                     try:
                         set_val = sweep_function.set_parameter(swp_pt)
@@ -646,13 +656,32 @@ class MeasurementControl(Instrument):
                     # intended. This does require custom support from
                     # a sweep function.
                     x[-i] = set_val
+            if index is not None and i == len(self.sweep_functions) - 2:
+                # We are performing a static measurement and are in the
+                # second-to-last iteration of the loop, i.e., second sweep
+                # dimesion (according to the original ordering of sweep
+                # dimensions from innermost to outermost).
+                fsw = getattr(sweep_function, 'filtered_sweep', None)
+                if fsw is not None:
+                    # calculate the index within sweep dimension 0
+                    xindex = index % self.xlen
+                    # set filter_out to True if filtered_sweep indicates
+                    # that the point can be skipped
+                    filter_out = (xindex < len(fsw) and not fsw[xindex])
         
         # used for next iteration
-        self.last_sweep_pts = x
+        if filter_out and self.iteration > 0:
+            # do not update dimension 0 if the sweep point was not set above
+            self.last_sweep_pts[1:] = x[1:]
+        else:
+            self.last_sweep_pts = x
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
-        vals = self.detector_function.acquire_data_point()
+        if filter_out:
+            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+        else:
+            vals = self.detector_function.acquire_data_point()
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
@@ -1285,7 +1314,7 @@ class MeasurementControl(Instrument):
         Made to work with at most 2 2D arrays (as this is how the labview code
         works). It should be easy to extend this function for more vals.
         '''
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
             try:
                 self.time_last_2Dplot_update = time.time()
                 self._plotmon_axes_info = self._get_plotmon_axes_info()
@@ -1311,12 +1340,13 @@ class MeasurementControl(Instrument):
             except Exception as e:
                 log.warning(traceback.format_exc())
 
+    @Timer()
     def update_plotmon_2D(self, force_update=False):
         '''
         Adds latest measured value to the TwoD_array and sends it
         to the QC_QtPlot.
         '''
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
             try:
                 i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
@@ -1330,7 +1360,9 @@ class MeasurementControl(Instrument):
                 if (time.time() - self.time_last_2Dplot_update >
                         self.plotting_interval()
                         or self.iteration == len(self.sweep_points) or
-                        force_update):
+                        force_update) and (
+                        self.live_plot_2D_update() != 'row'
+                        or (not (self.iteration + 1) % self.xlen)):
                     self.time_last_2Dplot_update = time.time()
                     self.secondary_QtPlot.update_plot()
             except Exception as e:
@@ -1575,6 +1607,7 @@ class MeasurementControl(Instrument):
             except Exception as e:
                 log.warning(traceback.format_exc())
 
+    @Timer()
     def update_plotmon_2D_hard(self):
         '''
         Adds latest datarow to the TwoD_array and send it
@@ -1582,7 +1615,7 @@ class MeasurementControl(Instrument):
         Note that the plotmon only supports evenly spaced lattices.
         '''
         try:
-            if self._live_plot_enabled():
+            if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
                 i = int((self.iteration) % self.ylen)
                 y_ind = i
                 cf = self.exp_metadata.get('compression_factor', 1)
