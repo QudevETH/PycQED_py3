@@ -175,18 +175,18 @@ class DictView(qt.QtWidgets.QWidget):
         Function which creates all the actions for the context menu and
         menu bars
         """
-        self.copyKeyAction = qt.QtGui.QAction("Copy key")
-        self.copyValueAction = qt.QtGui.QAction("Copy value")
-        self.openContentAction = qt.QtGui.QAction("Open in new window")
-        self.hideAction = qt.QtGui.QAction("Hide Key")
-        self.hideAllAction = qt.QtGui.QAction("Hide all empty")
-        self.showAllAction = qt.QtGui.QAction("Show all")
-        self.collapseAction = qt.QtGui.QAction("Collapse all")
-        self.expandBranchAction = qt.QtGui.QAction("Expand Branch")
-        self.collapseBranchAction = qt.QtGui.QAction("Collapse Branch")
-        self.closeAction = qt.QtGui.QAction("Close Window")
-        self.resetWindowAction = qt.QtGui.QAction("Reset Window")
-        self.expandParametersAction = qt.QtGui.QAction("Expand Parameters")
+        self.copyKeyAction = qt.QAction("Copy key")
+        self.copyValueAction = qt.QAction("Copy value")
+        self.openContentAction = qt.QAction("Open in new window")
+        self.hideAction = qt.QAction("Hide Key")
+        self.hideAllAction = qt.QAction("Hide all empty")
+        self.showAllAction = qt.QAction("Show all")
+        self.collapseAction = qt.QAction("Collapse all")
+        self.expandBranchAction = qt.QAction("Expand Branch")
+        self.collapseBranchAction = qt.QAction("Collapse Branch")
+        self.closeAction = qt.QAction("Close Window")
+        self.resetWindowAction = qt.QAction("Reset Window")
+        self.expandParametersAction = qt.QAction("Expand Parameters")
 
     def _connectActions(self):
         """
@@ -785,8 +785,8 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
         """
         Function which creates the actions for the context menu and menu bars
         """
-        self.copyKeyAction = qt.QtGui.QAction("Copy key")
-        self.copyValueAction = qt.QtGui.QAction("Copy value")
+        self.copyKeyAction = qt.QAction("Copy key")
+        self.copyValueAction = qt.QAction("Copy value")
 
     def _connectActions(self):
         """
