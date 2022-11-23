@@ -14,6 +14,7 @@ from functools import reduce
 import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis import fitting_models as fit_mods
 
 
 
@@ -1209,6 +1210,158 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
         plt.close(fig)
         traceback.print_exc()
         return
+
+
+def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
+                         savefig=True, show=False, **params):
+    """
+    Fit and plot the f-state population measured in a single-qubit
+    XEB experiment.
+
+    Args:
+        data_dict (dict): containing the f-state population and other needed
+            metdata (sweep points
+        meas_obj_names (list): of qubit names. One figure will be created for
+            each qubit.
+        data_key (str): 'correct_readout' to look at the readout-corrected data
+            or 'average_data' to look at the data without readout correction
+        savefig (bool): whether to save the figure or not. If True, the figure
+            is saved to data_dict['timestamps'][0].
+        show (bool): whether to show the figure or not
+        **params: keyword arguments: passed to extract_leakage_classified_shots
+    """
+    for mobjn in meas_obj_names:
+        fig, ax = plt.subplots()  # here such that we can close fig in case of error
+        try:
+            swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
+            cycles = swpts.get_sweep_params_property('values', 0)
+            pf = hlp_mod.get_param(f'{mobjn}.{data_key}.pf', data_dict,
+                                   raise_error=True, **params)
+
+            legend_info = {}
+            avg_leaked = np.mean(pf.reshape(swpts.length(1), swpts.length(0)),
+                                 axis=0)
+
+            # plot data
+            data_line, = ax.plot(cycles, avg_leaked, 'o')
+
+            # do fit
+            rbleak_mod = lmfit.Model(fit_mods.RandomizedBenchmarkingLeakage)
+            guess_pars = rbleak_mod.make_params(pu=0.01, pd=0.05, p0=0)
+            fit_res = rbleak_mod.fit(data=avg_leaked, numCliff=cycles,
+                                     params=guess_pars)
+
+            # add to data dict
+            hlp_mod.add_param(f'{mobjn}.fit_results.leakage',
+                              (fit_res.best_values["pu"],
+                               fit_res.params["pu"].stderr), data_dict,
+                              add_param_method='replace')
+
+            # plot fit line
+            cycles_fine = np.linspace(cycles[0], cycles[-1], 100)
+            ax.plot(cycles_fine,
+                    fit_res.model.func(cycles_fine, **fit_res.best_values),
+                    '-', c=data_line.get_color())
+
+            # add legend
+            legend_info[data_line.get_color()] = \
+                f'{mobjn.upper()}: {100 * fit_res.best_values["pu"]:.5f}%' \
+                f'$\\pm${100 * fit_res.params["pu"].stderr:.5f}%'
+            for c, label in legend_info.items():
+                ax.plot([], [], '-o', c=c, label=label)
+            ax.legend(frameon=False)
+
+            ax.set_xlabel('Number of Cycles, $m$')
+            ax.set_ylabel('Probability, $P(f)$')
+            timestamp = data_dict['timestamps'][0]
+            ax.set_title(f'Leakage {mobjn} - {timestamp}')
+
+            if savefig:
+                fig.savefig(data_dict['folders'][0] +
+                            f'\\Leakage_{mobjn}_{timestamp}.png',
+                            dpi=600, bbox_inches='tight')
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+        except Exception as e:
+            plt.close(fig)
+            raise e
+
+
+def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
+                         savefig=True, show=False, **params):
+    """
+    Fit and plot the f-state population measured in a two-qubit
+    XEB experiment.
+
+    This function uses extract_leakage_classified_shots to calculate the
+    leakage probability that one qubit has leaked or that either of the two
+    qubits have leaked, creating a subplot for each case.
+
+    Args:
+        data_dict (dict): containing the f-state population and other needed
+            metdata (sweep points
+        meas_obj_names (list): of qubit names
+        data_key (str): 'correct_readout' to look at the readout-corrected data
+            or 'average_data' to look at the data without readout correction
+        savefig (bool): whether to save the figure or not. If True, the figure
+            is saved to data_dict['timestamps'][0].
+        show (bool): whether to show the figure or not
+        **params: keyword arguments: passed to extract_leakage_classified_shots
+    """
+    fig, axs = plt.subplots(3, sharex=True,
+                            figsize=(plt.rcParams['figure.figsize'][0], 3))
+    try:
+        swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
+        cycles = swpts.get_sweep_params_property('values', 0)
+        # get leakage
+        mobjn_joined = ",".join(meas_obj_names)
+        dat_proc_mod.extract_leakage_classified_shots(
+            data_dict, [f'{mobjn_joined}.{data_key}'],
+            meas_obj_names=meas_obj_names, add_param_method='replace', **params)
+
+        for i, ax in enumerate(axs):
+            keys = list(data_dict['extract_leakage_classified_shots'])
+            avg_leak = np.mean(
+                data_dict['extract_leakage_classified_shots'][keys[i]].reshape(
+                    swpts.length(1), swpts.length(0)),
+                axis=0)
+            # plot data
+            ax.plot(cycles, avg_leak, 'o')
+
+            rbleak_mod = lmfit.Model(fit_mods.RandomizedBenchmarkingLeakage)
+            guess_pars = rbleak_mod.make_params(pu=0.01, pd=0.05, p0=0)
+            fit_res = rbleak_mod.fit(data=avg_leak, numCliff=cycles,
+                                     params=guess_pars)
+
+            cycles_fine = np.linspace(cycles[0], cycles[-1], 100)
+            ax.plot(cycles_fine, fit_res.model.func(
+                cycles_fine, **fit_res.best_values), '-C0')
+
+            textstr = f'{keys[i]}: '
+            textstr += f'{100*fit_res.best_values["pu"]:.3f}%' \
+                       f'$\\pm${100*fit_res.params["pu"].stderr:.3f}%'
+            ax.text(0.95, 0.075, textstr,
+                    ha='right', va='bottom', transform=ax.transAxes)
+
+        axs[2].set_xlabel('Cycles, $m$')
+        axs[1].set_ylabel('Probability, $P_f$')
+
+        timestamp = data_dict['timestamps'][0]
+        axs[0].set_title(f'Leakage {mobjn_joined} - {timestamp}')
+
+        if savefig:
+            fig.savefig(data_dict['folders'][0] +
+                        f'\\Leakage_{mobjn_joined}_{timestamp}.png',
+                        dpi=600, bbox_inches='tight')
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    except Exception as e:
+        plt.close(fig)
+        raise e
 
 
 def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
