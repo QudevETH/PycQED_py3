@@ -395,7 +395,9 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
                                  pulse_op_codes_list[0 if self.identical_pulses
-                                 else i]])
+                                 else i]],
+            pulse_modifs=task.get('pulse_modifs', None),
+        )
             for i, task in enumerate(self.preprocessed_task_list)]
 
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
@@ -514,6 +516,7 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
+                            pulse_modifs=task.get('pulse_modifs', None),
                             ))
                     else:
                         qb_name = qb_1 if '0' in pulse_tuple[1] else qb_2
