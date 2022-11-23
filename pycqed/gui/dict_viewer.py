@@ -1,60 +1,5 @@
 from pycqed.gui import qt_compat as qt
 import sys
-import uuid
-
-
-class TextToTreeItem:
-    """
-    Helper class for the search feature of the class DictView.
-    Class connects QTreeWidgetItems with strings that identifies the data
-    (these strings are used to search for these QTreeWidgetItems, e.g. their
-    data of the columns).
-    It contains a list of all QTreeWidgetItems from the QTreeWidget
-    and a dictionary of lists of strings, which are used to search for the
-    QTreeWidgetItem.
-    """
-
-    def __init__(self, search_options):
-        self.titem_list = []
-        self.find_list = {key: [] for key in search_options}
-
-    def append(self, search_string_dict: dict, titem):
-        """
-        Appends a QTreeWidgetItem and its data to the lists.
-        Args:
-            search_string_dict (dict): dictionary of strings which characterize
-                the QTreeWidgetItem (e.g. data of the columns). These strings
-                are used in self.find() to search for a QTreeWidgetItem with a
-                given search string.
-            titem (QTreeWidgetItem): TreeItemWidget
-        """
-        for key, item in search_string_dict.items():
-            self.find_list[key].append(item)
-
-        self.titem_list.append(titem)
-
-    def find(self, find_str, search_keys: list):
-        """
-        Finds and returns all QTreeWidgetItems of which the search_string_dict
-        entry contains the find_str. Search_keys need to be specified.
-        Args:
-            find_str (str): String which is looked up in the list of
-                QTreeWidgetItems.
-            search_keys (list): Keys of the lists in self.find_list which are
-                used for the search
-
-        Returns: list of QTreeWidgetItem which connected entries in
-        search_string_dict contain find_str conditioned in the search_keys.
-
-        """
-        titem_list = []
-
-        for key in search_keys:
-            for i, s in enumerate(self.find_list.get(key)):
-                if find_str in s:
-                    titem_list.append(self.titem_list[i])
-
-        return titem_list
 
 
 class DictView(qt.QtWidgets.QWidget):
@@ -78,19 +23,14 @@ class DictView(qt.QtWidgets.QWidget):
         super(DictView, self).__init__()
         self.title = title
         self.screen = screen
-        self.find_box = None
-        self.find_text = None
-        self.tree_widget = None
-        self.titem_dict = {}
+        self.column_header = ['Key', 'Value']
+
         # Default values for the search bar
-        self.search_options = ['key', 'value']
-        self.current_search_options = ['key']
-        self.text_to_titem = TextToTreeItem(self.search_options)
+        self.current_search_options = ['Key']  # respective name of the column
         self.find_str = ""
         self.found_titem_list = []
         self.find_check_box_dict = {}
         self.found_idx = 0
-        self.column_header = ['Key', 'Value']
         # set to True if search should only include parameters
         self.find_only_params = False
 
@@ -108,14 +48,13 @@ class DictView(qt.QtWidgets.QWidget):
         self.tree_widget.setExpandsOnDoubleClick(True)
 
         root_item = qt.QtWidgets.QTreeWidgetItem(["Root"])
-        root_item.uuid = uuid.uuid4()
         # build up the tree recursively from a dictionary
         self.dict_to_titem(snap, root_item)
         self.tree_widget.addTopLevelItem(root_item)
 
         root_item.setExpanded(True)  # expand root item
         # expand all parameter branches by default
-        self.expandParameters(root_item)
+        self.expand_parameters(root_item)
 
         # sorting needs to be set after initialization of tree elements
         # lets user choose which column is used to sort
@@ -126,18 +65,18 @@ class DictView(qt.QtWidgets.QWidget):
         self.make_layout()  # creates layout
 
     def create_menus(self):
-        self._createActions()
-        self._connectActions()
+        self._create_actions()
+        self._connect_actions()
 
         # context menu
         self.tree_widget.setContextMenuPolicy(
             qt.QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(
-            self._setContextMenu)
+            self._set_context_menu)
 
         # menu bar
         self.menuBar = qt.QtWidgets.QMenuBar(self)
-        self._setMenuBar()
+        self._set_menu_bar()
 
     def make_layout(self):
         search_layout = self.make_search_ui()  # Load search layout
@@ -170,7 +109,7 @@ class DictView(qt.QtWidgets.QWidget):
 
         self.setLayout(layout2)
 
-    def _createActions(self):
+    def _create_actions(self):
         """
         Function which creates all the actions for the context menu and
         menu bars
@@ -188,40 +127,39 @@ class DictView(qt.QtWidgets.QWidget):
         self.resetWindowAction = qt.QAction("Reset Window")
         self.expandParametersAction = qt.QAction("Expand Parameters")
 
-    def _connectActions(self):
+    def _connect_actions(self):
         """
         Function which connects the actions defined in _createActions with
         events (functions). lambda function is needed for functions with
         arguments.
         """
         root_item = self.tree_widget.topLevelItem(0)
-        self.copyKeyAction.triggered.connect(lambda: self.copyContent(0))
-        self.copyValueAction.triggered.connect(lambda: self.copyContent(1))
-        self.hideAction.triggered.connect(self.hideItem)
+        self.copyKeyAction.triggered.connect(lambda: self.copy_content(0))
+        self.copyValueAction.triggered.connect(lambda: self.copy_content(1))
+        self.hideAction.triggered.connect(self.hide_item)
         self.hideAllAction.triggered.connect(
-            lambda: self.hideAllEmpty(root_item))
+            lambda: self.hide_all_empty(root_item))
         self.showAllAction.triggered.connect(
-            lambda: self.showAll(root_item))
-        self.tree_widget.itemClicked.connect(self.setDirtext)
-        self.tree_widget.itemActivated.connect(self.setDirtext)
-        self.tree_widget.itemClicked.connect(self.setNrAttributes)
-        self.tree_widget.itemActivated.connect(self.setNrAttributes)
+            lambda: self.show_all(root_item))
+        self.tree_widget.itemClicked.connect(self.set_dirtext)
+        self.tree_widget.itemActivated.connect(self.set_dirtext)
+        self.tree_widget.itemClicked.connect(self.set_nr_attributes)
+        self.tree_widget.itemActivated.connect(self.set_nr_attributes)
 
         self.collapseAction.triggered.connect(
-            lambda: self.expandBranch(root_item, expand=False))
+            lambda: self.expand_branch(root_item, expand=False))
         self.expandBranchAction.triggered.connect(
-            lambda: self.expandBranch(
-                self.tree_widget.currentItem(), expand=True,
-                display_vals=False))
+            lambda: self.expand_branch(self.tree_widget.currentItem(),
+                                       expand=True, display_vals=False))
         self.collapseBranchAction.triggered.connect(
-            lambda: self.expandBranch(
-                self.tree_widget.currentItem(), expand=False))
+            lambda: self.expand_branch(self.tree_widget.currentItem(),
+                                       expand=False))
         self.closeAction.triggered.connect(self.close)
-        self.resetWindowAction.triggered.connect(self.resetWindow)
+        self.resetWindowAction.triggered.connect(self.reset_window)
         self.expandParametersAction.triggered.connect(
-            lambda: self.expandParameters(root_item))
+            lambda: self.expand_parameters(root_item))
 
-    def _setMenuBar(self):
+    def _set_menu_bar(self):
         """
         Adds actions to the menu bar and groups them in submenus File, Edit
         and View
@@ -248,7 +186,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.menuBar.addMenu(editMenu)
         self.menuBar.addMenu(viewMenu)
 
-    def _setContextMenu(self, position):
+    def _set_context_menu(self, position):
         """
         Adds the actions to the context menu and displays it at a given position.
         Args:
@@ -266,19 +204,19 @@ class DictView(qt.QtWidgets.QWidget):
         menu.addAction(self.collapseBranchAction)
         menu.exec_(self.tree_widget.viewport().mapToGlobal(position))
 
-    def resetWindow(self):
+    def reset_window(self):
         """
         Resets the QTreeWidget to the default layout:
         - no QTreeWidgetItem is hidden
         - only root item and parameters are expanded
         """
         root_item = self.tree_widget.topLevelItem(0)
-        self.showAll(root_item)
-        self.expandBranch(root_item, expand=False)
+        self.show_all(root_item)
+        self.expand_branch(root_item, expand=False)
         root_item.setExpanded(True)
-        self.expandParameters(root_item)
+        self.expand_parameters(root_item)
 
-    def expandParameters(self, tree_item: qt.QtWidgets.QTreeWidgetItem):
+    def expand_parameters(self, tree_item: qt.QtWidgets.QTreeWidgetItem):
         """
         Expands recursively all QTreeWidgetItem with key name 'parameters'
         Args:
@@ -288,10 +226,10 @@ class DictView(qt.QtWidgets.QWidget):
         if tree_item.data(0, 0) == 'parameters':
             tree_item.setExpanded(True)
         for i in range(tree_item.childCount()):
-            self.expandParameters(tree_item.child(i))
+            self.expand_parameters(tree_item.child(i))
 
-    def expandBranch(self, tree_item: qt.QtWidgets.QTreeWidgetItem, expand=True,
-                     display_vals=True):
+    def expand_branch(self, tree_item: qt.QtWidgets.QTreeWidgetItem,
+                      expand=True, display_vals=True):
         """
         Expands recursively an entire branch of a QTreeWidget
         Args:
@@ -309,17 +247,17 @@ class DictView(qt.QtWidgets.QWidget):
             if tree_item.data(0, 0) == 'parameters':
                 return
         for i in range(tree_item.childCount()):
-            self.expandBranch(tree_item.child(i), expand=expand,
-                              display_vals=display_vals)
+            self.expand_branch(tree_item.child(i), expand=expand,
+                               display_vals=display_vals)
 
-    def setDirtext(self):
+    def set_dirtext(self):
         """
         Sets the QLabel text self.tree_dir to the directory of the current
         QTreeWidgetItem
         """
-        self.tree_dir.setText(self.getDirtext(self.tree_widget.currentItem()))
+        self.tree_dir.setText(self.get_dirtext(self.tree_widget.currentItem()))
 
-    def getDirtext(self, tree_item: qt.QtWidgets.QTreeWidgetItem,
+    def get_dirtext(self, tree_item: qt.QtWidgets.QTreeWidgetItem,
                    separator=' > '):
         """
         Returns string of the directory of a given QWidgetItem in a QWidgetTree
@@ -331,12 +269,12 @@ class DictView(qt.QtWidgets.QWidget):
         """
         dir = str(tree_item.data(0, 0))
         try:
-            dir = self.getDirtext(tree_item.parent()) + separator + dir
+            dir = self.get_dirtext(tree_item.parent()) + separator + dir
         except:
             pass
         return dir
 
-    def setNrAttributes(self):
+    def set_nr_attributes(self):
         """
         Sets QLabel text of self.attr_nr as the number of attributes (childs)
         of the current QWidgetItem.
@@ -344,7 +282,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.attr_nr.setText('Number of attributes: %s'
                              % self.tree_widget.currentItem().childCount())
 
-    def showAll(self, titem: qt.QtWidgets.QTreeWidgetItem, hide=False):
+    def show_all(self, titem: qt.QtWidgets.QTreeWidgetItem, hide=False):
         """
         Shows or hides QTreeWidgetItem with all its children starting by a
         given parent item.
@@ -354,10 +292,10 @@ class DictView(qt.QtWidgets.QWidget):
             hide (bool): False to hide item+children, True to show item+children
         """
         for i in range(titem.childCount()):
-            self.showAll(titem.child(i), hide=hide)
+            self.show_all(titem.child(i), hide=hide)
         titem.setHidden(hide)
 
-    def showTitem(self, titem: qt.QtWidgets.QTreeWidgetItem, expand=False):
+    def show_titem(self, titem: qt.QtWidgets.QTreeWidgetItem, expand=False):
         """
         Shows QTreeWidgetItem and its parent recursively until root_item.
         Args:
@@ -367,11 +305,11 @@ class DictView(qt.QtWidgets.QWidget):
         titem.setHidden(False)
         titem.setExpanded(expand)
         try:
-            self.showTitem(titem.parent(), expand=expand)
+            self.show_titem(titem.parent(), expand=expand)
         except:
             pass
 
-    def hideAllEmpty(self, titem: qt.QtWidgets.QTreeWidgetItem):
+    def hide_all_empty(self, titem: qt.QtWidgets.QTreeWidgetItem):
         """
         Hides all QTreeWidgetItems which have no children and no value
         (data in second column) starting by given QTreeWidgetItem
@@ -383,15 +321,15 @@ class DictView(qt.QtWidgets.QWidget):
                 titem.setHidden(True)
         else:
             for i in range(titem.childCount()):
-                self.hideAllEmpty(titem.child(i))
+                self.hide_all_empty(titem.child(i))
 
-    def hideItem(self):
+    def hide_item(self):
         """
         Hides currently selected QTreeWidgetItem
         """
         self.tree_widget.currentItem().setHidden(True)
 
-    def copyContent(self, column: int):
+    def copy_content(self, column: int):
         """
         Copies key or value (first or second column) of the currently selected
         QTreeWidgetItem as a string to the clipboard.
@@ -415,11 +353,11 @@ class DictView(qt.QtWidgets.QWidget):
         """
         # Text box
         self.find_box = qt.QtWidgets.QLineEdit()
-        self.find_box.returnPressed.connect(self.find_button_clicked_2)
+        self.find_box.returnPressed.connect(self.find_button_clicked)
 
         # Find Button
         find_button = qt.QtWidgets.QPushButton("Find")
-        find_button.clicked.connect(self.find_button_clicked_2)
+        find_button.clicked.connect(self.find_button_clicked)
 
         # 'Entries Found' QLabel
         self.find_text = qt.QtWidgets.QLabel('Entries found:')
@@ -450,8 +388,8 @@ class DictView(qt.QtWidgets.QWidget):
     def make_find_checkbox(self):
         # search options
         self.find_check_box_dict = \
-            {key: qt.QtWidgets.QCheckBox(key.capitalize())
-             for key in self.search_options}
+            {key: qt.QtWidgets.QCheckBox(key)
+             for key in self.column_header}
         # set default search option
         for key in self.current_search_options:
             self.find_check_box_dict[key].setChecked(True)
@@ -469,101 +407,18 @@ class DictView(qt.QtWidgets.QWidget):
                 integer. The integer corresponds to the index of the string
                 in the list self.search_options
 
-        Returns:
+        Returns: Current search options set by check boxes of the gui as an
+            integer or as a string (column name).
 
         """
         search_options = []
         for key, check_box in self.find_check_box_dict.items():
             if check_box.isChecked():
                 if as_int:
-                    search_options.append(self.search_options.index(key))
+                    search_options.append(self.column_header.index(key))
                 else:
                     search_options.append(key)
         return search_options
-
-    def find_button_clicked_2(self):
-        """
-        Action (function) which is started after find_button was clicked.
-        Function searches for QTreeWidgetItems and displays only these items
-        in the QTreeWidget. Multiple calls of the function with the same
-        parameters (search_string, search options) sets the current
-        QTreeWidgetItem to the next item which fulfills the search criteria.
-        """
-        # Sets the current string and search options
-        find_str = self.find_box.text()
-        find_only_params = self.find_only_params_box.isChecked()
-
-        # If action fund_button_clicked is called, but the user did not enter
-        # a string to search for, the action does nothing
-        if find_str == "":
-            return
-
-        # only starts a new search if search parameters changed.
-        # Otherwise, the next item in self.found_titem_list is activated.
-        if find_str != self.find_str \
-                or self.current_search_options != \
-                self.get_current_search_options() \
-                or self.find_only_params != find_only_params:
-            self.find_str = find_str
-            self.current_search_options = self.get_current_search_options()
-            self.find_only_params = find_only_params
-
-            found_titem_set = set()
-            for column in self.get_current_search_options(as_int=True):
-                for titem in self.tree_widget.findItems(
-                        find_str,
-                        qt.QtCore.Qt.MatchFlag.MatchContains |
-                        qt.QtCore.Qt.MatchFlag.MatchRecursive,
-                        column=column):
-                    found_titem_set.add(titem.uuid)
-
-            self.found_titem_list = \
-                [self.titem_dict[uuid] for uuid in found_titem_set]
-
-            # If user wants to search only in parameters
-            if find_only_params:
-                titem_list = []
-                for titem in self.found_titem_list:
-                    try:
-                        if titem.parent().data(0, 0) == 'parameters':
-                            titem_list.append(titem)
-                    except:
-                        pass
-                self.found_titem_list = titem_list
-            self.find_text.setText('Entries found: %s'
-                                   % (len(self.found_titem_list)))
-            # If search is not empty, only QTreeWidgetItem which are found
-            # are displayed
-            if not self.found_titem_list == []:
-                self.showAll(self.tree_widget.topLevelItem(0), hide=True)
-                for titem in self.found_titem_list:
-                    titem.setHidden(False)
-                    self.showTitem(titem, expand=True)
-            self.found_idx = 0
-        # if list of found QTreeWidgetItems is empty and no search parameters
-        # are changed, 'Entries found = 0' is displayed,
-        # but QTreeWidget stays unchanged
-        elif not self.found_titem_list:
-            self.find_text.setText('Entries found: %s'
-                                   % (len(self.found_titem_list)))
-            return
-        else:
-            # if no search parameters are changed, current item is changed
-            # to the next item in the list
-            item_num = len(self.found_titem_list)
-            self.found_idx = (self.found_idx + 1) % item_num
-        try:
-            # set current item and display how many entries are found
-            # for the current search
-            self.tree_widget.setCurrentItem(
-                self.found_titem_list[self.found_idx])
-            self.setDirtext()
-            self.setNrAttributes()
-        except:
-            # if found index is out of range of found_titem_list
-            # (should not happen)
-            self.find_text.setText('Entries found: %s'
-                                   % (len(self.found_titem_list)))
 
     def find_button_clicked(self):
         """
@@ -577,29 +432,6 @@ class DictView(qt.QtWidgets.QWidget):
         find_str = self.find_box.text()
         find_only_params = self.find_only_params_box.isChecked()
 
-        # tm = timer.Timer("timer", verbose=False)
-        # for i in range(10):
-        #     self.found_titem_list = self.tree_widget.findItems(
-        #         find_str,
-        #         qt.QtCore.Qt.MatchFlag.MatchContains | qt.QtCore.Qt.MatchFlag.MatchRecursive,
-        #         column=0)
-        # tm.checkpoint('current_end')
-        # print(tm.duration())
-        #
-        # tm = timer.Timer("timer2", verbose=False)
-        #
-        # for i in range(10):
-        #     self.found_titem_list = self.text_to_titem.find(
-        #             find_str=self.find_str,
-        #             search_keys=self.current_search_options)
-        # tm.checkpoint('current_end')
-        # print(tm.duration())
-        # items = self.tree_widget.findItems(
-        #     find_str,
-        #     qt.QtCore.Qt.MatchFlag(65),
-        #                             column=0)
-        # print(items)
-
         # If action fund_button_clicked is called, but the user did not enter
         # a string to search for, the action does nothing
         if find_str == "":
@@ -614,15 +446,17 @@ class DictView(qt.QtWidgets.QWidget):
             self.find_str = find_str
             self.current_search_options = self.get_current_search_options()
             self.find_only_params = find_only_params
-            # saves the QTreeWidgetItems which fulfill the search criteria
-            # in a list
-            # self.found_titem_list = self.text_to_titem.find(
-            #     find_str=self.find_str,
-            #     search_keys=self.current_search_options)
-            self.found_titem_list = self.tree_widget.findItems(
-                find_str,
-                qt.QtCore.Qt.MatchFlag.MatchContains | qt.QtCore.Qt.MatchFlag.MatchRecursive,
-                column=0)
+
+            self.found_titem_list = []
+            for column in self.get_current_search_options(as_int=True):
+                self.found_titem_list = \
+                    self.found_titem_list +\
+                    self.tree_widget.findItems(
+                        find_str,
+                        qt.QtCore.Qt.MatchFlag.MatchContains |
+                        qt.QtCore.Qt.MatchFlag.MatchRecursive,
+                        column=column)
+
             # If user wants to search only in parameters
             if find_only_params:
                 titem_list = []
@@ -638,10 +472,10 @@ class DictView(qt.QtWidgets.QWidget):
             # If search is not empty, only QTreeWidgetItem which are found
             # are displayed
             if not self.found_titem_list == []:
-                self.showAll(self.tree_widget.topLevelItem(0), hide=True)
+                self.show_all(self.tree_widget.topLevelItem(0), hide=True)
                 for titem in self.found_titem_list:
                     titem.setHidden(False)
-                    self.showTitem(titem, expand=True)
+                    self.show_titem(titem, expand=True)
             self.found_idx = 0
         # if list of found QTreeWidgetItems is empty and no search parameters
         # are changed, 'Entries found = 0' is displayed,
@@ -660,8 +494,8 @@ class DictView(qt.QtWidgets.QWidget):
             # for the current search
             self.tree_widget.setCurrentItem(
                 self.found_titem_list[self.found_idx])
-            self.setDirtext()
-            self.setNrAttributes()
+            self.set_dirtext()
+            self.set_nr_attributes()
         except:
             # if found index is out of range of found_titem_list
             # (should not happen)
@@ -723,16 +557,9 @@ class DictView(qt.QtWidgets.QWidget):
             else:
                 self.dict_to_titem(val, row_item, param=False)
         else:
-            value_text = str(val)
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
 
-        row_item.uuid = uuid.uuid4()
-        self.titem_dict.update({row_item.uuid: row_item})
         tree_widget.addChild(row_item)
-        search_str_dict = {key: '' for key in self.search_options}
-        search_str_dict['key'] = key
-        search_str_dict['value'] = value_text
-        self.text_to_titem.append(search_str_dict, row_item)
 
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
@@ -759,8 +586,8 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
         screen_geom = screen.size()
         # initializes the width of the column: 0.3*screen_size.width() is the
         # width of the entire window defined in AdditionalWindow
-        self.tree_widget.header().resizeSection(0,
-                                                .5 * .3 * screen_geom.width())
+        self.tree_widget.header().resizeSection(
+            0, .5 * .3 * screen_geom.width())
         self.tree_widget.setExpandsOnDoubleClick(True)
         self.tree_widget.setSortingEnabled(True)
 
@@ -769,35 +596,35 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
             self.tree_widget.insertTopLevelItem(i, treeitem.child(i).clone())
 
         # creates the context menu
-        self._createActions()
-        self._connectActions()
+        self._create_actions()
+        self._connect_actions()
         self.tree_widget.setContextMenuPolicy(
             qt.QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(
-            self._setContextMenu)
+            self._set_context_menu)
 
         # Add tree widget to the layout
         layout = qt.QtWidgets.QHBoxLayout()
         layout.addWidget(self.tree_widget)
         self.setLayout(layout)
 
-    def _createActions(self):
+    def _create_actions(self):
         """
         Function which creates the actions for the context menu and menu bars
         """
         self.copyKeyAction = qt.QAction("Copy key")
         self.copyValueAction = qt.QAction("Copy value")
 
-    def _connectActions(self):
+    def _connect_actions(self):
         """
         Function which connects the actions defined in _createActions with
         events (functions).
         lambda function is needed for functions with arguments.
         """
-        self.copyKeyAction.triggered.connect(lambda: self._copyContent(0))
-        self.copyValueAction.triggered.connect(lambda: self._copyContent(1))
+        self.copyKeyAction.triggered.connect(lambda: self._copy_content(0))
+        self.copyValueAction.triggered.connect(lambda: self._copy_content(1))
 
-    def _setContextMenu(self, position):
+    def _set_context_menu(self, position):
         """
         Adds the actions to the context menu and displays it at a given position
         Args:
@@ -808,7 +635,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
         menu.addAction(self.copyValueAction)
         menu.exec_(self.tree_widget.viewport().mapToGlobal(position))
 
-    def _copyContent(self, column: int):
+    def _copy_content(self, column: int):
         """
         Copies key or value (first or second column) of the currently selected
         QTreeWidgetItem as a string to the clipboard.
@@ -842,7 +669,7 @@ class AdditionalWindow(qt.QtWidgets.QMainWindow):
         self.setCentralWidget(
             TreeItemViewer(dict_view.tree_widget.currentItem(), screen))
         self.setWindowTitle(
-            dict_view.getDirtext(dict_view.tree_widget.currentItem()))
+            dict_view.get_dirtext(dict_view.tree_widget.currentItem()))
         screen_geom = screen.size()
         # layout options (x-coordinate, y-coordinate, width, height) in px
         self.setGeometry(0.2 * screen_geom.width(), 0.2 * screen_geom.height(),
@@ -880,7 +707,7 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         #   lambda: self.openNewWindow(dict_view))
         # open new window via content menu
         dict_view.openContentAction.triggered.connect(
-            lambda: self.openNewWindow(dict_view))
+            lambda: self.open_new_window(dict_view))
 
         self.setCentralWidget(dict_view)
         self.setWindowTitle("Snapshot Viewer")
@@ -891,7 +718,7 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
 
         self.show()
 
-    def openNewWindow(self, dict_view):
+    def open_new_window(self, dict_view):
         """
         Opens a new window from a given DictView object
         Args:
