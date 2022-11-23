@@ -9014,6 +9014,20 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return tm
 
     def _extract_nr_averages(self):
+        try:
+            sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
+            if sa is not None and sa != 1:
+                log.warning('Currently, soft averages are not taken into account'
+                          'when extracting the number of averages. This might lead'
+                          'to unexpected timings.')
+            sr = self.get_hdf_param_value('Instrument settings/MC', "soft_repetitions")
+            if sr is not None and sr != 1:
+                log.warning('Currently, soft repetitions are not taken into account'
+                          'when extracting the number of shots. This might lead'
+                          'to unexpected timings.')
+        except:
+            # in case some of the attributes do not exist
+            pass
         #TODO Currently does not support soft averages or soft repetitions
         det_metadata = self.metadata.get("Detector Metadata", None)
         nr_averages = self.get_param_value('nr_averages', None)
