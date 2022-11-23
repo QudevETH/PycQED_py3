@@ -8948,6 +8948,18 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
     def bare_measurement_timer(self, ref_time=None,
                                checkpoint='bare_measurement', **kw):
+        """
+        Creates and returns an additional timer for the bare measurement time,
+        which is defined as the repetition period between two master triggers
+        times the total number of runs
+
+        Args:
+            ref_time: Reference time for the start of the bare measurement timer.
+                If None, the earliest time found in self.timers is used.
+            checkpoint (str): name of the bare measurement checkpoint
+            **kw: remaining keywords are passed to bare_measurement_time
+
+        """
         bmtime = self.bare_measurement_time(**kw)
         bmtimer = tm_mod.Timer('BareMeasurement', auto_start=False)
         if ref_time is None:
@@ -8964,7 +8976,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 raise e
 
         # TODO add more options of how to distribute the bm time in the timer
-        #  (not only start stop but e.g. distribute it)
+        #  (not only start stop to get the correct duration but
+        #  add it when the acquisition device is actually acquiring data)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.start",
                            values=[ref_time], log_init=False)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.end",

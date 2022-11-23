@@ -22,6 +22,25 @@ class Timer(OrderedDict):
 
     def __init__(self, name="timer", fmt="%Y-%m-%d %H:%M:%S.%f", name_separator=".",
                  verbose=False, auto_start=True, children=None, **kwargs):
+        """
+        Creates a timer.
+        Args:
+            name (str): name of the timer.
+            fmt (str): string format to save and parse datetime objects
+            name_separator (str): separator between timer name and checkpoint name
+            verbose (bool): Whether or not logging messages should be shown
+            when the timer is used in a `with` block.
+            auto_start (bool): whether or not to create a first checkpoint when
+            opening creating the timer
+            children (dict): dictionary of subtimers, where the keys are the
+            timer names and values Timers.
+            **kwargs:
+                Any additional keyword argument is understood to be a checkpoint
+                or a child timer if the value of the keyword argument is a dictionary
+                This allows to create a Timer from a dictionary.
+                e.g. Timer(**dict(my_checkpoint=[datetime.now()]) or
+                Timer(**dict(my_child_timer=dict(children_checkpoint=[datetime.now()]))
+        """
         self.fmt = fmt
         self.name = name
         self.name_separator = name_separator
@@ -69,7 +88,10 @@ class Timer(OrderedDict):
         return result
 
     def __call__(self, func):
-
+        # this function implements a decorator for methods (they can be
+        # decorated using @Timer()), which will create a checkpoint
+        # with the name of the decorated function in the self.timer attribute
+        # of the object.
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # make explicit name with instance name if the object has the attribute "name"
@@ -163,14 +185,13 @@ class Timer(OrderedDict):
 
     def __getitem__(self, item):
         """
-        Get a checkpoint from the timer: timer['ckpt_name']
-        Children of a timer: timer['child_timer_name']
-        Checkpoint of the child timer: timer['child_timer_name.ckpt_name']
-        Args:
-            item:
-
-        Returns:
-
+        Access a checkpoint or child timer. The searching sequences is the
+        following:
+        - checkpoint from the timer: timer['ckpt_name']
+        - Children of a timer: timer['child_timer_name']
+        - Checkpoint of the child timer: timer['child_timer_name +
+                                               self.name_separator + ckpt_name']
+        If none of the above is found, a KeyError is raised.
         """
         try:
             return super().__getitem__(item)
@@ -226,8 +247,6 @@ class Timer(OrderedDict):
              the timers should be saved
             group_name (str): name of the group of the timer. Defaults to the
                 name of the timer
-
-        Returns:
 
         """
 
@@ -439,8 +458,7 @@ class Timer(OrderedDict):
                             f': {dur} vs {max_dur}. It could be due to '
                             f'imprecision of datetime.now() when '
                             f'checkpoints are used to time very short '
-                            f'time-intervals.'
-                            f'')
+                            f'time-intervals.')
         total_durations_rel = {n: v.total_seconds() / self.duration() if
                                self.duration() != 0 else 1 for n, v in
                                total_durations.items()}
@@ -522,8 +540,6 @@ class Timer(OrderedDict):
                 - a dict where keys are the old checkpoint names and
                     values are the new checkpoint names. This will
                     rename only the provided checkpoints in the dictionary.
-
-        Returns:
 
         """
         if which is None:
