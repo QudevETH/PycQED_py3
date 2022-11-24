@@ -29,8 +29,14 @@ if QtWidgets.__package__ in ['PyQt6']:
         def exec_(self):
             return self.exec()
 
+
+    class QMenu(QtWidgets.QMenu):
+        def exec_(self, pos=None, at=None):
+            return self.exec(pos, at)
+
     QtWidgets.QApplication = QApplication
     QtWidgets.QDialog = QDialog
+    QtWidgets.QMenu = QMenu
     QtCore.Slot = QtCore.pyqtSlot
     QtCore.Signal = QtCore.pyqtSignal
 else:
