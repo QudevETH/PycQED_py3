@@ -225,7 +225,7 @@ class Pulse:
             return []
         if self.pulse_off:
             return ['Offpulse', self.algorithm_time() - tstart, self.length]
-        return [type(self), self.algorithm_time() - tstart,
+        return [type(self), round(self.algorithm_time() - tstart, 12),
                 self.truncation_length, self.truncation_decay_length,
                 self.truncation_decay_const]
 
