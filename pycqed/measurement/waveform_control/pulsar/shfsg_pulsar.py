@@ -741,19 +741,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             # if 'amplitude' is a scalar, the same scaling is used for all
             # amplitude factors in the digital up-conversion unit.
             amplitude = [amplitude] * 4
-
-            # Configures the correct sideband by flipping the sign of the
-            # corresponding off-diagonal element for digital up-conversion.
-            # TODO: we can always set sideband to 'right' if the digital
-            #  oscillator accepts negative frequency. Check if this is true.
-            if sideband == 'right':
-                amplitude[1] *= -1
-            elif sideband == 'left':
-                amplitude[2] *= -1
-            else:
-                raise ValueError(f"{self._awg.name} channel pair {self._awg_nr}"
-                                 f"receives inappropriate sideband "
-                                 f"specification. Accepts 'left' or 'right'.")
+            amplitude[1] *= -1
 
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 4):
