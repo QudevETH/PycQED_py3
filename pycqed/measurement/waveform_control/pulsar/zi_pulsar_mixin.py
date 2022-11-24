@@ -74,9 +74,12 @@ class ZIPulsarMixin:
         cls.zi_waves_clean(True)
 
     @staticmethod
-    def _zi_wavename_pair_to_argument(w1, w2):
+    def _zi_wavename_pair_to_argument(w1, w2, internal_mod=False):
         if w1 is not None and w2 is not None:
-            return f"{w1}, {w2}"
+            if not internal_mod:
+                return f"{w1}, {w2}"
+            else:
+                return f"1, 2, {w1}, 1, 2, {w2}"
         elif w1 is not None and w2 is None:
             return f"1, {w1}"
         elif w1 is None and w2 is not None:
@@ -90,6 +93,7 @@ class ZIPulsarMixin:
             defined_waves=None,
             wave_index=None,
             placeholder_wave_length=None,
+            internal_mod=False,
     ):
         """ Generate wave definition for the sequence code.
 
@@ -165,9 +169,10 @@ class ZIPulsarMixin:
         if wave_index is not None:
             if wave not in defined_wave_indices.values():
                 wave_definition.append(
-                    f"assignWaveIndex("
-                    f"{self._zi_wavename_pair_to_argument(w1, w2)}, "
-                    f"{wave_index});"
+                    f"assignWaveIndex(" + \
+                    self._zi_wavename_pair_to_argument(
+                        w1, w2, internal_mod=internal_mod) + \
+                    f", {wave_index});"
                 )
                 defined_wave_indices[wave_index] = wave
 
@@ -237,7 +242,8 @@ class ZIPulsarMixin:
     def zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
-    def zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False):
+    def zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False,
+                                internal_mod=False):
         w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True
         if w1 is None and w2 is not None and use_hack and not placeholder_wave:
@@ -248,7 +254,8 @@ class ZIPulsarMixin:
             return [f"setWaveDIO({codeword}, {w2}_but_zero, {w2});"]
         elif not (w1 is None and w2 is None):
             return ["setWaveDIO({}, {});".format(codeword,
-                        self._zi_wavename_pair_to_argument(w1, w2))]
+                        self._zi_wavename_pair_to_argument(
+                            w1, w2, internal_mod=internal_mod))]
         else:
             return []
 
@@ -283,6 +290,7 @@ class ZIPulsarMixin:
     def zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                            prepend_zeros=0, placeholder_wave=False,
                            command_table_index=None,
+                           internal_mod=False,
                            allow_filter=False):
         playback_string = []
         if allow_filter:
@@ -317,7 +325,8 @@ class ZIPulsarMixin:
                     playback_string.append(f"playWave({w1}, marker(1,0)*0*{w1});")
             elif w1 is not None or w2 is not None:
                 playback_string.append("playWave({});".format(
-                    self._zi_wavename_pair_to_argument(w1, w2)))
+                    self._zi_wavename_pair_to_argument(
+                        w1, w2, internal_mod=internal_mod)))
         if acq:
             playback_string.append("setTrigger(RO_TRIG);")
             playback_string.append("setTrigger(WINT_EN);")
@@ -1122,7 +1131,9 @@ class ZIGeneratorModule:
                     if cw not in self._codeword_table:
                         self._codeword_table_defs += \
                             self._awg_interface.zi_codeword_table_entry(
-                                cw, wave, self._use_placeholder_waves)
+                                cw, wave, self._use_placeholder_waves,
+                                internal_mod=self._use_internal_mod
+                            )
                         self._codeword_table[cw] = (w1, w2)
                     elif self._codeword_table[cw] != (w1, w2) \
                             and self.pulsar.reuse_waveforms():
@@ -1222,6 +1233,7 @@ class ZIGeneratorModule:
                             defined_waves=self._defined_waves,
                             wave_index=self._wave_idx_lookup[element][cw],
                             placeholder_wave_length=max(placeholder_wave_lengths),
+                            internal_mod=self._use_internal_mod,
                         )
                 else:
                     # No indices will be assigned when not using placeholder
@@ -1238,6 +1250,7 @@ class ZIGeneratorModule:
                             wave_index=self._wave_idx_lookup[element][cw] if
                             self._use_command_table else None,
                             defined_waves=self._defined_waves,
+                            internal_mod=self._use_internal_mod,
                         )
 
             if not upload:

@@ -655,6 +655,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             # Modulation configuration is empty
             self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
             self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", 1)
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1)
             return
 
         # Set digital modulation to "mixer" mode.
@@ -663,7 +667,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
         # Configure gain matrix for mixer calibration.
         alpha = mod_config.get("alpha", 1.0)
-        phi_skew = mod_config.get("phi_skew", 0.0)
+        phi_skew = mod_config.get("phi_skew", 0.0) / 180 * np.pi
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew))
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew))
         self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
@@ -677,7 +681,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
         self.awg.set(f'sines_{awg_nr * 2}_phaseshift', 0)
-        self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', 90)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', -90)
 
         # Disable direct output of sine waves.
         self.awg.set(f'sines_{awg_nr * 2}_enables_0', 0)
@@ -793,7 +797,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             prepend_zeros=prepend_zeros,
             placeholder_wave=use_placeholder_waves,
             command_table_index=command_table_index,
-            allow_filter=metadata.get('allow_filter', False)
+            internal_mod=self._use_internal_mod,
+            allow_filter=metadata.get('allow_filter', False),
         )
 
     def _configure_awg_str(
@@ -863,8 +868,18 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             "amplitude0": {"value": amplitude[0]},
             "amplitude1": {"value": amplitude[1]},
             "phase0": {"value": phase[0]},
-            "phase1": {"value": phase[1] + 90},
+            "phase1": {"value": phase[1] - 90},
         }
+
+        awg_nr = self._awg_nr
+        if self._use_internal_mod:
+            hdawg_command_table_entry["waveform"]["awgChannel0"] = \
+                ["sigout0", "sigout1"]
+            hdawg_command_table_entry["waveform"]["awgChannel1"] = \
+                ["sigout0", "sigout1"]
+        else:
+            hdawg_command_table_entry["waveform"]["awgChannel0"] = ["sigout0"]
+            hdawg_command_table_entry["waveform"]["awgChannel1"] = ["sigout1"]
 
         return hdawg_command_table_entry
 
