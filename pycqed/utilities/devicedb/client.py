@@ -19,7 +19,8 @@ class Config:
         password=None,
         token=None,
         device_name=None,
-        host="https://device-db.qudev.phys.ethz.ch",
+        host=None,
+        use_test_db=False,
     ):
         """Creates a config object for configuring a `Client` instance, mostly for authentication
 
@@ -38,7 +39,15 @@ class Config:
         self.password = password
         self.token = token
         self.device_name = device_name
-        self.host = host
+
+        if host != None:
+            self.host = host
+        else:
+            if use_test_db == False: # Use the actual server
+                self.host = "https://device-db.qudev.phys.ethz.ch"
+            else: # Use the test server
+                self.host = "https://test-device-db.qudev.phys.ethz.ch"
+                log.info(f"Use the test server {self.host} instead of the actual live server.")
 
 
 class Client:
