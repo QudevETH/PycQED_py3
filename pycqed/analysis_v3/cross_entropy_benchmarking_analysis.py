@@ -33,7 +33,24 @@ xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(d*np.sum(
 xentropy_fidelity = lambda pops_meas, pops_ideal, d: \
     xentropy_lhs(pops_meas, pops_ideal, d) / xentropy_rhs(pops_ideal, d)
 
-crossEntropy = lambda p, q: np.sum(-(p*np.log(q)))
+
+def crossEntropy(p, q):
+    """
+    Calculates the cross-entropy between p and q.
+
+    Args:
+        p (np.array): qubit state probabilities, typically the measured ones
+        q (np.array): qubit state probabilities, typically the calculated ones
+
+    Returns:
+        the cross-entropy
+    """
+    # if any of the entries in q are 0, we need to set p*np.log(q) = 0
+    idxs = np.where(q == 0)[0]
+    prod = p*np.log(q)
+    if len(idxs) > 0:
+        prod[idxs] = 0
+    return np.sum(-prod)
 entropy = lambda p: crossEntropy(p, p)
 def crossEntropyFidelity(pops_meas, pops_ideal, d):
     """
