@@ -298,16 +298,19 @@ class Sequence:
                                          for channel in pulse.channels]):
                             continue
                         if abs(getattr(pulse, "amplitude", 0)) > \
-                                current_max_amp:
-                            current_max_amp = abs(
-                                getattr(pulse, "amplitude"  , 0.0))
+                                abs(current_max_amp):
+                            current_max_amp = getattr(pulse, "amplitude", 0.0)
                     element_max_amp[elname] = current_max_amp
 
             if not len(element_max_amp) or \
                     max(element_max_amp.values()) == 0:
                 # There is no element played on this awg module.
                 continue
-            sequence_max_amp = max(element_max_amp.values())
+            # choose the pulse amplitude that has the largest absolute value
+            max_val = max(element_max_amp.values())
+            min_val = min(element_max_amp.values())
+            sequence_max_amp = abs(max_val) \
+                if abs(max_val) >= abs(min_val) else abs(min_val)
             for segname, seg in self.segments.items():
                 for elname in elements_on_channel[segname]:
                     element_scaling_factor = \
