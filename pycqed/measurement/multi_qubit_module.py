@@ -195,8 +195,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             uhfs.add(uhf)
             uhf_instances[uhf] = qubits[0].find_instrument(uhf)
             max_int_len[uhf] = 0
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
             acq_classifier_params[uhf] = []
             acq_state_prob_mtxs[uhf] = []
         for params in add_chs:
