@@ -366,6 +366,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'trans_amplitude': 0,
             'trans_amplitude2': 0,
             'trans_length': 0,
+            'intermediate_amplitude': 0,
+            'intermediate_amplitude2': 0,
+            'intermediate_length': 0,
             'buffer_length_start': 30e-9,
             'buffer_length_end': 30e-9,
             'channel_relative_delay': 0,
@@ -452,16 +455,19 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         self.amplitudes = []
 
         # add amplitudes and lengths for gate pulses
-        for ma, ta, ao, d, c in [
+        for ma, ta, ao, d, c, ia in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
-             -self.channel_relative_delay/2, self.channel),
+             -self.channel_relative_delay/2, self.channel,
+             self.intermediate_amplitude),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
-             self.channel_relative_delay/2, self.channel2),
+             self.channel_relative_delay/2, self.channel2,
+             self.intermediate_amplitude2),
         ]:
             if c is None:
                 continue
             ml = self.pulse_length
             tl = self.trans_length
+            il = self.intermediate_length
             bs = self.buffer_length_start
             be = self.buffer_length_end
             ca0 = ma + ao
@@ -469,9 +475,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             cl0 = max(-(ml * ao) / ca0, 0) if ca0 else 0
             cl1 = max(-(ml * ao) / ca1, 0) if ca1 else 0
 
-            self.amplitudes.append([0, ma + ao, ta, -ta, -ma + ao, 0])
-            self.lengths.append([bs + d - cl0, cl0 + ml / 2, tl / 2,
-                                 tl / 2, ml / 2 + cl1, be - d - cl1])
+            self.amplitudes.append([0, ma + ao, ia, ta, -ta, -ia, -ma + ao, 0])
+            self.lengths.append([bs + d - cl0, cl0 + ml / 2, il, tl / 2,
+                                 tl / 2, il, ml / 2 + cl1, be - d - cl1])
         while len(self.lengths) < len(self.channels):
             self.lengths += [[]]
         while len(self.amplitudes) < len(self.channels):
