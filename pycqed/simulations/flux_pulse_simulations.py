@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states):
+
+def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states,
+                                          interpolations=None):
     """Computes the frequency of the specified energy levels for the times
     specified in t while taking the flux pulse into account.
 
@@ -19,6 +21,11 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states):
             qubit state for which the frequency will be calculated from the
             provided flux pulse, e.g.: states=['01', '20']. Valid single qb
             states include 0 (g), 1 (e) & 2 (f)
+        interpolations (list[callable]): List of callable objects that has the
+            same signature as QuDev_transmon.calculate_frequency. This can be
+            used to pass an interpolated Hamiltonian model to speed up the
+            computation. If set to None, qb.calculate_frequency is used instead.
+            Defaults to None.
 
     Returns
         numpy.array of shape (len(states), len(t)) with frequency values.
@@ -28,7 +35,12 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states):
     wf = [pulse.chan_wf(qb.flux_pulse_channel(), t)
           if qb.flux_pulse_channel() in pulse.channels else np.zeros_like(t)
           for qb in qubits]
-    qb_freqs = np.reshape(np.array([np.reshape(qb.calculate_frequency(
+    if interpolations is not None:
+        calculate_frequency = [interpolations[i] for i, _ in enumerate(qubits)]
+    else:
+        calculate_frequency = [qb.calculate_frequency
+                               for i, qb in enumerate(qubits)]
+    qb_freqs = np.reshape(np.array([np.reshape(calculate_frequency[i](
                                                     amplitude=wf[i],
                                                     return_ge_and_ef=True),
                                                (2, -1))
@@ -80,7 +92,7 @@ def transform_phases(phases):
 
 
 def compute_accumulated_phase(t, pulse, qubits, states=('11', '20'),
-                              state_freqs=None):
+                              state_freqs=None, interpolations=None):
     """Uses np.trapz to integrate the accumulated phase between states.
 
     Args:
@@ -100,13 +112,16 @@ def compute_accumulated_phase(t, pulse, qubits, states=('11', '20'),
             compute_energy_levels_from_flux_pulse is used to compute the state
             frequencies during the pulse. If provided it must have shape
             (len(states), len(t)). Defaults to None.
+        interpolations (list[callable]): See docstring of
+            `compute_energy_levels_from_flux_pulse`.
 
     Returns:
         float: accumulated phase
     """
     if state_freqs is None:
         state_freqs = compute_energy_levels_from_flux_pulse(t, pulse, qubits,
-                                                            states)
+                                                            states,
+                                                            interpolations)
     if len(states) == 1:
         diff_freq = state_freqs[0] - state_freqs[0][0]
     else:
