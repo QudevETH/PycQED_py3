@@ -96,7 +96,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 be measured (typical use case: calibration points, i.e.,
                 let n_0 be the number of sweep pooints without calibration
                 points).
-                The lower-level implementation in FilteredSweep and Pulsar
+                In case of a hard sweep in dimension 0, the lower-level
+                implementation in FilteredSegmentSweep and Pulsar
                 currently only supports a single consecutive range of
                 segments to be measured in each row of this array (plus the
                 segments with index >n_0, which are always measured). To
@@ -638,7 +639,11 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 log.warning("Combining compression_seg_lim and "
                             "filter_segments_mask is not supported. Ignoring "
                             "filter_segments_mask.")
-            elif self.filter_segments_mask is not None:
+            elif (self.filter_segments_mask is not None and
+                  sweep_func_1st_dim.sweep_control == 'hard'):
+                # We need a FilteredSegmentSweep, which allows programming
+                # all segments and then playing only a subset of them
+                # (according to the mask for each 2nd dimension sweep point).
                 mask = np.array(self.filter_segments_mask)
                 # Only segments with indices included in the mask can be
                 # filtered out. The others will always be measured.
@@ -667,8 +672,19 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     else:
                         # measure nothing (by setting last < first)
                         filter_lookup[sp] = (1, 0)
-                sweep_func_2nd_dim = swf.FilteredSweep(
+                sweep_func_2nd_dim = swf.FilteredSegmentSweep(
                         self.sequences[0], filter_lookup, [sweep_func_2nd_dim])
+            elif self.filter_segments_mask is not None:
+                # We need a FilteredSoftSweep, which allows communicating
+                # all 1st dimension soft sweep points to MC and then
+                # recording data only a subset of them (according to the mask
+                # for each 2nd dimension sweep point).
+                mask = np.array(self.filter_segments_mask)
+                filter_lookup = {
+                    mcp: mask[:, i] if i < mask.shape[1] else []
+                    for i, mcp in enumerate(self.mc_points[1])}
+                sweep_func_2nd_dim = swf.FilteredSoftSweep(
+                    filter_lookup, [sweep_func_2nd_dim])
 
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
@@ -783,10 +799,11 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 raise ValueError(f'QuantumExperiment needs to have attribute '
                                  f'self.sequences not None and not empty.')
 
-    def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
+    def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp, filepath=filepath, mode="r+")
+        data_file = helper_functions.open_hdf_file(self.timestamp,
+                                                   filepath=filepath, mode="r+")
         try:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
@@ -808,20 +825,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                         f"Only last instance will be kept")
                         s.timer.save(seq_group)
 
-                        if segments:
-                            seg_group = seq_group[timer_seq_name].create_group(timer_seq_name + ".segments")
-                            for _, seg in s.segments.items():
-                                try:
-                                    timer_seg_name = seg.timer.name
-                                    # check that name doesn't exist and it case it does, append an index
-                                    # Note: normally that should not happen (not desirable)
-                                    if timer_seg_name in seg_group.keys():
-                                        log.warning(f"Timer with name {timer_seg_name} already "
-                                                    f"exists in Segments timers. "
-                                                    f"Only last instance will be kept")
-                                    seg.timer.save(seg_group)
-                                except AttributeError:
-                                    pass
 
                     except AttributeError:
                         pass # in case some sequences don't have timers

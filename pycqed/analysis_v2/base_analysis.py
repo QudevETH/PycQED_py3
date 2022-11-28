@@ -970,7 +970,12 @@ class BaseDataAnalysis(object):
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
             method = fit_dict.get('method', 'leastsq')
-            steps = fit_dict.get('steps', None)
+            fit_kwargs = {}
+            if 'steps' in fit_dict:
+                # We add this to the kwargs only if it is explicitly provided
+                # because we have observed recent lmfit versions showing a
+                # warning when passing this parameter.
+                fit_kwargs['steps'] = fit_dict['steps']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1003,7 +1008,7 @@ class BaseDataAnalysis(object):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
             fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
-                                            params=guess_pars, steps=steps)
+                                            params=guess_pars, **fit_kwargs)
 
             self.fit_res[key] = fit_dict['fit_res']
 
