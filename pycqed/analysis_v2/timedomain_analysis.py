@@ -5737,11 +5737,29 @@ class ResidualZZAnalysis(RamseyAnalysis):
                                      hdf_group_name_suffix)
 
     def get_residual_zz(self, fit_res_base, fit_res_prep):
+        """Compute the residual ZZ coupling from the two Ramsey fits.
+
+        Args:
+            fit_res_base (lmfit.ModelResult): Ramsey fit for the measurement
+                with the target qubit in the ground state the whole time.
+            fit_res_prep (lmfit.ModelResult): Ramsey fit for the measurement
+                with the target qubit excited.
+
+        Returns:
+            dict with the individual detunings ('freq_g', 'freq_e') and the
+            extracted residual ZZ ('shift_Hz') and its standard error
+            ('shift_Hz_stderr').
+        """
         freq_g = fit_res_base.best_values['frequency']
         freq_e = fit_res_prep.best_values['frequency']
         shift = freq_e - freq_g
         stderr = np.sqrt(fit_res_prep.params['frequency'].stderr**2
                          + fit_res_base.params['frequency'].stderr**2)
+        # When the measurement was implemented using an echo pulse, the control
+        # qubit only got excited during the second half of the Ramsey sequence.
+        # The resulting shift between the fitted detuning frequencies therefore
+        # corresponds to only half the residual ZZ coupling. This is compensated
+        # by the following factor:
         x = 2 if self.echo else 1
         return {'freq_g': freq_g, 'freq_e': freq_e,
                 'shift_Hz': x*shift, 'shift_Hz_stderr': x*stderr}
@@ -5763,7 +5781,8 @@ class ResidualZZAnalysis(RamseyAnalysis):
                                + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
                     textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
                                + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
-                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} kHz\n'
+                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} ' \
+                               + f'kHz\n'
                     textstr += f'target: {qb}, control: {qbc}'
                 self.plot_dicts['text_msg'] = {
                     'fig_id': plot_name,
@@ -5805,7 +5824,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 # split into qbn and i. (outer_key + '_') is needed because if
                 # outer_key = qbn doing outer_key.split('_') will only have one
                 # output and assignment to two variables will fail.
-                qbn, ii = (outer_key + '_').split('_')[:2]
+                qbn = (outer_key + '_').split('_')[0]
                 sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                     'sweep_points']
 
@@ -5813,17 +5832,20 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 plot_name = f'ResidualZZ_{qbn}_{qbc}'
 
                 for i, fit_type in enumerate(ramsey_pars_dict):
-                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}']['fit_res']
-                    self.plot_dicts[f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
-                        'fig_id': plot_name,
-                        'plotfn': self.plot_fit,
-                        'fit_res': fit_res,
-                        'setlabel': 'exp decay fit' if i == 0 else
-                            'gauss decay fit',
-                        'do_legend': i,
-                        'color': 'r' if i == 0 else 'C4',
-                        'legend_bbox_to_anchor': (1, -0.15),
-                        'legend_pos': 'upper right'}
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}'][
+                        'fit_res']
+                    self.plot_dicts[
+                        f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
+                            'fig_id': plot_name,
+                            'plotfn': self.plot_fit,
+                            'fit_res': fit_res,
+                            'setlabel': 'exp decay fit' if i == 0 else
+                                'gauss decay fit',
+                            'do_legend': i == 1,
+                            'color': 'r' if i == 0 else 'C4',
+                            'legend_bbox_to_anchor': (1, -0.15),
+                            'legend_pos': 'upper right'
+                        }
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):

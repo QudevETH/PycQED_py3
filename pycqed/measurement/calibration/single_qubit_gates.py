@@ -2611,7 +2611,7 @@ class ResidualZZ(Ramsey):
     def preprocess_task_list(self, **kw):
         preprocessed_task_list =  super().preprocess_task_list(**kw)
 
-        # Warn the user when he is tryig to run parallel measurments
+        # Warn the user when he is trying to run parallel measurments
         if len(preprocessed_task_list) > 1:
             log.warning('It is not recommended to run residual ZZ measurements '
                         'in parallel! Use at your own risk.')
