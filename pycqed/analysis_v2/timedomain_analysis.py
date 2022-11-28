@@ -10639,7 +10639,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
                                 'plotfn': self.plot_line,
                                 'fig_id': base_plot_name,
-                                'xvals': [0, 2*xvals[-1]-xvals[-2]],
+                                'xvals': [0, 2*xvals[-1]-xvals[-2]], # make
+                                # sure the horizontal lines indicating J are
+                                # wide enough to cover the entire plot
                                 'yvals': J*np.ones(2) * (-1) ** negative_J - \
                                          offset_freq * (1-actual_detuning),
                                 'color': 'white',
