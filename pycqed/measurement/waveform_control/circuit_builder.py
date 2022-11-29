@@ -108,12 +108,17 @@ class CircuitBuilder:
         else:
             self.operation_dict = deepcopy(mqm.get_operation_dict(self.qubits))
 
-    def get_qubits(self, qb_names=None):
+    def get_qubits(self, qb_names=None, strict=True):
         """
         Wrapper to get 'all' qubits, single qubit specified as string
         or list of qubits, checking they are in self.qubits
         :param qb_names: 'all', single qubit name (eg. 'qb1') or list of
             qb names
+        :param strict: (bool, default: True) if this is True, an error is
+            raised if entries of qb_names are not found in the stored qubits.
+            If this is False and there are qb_names that are not found,
+            their names will be returned as they are, and no qubit objects
+            will be returned.
         :return: list of qubit object and list of qubit names (first return
             value is None if no qubit objects are stored). The order is
             according to the order stored in self.qb_names (which can be
@@ -134,9 +139,13 @@ class CircuitBuilder:
         except ValueError:
             pass
 
+        all_found = True
         for qb in qb_names:
-            assert qb in self.qb_names, f"{qb} not found in {self.qb_names}"
-        if self.qubits is None:
+            if qb not in self.qb_names:
+                if strict:
+                    raise AssertionError(f"{qb} not found in {self.qb_names}")
+                all_found = False
+        if self.qubits is None or not all_found:
             return None, qb_names
         else:
             qb_map = {qb.name: qb for qb in self.qubits}
@@ -237,7 +246,7 @@ class CircuitBuilder:
         op_info = op.split(" ") if isinstance(op, str) else op
         if not self.fast_mode:
             # the call to get_qubits resolves qubits indices if needed
-            _, op_info[1:] = self.get_qubits(op_info[1:])
+            _, op_info[1:] = self.get_qubits(op_info[1:], strict=False)
         op_name = op_info[0][1:] if op_info[0][0] == 's' else op_info[0]
         op = op_name + ' ' + ' '.join(op_info[1:])
 
@@ -374,6 +383,8 @@ class CircuitBuilder:
         if block_name is None:
             block_name = f"Initialization_{qb_names}"
         _, qb_names = self.get_qubits(qb_names)
+        if not len(qb_names):
+            return Block(block_name, [])
         if prep_params is None:
             prep_params = self.get_prep_params(qb_names)
         if len(init_state) == 1:
@@ -663,15 +674,20 @@ class CircuitBuilder:
             corresponding to the splitted string.
         :param fill_values (dict): optional fill values for operations.
         :param pulse_modifs (dict): Modification of pulses parameters.
-            keys:
-             -indices of the pulses on  which the pulse modifications should be
-             made (backwards compatible)
-             -
-             values: dictionaries of modifications
-            E.g. ops = ["X180 qb1", "Y90 qb2"],
-            pulse_modifs = {1: {"ref_point": "start"}}
-            This will modify the pulse "Y90 qb2" and reference it to the start
-            of the first one.
+            - Format 1:
+              keys: indices of the pulses on  which the pulse modifications
+                should be made
+              values: dictionaries of modifications
+              E.g. ops = ["X180 qb1", "Y90 qb2"],
+              pulse_modifs = {1: {"ref_point": "start"}}
+              This will modify the pulse "Y90 qb2" and reference it to the start
+              of the first one.
+            - Format 2:
+              keys: strings in the format specified for the param
+                sweep_dicts_list in the docstring of Block.build to identify
+                an attribute in a pulse
+              values: the value to be set for the attribute identified by the
+                corresponding key
         :return: The created block
         """
         if pulse_modifs is None:

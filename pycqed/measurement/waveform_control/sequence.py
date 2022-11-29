@@ -48,6 +48,7 @@ class Sequence:
         self.segments[segment.name] = segment
         if len(self.segments) == 1:
             self.segments[segment.name].is_first_segment = True
+        self.timer.children.update({segment.name: segment.timer})
 
     def extend(self, segments):
         """

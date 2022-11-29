@@ -168,17 +168,21 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         max_int_len[uhf] = max(max_int_len[uhf], qb.acq_length())
 
         if uhf not in int_channels:
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
-        int_channels[uhf] += qb.get_acq_int_channels()
-        inp_channels[uhf] += qb.get_acq_inp_channels()
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
+        int_channels[uhf][qb.name] = qb.get_acq_int_channels()
+        inp_channels[uhf][qb.name] = qb.get_acq_inp_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
-        acq_classifier_params[uhf] += [qb.acq_classifier_params()]
+        param = 'acq_classifier_params'
+        acq_classifier_params[uhf] += [
+            qb.get(param) if param in qb.parameters else {}]
         if uhf not in acq_state_prob_mtxs:
             acq_state_prob_mtxs[uhf] = []
-        acq_state_prob_mtxs[uhf] += [qb.acq_state_prob_mtx()]
+        param = 'acq_state_prob_mtx'
+        acq_state_prob_mtxs[uhf] += [
+            qb.get(param) if param in qb.parameters else None]
 
     if add_channels is None:
         add_channels = {}
@@ -191,8 +195,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             uhfs.add(uhf)
             uhf_instances[uhf] = qubits[0].find_instrument(uhf)
             max_int_len[uhf] = 0
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
             acq_classifier_params[uhf] = []
             acq_state_prob_mtxs[uhf] = []
         for params in add_chs:
@@ -204,8 +208,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             #  but not both: we just add the extra channels to both lists to
             #  make sure that they will be passed to the detector function no
             #  matter which list the particular detector function gets.
-            int_channels[uhf] += params.get('acq_channels', [])
-            inp_channels[uhf] += params.get('acq_channels', [])
+            int_channels[uhf]['add_channels'] = params.get('acq_channels', [])
+            inp_channels[uhf]['add_channels'] = params.get('acq_channels', [])
 
             max_int_len[uhf] = max(max_int_len[uhf], params.get('acq_length',
                                                                 0))

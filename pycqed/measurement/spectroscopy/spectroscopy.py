@@ -75,7 +75,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                          df_kwargs=df_kwargs, **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
-        self.sweep_points_pulses = SweepPoints(min_length=2, )
+        self.sweep_points_pulses = SweepPoints(
+            min_length=2 if self.force_2D_sweep else 1)
         """sweep points that are passed to sweep_n_dim and used to generate
         segments. This reduced set is introduce to prevent that a segment
         is generated for every frequency sweep point.
@@ -85,6 +86,10 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.grouped_tasks = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        # new sweep points created from kws might increase the total number of
+        # sweep dimensions: extend sweep_points_pulses if needed
+        while len(self.sweep_points_pulses) < self._num_sweep_dims:
+            self.sweep_points_pulses.add_sweep_dimension()
 
         self.group_tasks()
         self.check_all_freqs_per_lo()
@@ -92,16 +97,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.check_hard_sweep_compatibility()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
-        if len(self.sweep_points_pulses[0]) == 0:
-            # Create a single segement if no hard sweep points are provided.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_hard_sweep',
-                                                         [0], dimension=0)
-        if len(self.sweep_points_pulses[1]) == 0:
-            # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-            # With this dummy soft sweep, exactly one sequence will be created
-            # and the data format will be the same as for a true soft sweep.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_soft_sweep',
-                                                         [0], dimension=1)
 
         self._fill_temporary_values()
         # temp value ensure that mod_freqs etc are set corretcly
@@ -944,10 +939,18 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             pulse_modifs = {'op_code=Spec': {'element_name': 'spec_el',}}
             if self._get_power_param(qubit)[0] is None:
                 # No external LO, use pulse to set the spec power
+                # The factor of 2 below is needed here because the spec pulse is
+                # applied only to the I channel. This means that we get
+                # half the amplitude after upconversion when the
+                # outputamplitude node is set to 0.5, which is the reasonable
+                # setting to use for digital IQ modulation in time-domain
+                # experiments (output pulse has the programmed pulse
+                # amplitude).
                 if sweep_points.find_parameter('spec_power') is not None:
-                    amp = ParametricValue('spec_power', func=dbm_to_vp)
+                    amp = ParametricValue('spec_power',
+                                          func=lambda x: 2 * dbm_to_vp(x))
                 else:
-                    amp = dbm_to_vp(qubit.spec_power())
+                    amp = 2 * dbm_to_vp(qubit.spec_power())
                 pulse_modifs['op_code=Spec']['amplitude'] = amp
             spec = self.block_from_ops('spec', [f"Z0 {qb}", f"Spec {qb}"],
                                     pulse_modifs=pulse_modifs)

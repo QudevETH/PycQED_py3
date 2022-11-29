@@ -132,13 +132,16 @@ class SweepPoints(list):
     def add_sweep_dimension(self):
         self.append(dict())
 
-    def get_sweep_dimension(self, dimension='all', pop=False):
+    def get_sweep_dimension(self, dimension='all', pop=False, **kw):
         """
         Returns the sweep dict of the sweep dimension specified by dimension.
         :param dimension: int specifying a sweep dimension or
             the string 'all'
         :param pop: bool specifying whether to pop (True) or get(False) the
             sweep dimension.
+        :param kw:
+            'default': if this key is contained in kw, its value will be
+                returned if the requested dimension does not exist.
         :return: self if dimension == 'all', else self[dimension]
         """
         if dimension == 'all':
@@ -149,9 +152,12 @@ class SweepPoints(list):
             else:
                 return self
         else:
-            if len(self) < dimension:
-                raise ValueError(f'Dimension {dimension} not found.')
-            to_return = self[dimension]
+            if len(self) < dimension + 1:
+                if 'default' not in kw:
+                    raise ValueError(f'Dimension {dimension} not found.')
+                to_return = kw['default']
+            else:
+                to_return = self[dimension]
             if pop:
                 self[dimension] = {}
             return to_return
@@ -464,6 +470,19 @@ class SweepPoints(list):
         """
         dim = self.find_parameter(param_name)
         return self.get_sweep_params_property('values', dim, param_names=param_name)
+
+    def prune_constant_values(self):
+        """
+        Removes constant sweep parameters (Note: does not delete the
+        corresponding dimensions if they are left empty)
+
+        """
+
+        param_names = [p for dim in self for p in dim]
+        for p in param_names:
+            vals = self.get_values(p)
+            if not any(vals - np.min(vals)):  # If constant
+                self.remove_sweep_parameter(p)
 
     def subset(self, i, dimension=0):
         """
