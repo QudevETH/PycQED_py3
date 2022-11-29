@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -499,21 +500,41 @@ class Client:
 
         Args:
             id (int|str): the primary key of the device instance on the database
-            name (str): the identifying name for the device
+            name (str): the full name identifying the device in the format WAFER_DESIGN_DEVICE, e.g. "ATC164M154_S17v2_E5"
         """
-        search_kwargs = {
-            "name": name,
-        }
         api = self.get_api_instance()
+
         if id is None:
-            search_kwargs = utils.noneless(**search_kwargs)
-            device_list = api.list_devices(**search_kwargs)
-            device = utils.find_model_from_list(
-                device_list,
-                'device',
-                search_kwargs,
-                **kwargs,
-            )
+            regex_matches = re.search('(.*)_(.*)_(.*)', name)
+            if name.count('_') > 2:
+                raise ValueError(
+                    f"Device name contains `_` more than two times and cannot be uniquely decomposed into `WAFER_DESIGN_DEVICE`. So either the wafer, design or device name contain an underscore which is not allowed. Please look up the device id in the Device Database admin interface and call the function with the id instead of the name."
+                )
+            elif regex_matches != None:
+                wafer_name = regex_matches[1]
+                device_design_name = regex_matches[2]
+                device_name = regex_matches[3]
+
+                wafer = self.get_wafer_for(name=wafer_name)
+                device_design = self.get_device_design_for(name=device_design_name)
+
+                search_kwargs = {
+                    "name": device_name,
+                    "wafer": str(wafer.id),
+                    "devicedesign": str(device_design.id),
+                }
+                search_kwargs = utils.noneless(**search_kwargs)
+                device_list = api.list_devices(**search_kwargs)
+                device = utils.find_model_from_list(
+                    device_list,
+                    'device',
+                    search_kwargs,
+                    **kwargs,
+                )
+            else:
+                raise ValueError(
+                    f"Device name does not follow the pattern `WAFER_DESIGN_DEVICE`. Please specify the full device name in this format or look up the device id in the Device Database admin interface and call the function with the id instead of the name."
+                )
         else:
             try:
                 device = api.retrieve_device(id=str(id))
@@ -1306,3 +1327,33 @@ class Client:
                 connectivity_graph.append((qbs_list[0], qbs_list[1])) # For having tuples. Otherwise one can also just use connectivity_graph.append(qbs_list)
 
         return connectivity_graph
+
+    def upload_normal_state_resistances(self, path=None, device_name=None, device_id=None):
+        """Returns the connectivity graph of a device design
+
+        Args:
+            id (int|str): id of the device design
+            name (str): name of the device design
+
+        Returns:
+            list: list of tuples, representing the connectivity graph of the device design
+        """
+
+        if path == None:
+            raise ValueError(
+                f"You have to provide a path to the text file in which the normal state resistances are stored."
+            )
+        if device_name == None and device_id == None:
+            raise ValueError(
+                f"You have to provide either the device name or the device id to which the normal state resistances are related."
+            )
+        if device_name != None and device_id != None:
+            raise ValueError(
+                f"You can only specify the device name or the device id but not both together (both should be unique already)."
+            )
+        api = self.get_api_instance()
+
+        if device_name != None: # If device name was provided, get id
+            device = self.get_device_for(name=device_name)
+            print(device)
+        return None
