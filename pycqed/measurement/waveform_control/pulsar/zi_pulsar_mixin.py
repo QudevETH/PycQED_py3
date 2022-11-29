@@ -79,6 +79,8 @@ class ZIPulsarMixin:
             if not internal_mod:
                 return f"{w1}, {w2}"
             else:
+                # This syntax is needed to allow IQ-mixing for
+                # imaginary-valued baseband signal.
                 return f"1, 2, {w1}, 1, 2, {w2}"
         elif w1 is not None and w2 is None:
             return f"1, {w1}"
@@ -106,8 +108,8 @@ class ZIPulsarMixin:
 
              wave_index (Optional, int): if specified, assignWaveIndex() will
              be used to assign this wave with index wave_index. This index
-             can be used later for binary upload or sequencing with the
-             command table
+             can be used later for binary upload or sequencing with
+             command tables.
 
              placeholder_wave_length (Optional, int): length to reserve for
              the placeholder wave. If not specified, placeholder wave will
@@ -880,6 +882,8 @@ class ZIGeneratorModule:
         )
 
     def _update_use_command_table_flag(self):
+        """Updates self._use_command_table flag with the setting specified
+        in pulsar."""
         device_param = f"{self._awg.name}_use_command_table"
         device_value = self.pulsar.get(device_param) \
             if hasattr(self.pulsar, device_param) else False

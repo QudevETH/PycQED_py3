@@ -143,8 +143,8 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 initial_value=False,
                 vals=vals.Bool(),
                 parameter_class=ManualParameter,
-                docstring="Configures whether to use digital modulation"
-                          "sequencing on this AWG module. Note that this "
+                docstring="Configures whether to use placeholder waves and "
+                          "binary upload on this AWG module. Note that this "
                           "parameter will be ignored if the device-level "
                           "{dev_name}_internal_modulation is set to "
                           "True. In that case, all AWG modules on the "
@@ -382,11 +382,11 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             ch2: str,
             require_ordered: bool,
     ):
-        """Returns if the two input channels belongs to the same channel pair.
+        """Checks if the two input channels belongs to the same channel pair.
 
         Args:
-            ch1 (str): channel of the AWG
-            ch2 (str): channel of the AWG
+            ch1 (str): name of channel 1
+            ch2 (str): name of channel 2
             require_ordered (bool): whether ch1(ch2) is required to represent
                 I(Q) generator of this channel.
 
@@ -439,14 +439,14 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
                              docstring="Configures whether to use placeholder "
-                                       "waves in combination with binary "
-                                       "waveform uploadon this device. If set "
+                                       "waves and binary "
+                                       "waveform upload on this device. If set "
                                        "to True, placeholder waves "
                                        "will be enabled on all AWG modules on "
                                        "this device. If set to False, pulsar "
                                        "will check channel-specific settings "
-                                       "and programs command table on a "
-                                       "per-sub-AWG basis.")
+                                       "and enable placeholder waves on a "
+                                       "per-AWG-module basis.")
         pulsar.add_parameter(f"{name}_use_command_table",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
@@ -456,7 +456,7 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
                                        "will be enabled on all AWG modules on "
                                        "this device. If set to False, pulsar "
                                        "will check channel-specific settings "
-                                       "and programs command table on a "
+                                       "and configures command table on a "
                                        "per-sub-AWG basis.")
         pulsar.add_parameter(f"{name}_internal_modulation",
                              initial_value=False, vals=vals.Bool(),
@@ -711,7 +711,6 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave_index: int,
             amplitude: float = 1.0,
             phase: float = 0.0,
-            sideband: str = 'right',
     ):
         """Generates a command table entry in the format specified
         by ZI. Details of the command table can be found in
@@ -722,15 +721,11 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave_index(int): index of the waveform to play.
             amplitude (float or array-like): output amplitude with respect to
                 the specified waveform. If a scalar is provided, amplitudes
-                of both analog  channels are scaled to this value. If an
-                array of length 4 is provided, amplitudes of two analog
-                channels are specified explicitly. Accepts input range [-1,1].
-            phase (float or array-like): initial phase of the carrier wave. If a
-                scalar is provided, phases of both analog channels are
-                scaled to this value. If an array of length 4 is provided,
-                phases of two analog channels are specified explicitly.
-            sideband (str: 'left', 'right'): sideband to generate during
-                digital up-conversion.
+                of both analog channels are scaled to this value. If an
+                array of length 4 is provided, the array will be used to
+                configure the gain matrix directly. Each amplitude accepts
+                input range [-1,1].
+            phase (float or array-like): phase of the carrier wave.
 
         Returns:
             command_table_entry (dict): A command table entry for SHF

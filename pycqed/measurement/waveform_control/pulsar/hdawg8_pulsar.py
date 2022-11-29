@@ -120,14 +120,14 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
                              docstring="Configures whether to use placeholder "
-                                       "waves in combination with binary "
-                                       "waveform uploadon this device. If set "
+                                       "waves and binary "
+                                       "waveform upload on this device. If set "
                                        "to True, placeholder waves "
                                        "will be enabled on all AWG modules on "
                                        "this device. If set to False, pulsar "
                                        "will check channel-specific settings "
-                                       "and programs command table on a "
-                                       "per-sub-AWG basis."
+                                       "and enable placeholder waves on a "
+                                       "per-AWG-module basis."
                              )
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
@@ -142,7 +142,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                              vals=vals.MultiType(vals.Enum(None), vals.Ints(),
                                                  vals.Lists(vals.Ints())),
                              parameter_class=ManualParameter)
-        pulsar.add_parameter(f"{name}_use_command_table",initial_value=False,
+        pulsar.add_parameter(f"{name}_use_command_table", initial_value=False,
                              vals=vals.Bool(), parameter_class=ManualParameter,
                              docstring="Configures whether to use command table"
                                        "for waveform sequencing on this "
@@ -150,18 +150,19 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                                        "will be enabled on all AWG modules on "
                                        "this device. If set to False, pulsar "
                                        "will check channel-specific settings "
-                                       "and programs command table on a "
-                                       "per-sub-AWG basis.")
+                                       "and program command table on a "
+                                       "per-AWG-module basis.")
         pulsar.add_parameter(f"{name}_internal_modulation", initial_value=False,
                              vals=vals.Bool(), parameter_class=ManualParameter,
                              docstring="Configures whether to use digital "
                                        "modulation for waveform generation on "
-                                       "this  device. If set to True, internal "
+                                       "this device. If set to True, internal "
                                        "modulation will be enabled on all AWG "
                                        "modules on this device. If set to "
                                        "False, pulsar will check "
-                                       "channel-specific settings and programs "
-                                       "command table on a per-sub-AWG basis.")
+                                       "channel-specific settings and "
+                                       "configures modulation on a "
+                                       "per-AWG-module basis.")
 
         group = []
         for ch_nr in range(8):
@@ -292,8 +293,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     initial_value=False,
                     vals=vals.Bool(),
                     parameter_class=ManualParameter,
-                    docstring="Configures whether to use digital modulation"
-                              "sequencing on this AWG module. Note that this "
+                    docstring="Configures whether to use digital modulation "
+                              "on this AWG module. Note that this "
                               "parameter will be ignored if the device-level "
                               "{dev_name}_internal_modulation is set to "
                               "True. In that case, all AWG modules on the "
@@ -578,7 +579,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     @staticmethod
     def is_i_channel(ch: str):
-        """Returns if this channel has the smaller number in its channel
+        """Returns if this channel has the smaller number in its analog channel
         pair.
 
         Args:
@@ -586,7 +587,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         Returns:
             is_i_channel (str): whether this channel has the smaller number
-            in its channel pair.
+            in its analog channel pair.
         """
         if ch[-1] == 'm':
             return False
@@ -817,7 +818,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             wave_index: int,
             amplitude: float = 1.0,
             phase: float = 0.0,
-            sideband: str = 'right',
     ):
         """Generates a command table entry in the format specified
         by ZI. Details of the command table can be found in
@@ -835,9 +835,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 scalar is provided, phases of both analog channels are
                 scaled to this value. If an array of length 2 is provided,
                 phases of two analog channels are specified explicitly.
-            sideband (str: 'left', 'right'): sideband to generate during
-                up-conversion. This parameter is irrelevant to HDAWG channel
-                pairs.
 
         Returns:
             command_table_entry (dict): A command table entry for HDAWG
@@ -871,7 +868,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             "phase1": {"value": phase[1] - 90},
         }
 
-        awg_nr = self._awg_nr
         if self._use_internal_mod:
             hdawg_command_table_entry["waveform"]["awgChannel0"] = \
                 ["sigout0", "sigout1"]
