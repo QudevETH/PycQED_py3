@@ -669,11 +669,15 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         # Configure gain matrix for mixer calibration.
         alpha = mod_config.get("alpha", 1.0)
         phi_skew = mod_config.get("phi_skew", 0.0) / 180 * np.pi
-        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew))
-        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew))
+
+        # Because ZI devices does not accept gain matrix elements that are
+        # larger than 1, we will eed to rescale the gain matrix if alpha is
+        # smaller than 1.
+        r = alpha if alpha < 1.0 else 1.0
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew) * r)
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew) * r)
         self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
-        # TODO: check if alpha is always >= 1
-        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1.0/alpha)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1.0 / alpha * r)
 
         # Choose oscillators, set phases and modulation frequencies.
         mod_frequency = mod_config.get("mod_frequency", 0.0)
