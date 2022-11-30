@@ -2609,6 +2609,16 @@ class ResidualZZ(Ramsey):
             traceback.print_exc()
 
     def preprocess_task_list(self, **kw):
+        """Calls super method and in addition checks whether the different tasks
+        are compatible with each other.
+
+        Raises:
+            NotImplementedError: Raised if one qubit is involved in more than
+                one task.
+
+        Returns:
+            list: preprocessed task list
+        """
         preprocessed_task_list =  super().preprocess_task_list(**kw)
 
         # Warn the user when he is trying to run parallel measurments
@@ -2630,6 +2640,9 @@ class ResidualZZ(Ramsey):
         return preprocessed_task_list
 
     def update_sweep_points(self):
+        """Adds sweep point snecessary to turn on and of the pi-pulse of the
+        control qubits. Calls super method afterwards.
+        """
         for task in self.preprocessed_task_list:
             qbc = task['qbc']
             ge_amp = self.dev.get_operation_dict()[f'X180 {qbc}']['amplitude']
@@ -2641,6 +2654,16 @@ class ResidualZZ(Ramsey):
         return super().update_sweep_points()
 
     def sweep_block(self, qbc, qb, sweep_points, **kw):
+        """Adds the pi-pulse used to excite the control qubit by either creating
+        a center block (echo) or by passing the correct prepend_pulse_dict to
+        the super method.
+
+        Args:
+            qbc (str): name of the control qubit.
+            qb (str): name of the target qubit.
+            sweep_points (SweepPoints): sweep points to be passes to Ramsey
+                method.
+        """
         center_block = None
         prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
         if self.echo:
