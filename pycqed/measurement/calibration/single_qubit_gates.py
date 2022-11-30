@@ -2594,15 +2594,12 @@ class ResidualZZ(Ramsey):
     or      task1 = {'qb': qb1, 'qbc': qb2, ...} and
             task2 = {'qb': qb3, 'qbc': qb2, ...}
     """
-    task_mobj_keys = ['qb']
+    task_mobj_keys = ['qb', 'qbc']
 
     default_experiment_name = 'ResidualZZ'
 
     def __init__(self, task_list=None, **kw):
         try:
-            for task in task_list:
-                if 'qbc' in task and not isinstance(task['qbc'], str):
-                    task['qbc'] = task['qbc'].name
             super().__init__(task_list, **kw)
         except Exception as x:
             self.exception = x
