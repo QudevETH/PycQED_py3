@@ -400,6 +400,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
                 param_vals.append(param_vals_dict)
             else:
                 f = interp1d(cp, cal_data)
+                print(f"cal_data = {cal_data}")
+                print(f"phi = {phi}")
                 param_vals.append(float(f(phi)))
         return param_vals
 
