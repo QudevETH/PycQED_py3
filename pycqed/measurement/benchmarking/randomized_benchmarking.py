@@ -885,10 +885,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
 class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
     default_experiment_name = 'TwoQubitXEBMultiCphase'
-    kw_for_sweep_points = {
-        'cphases': dict(
-            param_name='cphases', unit='',
-            label='cphase angles', dimension=1)}
+    kw_for_task_keys = ('cphases')
     task_mobj_keys = ['qb_1', 'qb_2']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
@@ -901,14 +898,13 @@ class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
             self.xeb_measurements = []
             self.measure = kw.pop('measure', True)
-            nr_cphases = self.sweep_points.length(1)
+            nr_cphases = len(self.preprocessed_task_list[0]['cphases'])
             for i in range(nr_cphases):
                 tl = deepcopy(task_list)
-                for pproc_task in self.preprocessed_task_list:
-                    prefix = pproc_task['prefix']
-                    task = [t for t in tl if t['prefix'] == prefix][0]
-                    task.pop('cphases', None)
-                    task['cphase'] = pproc_task['sweep_points']['cphases'][i]
+                for task in tl:
+                    assert len(task['cphases']) == nr_cphases,\
+                        "Number of cphases inconsistent between tasks!"
+                    task['cphase'] = task['cphases'][i]
                 self.xeb_measurements += [
                     TwoQubitXEB(tl, sweep_points, qubits, nr_seqs=nr_seqs,
                                 cycles=cycles, measure=False, **kw)]
