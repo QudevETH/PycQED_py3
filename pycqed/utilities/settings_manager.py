@@ -4,9 +4,6 @@
 # for more details.
 from __future__ import annotations
 
-from pycqed.analysis import analysis_toolbox as a_tools
-import pycqed.gui.dict_viewer as dict_viewer
-from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
 import logging
 
 logger = logging.getLogger(__name__)
@@ -241,6 +238,7 @@ class Station(DelegateAttributes):
             self.timestamp = ''
         else:
             # a_tools.verify_timestamp returns unified version of the timestamps
+            from pycqed.analysis import analysis_toolbox as a_tools
             self.timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
 
     def snapshot(self) -> dict[any, any]:
@@ -320,6 +318,7 @@ class SettingsManager:
 
         """
         if timestamp is not None:
+            from pycqed.analysis import analysis_toolbox as a_tools
             timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
         else:
             raise TypeError(f'Cannot add station, because the timestamp is '
@@ -332,7 +331,8 @@ class SettingsManager:
                             'or is not snapshotable.')
 
     def load_from_file(self, timestamp: str, file_format='msgpack',
-                       compression=False, extension=None):
+                       compression=False, extension=None,
+                       filepath=None):
         """
         Loads station into the settings manager from saved files.
         Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5
@@ -345,19 +345,21 @@ class SettingsManager:
             extension (str): possibility to specify the extension of the file
                 if is not matching the default extension (see respective loader
                 class for default extensions)
+            filepath (str): optionally a filepath can be passed of the file
+                which should be loaded.
 
         Returns: Station which was created by the saved data.
 
         """
         if file_format == 'hdf5':
             loader = HDF5Loader(timestamp=timestamp, h5mode='r',
-                                extension=extension)
+                                extension=extension, filepath=filepath)
         elif file_format == 'pickle':
             loader = PickleLoader(timestamp=timestamp, compression=compression,
-                                  extension=extension)
+                                  extension=extension, filepath=filepath)
         elif file_format == 'msgpack':
             loader = MsgLoader(timestamp=timestamp, compression=compression,
-                               extension=extension)
+                               extension=extension, filepath=filepath)
         else:
             raise NotImplementedError(f"File format '{file_format}' "
                                       f"not supported!")
@@ -381,6 +383,7 @@ class SettingsManager:
         # snap_viewer = dict_viewer.DictViewerWindow(
         #     snap, 'Snapshot timestamp: %s' % timestamp)
         # qt_app.exec_()
+        import pycqed.gui.dict_viewer as dict_viewer
         snapshot_viewer = dict_viewer.SnapshotViewer(
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
@@ -409,6 +412,7 @@ class Loader:
         """
         if self.filepath is not None:
             return self.filepath
+        from pycqed.analysis import analysis_toolbox as a_tools
         folder_dir = a_tools.get_folder(self.timestamp, suppress_printing=False)
         self.filepath = a_tools.measurement_filename(folder_dir,
                                                      ext=self.extension)
@@ -508,6 +512,7 @@ class HDF5Loader(Loader):
         Returns: Instrument object.
 
         """
+        from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
         inst = Instrument(inst_name)
         # load parameters
         for param_name in list(inst_group.attrs):
@@ -568,14 +573,18 @@ class PickleLoader(Loader):
         #         timestamp, extension='pickle')
 
     def get_snapshot(self):
+        return self._get_snapshot(self.filepath, self.compression)
+
+    @staticmethod
+    def _get_snapshot(filepath, compression):
         """
         Opens the pickle file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
         """
         import pickle
 
-        with open(self.filepath, 'rb') as f:
-            if self.compression:
+        with open(filepath, 'rb') as f:
+            if compression:
                 import blosc2
                 byte_data = blosc2.decompress(f.read())
                 snap = pickle.loads(byte_data)
@@ -600,6 +609,10 @@ class MsgLoader(Loader):
         self.filepath = self.get_filepath()
 
     def get_snapshot(self):
+        return self._get_snapshot(self.filepath, self.compression)
+
+    @staticmethod
+    def _get_snapshot(filepath, compression):
         """
         Opens the pickle file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
@@ -611,8 +624,8 @@ class MsgLoader(Loader):
         # and must be copied if they are to be modified
         msgpack_numpy.patch()
 
-        with open(self.filepath, 'rb') as f:
-            if self.compression:
+        with open(filepath, 'rb') as f:
+            if compression:
                 import blosc2
                 byte_data = blosc2.decompress(f.read())
             else:
