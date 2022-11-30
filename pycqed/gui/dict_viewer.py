@@ -764,47 +764,63 @@ class SnapshotViewer:
         qt_app.exec_()
 
 
+def get_snapshot_from_filepath(filepath):
+    """
+    Returns the snapshot of the instrument settings of a given file.
+    Args:
+        filepath (str): OS path of the instrument settings file. File extension
+            needs to be '.hdf5', '.pickle', '.picklec', '.msg', '.msgc'
+            The 'c' stands for compressed files (compressed with blosc2).
+
+    Returns: Snapshot as a dictionary
+    """
+    file_name, file_extension = os.path.splitext(filepath)
+    if 'pickle' in file_extension:
+        from pycqed.utilities.settings_manager import PickleLoader
+        if file_extension == '.picklec':
+            snap = PickleLoader._get_snapshot(filepath, compression=True)
+        else:
+            snap = PickleLoader._get_snapshot(filepath, compression=False)
+
+    elif 'msg' in file_extension:
+        from pycqed.utilities.settings_manager import MsgLoader
+        if file_extension == '.msgc':
+            snap = MsgLoader._get_snapshot(filepath, compression=True)
+        else:
+            snap = MsgLoader._get_snapshot(filepath, compression=False)
+
+    elif 'hdf5' in file_extension:
+        from pycqed.utilities.settings_manager import SettingsManager
+        sm_tmp = SettingsManager()
+        # timestamp needs to be set to some default value
+        sm_tmp.load_from_file(timestamp='19980128_000000', file_format='hdf5',
+                              filepath=filepath)
+        snap = sm_tmp.stations['19980128_000000'].snapshot()
+
+    else:
+        raise NotImplementedError("Extension name is not known. "
+                                  "Known extensions: 'hdf5', 'pickle', "
+                                  "'picklec', 'msg', 'msgc'.")
+
+    return snap
+
+
 if __name__ == "__main__":
     import argparse
-    import pycqed.utilities.settings_manager as sm
-    import pycqed.analysis.analysis_toolbox as a_tools
+    import os
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", help="Directory of the settings.")
-    parser.add_argument("--fetch-data-dir",
-                        help="Directory of the fetch drive.")
-    parser.add_argument("--timestamp", help="Timestamp of the settings.",
+    parser.add_argument("--filepath",
+                        help="Filepath of the instrument settings file.",
                         required=True,
                         type=str)
-    parser.add_argument("--file-format",
-                        help="File format of the settings: "
-                             "hdf5, pickle or msgpack.",
-                        required=True,
-                        type=str)
-    parser.add_argument("--compression",
-                        help="Set to True if file is compressed with blosc2",
-                        type=bool,
-                        default=False)
-    parser.add_argument("--extension",
-                        help="Extension of the file if not standardized: "
-                             "hdf5: .hdf5, pickle: .pickle, msgpack: .msgpack "
-                             "and an extra c at the end for compressed files.")
     args = parser.parse_args()
 
-    if args.data_dir is not None:
-        a_tools.datadir = args.data_dir
+    filepath = args.filepath
+    snap = get_snapshot_from_filepath(filepath)
 
-    if args.fetch_data_dir is not None:
-        a_tools.fetch_data_dir = args.fetch_data_dir
+    snapshot_viewer = SnapshotViewer(
+        snapshot=snap,
+        timestamp=filepath)
+    snapshot_viewer.spawn_snapshot_viewer()
 
-    if (args.data_dir is None) and (args.fetch_data_dir is None):
-        raise NotImplementedError("Data directory or fetch directory needs "
-                                  "to be initialized")
-
-    settings_manager = sm.SettingsManager()
-    settings_manager.load_from_file(timestamp=args.timestamp,
-                                    file_format=args.file_format,
-                                    compression=args.compression,
-                                    extension=args.extension)
-
-    settings_manager.spawn_snapshot_viewer(timestamp=args.timestamp)
