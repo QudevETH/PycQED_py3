@@ -1194,7 +1194,9 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 ax.plot([], [], 'o-', c=line_p.get_color(),
                         label='$\\sqrt{\mathrm{Purity}}$')
                 ax.legend(frameon=False, **legend_kw)
-                ax.set_title(f'{filename_prefix}XEB {mobjn} - {timestamp}')
+                cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}" \
+                    if 'cphase' in data_dict['exp_metadata'] else ''
+                ax.set_title(f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}')
 
                 ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
                 ax.set_xlabel('Number of cycles, $m$')
@@ -1219,8 +1221,8 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                         fmts = ['png']
                     fn = deepcopy(filename)
                     if fn is None:
-                        fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
-                             f'{timestamp}'
+                        fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs' \
+                             f'{cz_name}_{timestamp}'
                     if log_scale:
                         fn += '_log'
                     fn = f'{filename_prefix}{fn}'
@@ -1438,6 +1440,8 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
         for mobjn in meas_obj_names:
             proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
                                               data_dict)
+            if 'proba_exp_all' in params:  # override if passed by the user
+                proba_exp_all = params['proba_exp_all'][mobjn]
             xeb_proba_found = True
             if proba_exp_all is None:
                 proba_exp_all = data_dict[mobjn][data_key]
@@ -1519,7 +1523,9 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                      rotation=90)
             fig.text(0.5, 0, f'Probability$\\cdot {d}$', va='bottom',
                      ha='center')
-            fig.text(0.5, 1, f'{filename_prefix}XEB {mobjn} - {timestamp}',
+            cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+                if 'cphase' in data_dict['exp_metadata'] else ''
+            fig.text(0.5, 1, f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}',
                      ha='center', va='top')
             fig.subplots_adjust(0.11, 0.075, 0.99, 0.92,
                                 wspace=0.05, hspace=0.05)
@@ -1531,7 +1537,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                 fn = deepcopy(filename)
                 if fn is None:
                     fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
-                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
+                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs{cz_name}_' \
                          f'{timestamp}'
                 fn = f'{filename_prefix}{fn}'
                 for ext in fmts:
