@@ -342,7 +342,11 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         super().__init__(name, element_name, **kw)
         if self.cphase is not None:
             self.trans_amplitude2, self.basis_rotation = \
-                self.calc_cphase_params(self.cphase, self.cphase_calib_dict)
+                self.calc_cphase_params(
+                    cphase=self.cphase,
+                    cphase_calib_dict = self.cphase_calib_dict,
+                    ta_target = self.amplitude2 / 2,
+                )
         self._update_lengths_amps_channels()
 
 
@@ -372,37 +376,42 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         return params
 
     @staticmethod
-    def calc_cphase_params(phi, cphase_calib_dict):
+    def calc_cphase_params(cphase, cphase_calib_dict, ta_target=0):
         # calib: measure trans_amplitude2 -> cphase and finetuning params
         # this function: cphase -> trans_amplitude2 and finetuning params
 
         # Currently cphase_calib_dict = {'param': [values...] ...} including
         # 'cphase', all with the same number of points.
         # Could be extended to instead hold tuples of (cphase_vals,
-        # param_vals) for each param, to allow different granularities.
-        # FIXME deal with phase wrapping for cphase and basis_rotation
+        # param_vals) for each param, to allow different granularities
+
         params_to_interpolate = ['trans_amplitude2', 'basis_rotation']
         param_vals = []
 
-        cp = cphase_calib_dict['cphase']
-        # For cases where cp is split over two periods
-        # ( assuming that min(cp) < 0 < max(cp) )
-        if phi>np.max(cp):
-            phi = phi-360
+        cp_list = cphase_calib_dict['cphase']
+        # Get all possible values for the requested cphase
+        # modulo 360 contained in the calib dict
+        possible_cp = np.arange(min(cp_list)+(cphase-min(cp_list))%360,
+                                 max(cp_list), 360)
+        # Get corresponding transition amplitudes
+        f = interp1d(cp_list, cphase_calib_dict['trans_amplitude2'])
+        possible_ta = f(possible_cp)
+        # Choose the cphase with trans_amplitude2 closest to ta_target
+        id_closest = np.abs(possible_ta-ta_target).argmin()
+        cphase = possible_cp[id_closest]
 
+        # Interpolate all params at cp
         for param_name in params_to_interpolate:
             cal_data = cphase_calib_dict[param_name]
             if isinstance(cal_data, dict):  # for 'basis_rotation'
                 param_vals_dict = {}
                 for qbn, qbn_data in cal_data.items():
-                    f = interp1d(cp, qbn_data)
-                    param_vals_dict.update({qbn: float(f(phi))})
+                    f = interp1d(cp_list, qbn_data)
+                    param_vals_dict.update({qbn: float(f(cphase))})
                 param_vals.append(param_vals_dict)
             else:
-                f = interp1d(cp, cal_data)
-                print(f"cal_data = {cal_data}")
-                print(f"phi = {phi}")
-                param_vals.append(float(f(phi)))
+                f = interp1d(cp_list, cal_data)
+                param_vals.append(float(f(cphase)))
         return param_vals
 
         # --- Below is code from Nathan's CARB
