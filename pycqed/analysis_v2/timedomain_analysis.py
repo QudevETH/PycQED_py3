@@ -5365,8 +5365,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
             for outer_key, ramsey_pars_dict in apd.items():
                 if outer_key in ['qubit_frequencies', 'reparking_params',
                                  'residual_ZZs']:
-                    # This is only for ReparkingRamseyAnalysis.
-                    # It is handled by prepare_fitting_qubit_freqs of that class
+                    # This is only for ReparkingRamseyAnalysis and
+                    # ResidualZZAnalysis. It is handled those classes directly.
                     continue
                 # outer_key is of the form qbn_i if TwoD else qbn.
                 # split into qbn and i. (outer_key + '_') is needed because if
@@ -5741,9 +5741,9 @@ class ResidualZZAnalysis(RamseyAnalysis):
 
         Args:
             fit_res_base (lmfit.ModelResult): Ramsey fit for the measurement
-                with the target qubit in the ground state the whole time.
+                with the control qubit in the ground state the whole time.
             fit_res_prep (lmfit.ModelResult): Ramsey fit for the measurement
-                with the target qubit excited.
+                with the control qubit excited.
 
         Returns:
             dict with the individual detunings ('freq_g', 'freq_e') and the
