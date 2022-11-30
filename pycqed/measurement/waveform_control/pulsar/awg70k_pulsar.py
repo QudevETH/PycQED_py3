@@ -27,7 +27,7 @@ class AWG70kPulsar(PulsarAWGInterface):
 
     GRANULARITY = 160
     ELEMENT_START_GRANULARITY = 160 / 25e9
-    MIN_LENGTH_SAMPLES = 160
+    MIN_LENGTH_SAMPLES = 2400  # Changed in accordance with the qcodes driver
     MIN_LENGTH = MIN_LENGTH_SAMPLES / 25e9
     INTER_ELEMENT_DEADTIME = 0.0
     CHANNEL_AMPLITUDE_BOUNDS = {
