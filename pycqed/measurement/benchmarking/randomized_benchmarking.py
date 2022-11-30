@@ -798,7 +798,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
             for length in cycles:
-                cphases = np.random.uniform(0, 1, length) * 180 \
+                cphases = np.random.uniform(0, 1, length) * 360 \
                     if cphase=='randomized' else np.repeat([cphase], length)
                 gates = []
                 gates.append(s_gates[1] + "qb_1")
