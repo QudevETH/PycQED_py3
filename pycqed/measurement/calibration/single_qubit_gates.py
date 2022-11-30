@@ -2647,7 +2647,8 @@ class ResidualZZ(Ramsey):
                 param_name=f'{qbc}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1)
         return super().update_sweep_points()
 
     def sweep_block(self, qbc, qb, sweep_points, **kw):
