@@ -14,9 +14,7 @@ from functools import reduce
 import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
-
-# import sys
-# pp_mod.search_modules.add(sys.modules[__name__])
+from pycqed.analysis import fitting_models as fit_mods
 
 
 
@@ -32,11 +30,59 @@ xentropy_rhs = lambda pops_ideal, d: d*np.sum(
 xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(d*np.sum(
     np.array([pm*pi for pm, pi in zip(pops_meas, pops_ideal)]),
     axis=len(np.array(pops_meas).shape)-1) - 1)
-# xentropy_lhs = lambda pops_meas, pops_ideal, d: np.mean(np.sum(
-#     d*pops_meas-1,
-#     axis=len(np.array(pops_meas).shape)-1))
 xentropy_fidelity = lambda pops_meas, pops_ideal, d: \
     xentropy_lhs(pops_meas, pops_ideal, d) / xentropy_rhs(pops_ideal, d)
+
+
+def crossEntropy(p, q):
+    """
+    Calculates the cross-entropy between p and q.
+
+    Args:
+        p (np.array): qubit state probabilities, typically the measured ones
+        q (np.array): qubit state probabilities, typically the calculated ones
+
+    Returns:
+        the cross-entropy
+    """
+    # if any of the entries in q are 0, we need to set p*np.log(q) = 0
+    idxs = np.where(q == 0)[0]
+    prod = p*np.log(q)
+    if len(idxs) > 0:
+        prod[idxs] = 0
+    return np.sum(-prod)
+entropy = lambda p: crossEntropy(p, p)
+def crossEntropyFidelity(pops_meas, pops_ideal, d):
+    """
+    Calculate cross entropy fidelity as described in this paper:
+    https://journals.aps.org/prl/supplemental/10.1103/PhysRevLett.125.120504/supp.pdf
+
+    Args:
+        pops_meas (array): measured qubit populations for a fixed XEB sequence
+            length. Should have shape (nr_xeb_seqs, n), where n is the number of
+            states. The columns should correspond to the order [pg, pe] for
+            one qubit, and [pgg, pge, peg, pee] for two qubits.
+        pops_ideal (array): calculated qubit populations for a fixed XEB
+            sequence length. Should have shape (nr_xeb_seqs, n), where n is the
+            number of states. The columns should correspond to the order
+            [pg, pe] for one qubit, and [pgg, pge, peg, pee] for two qubits.
+        d (int): dimension of the Hilbert space (2**n for n qubits)
+
+    Returns:
+        the cross-entropy fidelity between pops_meas and pops_ideal
+    """
+    pm = deepcopy(pops_meas)
+    pi = deepcopy(pops_ideal)
+    pops_incoh = 1/d/len(pi)
+    pm /= len(pm)
+    pm = pm.flatten()
+    pi /= len(pi)
+    pi = pi.flatten()
+    numerator = crossEntropy(pops_incoh, pi) - \
+                crossEntropy(pm, pi)
+    denominator = crossEntropy(pops_incoh, pi) - entropy(pi)
+    return numerator/denominator
+
 
 
 ### Single qubit XEB ###
@@ -238,7 +284,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                               sweep_type=None, save_processed_data=True,
                               probability_states=None, save_figures=True,
                               raw_keys_in=None, save=True, save_filename=None,
-                              renormalize=True, shots_selection_map=None):
+                              renormalize=True, shots_selection_map=None,
+                              **params):
 
     # (nr_seq, len(cycles), nr_cycles)
     # list with nr_seq lists; each sublist has length len(cycles)
@@ -263,7 +310,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
-        compression_factor = hlp_mod.get_param('compression_factor', data_dict)
+        compression_factor = hlp_mod.get_param('compression_factor', data_dict,
+                                               **params)
         n_shots = hlp_mod.get_instr_param_from_hdf_file(
             meas_obj_names[0], 'acq_shots', timestamp)
 
@@ -402,7 +450,7 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
             # calculate assuming ideal gate
             pops_ideal = calculate_ideal_circuit_1qb(
                 nr_cycles, nr_seq, z_rots, init_state=init_state)
-            fidelities[ii] = xentropy_fidelity(pops_meas, pops_ideal, d)
+            fidelities[ii] = crossEntropyFidelity(pops_meas, pops_ideal, d)
             purities[ii] = sqrt_purity(pops_meas, d)
 
         hlp_mod.add_param(f'{mobjn}.fidelities', fidelities, data_dict, **params)
@@ -874,7 +922,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         p_m = sqrt_purity(pops_meas, d)
         purity[cycles[i]] = p_m
         prob_ideal = proba_from_all_circuits(current_circuits)
-        xeb = xentropy_fidelity(pops_meas, np.array(prob_ideal), d)
+        xeb = crossEntropyFidelity(pops_meas, np.array(prob_ideal), d)
         xeb_data[cycles[i]] = xeb
         i += 1
 
@@ -989,6 +1037,8 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                              legend_kw=None, text_position=None, text_kw=None,
                              **params):
 
+    plot_mod.get_default_plot_params()
+    fig, ax = plt.subplots()
     try:
         if legend_kw is None:
             legend_kw = {}
@@ -1051,9 +1101,9 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 if apm is None:
                     params['add_param_method'] = 'replace'
 
-                guess_pars = {'A': {'value': 0.5},# 'min': -1, 'max': 1},
-                              'e': {'value': 0.01},# 'min': 0, 'max': 1},
-                              'B': {'value': 0.0}}# 'min': -1, 'max': 1}}
+                guess_pars = {'A': {'value': 1.0},
+                              'e': {'value': 0.01},
+                              'B': {'value': 0.0}}
 
                 # fit fidelities
                 guess_pars_to_use = deepcopy(guess_pars)
@@ -1088,9 +1138,6 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                     cz_error_rate = hlp_mod.get_param(
                         f'{mobjn}.cz_error_rate', data_dict)
 
-                plot_mod.get_default_plot_params()
-                fig, ax = plt.subplots()
-
                 if exclude_from_plot:
                     line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
                                       zorder=0)
@@ -1110,12 +1157,22 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
 
                     epc, epc_err = 100*fit_res_f.best_values["e"], \
                                    100*fit_res_f.params["e"].stderr
+                    hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
+                                      (epc/100, epc_err/100), data_dict,
+                                      **params)
                     ppc, ppc_err = 100*fit_res_p.best_values["e"], \
                                    100*fit_res_p.params["e"].stderr
+                    hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
+                                      (ppc/100, ppc_err/100), data_dict,
+                                      **params)
+                    ctrl_err = epc-ppc
                     ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
+                    hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
+                                      (ctrl_err/100, ctrl_err_err/100),
+                                      data_dict, **params)
                     textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
                               f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
-                              f'\n{epc-ppc:.3f}% $\\pm$ ' \
+                              f'\n{ctrl_err:.3f}% $\\pm$ ' \
                               f'{ctrl_err_err:.3f}% ctrl. errors per c.'
                     if cz_error_rate is not None:
                         textstr += f'\nCZ error: ' \
@@ -1176,11 +1233,163 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
         return
 
 
+def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
+                         savefig=True, show=False, **params):
+    """
+    Fit and plot the f-state population measured in a single-qubit
+    XEB experiment.
+
+    Args:
+        data_dict (dict): containing the f-state population and other needed
+            metdata (sweep points
+        meas_obj_names (list): of qubit names. One figure will be created for
+            each qubit.
+        data_key (str): 'correct_readout' to look at the readout-corrected data
+            or 'average_data' to look at the data without readout correction
+        savefig (bool): whether to save the figure or not. If True, the figure
+            is saved to data_dict['timestamps'][0].
+        show (bool): whether to show the figure or not
+        **params: keyword arguments: passed to extract_leakage_classified_shots
+    """
+    for mobjn in meas_obj_names:
+        fig, ax = plt.subplots()  # here such that we can close fig in case of error
+        try:
+            swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
+            cycles = swpts.get_sweep_params_property('values', 0)
+            pf = hlp_mod.get_param(f'{mobjn}.{data_key}.pf', data_dict,
+                                   raise_error=True, **params)
+
+            legend_info = {}
+            avg_leaked = np.mean(pf.reshape(swpts.length(1), swpts.length(0)),
+                                 axis=0)
+
+            # plot data
+            data_line, = ax.plot(cycles, avg_leaked, 'o')
+
+            # do fit
+            rbleak_mod = lmfit.Model(fit_mods.RandomizedBenchmarkingLeakage)
+            guess_pars = rbleak_mod.make_params(pu=0.01, pd=0.05, p0=0)
+            fit_res = rbleak_mod.fit(data=avg_leaked, numCliff=cycles,
+                                     params=guess_pars)
+
+            # add to data dict
+            hlp_mod.add_param(f'{mobjn}.fit_results.leakage',
+                              (fit_res.best_values["pu"],
+                               fit_res.params["pu"].stderr), data_dict,
+                              add_param_method='replace')
+
+            # plot fit line
+            cycles_fine = np.linspace(cycles[0], cycles[-1], 100)
+            ax.plot(cycles_fine,
+                    fit_res.model.func(cycles_fine, **fit_res.best_values),
+                    '-', c=data_line.get_color())
+
+            # add legend
+            legend_info[data_line.get_color()] = \
+                f'{mobjn.upper()}: {100 * fit_res.best_values["pu"]:.5f}%' \
+                f'$\\pm${100 * fit_res.params["pu"].stderr:.5f}%'
+            for c, label in legend_info.items():
+                ax.plot([], [], '-o', c=c, label=label)
+            ax.legend(frameon=False)
+
+            ax.set_xlabel('Number of Cycles, $m$')
+            ax.set_ylabel('Probability, $P(f)$')
+            timestamp = data_dict['timestamps'][0]
+            ax.set_title(f'Leakage {mobjn} - {timestamp}')
+
+            if savefig:
+                fig.savefig(data_dict['folders'][0] +
+                            f'\\Leakage_{mobjn}_{timestamp}.png',
+                            dpi=600, bbox_inches='tight')
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+        except Exception as e:
+            plt.close(fig)
+            raise e
+
+
+def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
+                         savefig=True, show=False, **params):
+    """
+    Fit and plot the f-state population measured in a two-qubit
+    XEB experiment.
+
+    This function uses extract_leakage_classified_shots to calculate the
+    leakage probability that one qubit has leaked or that either of the two
+    qubits have leaked, creating a subplot for each case.
+
+    Args:
+        data_dict (dict): containing the f-state population and other needed
+            metdata (sweep points
+        meas_obj_names (list): of qubit names
+        data_key (str): 'correct_readout' to look at the readout-corrected data
+            or 'average_data' to look at the data without readout correction
+        savefig (bool): whether to save the figure or not. If True, the figure
+            is saved to data_dict['timestamps'][0].
+        show (bool): whether to show the figure or not
+        **params: keyword arguments: passed to extract_leakage_classified_shots
+    """
+    fig, axs = plt.subplots(3, sharex=True,
+                            figsize=(plt.rcParams['figure.figsize'][0], 3))
+    try:
+        swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
+        cycles = swpts.get_sweep_params_property('values', 0)
+        # get leakage
+        mobjn_joined = ",".join(meas_obj_names)
+        dat_proc_mod.extract_leakage_classified_shots(
+            data_dict, [f'{mobjn_joined}.{data_key}'],
+            meas_obj_names=meas_obj_names, add_param_method='replace', **params)
+
+        for i, ax in enumerate(axs):
+            keys = list(data_dict['extract_leakage_classified_shots'])
+            avg_leak = np.mean(
+                data_dict['extract_leakage_classified_shots'][keys[i]].reshape(
+                    swpts.length(1), swpts.length(0)),
+                axis=0)
+            # plot data
+            ax.plot(cycles, avg_leak, 'o')
+
+            rbleak_mod = lmfit.Model(fit_mods.RandomizedBenchmarkingLeakage)
+            guess_pars = rbleak_mod.make_params(pu=0.01, pd=0.05, p0=0)
+            fit_res = rbleak_mod.fit(data=avg_leak, numCliff=cycles,
+                                     params=guess_pars)
+
+            cycles_fine = np.linspace(cycles[0], cycles[-1], 100)
+            ax.plot(cycles_fine, fit_res.model.func(
+                cycles_fine, **fit_res.best_values), '-C0')
+
+            textstr = f'{keys[i]}: '
+            textstr += f'{100*fit_res.best_values["pu"]:.3f}%' \
+                       f'$\\pm${100*fit_res.params["pu"].stderr:.3f}%'
+            ax.text(0.95, 0.075, textstr,
+                    ha='right', va='bottom', transform=ax.transAxes)
+
+        axs[2].set_xlabel('Cycles, $m$')
+        axs[1].set_ylabel('Probability, $P_f$')
+
+        timestamp = data_dict['timestamps'][0]
+        axs[0].set_title(f'Leakage {mobjn_joined} - {timestamp}')
+
+        if savefig:
+            fig.savefig(data_dict['folders'][0] +
+                        f'\\Leakage_{mobjn_joined}_{timestamp}.png',
+                        dpi=600, bbox_inches='tight')
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    except Exception as e:
+        plt.close(fig)
+        raise e
+
+
 def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                             savefig=True, fmts=None, figure_width='1col',
                             figure_height=4.1, filename=None, filename_prefix='',
                             numcols=None, numrows=None, renormalize=True,
-                            show=False, **params):
+                            show=False, nr_sp_2d=None, **params):
     try:
         d = hlp_mod.get_param('dim_hilbert', data_dict, raise_error=True,
                               **params)
@@ -1202,7 +1411,8 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
         swpts = hlp_mod.get_measurement_properties(data_dict,
                                                    props_to_extract=['sp'])
         cycles = swpts.get_sweep_params_property('values', sweep_type['cycles'])
-        nr_seq = swpts.length(sweep_type['seqs'])
+        if nr_sp_2d is None:
+            nr_sp_2d = swpts.length(sweep_type['seqs'])
         renormalize = hlp_mod.get_param('renormalize', data_dict,
                                         default_value=renormalize)
 
@@ -1216,6 +1426,8 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                     numrows = len(cycles) // numr
                     break
         print(numrows, numcols)
+        if numcols == 1:
+            figure_width = 2
         return_dict = {}
         for mobjn in meas_obj_names:
             proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
@@ -1257,13 +1469,13 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
 
                 if len(proba_exp.shape) > 1:
                     # 2 qb case
-                    proba_exp = proba_exp.reshape(swpts.length(1),
+                    proba_exp = proba_exp.reshape(nr_sp_2d,
                                                   swpts.length(0),
                                                   proba_exp.shape[-1])
                     proba_exp = proba_exp[:, i, :]
                 else:
                     # 1 qb case
-                    proba_exp = proba_exp.reshape(swpts.length(1),
+                    proba_exp = proba_exp.reshape(nr_sp_2d,
                                                   swpts.length(0))
                     proba_exp = np.reshape(proba_exp[:, i],
                                            (len(proba_exp[:, i]), 1))
@@ -1288,8 +1500,12 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
 
             # add legend
             odd_nr_cols = numcols % 2 == 1
-            ax = axs[0, (numcols // 2 + odd_nr_cols) - 1] if \
-                hasattr(axs, "shape") else axs
+            if not hasattr(axs, "shape"):
+                ax = axs
+            elif len(axs.shape) == 1:
+                ax = axs[(numcols // 2 + odd_nr_cols) - 1]
+            else:
+                ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
             ax.legend(frameon=False, loc='lower center', ncol=2,
                       bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
 
@@ -1309,7 +1525,7 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                 fn = deepcopy(filename)
                 if fn is None:
                     fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
-                         f'{cycles[-1]}cycles_{nr_seq}seqs_' \
+                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
                          f'{timestamp}'
                 fn = f'{filename_prefix}{fn}'
                 for ext in fmts:

@@ -3,6 +3,7 @@ log = logging.getLogger(__name__)
 import re
 import os
 import h5py
+import traceback
 import itertools
 import numpy as np
 from numpy import array  # Needed for eval. Do not remove.
@@ -43,15 +44,20 @@ def get_hdf_param_value(group, param_name):
     return convert_attribute(s)
 
 
-def get_value_names_from_timestamp(timestamp, file_id=None, mode='r'):
+def get_value_names_from_timestamp(timestamp, **params):
     """
-    Returns value_names from the HDF5 file specified by timestamp.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :return: list of value_names
+    Returns value_names from an HDF5 file.
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        list of value_names
     """
-    folder = a_tools.get_folder(timestamp)
-    h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-    data_file = h5py.File(h5filepath, mode)
+
+    data_file = open_hdf_file(timestamp, **params)
     try:
         channel_names = get_hdf_param_value(data_file['Experimental Data'],
                                             'value_names')
@@ -62,26 +68,29 @@ def get_value_names_from_timestamp(timestamp, file_id=None, mode='r'):
         raise e
 
 
-def get_param_from_metadata_group(timestamp=None, param_name=None, file_id=None,
-                                  data_file=None, close_file=True, mode='r'):
+def get_param_from_metadata_group(timestamp=None, param_name=None,
+                                  data_file=None, close_file=True, **params):
     """
     Get a parameter with param_name from the Experimental Metadata group in
-    the HDF5 file specified by timestamp, or return the whole group if
+    an HDF5 file, or return the whole group if
     param_name is None.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :param param_name: (str) name of a key in Experimental Metadata group
-    :param data_file: (HDF file) opened HDF5 file
-    :param close_file: (bool) whether to close the HDF5 file
-    :return: the value of the param_name or the whole experimental metadata
-    dictionary
-    """
-    if data_file is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or data_file.')
-        folder = a_tools.get_folder(timestamp)
-        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-        data_file = h5py.File(h5filepath, mode)
 
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        param_name (str): name of a key in Experimental Metadata group. If None,
+            the function returns the whole Experimental Metadata group as a dict
+        data_file (open HDF file): measurement file from which to load data
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        the value of the param_name or the whole experimental metadata
+        dictionary
+    """
+
+    if data_file is None:
+        data_file = open_hdf_file(timestamp, **params)
     try:
         if param_name is None:
             group = data_file['Experimental Data']
@@ -134,8 +143,6 @@ def get_param_from_analysis_group(param_name, timestamp=None,
             corresponding to those paths as values
     """
     if folder is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or folder.')
         folder = a_tools.get_folder(timestamp)
 
     ana_group = get_params_from_hdf_file(
@@ -158,22 +165,62 @@ def get_param_from_analysis_group(param_name, timestamp=None,
     return param_value
 
 
-def get_data_from_hdf_file(timestamp=None, data_file=None,
-                           close_file=True, file_id=None, mode='r'):
+def get_param_from_fit_res(param, fit_res, split_char='.'):
     """
-    Return the measurement data stored in Experimental Data group of the file
-    specified by timestamp.
-    :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-    :param data_file: (HDF file) opened HDF5 file
-    :param close_file: (bool) whether to close the HDF5 file
-    :return: numpy array with measurement data
+    Extract the value of a parameter from a fit result object or dict.
+
+    When a fit result is loaded from an HDF file, it is loaded as a dict, and
+    the way to access the relevant fit parameters is therefore slightly
+    different compared to accessing them from a lmfit.ModelResult instance. This
+    function returns the desired parameters from either a ModelResult instance
+    or a dict, so it is convenient to use in analyses notebooks for example,
+    where the data you process can be either a ModelResult instance or a
+    loaded fit results dict.
+
+    Args:
+        param (str): of the form param_name + split_char + param_attribute where
+            param_name is the name of a fit parameter in fit_res, and
+            para_attribute is a fit attribute stored by lmfit, ex: value,
+            stderr, min, max, correl, init_value etc.
+        fit_res (instance of lmfit.model.ModelResult or dict):
+            contains the fit results. This parameter is a dict whenever it
+            is loaded from an HDF file.
+        split_char (str): the character around which to split param
+
+    Returns:
+        value corresponding to param
     """
+    param_split = param.split(split_char)
+    try:
+        p = fit_res.params[param_split[0]]
+        p_name = param_split[1]
+        if p_name == 'value':
+            p_name = '_val'
+        return p.__dict__[p_name]
+    except AttributeError:
+        return get_param(f'params.{param}', fit_res, split_char=split_char,
+                         raise_error=True)
+
+
+def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
+                           **params):
+    """
+    Return the measurement data stored in the Experimental Data group of an
+    HDF file.
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        data_file (open HDF file): measurement file from which to load data
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        numpy array with the dataset
+    """
+
     if data_file is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or data_file.')
-        folder = a_tools.get_folder(timestamp)
-        h5filepath = a_tools.measurement_filename(folder, file_id=file_id)
-        data_file = h5py.File(h5filepath, mode)
+        data_file = open_hdf_file(timestamp, **params)
     try:
         group = data_file['Experimental Data']
         if 'Data' in group:
@@ -188,26 +235,31 @@ def get_data_from_hdf_file(timestamp=None, data_file=None,
     return dataset
 
 
-def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r', file_id=None):
+def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
+                  file_id=None, **params):
     """
-    Opens the hdf5 file with flexible input parameters. If no parameter is given,
-    opens the  hdf5 of the last measurement in reading mode.
-    Args:
-        :param timestamp: (str) measurement timestamp of form YYYYMMDD_hhmmsss
-        :param folder: (str) path to file location
-        :param mode filepath: (str) path to hdf5 file. Overwrites timestamp
-            and folder
-        :param mode: (str) mode to open the file ('r' for read),
-            ('r+' for read/write)
-        :param file_id: (str) file id
-    :return: opened HDF5 file
+    Opens an HDF file.
 
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        folder (str): path to file location without the filename + extension
+        filepath (str): path to HDF file, including the filename + extension.
+            Overwrites timestamp and folder.
+        mode (str): mode in which to open the file ('r' for read,
+            'w' for write, 'r+' for read/write).
+        file_id (str): suffix of the file name
+        **params: keyword arguments passed to measurement_filename,
+            see docstring there for acceptable input parameters
+
+    Returns:
+        open HDF file
     """
     if filepath is None:
         if folder is None:
             assert timestamp is not None
             folder = a_tools.get_folder(timestamp)
-        filepath = a_tools.measurement_filename(folder, file_id=file_id)
+        filepath = a_tools.measurement_filename(folder, file_id=file_id,
+                                                **params)
     return h5py.File(filepath, mode)
 
 
@@ -226,14 +278,20 @@ def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
     :return: thresholds of the form
         {meas_obj_name: classification threshold value).
     """
+    use_default_th_path = th_path is None
     thresholds = {}
     for mobjn in meas_obj_names:
         if acq_dev_name is None:
             # take the one defined in mobjn
-            acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'acq_dev',
-                                                         timestamp, **params)
-
-        if th_path is None:
+            try:
+                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_acq',
+                                                             timestamp,
+                                                             **params)
+            except KeyError:
+                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_uhf',
+                                                             timestamp,
+                                                             **params)
+        if use_default_th_path:
             # try to figure out the correct path for the acquisition instrument
             if 'uhf' in acq_dev_name.lower():
                 # acquisition device is a UHFQA
@@ -264,8 +322,6 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
     :return: value corresponding to param_name
     """
     if folder is None:
-        if timestamp is None:
-            raise ValueError('Please provide either timestamp or folder.')
         folder = a_tools.get_folder(timestamp)
 
     d = {}
@@ -410,8 +466,7 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
             folder = folder[-1]
 
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
-    h5filepath = a_tools.measurement_filename(folder, **params)
-    data_file = h5py.File(h5filepath, h5mode)
+    data_file = open_hdf_file(folder=folder, mode=h5mode, **params)
 
     try:
         for save_par, file_par in params_dict.items():
@@ -1251,32 +1306,29 @@ def check_equal(value1, value2):
                     return value1 == value2
 
 
-def read_analysis_file(timestamp=None, filepath=None, data_dict=None,
-                       file_id=None, ana_file=None, close_file=True, mode='r'):
+def read_analysis_file(timestamp=None, data_dict=None, ana_file=None,
+                       close_file=True, **params):
     """
     Creates a data_dict from an AnalysisResults file as generated by analysis_v3
-    :param timestamp: str with a measurement timestamp
-    :param filepath: (str) path to file
-    :param data_dict: dict where to store the file entries
-    :param file_id: suffix to the usual HDF measurement file found from giving
-        a measurement timestamp. Defaults to '_AnalysisResults,' the standard
-        suffix created by analysis_v3
-    :param ana_file: HDF file instance
-    :param close_file: whether to close the HDF file at the end
-    :param mode: str specifying the HDF read mode (if ana_file is None)
-    :return: the data dictionary
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        data_dict (dict): where to store the file entries
+        ana_file (open HDF file): AnalysisResults file from which to load
+        close_file (bool): whether to close the ana_file at the end
+        **params: keyword arguments passed to open_hdf_file, see docstring there
+            for acceptable input parameters
+
+    Returns:
+        the data_dict
     """
+
     if data_dict is None:
         data_dict = {}
     try:
         if ana_file is None:
-            if filepath is None:
-                if file_id is None:
-                    file_id = 'AnalysisResults'
-                folder = a_tools.get_folder(timestamp)
-                filepath = a_tools.measurement_filename(folder,
-                                                        file_id=f'_{file_id}')
-            ana_file = h5py.File(filepath, mode)
+            ana_file = open_hdf_file(timestamp, file_id='_AnalysisResults',
+                                     **params)
         read_from_hdf(data_dict, ana_file)
         if close_file:
             ana_file.close()
@@ -1299,64 +1351,77 @@ def read_from_hdf(data_dict, hdf_group):
     :param hdf_group: HDF group or file
     :return: nothing but updates data_dict with all values from hdf_group
     """
-    if not len(hdf_group) and not len(hdf_group.attrs):
-        path = hdf_group.name.split('/')[1:]
-        add_param('.'.join(path), {}, data_dict)
+    try:
+        if not len(hdf_group) and not len(hdf_group.attrs):
+            path = hdf_group.name.split('/')[1:]
+            add_param('.'.join(path), {}, data_dict)
 
-    for key, value in hdf_group.items():
-        if isinstance(value, h5py.Group):
-            read_from_hdf(data_dict, value)
-        else:
-            path = value.name.split('/')[1:]
-            if 'list_type' not in value.attrs:
-                val_to_store = value[()]
-            elif value.attrs['list_type'] == 'str':
-                # lists of strings needs some special care, see also
-                # the writing part in the writing function above.
-                val_to_store = [x[0] for x in value[()]]
+        for key, value in hdf_group.items():
+            if isinstance(value, h5py.Group):
+                read_from_hdf(data_dict, value)
             else:
-                val_to_store = list(value[()])
-            if path[-2] == path[-1]:
-                path = path[:-1]
-            add_param('.'.join(path), val_to_store, data_dict)
+                path = value.name.split('/')[1:]
+                if 'list_type' not in value.attrs:
+                    val_to_store = value[()]
+                elif value.attrs['list_type'] == 'str':
+                    # lists of strings needs some special care, see also
+                    # the writing part in the writing function above.
+                    val_to_store = [x[0] for x in value[()]]
+                else:
+                    val_to_store = list(value[()])
+                if path[-2] == path[-1]:
+                    path = path[:-1]
+                was_array = isinstance(val_to_store, np.ndarray)
+                val_to_store = convert_attribute(val_to_store)
+                if was_array:
+                    val_to_store = np.array(val_to_store)
+                try:
+                    add_param('.'.join(path), val_to_store, data_dict)
+                except Exception:
+                    log.warning(f'Could not load path {".".join(path)}.')
 
-    path = hdf_group.name.split('/')[1:]
-    for key, value in hdf_group.attrs.items():
-        if isinstance(value, str):
-            # Extracts "None" as an exception as h5py does not support
-            # storing None, nested if statement to avoid elementwise
-            # comparison warning
-            if value == 'NoneType:__None__':
-                value = None
-            elif value == 'NoneType:__emptylist__':
-                value = []
+        path = hdf_group.name.split('/')[1:]
+        for key, value in hdf_group.attrs.items():
+            if isinstance(value, str):
+                # Extracts "None" as an exception as h5py does not support
+                # storing None, nested if statement to avoid elementwise
+                # comparison warning
+                if value == 'NoneType:__None__':
+                    value = None
+                elif value == 'NoneType:__emptylist__':
+                    value = []
 
-        temp_path = deepcopy(path)
-        if temp_path[-1] != key:
-            temp_path += [key]
-        if 'list_type' not in hdf_group.attrs:
-            value = convert_attribute(value)
-            if key == 'cal_points' and not isinstance(value, str):
-                value = repr(value)
-        add_param('.'.join(temp_path), value, data_dict)
+            temp_path = deepcopy(path)
+            if temp_path[-1] != key:
+                temp_path += [key]
+            if 'list_type' not in hdf_group.attrs:
+                value = convert_attribute(value)
+                if key == 'cal_points' and not isinstance(value, str):
+                    value = repr(value)
+            try:
+                add_param('.'.join(temp_path), value, data_dict)
+            except Exception:
+                log.warning(f'Could not load path {".".join(path)}.')
 
-    if 'list_type' in hdf_group.attrs:
-        if (hdf_group.attrs['list_type'] == 'generic_list' or
-                hdf_group.attrs['list_type'] == 'generic_tuple'):
-            list_dict = pop_param('.'.join(path), data_dict)
-            data_list = []
-            for i in range(list_dict['list_length']):
-                data_list.append(list_dict[f'list_idx_{i}'])
-            if hdf_group.attrs['list_type'] == 'generic_tuple':
-                data_list = tuple(data_list)
-            if path[-1] == 'sweep_points':
-                data_list = sp_mod.SweepPoints(data_list)
-            add_param('.'.join(path), data_list, data_dict,
-                      add_param_method='replace')
-        else:
-            raise NotImplementedError('cannot read "list_type":"{}"'.format(
-                hdf_group.attrs['list_type']))
-
-
-
-
+        if 'list_type' in hdf_group.attrs:
+            if (hdf_group.attrs['list_type'] == 'generic_list' or
+                    hdf_group.attrs['list_type'] == 'generic_tuple'):
+                list_dict = pop_param('.'.join(path), data_dict)
+                data_list = []
+                for i in range(list_dict['list_length']):
+                    data_list.append(list_dict[f'list_idx_{i}'])
+                if hdf_group.attrs['list_type'] == 'generic_tuple':
+                    data_list = tuple(data_list)
+                if path[-1] == 'sweep_points':
+                    data_list = sp_mod.SweepPoints(data_list)
+                try:
+                    add_param('.'.join(path), data_list, data_dict,
+                              add_param_method='replace')
+                except Exception:
+                    log.warning(f'Could not load path {".".join(path)}.')
+            else:
+                raise NotImplementedError('cannot read "list_type":"{}"'.format(
+                    hdf_group.attrs['list_type']))
+    except Exception:
+        log.error(f"Unable to load: {hdf_group.name}.")
+        log.error(traceback.format_exc())
