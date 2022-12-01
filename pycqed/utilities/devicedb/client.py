@@ -1,6 +1,8 @@
 import logging
 import re
 from typing import Optional
+import datetime
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -9,7 +11,10 @@ from device_db_client import model
 from device_db_client.api import api_api
 from pycqed.utilities.devicedb import decorators, utils
 
-PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES = "qb_qb_coupl_res" # TODO: Where is the best place to store such pynames? I.e. how can I access a certain type in the database without knowing its id?
+# TODO: Where is the best place to store such pynames? I.e. how can I access a certain type in the database without knowing its id?
+PY_NAME_NORMAL_STATE_RESISTANCE = "nsr"
+PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES = "qb_qb_coupl_res"
+PY_NAME_COMPONENT_TYPE_QB = "qb"
 
 class Config:
     @decorators.at_least_one_not_none(['username', 'token'])
@@ -933,7 +938,7 @@ class Client:
             component (int, optional): the component id for the device property value, or None
             coupling (int, optional): the coupling id for the device property value, or None
             device_property_type (int): the device property type id for the device property value
-            
+
         Raises:
             ValueError: if any of the inputs are invalid
         """
@@ -947,11 +952,11 @@ class Client:
                                device_property_type=None,
                                **kwargs):
         """Get the device_property_value for the provided search terms
-        
+
         If `id` is not provided, `component` or `coupling`, and `device_property_type`
         must be provided. If these three parameters are given, it is assumed
         that only _accepted_ property values are requested.
-        
+
         Args:
             id (int|str, optional): the primary key of the device_property_value instance on the database
             component (int|str, optional): the primary key of the component for this device property value
@@ -1075,9 +1080,9 @@ class Client:
             device_property_type_py_name,
             associated_component_type_hint=None):
         """Finds an accepted device property value, from a py_name, for a qubit or an associated component
-        
+
         This is a utilities function to easily interface with the settings functionality for automated calibration routines.
-        
+
         Example:
             .. code-block:: python
                 # Get the ge_pi_half_amp for qubit 1
@@ -1085,14 +1090,14 @@ class Client:
                     qubit_py_name_num = 'qb1',
                     device_property_type_py_name = 'ge_pi_half_amp',
                 )
-                
+
                 # Get the ro_res_freq for the ro_res associated with qubit 1
                 device_property_value = get_device_property_value_from_param_args(
                     qubit_py_name_num = 'qb1',
                     device_property_type_py_name = 'ro_res_freq',
                     associated_component_type_hint = 'ro_res',
                 )
-                
+
                 # Get the raw floating value for the device property value instance
                 value = device_property_value.value
 
@@ -1190,7 +1195,7 @@ class Client:
         """Finds all accepted device property values, from a py_name, for a qubit or an associated component
 
         This is a utilities function to easily interface with the settings functionality for automated calibration routines.
-        
+
         Example:
             .. code-block:: python
                 # Get the ge_pi_half_amp for qubit 1
@@ -1198,14 +1203,14 @@ class Client:
                     qubit_py_name_num = 'qb1',
                     device_property_type_py_name = 'ge_pi_half_amp',
                 )
-                
+
                 # Get the ro_res_freq for the ro_res associated with qubit 1
                 device_property_values = get_all_device_property_values_from_param_args(
                     qubit_py_name_num = 'qb1',
                     device_property_type_py_name = 'ro_res_freq',
                     associated_component_type_hint = 'ro_res',
                 )
-                
+
                 # Get the raw floating value for the property value instance
                 for i,device_property_value in enumerate(device_property_values):
                     print(f"[{i}]: value: {device_property_value.value}")
@@ -1310,7 +1315,7 @@ class Client:
                 for coupling in coupling_list: # There are two couplings associated to one coupling resonator: One coupling to the one qubit and one coupling to the other qubit
                     if len(coupling["components"]) != 2: # Consistency check
                         raise SystemError("A coupling instance contains more or less than 2 elements. How can that happen? It should always contain exactly 2 elements.")
-                    
+
                     # Check what of the two elements is the coupling resonator and what is the qubit
                     el1 = coupling["components"][0]
                     el2 = coupling["components"][1]
@@ -1328,32 +1333,126 @@ class Client:
 
         return connectivity_graph
 
-    def upload_normal_state_resistances(self, path=None, device_name=None, device_id=None):
-        """Returns the connectivity graph of a device design
+    def upload_normal_state_resistances(self, path=None, device_name=None, device_id=None, comments="", values_in_kOhm=True, set_accepted=True):
+        """Uploads normal state resistance measurements that are stored in a file to the database.
 
         Args:
-            id (int|str): id of the device design
-            name (str): name of the device design
+            path (str): path of the file in which all measurements are stored
+            device_name (str): name of the device
+            device_id (int|str): id of the device
+            comments (str): comments regarding the measurements. This will be stored in the `Experiment` object that is created.
+            values_in_kOhm (bool): if True, the values in the file are processed in kOhm, if False, in Ohm.
+            set_accepted (bool): if True (default), the stored normal state resistances are directly marked as accepted
 
         Returns:
-            list: list of tuples, representing the connectivity graph of the device design
+
         """
 
+        # Check if correct arguments were provided
         if path == None:
             raise ValueError(
                 f"You have to provide a path to the text file in which the normal state resistances are stored."
             )
-        if device_name == None and device_id == None:
+        elif device_name == None and device_id == None:
             raise ValueError(
                 f"You have to provide either the device name or the device id to which the normal state resistances are related."
             )
-        if device_name != None and device_id != None:
+        elif device_name != None and device_id != None:
             raise ValueError(
-                f"You can only specify the device name or the device id but not both together (both should be unique already)."
+                f"You can only specify the device name or the device id but not both together (both should be unique by their own already)."
             )
-        api = self.get_api_instance()
 
         if device_name != None: # If device name was provided, get id
             device = self.get_device_for(name=device_name)
-            print(device)
+            device_id = device.id
+            device_design = device.devicedesign
+        else: # In that the device id was provided. Check if the id is valid and what the related device design is
+            try:
+                device = self.get_device_for(id=device_id)
+                device_name = f"{self.get_wafer_for(id=device.wafer).name}_{self.get_device_design_for(id=device.devicedesign).name}_{device.name}" # Used for creating the experiment object
+                device_design = device.devicedesign
+            except Exception as e:
+                print("Could not find a device for the provided id '{device_id}'. Exception: %s\n" % e)
+
+        # Find the right device property type for the normal state resistance
+        try:
+            nsr_property_type = self.get_device_property_type_for(
+                py_name=PY_NAME_NORMAL_STATE_RESISTANCE
+            )
+        except Exception as e:
+            print("Could not find the right device property type for normal state resistances. Exception: %s\n" % e)
+
+        # Find the right component type for a qubit
+        try:
+            qubit_component_type = self.get_component_type_for(
+                py_name=PY_NAME_COMPONENT_TYPE_QB
+            )
+        except Exception as e:
+            print("Could not find the right qubit component type: %s\n" % e)
+
+        api = self.get_api_instance()
+
+        # Create the experiment object
+        experiment = device_db_client.model.experiment.Experiment(
+            datetime_taken=datetime.datetime.now(),
+            datetime_uploaded=datetime.datetime.now(),
+            type="Normal state resistance measurements on device " + device_name,
+            comments=comments,
+        )
+        try:
+            experiment_uploaded = api.create_experiment(experiment=experiment)
+        except device_db_client.ApiException as e:
+            print("Exception when calling ApiApi->create_experiment: %s\n" % e)
+
+        # Read file
+        try:
+            file = open(path, "r")
+        except FileNotFoundError:
+            raise ValueError(
+                f"The file '{path}' could not be opnened. Please provide a valid path to the file."
+            )
+        for line in file:
+            if line.strip() != "": # If the line is empty (e.g. if there is an empty line at the end), skip it
+                regex_matches = re.search('(.*): (.*)', line)
+                qb_num = int(regex_matches[1])
+                resistance = float(regex_matches[2])
+                if values_in_kOhm:
+                    resistance *= 1000
+
+                # Find the right qubit component
+                try:
+                    qubit_component = self.get_component_for(
+                        type=qubit_component_type.id,
+                        devicedesign=device_design,
+                        number=qb_num,
+                    )
+                except Exception as e:
+                    print("Could not find the right qubit component for number '{qb_num}': %s\n" % e)
+
+                # Create the device property value object
+                device_property_value = device_db_client.model.device_property_value.DevicePropertyValue(
+                    type=nsr_property_type.id,
+                    experiment=experiment_uploaded.id,
+                    value=resistance,
+                    device=device_id,
+                    component=qubit_component.id,
+                    raw_data=[],
+                )
+
+                try: # Try to upload the measurement value
+                    created_device_property_value = api.create_device_property_value(
+                        device_property_value=device_property_value
+                    )
+                except device_db_client.ApiException as e:
+                    print("Exception when calling ApiApi->create_device_property_value: %s\n" % e)
+
+                if set_accepted: # Set the created device property value to accepted
+                    try:
+                        api.set_accepted_device_property_value(
+                            id=str(created_device_property_value.id))
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"Failed to set property value as accepted, with error {e}"
+                        )
+
         return None
