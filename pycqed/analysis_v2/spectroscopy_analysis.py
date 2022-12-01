@@ -1710,24 +1710,66 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             return 'Magnitude (Vpeak)'
         return data_key
 
-    def fit_and_plot_ro_params(self, guessvals=None, qb_names=None, **kw):
-        """
-        Fit transmon readout parameters
+    def fit_and_plot_ro_params(self, guess_vals=None, qb_names=None, **kw):
+        """Fit spectroscopy data of a qubit, readout res. and a Purcell filter.
+
+        The fitting model is the one derived in [1] with the following
+        modifications:
+            * We allow an empirical slope on the background amplitude
+            * To more generally account for the phase of the signal reflected
+              from the input capacitor, we write the complex interference
+              amplitude complex amplitude of the signal emitted from the Purcell
+              filter into the feedline as (1 + Γ) = r exp(i φ). The modulus r
+              of this term is absorbed into the total amplitude of the spectrum.
+              For constructive interference of the signals directly emitted and
+              reflected from the input side, we target φ = 0, in which case also
+              the coupling between the Purcell filter and the feedline is
+              maximized.
+        [1] J. Heinsoo et al., Phys. Rev. Applied 10, 034040 (2018)
+
+        All parameters with frequency units are in standard (not angular) MHz
+
+        Parameters of the fitting model:
+            A and k (unitless, 1/MHz): amplitude and slope of the spectrum
+            phi (rad): interference phase of signal reflected from input cap.
+            kP (MHz): effective coupling rate between Purc. filter and feedline
+            wP (MHz): frequency of the Purcell filter
+            gP (MHz): internal loss rate of the Purcell filter
+            J (MHz): coupling rate between Purc. filter and readotu resonator
+            wRg (MHz): frequency of readout res. when qubit is in ground state
+            gR: (MHz): internal loss rate of the readout resonator
+            chige (MHz): dispersive shift of the readout resonator. Equal to
+                half the frequency shift of the readout res. when changing qubit
+                from |g⟩ to |e⟩ state.
+            chigf (MHz): dispersive shift of the readout resonator for second
+                excited state of the qubit. Equal to half the frequency shift of
+                the readout res. when changing qubit from |g⟩ to |f⟩ state.
 
         Args:
-            guess_vals (dict): guess values for the fit. It is usually
-            necessary to pass good guesses for the frequencies wRg and wP.
-            qb_names: qubits whose readout parameters should be fitted
-            axs_dict: see self.plot
+            guess_vals (dict[str, float], optional):
+                guess values for the fit. It is usually necessary to pass good
+                guesses for the frequencies wRg and wP.
+            qb_names (list[str], optional):
+                qubits whose readout parameters should be fitted
+            **kw: Other keyword arguments are passed to `self.plot` and to
+                `self.save_figures`
         """
 
-        def s21func(f, A, phi, kP, gR, wRg, chige, chigf, wP, J, k):
-            yg, ye, yf = [(A + k * (f - np.mean(f))) * np.abs(
-                np.cos(phi) - np.exp(1j * phi) * kP * (gR - 2j * (f - wR)) / (
-                            4 * J * J + (kP - 2j * (f - wP)) * (
-                                gR - 2j * (f - wR))))
-                          for wR in (wRg, wRg + 2 * chige, wRg + 2 * chigf)]
-            return np.concatenate((yg, ye, yf))
+        def s21func(f, A, k, phi, kP, wP, gP, J, wRg, gR, chige=None,
+                    chigf=None):
+            ys = []
+            for chi in (0, chige, chigf):
+                if chi is None:
+                    continue
+                wR = wRg + 2 * chi
+                detR = gR - 2j * (f - wR)
+                detP = kP + gP - 2j * (f - wP)
+                amp = A + k * (f - np.mean(f))
+                y = amp * np.abs(np.cos(phi) -
+                                 np.exp(1j * phi) * kP * detR / (
+                                         4 * J * J + detP * detR))
+                ys.append(y)
+            return np.concatenate(ys)
 
         if qb_names is None:
             qb_names = self.qb_names
@@ -1736,10 +1778,10 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         res = {}
         for qbn in qb_names:
             s21s = self.proc_data_dict['projected_data_dict'][qbn][
-                               'Magnitude'] * np.exp(
+                       'Magnitude'] * np.exp(
                 1j * self.proc_data_dict['projected_data_dict'][qbn]['Phase'])
             freq = self.proc_data_dict['sweep_points_dict'][qbn][
-                               'sweep_points'] / 1e6
+                       'sweep_points'] / 1e6
             s21s = s21s / np.max(np.abs(s21s))
 
             model = lmfit.Model(s21func)
@@ -1748,14 +1790,20 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                 'J': 20,
                 'chige': -5,
                 'chigf': -5,
-                'gR': 5,
+                'gR': 1,
+                'gP': 1,
                 'k': 0,
                 'kP': 30,
                 'phi': 1,
                 'wRg': np.mean(freq),
-                'wP': np.mean(freq)+40,
+                'wP': np.mean(freq) + 40,
             }
-            def_guessvals.update(guessvals)
+            def_guessvals.update(guess_vals)
+            if len(s21s) != 3:
+                def_guessvals.pop('chigf')
+                if len(s21s) != 2:
+                    def_guessvals.pop('chige')
+                    assert len(s21s) == 1
             pars = model.make_params(**def_guessvals)
             pars['kP'].min = 0
             pars['gR'].min = 0
@@ -1765,12 +1813,12 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             pars['wP'].max = freq.max()
             pars['wRg'].max = freq.max()
             fit = model.fit(
-                np.concatenate((np.abs(s21s[0]), np.abs(s21s[1]),
-                                np.abs(s21s[2]))), f=freq, params=pars)
+                np.concatenate([np.abs(s21) for s21 in s21s]),
+                f=freq, params=pars)
             res[qbn] = fit.best_values
 
             fig_key_list.append(f'ro_params_fit_{qbn}')
-            for i, state in enumerate('gef'):
+            for i, (state, _), in enumerate(zip('gef', s21s)):
                 plt_key_list.append(f'ro_params_fit_data_{state}_{qbn}')
                 self.plot_dicts[plt_key_list[-1]] = {
                     'fig_id': fig_key_list[-1],
@@ -1795,7 +1843,8 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                     'xvals': freq,
                     'xlabel': 'RO frequency',
                     'xunit': 'Hz',
-                    'yvals': np.abs(fit.best_fit[i*len(freq):(i+1)*len(freq)]),
+                    'yvals': np.abs(
+                        fit.best_fit[i * len(freq):(i + 1) * len(freq)]),
                     'ylabel': 'Magnitude',
                     'yunit': 'Vpeak',
                     'marker': '',
