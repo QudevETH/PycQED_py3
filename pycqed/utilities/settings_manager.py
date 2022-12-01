@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,56 @@ class SettingsManager:
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
         snapshot_viewer.spawn_snapshot_viewer()
+
+    def _compare_dict_instances(self, dict_list, name_list, instruments='all',
+                                verbose=True):
+        all_keys = set()
+        all_msg = []
+        all_diff = {}
+        for dic in dict_list:
+            all_keys.update(set(dic.keys()))
+        for key in all_keys:
+            if instruments != 'all' and key not in instruments:
+                continue
+            key_not_in_instrument = False
+            for i, dic in enumerate(dict_list):
+                if key not in dic.keys():
+                    all_msg.append(
+                        f'\nInstrument "{key}" missing in dict '
+                        f'{name_list[i]}.\n')
+                    key_not_in_instrument = True
+            if key_not_in_instrument:
+                continue
+
+            diff = {}
+
+            for i, dic in enumerate(dict_list[1:]):
+                try:
+                    np.testing.assert_equal(dict_list[0][key], dic[key])
+                except AssertionError:
+                    if all(isinstance(dic[key], dict) for dic in dict_list):
+                        diff[key] = self._compare_dict_instances(
+                            [dic[key] for dic in dict_list], name_list)
+                    else:
+                        diff[key] = \
+                            {name_list[i]: dic[key]
+                             for i, dic in enumerate(dict_list)}
+
+            all_diff.update(diff)
+
+        return all_diff
+
+    def compare_stations(self, timestamps, instruments='all', verbose=True):
+        if timestamps == 'all':
+            ts_list = list(self.stations.keys())
+
+        elif isinstance(timestamps, list):
+            ts_list = timestamps
+        else:
+            return
+        return self._compare_dict_instances(
+            [self.stations[ts].snapshot() for ts in ts_list],ts_list)
+
 
 
 class Loader:
