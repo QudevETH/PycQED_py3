@@ -58,7 +58,7 @@ if QtWidgets.__package__ in ['PyQt6']:
     # instance of qt_compat.QApplication, we need to add the missing exec_
     # method to it.
     elif not isinstance(QtWidgets.QApplication.instance(), QApplication):
-        QtWidgets.QApplication.instance().exec_ =\
+        QtWidgets.QApplication.instance().exec_ = \
             QtWidgets.QApplication.instance().exec
 
 else:
