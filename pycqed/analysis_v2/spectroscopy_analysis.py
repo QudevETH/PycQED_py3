@@ -8,8 +8,6 @@ the spectroscopy measurement analyses.
 from copy import copy
 import logging
 import re
-from pprint import pprint
-
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
@@ -1755,8 +1753,8 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                 `self.save_figures`
         """
 
-        def s21func(f, A, k, phi, kP, wP, gP, J, wRg, gR, chige=None,
-                    chigf=None):
+        def purcell_readout_qb_transmission_model(f, A, k, phi, kP, wP, gP,
+                J, wRg, gR, chige=None, chigf=None):
             ys = []
             for chi in (0, chige, chigf):
                 if chi is None:
@@ -1784,7 +1782,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                        'sweep_points'] / 1e6
             s21s = s21s / np.max(np.abs(s21s))
 
-            model = lmfit.Model(s21func)
+            model = lmfit.Model(purcell_readout_qb_transmission_model)
             def_guessvals = {
                 'A': 1,
                 'J': 20,
