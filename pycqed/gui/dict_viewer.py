@@ -562,7 +562,8 @@ class DictView(qt.QtWidgets.QWidget):
                 self.dict_to_titem(val, row_item, param=False)
         else:
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
-
+        if '\n' in row_item.data(1,0):
+            row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
 
 
