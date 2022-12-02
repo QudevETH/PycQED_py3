@@ -2063,7 +2063,7 @@ class MeasurementControl(Instrument):
             try:
                 val = p.snapshot(update=update)['value']
                 res = check_function(val)
-                if res is not True:  # False or a string (error message)
+                if res != True:  # False or a string (error message)
                     log.warning(
                         f'Parameter {p.full_name} has an uncommon value: '
                         f'{val}.' + (f" ({res})" if res is not False else ''))
