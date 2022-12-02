@@ -5772,6 +5772,32 @@ class ResidualZZAnalysis(RamseyAnalysis):
             for qb, residual_zz_dict in apd['residual_ZZs'].items():
                 qbc = self.raw_data_dict[f'qbc_of_{qb}']
                 plot_name = f'ResidualZZ_{qb}_{qbc}'
+
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
+                    'sweep_points']
+                dtf = self.proc_data_dict['data_to_fit'][qb]
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[0],
+                    data_label=f'{qbc} in g',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qb+'fit0',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[1][:-self.num_cal_points],
+                    plot_cal_points=False,
+                    data_label=f'{qbc} in e',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qb+'fit1',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+
                 textstr = ''
                 for fk, residual_zz in residual_zz_dict.items():
                     key = fk.split('_')[0]
@@ -5786,34 +5812,14 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 textstr += f'target: {qb}, control: {qbc}'
                 self.plot_dicts['text_msg'] = {
                     'fig_id': plot_name,
-                    'ypos': -0.5,
+                    'ypos': -0.2,
                     'xpos': -0.025,
                     'horizontalalignment': 'left',
                     'verticalalignment': 'top',
                     'color': 'black',
                     'plotfn': self.plot_text,
-                    'text_string': textstr}
+                    'text_string': textstr,}
 
-                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
-                    'sweep_points']
-                dtf = self.proc_data_dict['data_to_fit'][qb]
-                self.prepare_projected_data_plot(
-                    fig_name=plot_name,
-                    data=dtf[0],
-                    data_label=f'{qbc} in g',
-                    sweep_points=sweep_points,
-                    plot_name_suffix=qb+'fit0',
-                    qb_name=qb, TwoD=False,
-                    title_suffix="")
-                self.prepare_projected_data_plot(
-                    fig_name=plot_name,
-                    data=dtf[1][:-self.num_cal_points],
-                    plot_cal_points=False,
-                    data_label=f'{qbc} in e',
-                    sweep_points=sweep_points[:-self.num_cal_points],
-                    plot_name_suffix=qb+'fit1',
-                    qb_name=qb, TwoD=False,
-                    title_suffix="")
 
             # helper variable to prevent having labels twice in the legend
             labels_set = False
@@ -5827,30 +5833,28 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 # outer_key = qbn doing outer_key.split('_') will only have one
                 # output and assignment to two variables will fail.
                 qbn = (outer_key + '_').split('_')[0]
-                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
-                    'sweep_points']
 
-                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                qbc = self.raw_data_dict[f'qbc_of_{qbn}']
                 plot_name = f'ResidualZZ_{qbn}_{qbc}'
 
                 for i, fit_type in enumerate(ramsey_pars_dict):
                     fit_res = self.fit_dicts[f'{fit_type}_{outer_key}'][
                         'fit_res']
+                    label = 'exp decay fit' if i == 0 else 'gauss decay fit'
                     self.plot_dicts[
                         f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
                             'fig_id': plot_name,
                             'plotfn': self.plot_fit,
                             'fit_res': fit_res,
                             'color': 'r' if i == 0 else 'C4',
+                            'setlabel': label if not labels_set else '',
                         }
                     if not labels_set:
-                        label = 'exp decay fit' if i == 0 else 'gauss decay fit'
                         self.plot_dicts[
                             f'ResidualZZ_fit_{outer_key}_{fit_type}'].update({
-                                'setlabel': label,
-                                'do_legend': i == 1,
-                                'legend_bbox_to_anchor': (1, -0.15),
-                                'legend_pos': 'upper right'
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1.0, -0.15),
+                                'legend_pos': 'upper right',
                             })
                 labels_set = True
 
