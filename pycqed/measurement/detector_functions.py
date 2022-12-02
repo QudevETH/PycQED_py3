@@ -42,6 +42,11 @@ class Detector_Function(object):
         self.live_plot_transform_type = kw.get('live_plot_transform_type',
                                                None)
         self.extra_data_callback = None
+        """Callback function to store additional data, currently only used
+        in PollDetector. It is expected that the callback function accepts
+        the arguments described in the docstring of MC.save_extra_data,
+        see therein for details about the args. The name of the acquisition
+        device is passed group_name."""
 
     def set_kw(self, **kw):
         '''
@@ -726,8 +731,6 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             self.AWG.stop()
 
         for acq_dev in self.acq_devs:
-            # Allow the acqusition device to store additional data
-            acq_dev.extra_data_callback = self.extra_data_callback
             # Final preparations for an acquisition before starting the AWGs.
             acq_dev.prepare_poll_before_AWG_start()
 
@@ -760,6 +763,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 if not all(gotem[acq_dev.name]):
                     time.sleep(0.01)
                     dataset[acq_dev.name] = acq_dev.poll(0.01)
+                    # store additional data if provided by the acq_dev
+                    for ed in acq_dev.pop_extra_data():
+                        self.extra_data_callback(acq_dev.name, **ed)
             for acq_dev_name in dataset.keys():
                 n_sp = self.det_from_acq_dev[acq_dev_name].nr_sweep_points
                 for n, p in enumerate(acq_paths[acq_dev_name]):
