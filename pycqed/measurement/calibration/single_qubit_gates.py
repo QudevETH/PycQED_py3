@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -1876,7 +1877,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })

@@ -12,17 +12,13 @@ from pycqed.measurement import sweep_functions as swf
 
 
 class MeasurementObject(Instrument):
-    # TODO to be cleaned up once QuDev_transmon is refactored as a child class
 
-    # from Qubit object
     def _get_operations(self):
         return self._operations
 
-    # from Qubit object
     def add_operation(self, operation_name):
         self._operations[operation_name] = {}
 
-    # from Qubit object
     def add_pulse_parameter(self,
                             operation_name,
                             parameter_name,
@@ -31,7 +27,7 @@ class MeasurementObject(Instrument):
                             vals=vals.Numbers(),
                             **kwargs):
         """
-        Add a pulse parameter to the qubit.
+        Add a pulse parameter to the measurement object.
 
         Args:
             operation_name (str): The operation of which this parameter is an
@@ -65,13 +61,12 @@ class MeasurementObject(Instrument):
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
 
-        # from Qubit object
         self.msmt_suffix = '_' + name  # used to append to measurement labels
 
-        # from Qubit object
         self._operations = {}
         self.add_parameter('operations',
-                           docstring='a list of all operations available on the qubit',
+                           docstring='a list of all operations available on '
+                                     'the measurement object',
                            get_cmd=self._get_operations)
 
         self.add_parameter('instr_mc',
@@ -194,7 +189,7 @@ class MeasurementObject(Instrument):
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
 
         # switch parameters
-        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        DEFAULT_SWITCH_MODES = {'modulated': {}}
         self.add_parameter(
             'switch_modes', parameter_class=ManualParameter,
             initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
@@ -205,18 +200,10 @@ class MeasurementObject(Instrument):
             "instr_switch. The keys must include 'modulated' (for routing "
             "the upconverted IF signal to the experiment output of the "
             "upconversion board, used for all experiments that do not "
-            "specify a different mode), 'spec' (for routing the LO input to "
-            "the experiment output of the upconversion board, used for "
-            "qubit spectroscopy), and 'calib' (for routing the upconverted "
-            "IF signal to the calibration output of upconversion board, "
-            "used for mixer calibration). The keys can include 'no_drive' "
-            "(to replace the 'modulated' setting in case of measurements "
-            "without drive signal, i.e., when calling qb.prepare with "
-            "drive=None) as well as additional custom modes (to be used in "
-            "manual calls to set_switch).")
+            "specify a different mode).")
 
     def get_acq_int_channels(self, n_channels=None):
-        """Get a list of tuples with the qubit's integration channels.
+        """Get a list of tuples with the integration channels.
 
         Args:
             n_channels (int): number of integration channels; if this is None,
@@ -238,14 +225,14 @@ class MeasurementObject(Instrument):
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
 
     def get_acq_inp_channels(self):
-        """Get a list of tuples with the qubit's acquisition input channels.
+        """Get a list of tuples with the acquisition input channels.
 
         For now, this method assumes that all quadratures available on the
         acquisition unit should be recorded, i.e., two for devices that
         provide I&Q signals, and one otherwise.
 
-        TODO: In the future, a parameter could be added to the qubit object
-            to allow recording only one out of two available quadratures.
+        TODO: In the future, a parameter could be added to the measurement
+        object to allow recording only one out of two available quadratures.
 
         Returns
             list of tuples, where the first entry in each tuple is
@@ -257,8 +244,8 @@ class MeasurementObject(Instrument):
     def get_ro_lo_freq(self):
         """Returns the required local oscillator frequency for readout pulses
 
-        The RO LO freq is calculated from the ro_mod_freq (intermediate
-        frequency) and the ro_freq stored in the qubit object.
+        The RO LO freq is calculated from self.ro_mod_freq (intermediate
+        frequency) and self.ro_freq.
         """
         # in case of multichromatic readout, take first ro freq, else just
         # wrap the frequency in a list and take the first
@@ -272,30 +259,18 @@ class MeasurementObject(Instrument):
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
 
-    def prepare(self, drive='timedomain', switch='default'):
-        """Prepare instruments for a measurement involving this qubit.
+    def prepare(self, switch='modulated'):
+        """Prepare instruments for a measurement involving this measurement
+        object.
 
         The preparation includes:
-        - call configure_offsets
         - configure readout local oscillators
-        - configure qubit drive local oscillator
-        - call update_detector_functions
         - call set_readout_weights
         - set switches to the mode required for the measurement
 
         Args:
-            drive (str, None): the kind of drive to be applied, which can be
-                None (no drive), 'continuous_spec' (continuous spectroscopy),
-                'continuous_spec_modulated' (continuous spectroscopy using
-                the modulated configuation of the switch),
-                'pulsed_spec' (pulsed spectroscopy), or the default
-                'timedomain' (AWG-generated signal upconverted by the mixer)
-            switch (str): the required switch mode. Can be a switch mode
-                understood by set_switch or the default value 'default', in
-                which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
-                'no_drive' if drive is None and a switch mode 'no_drive' is
-                configured for this qubit; 'modulated' in all other cases).
+            switch (str): the required switch mode, see the docstring of
+            switch_modes
         """
         self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
@@ -304,7 +279,11 @@ class MeasurementObject(Instrument):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -315,26 +294,14 @@ class MeasurementObject(Instrument):
         # other preparations
         self.set_readout_weights()
         # set switches to the mode required for the measurement
-        # See the docstring of switch_modes for an explanation of the
-        # following modes.
-        if switch == 'default':
-            if drive is None and 'no_drive' in self.switch_modes():
-                # use special mode for measurements without drive if that
-                # mode is defined
-                self.set_switch('no_drive')
-            else:
-                # use 'spec' for qubit spectroscopy measurements
-                # (continuous_spec and pulsed_spec) and 'modulated' otherwise
-                self.set_switch(
-                    'spec' if drive is not None and drive.endswith('_spec')
-                    else 'modulated')
-        else:
-            # switch mode was explicitly provided by the caller (e.g.,
-            # for mixer calib)
-            self.set_switch(switch)
+        self.set_switch(switch)
+
+    def _get_default_readout_weights(self):
+        return dict()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
-        """Set acquisition weights for this qubit in the acquisition device.
+        """Set acquisition weights for this measurement object in the
+        acquisition device.
 
         Depending on the weights type, some of the following qcodes
         parameters can have an influence on the programmed weigths (see the
@@ -363,8 +330,7 @@ class MeasurementObject(Instrument):
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
-            # weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
-            # weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+            **self._get_default_readout_weights()
         )
 
     def set_switch(self, switch_mode='modulated'):
@@ -373,8 +339,8 @@ class MeasurementObject(Instrument):
         to the given mode.
 
         :param switch_mode: (str) the name of a switch mode that is defined in
-            the qcodes parameter switch_modes of this qubit (default:
-            'modulated'). See the docstring of switch_modes for more details.
+            the qcodes parameter self.switch_modes (default: 'modulated').
+            See the docstring of switch_modes for more details.
         """
         if self.instr_switch() is None:
             return
@@ -410,7 +376,7 @@ class MeasurementObject(Instrument):
             op['op_code'] = code
         return operation_dict
 
-    def swf_ro_freq_lo(self):
+    def swf_ro_freq_lo(self, bare=False):
         """Create a sweep function for sweeping the readout frequency.
 
         The sweep is implemented as an LO sweep in case of an acquisition
@@ -419,17 +385,28 @@ class MeasurementObject(Instrument):
         internal LO (note that it might be an IF sweep or a combined LO and
         IF sweep in that case.)
 
+        Args:
+            bare (bool): return the bare LO freq swf without any automatic
+                offsets applied. Defaults to False.
+
         Returns: the Sweep_function object
         """
         if self.instr_ro_lo() is not None:  # external LO
-            return swf.Offset_Sweep(
-                self.instr_ro_lo.get_instr().frequency,
-                -self.ro_mod_freq(),
-                name='Readout frequency',
-                parameter_name='Readout frequency')
+            if bare:
+                return swf.mc_parameter_wrapper.wrap_par_to_swf(
+                    self.instr_ro_lo.get_instr().frequency)
+            else:
+                return swf.Offset_Sweep(
+                    self.instr_ro_lo.get_instr().frequency,
+                    -self.ro_mod_freq(),
+                    name='Readout frequency',
+                    parameter_name='Readout frequency')
         else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit(), self.ro_mod_freq())
+                self.acq_unit(),
+                0 if (self.ro_fixed_lo_freq() or bare) else self.ro_mod_freq(),
+                get_closest_lo_freq=(lambda f, s=self:
+                                     s.get_closest_lo_freq(f, operation='ro')))
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
@@ -448,8 +425,8 @@ class MeasurementObject(Instrument):
                 - None: no restrictions on the LO freq
                 - float: LO fixed to a single freq
                 - str: (operation must be provided in this case)
-                    - 'default' (default value): use the setting in the qubit
-                      object.
+                    - 'default' (default value): use the setting in the
+                        measurement object
                     - a qb name to indicated that the LO must be fixed to be
                       the same as for that qb.
                 - dict with (a subset of) the following keys:
@@ -572,7 +549,7 @@ class MeasurementObject(Instrument):
 
     def configure_pulsar(self):
         """
-        Configure qubit-specific settings in pulsar:
+        Configure MeasurementObject-specific settings in pulsar:
         - Reset modulation frequency and amplitude scaling
         - set AWG channel DC offsets and switch sigouts on,
            see configure_offsets

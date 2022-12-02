@@ -5,10 +5,10 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.measurement import detector_functions as det
 from pycqed.measurement import mc_parameter_wrapper as pw
 from pycqed.measurement import awg_sweep_functions as awg_swf
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
-    import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 
-class Qubit_TuneUp(Qubit):
+class Qubit_TuneUp(QuDev_transmon):
 
     def __init__(self, name, **kw):
 
