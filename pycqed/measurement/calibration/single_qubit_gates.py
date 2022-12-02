@@ -2636,6 +2636,19 @@ class ResidualZZ(Ramsey):
                 all_involved_qubits.append(task['qbc'])
         return preprocessed_task_list
 
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects (e.g., qubits) of a task. Here we
+        overwrite the method to exclude the control qubit from the measure
+        objects.
+        :param task: a task dictionary
+        :return: list of all qubit objects (if available) or names
+        """
+        qbc = task.pop('qbc')
+        qubits = self.find_qubits_in_tasks(self.qb_names, [task])
+        task['qbc'] = qbc
+        return qubits
+
     def update_sweep_points(self):
         """Adds sweep point snecessary to turn on and of the pi-pulse of the
         control qubits. Calls super method afterwards.
