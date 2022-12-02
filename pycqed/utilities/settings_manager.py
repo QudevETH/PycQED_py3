@@ -419,10 +419,12 @@ class SettingsManager:
                     if all(isinstance(dic[key], dict) for dic in dict_list):
                         diff[key] = self._compare_dict_instances(
                             [dic[key] for dic in dict_list], name_list)
+                        break
                     else:
                         diff[key] = \
                             {name_list[i]: dic[key]
                              for i, dic in enumerate(dict_list)}
+                        break
 
             all_diff.update(diff)
 
