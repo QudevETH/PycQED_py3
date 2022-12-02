@@ -10,7 +10,8 @@ class DictView(qt.QtWidgets.QWidget):
     - expand, collapse and hide keys/branches
     """
 
-    def __init__(self, snap: dict, title: str = '', screen=None):
+    def __init__(self, snap: dict, title: str = '', screen=None,
+                 timestamps=None):
         """
         Initialization of the QWidget
         Args:
@@ -23,7 +24,10 @@ class DictView(qt.QtWidgets.QWidget):
         super(DictView, self).__init__()
         self.title = title
         self.screen = screen
-        self.column_header = ['Key', 'Value']
+        if timestamps is None:
+            self.column_header = ['Key', 'Value']
+        else:
+            self.column_header = ['Key'] + timestamps
 
         # Default values for the search bar
         self.current_search_options = ['Key']  # respective name of the column
@@ -99,7 +103,7 @@ class DictView(qt.QtWidgets.QWidget):
         # 2nd step: drawing box around QTreeWidget and QLabels
         gbox = qt.QtWidgets.QGroupBox(self.title)
         # long title should not prevent the window from being resized
-        gbox.setMinimumSize(1,1)
+        gbox.setMinimumSize(1, 1)
         gbox.setLayout(layout)
 
         # 3rd step: Adding search bar, search options and number of entries
@@ -262,7 +266,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.tree_dir.setText(self.get_dirtext(self.tree_widget.currentItem()))
 
     def get_dirtext(self, tree_item: qt.QtWidgets.QTreeWidgetItem,
-                   separator=' > '):
+                    separator=' > '):
         """
         Returns string of the directory of a given QWidgetItem in a QWidgetTree
         Args:
@@ -454,7 +458,7 @@ class DictView(qt.QtWidgets.QWidget):
             self.found_titem_list = []
             for column in self.get_current_search_options(as_int=True):
                 self.found_titem_list = \
-                    self.found_titem_list +\
+                    self.found_titem_list + \
                     self.tree_widget.findItems(
                         find_str,
                         qt.QtCore.Qt.MatchFlag.MatchContains |
@@ -530,7 +534,10 @@ class DictView(qt.QtWidgets.QWidget):
                 i.e. parent.data(0,0) = 'parameters'
         """
         for key, val in dictdata.items():
-            self.tree_add_row(str(key), val, parent, param)
+            if len(self.column_header) > 2:
+                self.tree_add_row_mc(str(key), val, parent)
+            else:
+                self.tree_add_row(str(key), val, parent, param)
 
     def tree_add_row(self, key: str, val,
                      tree_widget: qt.QtWidgets.QTreeWidgetItem,
@@ -562,7 +569,33 @@ class DictView(qt.QtWidgets.QWidget):
                 self.dict_to_titem(val, row_item, param=False)
         else:
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
-        if '\n' in row_item.data(1,0):
+        if '\n' in row_item.data(1, 0):
+            row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
+        tree_widget.addChild(row_item)
+
+    def tree_add_row_mc(self, key: str, val,
+                        tree_widget: qt.QtWidgets.QTreeWidgetItem):
+        if isinstance(val, dict):
+            values = [''] * len(self.column_header[1:])
+            if sorted(list(val.keys())) == sorted(self.column_header[1:]):
+                try:
+                    for i, header in enumerate(self.column_header[1:]):
+                        if isinstance(val[header], dict):
+                            values[i] = str(val[header].get('value', val[header]))
+                        else:
+                            values[i] = str(val[header])
+                    row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+                except KeyError:
+                    print(val.keys())
+                    print(self.column_header[1:])
+            else:
+                row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+                self.dict_to_titem(val, row_item)
+        else:
+            print('neverhappen')
+            row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
+
+        if '\n' in row_item.data(1, 0):
             row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
 
@@ -697,7 +730,8 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
     Main window to display the dictionary with all the features
     """
 
-    def __init__(self, dic: dict, title: str = '', screen=None):
+    def __init__(self, dic: dict, title: str = '', screen=None,
+                 timestamps=None):
         """
         Initialization of the main window
         Args:
@@ -707,7 +741,7 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         super(DictViewerWindow, self).__init__()
         self.dialogs = list()  # list of additional windows
         self.screen = screen
-        dict_view = DictView(dic, title, screen)
+        dict_view = DictView(dic, title, screen, timestamps=timestamps)
 
         # open new window with double click
         # dict_view.tree_widget.itemDoubleClicked.connect(
@@ -751,17 +785,24 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
 
 
 class SnapshotViewer:
-    def __init__(self, snapshot: dict, timestamp: str):
+    def __init__(self, snapshot: dict, timestamp):
         self.snapshot = snapshot
         self.timestamp = timestamp
 
     def spawn_snapshot_viewer(self):
         qt_app = qt.QtWidgets.QApplication(sys.argv)
         screen = qt_app.primaryScreen()
-        snap_viewer = DictViewerWindow(
-            dic=self.snapshot,
-            title='Snapshot timestamp: %s' % self.timestamp,
-            screen=screen)
+        if isinstance(self.timestamp, list):
+            snap_viewer = DictViewerWindow(
+                dic=self.snapshot,
+                title='Comparison of %s snapshots' % len(self.timestamp),
+                timestamps=self.timestamp,
+                screen=screen)
+        else:
+            snap_viewer = DictViewerWindow(
+                dic=self.snapshot,
+                title='Snapshot timestamp: %s' % self.timestamp,
+                screen=screen)
         qt_app.exec_()
 
 
@@ -824,4 +865,3 @@ if __name__ == "__main__":
         snapshot=snap,
         timestamp=filepath)
     snapshot_viewer.spawn_snapshot_viewer()
-
