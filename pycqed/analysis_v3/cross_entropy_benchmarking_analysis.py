@@ -1299,15 +1299,17 @@ def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
             for c, label in legend_info.items():
                 ax.plot([], [], '-o', c=c, label=label)
             ax.legend(frameon=False)
+            cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+                if 'cphase' in data_dict['exp_metadata'] else ''
 
             ax.set_xlabel('Number of Cycles, $m$')
             ax.set_ylabel('Probability, $P(f)$')
             timestamp = data_dict['timestamps'][0]
-            ax.set_title(f'Leakage {mobjn} - {timestamp}')
+            ax.set_title(f'Leakage{cz_name} {mobjn} - {timestamp}')
 
             if savefig:
                 fig.savefig(data_dict['folders'][0] +
-                            f'\\Leakage_{mobjn}_{timestamp}.png',
+                            f'\\Leakage{cz_name}_{mobjn}_{timestamp}.png',
                             dpi=600, bbox_inches='tight')
             if show:
                 plt.show()
@@ -1378,11 +1380,13 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         axs[1].set_ylabel('Probability, $P_f$')
 
         timestamp = data_dict['timestamps'][0]
-        axs[0].set_title(f'Leakage {mobjn_joined} - {timestamp}')
+        cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+            if 'cphase' in data_dict['exp_metadata'] else ''
+        axs[0].set_title(f'Leakage{cz_name} {mobjn_joined} - {timestamp}')
 
         if savefig:
             fig.savefig(data_dict['folders'][0] +
-                        f'\\Leakage_{mobjn_joined}_{timestamp}.png',
+                        f'\\Leakage{cz_name}_{mobjn_joined}_{timestamp}.png',
                         dpi=600, bbox_inches='tight')
         if show:
             plt.show()
