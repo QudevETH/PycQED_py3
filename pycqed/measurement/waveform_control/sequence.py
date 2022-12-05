@@ -30,12 +30,12 @@ class Sequence:
             segments (list, tuple): list of segments to add to the sequence
         """
         self.name = name
+        self.timer = Timer(self.name)
         self.pulsar = ps.Pulsar.get_instance()
         self.segments = odict()
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
-        self.timer = Timer(self.name)
         self.is_resolved = False
 
     def add(self, segment):
@@ -45,6 +45,7 @@ class Sequence:
         self.segments[segment.name] = segment
         if len(self.segments) == 1:
             self.segments[segment.name].is_first_segment = True
+        self.timer.children.update({segment.name: segment.timer})
 
     def extend(self, segments):
         """
@@ -420,6 +421,10 @@ class Sequence:
         interleaved_seqs = len(seq_list_list) * len(seq_list_list[0]) * ['']
         for i in range(len(seq_list_list)):
             interleaved_seqs[i::len(seq_list_list)] = seq_list_list[i]
+
+        # rename sequences and timers
+        for i, seq in enumerate(interleaved_seqs):
+            seq.rename(f"Interleaved_Sequence_{i}")
 
         mc_points = [np.arange(interleaved_seqs[0].n_acq_elements()),
                      np.arange(len(interleaved_seqs))]

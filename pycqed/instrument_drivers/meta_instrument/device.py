@@ -220,6 +220,10 @@ class Device(Instrument):
         for qb in self.get_qubits(qubits):
             operation_dict.update(qb.get_operation_dict())
 
+        # add meas_obj operations
+        for mobj in self.TWPAs:
+            operation_dict.update(mobj.get_operation_dict())
+
         return operation_dict
 
     def get_qb(self, qb_name):

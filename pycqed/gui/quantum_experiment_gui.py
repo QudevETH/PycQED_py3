@@ -31,6 +31,7 @@ class ExperimentTypes(Enum):
     QSCALE = single_qubit_gates.QScale
     T1 = single_qubit_gates.T1
     CHEVRON = two_qubit_gates.Chevron
+    THERMAL_POPULATION = single_qubit_gates.ThermalPopulation
 
 
 def get_members_by_experiment_class_name(experiment_class_name):

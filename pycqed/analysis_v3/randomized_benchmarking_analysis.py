@@ -639,9 +639,9 @@ def prepare_rb_fitting(data_dict, data_to_proc_dict, cliffords, nr_seeds,
         'do_simple_fit', data_dict, default_value=True, **params)
     d = hlp_mod.get_param('d', data_dict, raise_error=True, **params)
     print('d: ', d)
-    guess_pars = {'A': {'value': 0.5, 'min': -1, 'max': 1},
-                  'p': {'value': 0.99, 'min': 0, 'max': 1},
-                  'B': {'value': 0.05, 'min': -1, 'max': 1}}
+    guess_pars = {'A': {'value': 1},
+                  'p': {'value': 0.99},
+                  'B': {'value': 0}}
     fit_guess_params = hlp_mod.get_param('fit_guess_params', data_dict,
                                          default_value={}, **params)
     guess_pars.update(fit_guess_params)

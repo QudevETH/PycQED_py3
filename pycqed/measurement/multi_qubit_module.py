@@ -168,17 +168,21 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         max_int_len[uhf] = max(max_int_len[uhf], qb.acq_length())
 
         if uhf not in int_channels:
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
-        int_channels[uhf] += qb.get_acq_int_channels()
-        inp_channels[uhf] += qb.get_acq_inp_channels()
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
+        int_channels[uhf][qb.name] = qb.get_acq_int_channels()
+        inp_channels[uhf][qb.name] = qb.get_acq_inp_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
-        acq_classifier_params[uhf] += [qb.acq_classifier_params()]
+        param = 'acq_classifier_params'
+        acq_classifier_params[uhf] += [
+            qb.get(param) if param in qb.parameters else {}]
         if uhf not in acq_state_prob_mtxs:
             acq_state_prob_mtxs[uhf] = []
-        acq_state_prob_mtxs[uhf] += [qb.acq_state_prob_mtx()]
+        param = 'acq_state_prob_mtx'
+        acq_state_prob_mtxs[uhf] += [
+            qb.get(param) if param in qb.parameters else None]
 
     if add_channels is None:
         add_channels = {}
@@ -191,8 +195,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             uhfs.add(uhf)
             uhf_instances[uhf] = qubits[0].find_instrument(uhf)
             max_int_len[uhf] = 0
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
             acq_classifier_params[uhf] = []
             acq_state_prob_mtxs[uhf] = []
         for params in add_chs:
@@ -204,8 +208,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             #  but not both: we just add the extra channels to both lists to
             #  make sure that they will be passed to the detector function no
             #  matter which list the particular detector function gets.
-            int_channels[uhf] += params.get('acq_channels', [])
-            inp_channels[uhf] += params.get('acq_channels', [])
+            int_channels[uhf]['add_channels'] = params.get('acq_channels', [])
+            inp_channels[uhf]['add_channels'] = params.get('acq_channels', [])
 
             max_int_len[uhf] = max(max_int_len[uhf], params.get('acq_length',
                                                                 0))
@@ -612,7 +616,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
 
 
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
-                         acq_length=4096/1.8e9, exp_metadata=None,
+                         acq_length=None, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
                          update=True, measure=True, operation_dict=None,
@@ -677,6 +681,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
 
         if exp_metadata is None:
             exp_metadata = dict()
+        if acq_length is None:
+            acq_length = qubits[0].instr_acq.get_instr().acq_weights_n_samples/\
+                qubits[0].instr_acq.get_instr().acq_sampling_rate
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
@@ -684,10 +691,12 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
             # acq_length as values
             samples = [(qb.instr_acq.get_instr(),
                         qb.instr_acq.get_instr().convert_time_to_n_samples(
-                            acq_length)) for qb in qubits]
+                            acq_length, align_acq_granularity=True)) for qb
+                       in qubits]
             # sort by nr samples
             samples.sort(key=lambda t: t[1])
-            sweep_points = samples[0][0].get_sweep_points_time_trace(acq_length)
+            sweep_points = samples[0][0].get_sweep_points_time_trace(
+                acq_length, align_acq_granularity=True)
             channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                             for vn in qb.inp_avg_det.value_names]
                             for qb in qubits}

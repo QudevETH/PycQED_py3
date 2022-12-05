@@ -75,7 +75,9 @@ class AcquisitionDevice():
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
         self.timer = None
-        self.extra_data_callback = None
+        self.extra_data = []
+        """List of dicts representing additional data to be stored. Keys
+        in the dicts correspond to kwargs of save_extra_data."""
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
@@ -154,10 +156,9 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). By default, only removes the extra_data_callback and the
-        timer. Can be overridden in child classes to add further functionality.
+        sweeps). By default, only removes the timer. Can be overridden in
+        child classes to add further functionality.
         """
-        self.extra_data_callback = None
         self.timer = None
 
     def _reset_n_acquired(self):
@@ -216,8 +217,12 @@ class AcquisitionDevice():
         triggers) if it does not rely on first-trigger detection. Unlike
         acquisition_initialize, this function is called multiple times in a
         soft sweep.
+
+        The method in this base class resets self.extra_data, which can then
+        be filled by calling save_extra_data from the poll method of child
+        classes.
         """
-        pass
+        self.pop_extra_data()
 
     def prepare_poll_after_AWG_start(self):
         """Final preparations for an acquisition after starting AWGs.
@@ -249,13 +254,7 @@ class AcquisitionDevice():
                                   f'for {self.__class__.__name__}')
 
     def save_extra_data(self, dataset_name, data, column_names=None):
-        """Store additional data via self.extra_data_callback
-
-        This method calls self.extra_data_callback if it is not None. It is
-        expected that the callback function accepts the arguments described
-        in the docstring of MC.save_extra_data, see therein for details
-        about the args. The name of the acquisition device is passed
-        group_name.
+        """Store additional data to provide it to the detector function
 
         Args:
             dataset_name (str): The name of the dataset in which the data
@@ -264,9 +263,15 @@ class AcquisitionDevice():
             column_names (None or list of str): names of the columns of the
                 data array.
         """
-        if self.extra_data_callback is not None:
-            self.extra_data_callback(self.name, dataset_name, data,
-                                     column_names=column_names)
+        self.extra_data.append(dict(
+            dataset_name=dataset_name, data=data, column_names=column_names))
+
+    def pop_extra_data(self):
+        """Return stored additional data and reset extra data storage
+        """
+        ed = self.extra_data
+        self.extra_data = []
+        return ed
 
     def start(self, **kw):
         """ Start the built-in AWG (if present).

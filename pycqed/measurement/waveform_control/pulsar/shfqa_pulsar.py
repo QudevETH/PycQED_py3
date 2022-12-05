@@ -25,7 +25,7 @@ from .zi_pulsar_mixin import ZIPulsarMixin
 log = logging.getLogger(__name__)
 
 
-class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
+class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI SHFQA and SHFQC acquisition module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -217,8 +217,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                 "configFreqSweep(OSC0, {f_start}, {f_step});\n"
             )
 
-            self.awg.seqtrigger = None
-
             if is_spectroscopy:
                 for element in awg_sequence:
                     # This is a light copy of the readout mode below,
@@ -252,7 +250,6 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                             playback_string='\n  '.join(playback_strings)))
                     # The acquisition modules will each be triggered by their
                     # sequencer
-                    self.awg.seqtrigger = True
                 else:
                     self.awg._awg_program[i] = None  # do not start generator
 
@@ -289,7 +286,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
 
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_start(
+                playback_strings += self.zi_playback_string_loop_start(
                     metadata, [f'qa{acq_unit+1}i', f'qa{acq_unit+1}q'])
 
                 if list(awg_sequence_element.keys()) != ['no_codeword']:
@@ -313,16 +310,13 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
                     f'startQA({wave_mask}, {int_mask}, {monitor}, 0, {trig});'
                 ]
                 if trig == '0x1':
-                    if self.awg.seqtrigger is None:
-                        # The scope will be triggered by this single acq_unit
-                        self.awg.seqtrigger = acq_unit
                     playback_strings += [
                         f'wait(3);',  # (3+2)5ns=20ns (wait has 2 cycle offset)
                         f'setTrigger(0x0);'
                     ]
                 # The following line only has an effect if the metadata
                 # specifies that the segment should be repeated multiple times.
-                playback_strings += self._zi_playback_string_loop_end(metadata)
+                playback_strings += self.zi_playback_string_loop_end(metadata)
                 return playback_strings
 
             qachannel.mode('readout')
@@ -373,7 +367,7 @@ class SHFAcquisitionModulePulsar(PulsarAWGInterface, ZIPulsarMixin):
         return self.awg.get_lo_sweep_function(int(chid[2]) - 1, **kw)
 
 
-class SHFQAPulsar(SHFAcquisitionModulePulsar):
+class SHFQAPulsar(SHFAcquisitionModulesPulsar):
     """ZI SHFQA specific Pulsar module"""
     AWG_CLASSES = [SHFQA_core]
 

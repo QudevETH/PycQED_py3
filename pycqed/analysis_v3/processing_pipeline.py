@@ -368,6 +368,29 @@ class ProcessingPipeline(list):
             self.clear()
             self.extend(first_slice + second_slice)
 
+    def remove_nodes(self, indices):
+        """
+        Removes nodes from the pipeline at the specified indices.
+
+        Args:
+            indices (int/list/str): indices of the nodes to remove. Can be a
+                single int corresponding to an index, a list of ints
+                corresponding to indices, or a string of the form 'idx0:idx1,'
+                which will be interpreted as range(idx0, idx1).
+        """
+        if isinstance(indices, str):
+            # of the form 'idx0:idx1'
+            range_ends = [int(idx) for idx in indices.split(':')]
+            indices = list(range(
+                range_ends[0], 0 if range_ends[1] == -1 else range_ends[1]))
+        elif not hasattr(indices, '__iter__'):
+            # it is an int: convert to list
+            indices = [indices]
+
+        for idx in indices:
+            node = self[idx]
+            self.remove(node)
+
     def resolve(self, meas_obj_value_names_map):
         """
         Resolves the keys_in and keys_out of a raw ProcessingPipeline, if they
@@ -508,9 +531,6 @@ class ProcessingPipeline(list):
                                            f'{self[node_idx-1]["node_name"]} '
                                            f'does not have the key "keys_out".')
                         keys_in += self[node_idx-1]['keys_out']
-                        # keys_in += hlp_mod.get_sublst_with_all_strings_of_list(
-                        #     lst_to_search=self[node_idx-1]['keys_out'],
-                        #     lst_to_match=mobj_value_names)
                 else:
                     raise ValueError('The first node in the pipeline cannot '
                                      'have "keys_in" = "previous".')
@@ -519,16 +539,10 @@ class ProcessingPipeline(list):
                 # just append it
                 keys_in += [keyi]
 
-        # if keys_in != keys_in_temp:
-        #     try:
-        #         keys_in.sort()
-        #     except AttributeError:
-        #         pass
-
         if len(keys_in) == 0 or keys_in is None:
             raise ValueError(f'No "keys_in" could be determined '
                              f'for {mobj_name} in the node with index '
-                             f'{node_idx} and raw "keys_in" {keys_in_temp}.')
+                             f'{node_idx-1} and raw "keys_in" {keys_in_temp}.')
         return keys_in
 
     def resolve_keys_out(self, keys_in, keys_out_container, mobj_name,
@@ -608,17 +622,6 @@ class ProcessingPipeline(list):
                     suffix = ','.join(suffix)
                     if len(suffix):
                         keyo = f'{keyo} {suffix}'
-                    else:
-                        # len(suffix) will be 0 if the channel name(s) for the
-                        # meas_obj is a joined string of several channel names
-                        # corresponding to other meas_objs. For example,
-                        # if we use a correlation_object, its channel name
-                        # will be for example, UHF1_raw w2 UHF1,UHF1_raw w8 UHF1
-                        # corresponding to the channel names of the two
-                        # correlated qubits.
-                        # In this case, just append the joined channel names
-                        keyo = f'{keyo} ' \
-                               f'{",".join(meas_obj_value_names_map[mobj_name])}'
                 keys_out += [keyo]
 
             keyo_suff = node_params.get('keys_out_suffixes', [])
