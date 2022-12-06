@@ -25,6 +25,7 @@ class Config:
         password=None,
         token=None,
         device_name=None,
+        setup=None,
         host=None,
         use_test_db=False,
     ):
@@ -39,12 +40,14 @@ class Config:
             password (str, optional): the password for the user identified by username. Defaults to None.
             token (str, optional): the access token for a user on the database. Defaults to None.
             device_name (str, optional): the name of the device to retrieve from the database, if needed. Defaults to None.
+            setup (str, optional): the name of the setup one which measurements are performed. Defaults to None.
             host (str, optional): the url for the server hosting the device database. Defaults to "https://device-db.qudev.phys.ethz.ch".
         """
         self.username = username
         self.password = password
         self.token = token
         self.device_name = device_name
+        self.setup = setup
 
         if host != None:
             self.host = host
@@ -84,6 +87,9 @@ class Client:
             access_token=self.config.token,
         )
         self.api_client = device_db_client.ApiClient(self.api_config)
+        self.setup_name = self.config.setup
+        self.setup = None
+        self.check_setup()
 
         if not self.successful_connection():
             raise RuntimeError(f"Failed to connect to database")
@@ -107,6 +113,11 @@ class Client:
         if self.config.device_name is not None:
             self.__db_device = self.get_device_for(
                 name=self.config.device_name)
+
+    def check_setup(self):
+        """Checks if a setup exists in the database for the given names and stores it in a property of the client object"""
+        if self.setup_name is not None:
+            self.setup = self.get_api_instance().list_setups(name=self.setup_name)[0]
 
     def get_api_instance(self):
         """Returns the internal API client's api instance, which can make direct calls to the database server
@@ -341,6 +352,40 @@ class Client:
         else:
             log.debug(f"Found an already existing filefolder_raw_data")
             return maybe_filefolder_raw_data
+
+    def get_or_create_timestamp_raw_data(
+        self,
+        timestamp_raw_data: device_db_client.model.timestamp_raw_data.
+        TimestampRawData,
+    ):
+        """Gets a timestamp raw data from the DB, creates it if not found.
+
+        This function will get a timestamp raw data from the database, if it
+        exists, based on the uniquely identifying fields of the class. If such
+        an instance of timestamp raw data doesn't exist on the database, it
+        will be created.
+
+        This is useful when running scripts or code that may fail and thus
+        partially create entries on the database. If the model instance was
+        created on the database, a duplicate will not be created when the script
+        is re-run.
+
+        Args:
+            timestamp_raw_data (device_db_client.model.timestamp_raw_data.TimestampRawData): the timestamp raw data to get from the db, or create
+
+        Returns:
+            timestamp_raw_data: the updated timestamp raw data instance from the database
+        """
+        utils.throw_if_not_db_model(timestamp_raw_data)
+        maybe_timestamp_raw_data = self.get_api_instance().list_timestamp_raw_datas(timestamp=timestamp_raw_data.timestamp, setup=str(timestamp_raw_data.setup))
+        if len(maybe_timestamp_raw_data) == 0: # If no instance in the database was found with that timestamp and setup
+            log.info(
+                f"Could not find a timestamp_raw_data, creating one instead")
+            return self.get_api_instance().create_timestamp_raw_data(
+                timestamp_raw_data=timestamp_raw_data)
+        else: # len(maybe_timestamp_raw_data) > 0. Since the combination of timestamp and setup should be unique, we just return the first element
+            log.debug(f"Found an already existing timestamp_raw_data")
+            return maybe_timestamp_raw_data[0]
 
     def get_or_create_onenote_raw_data(self,
                                        onenote_raw_data: device_db_client.

@@ -72,7 +72,9 @@ def throw_if_not_db_model(model_instance):
         model.device_design_property_type.DeviceDesignPropertyType,
         model.device_design_property_value.DeviceDesignPropertyValue,
         model.unit.Unit,
+        model.timestamp_raw_data.TimestampRawData,
         model.file_folder_raw_data.FileFolderRawData,
+        model.setup.Setup,
         model.experiment.Experiment,
         model.one_note_raw_data.OneNoteRawData,
     ]

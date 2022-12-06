@@ -35,7 +35,7 @@ def WalkValueNodes(property_values_dict, filters=[]):
 
 
 def WalkLastUniqueValueNodes(property_values_dict, filters=[]):
-    """Iterator for the last value node - per unique `qubits`, `component_type`, 
+    """Iterator for the last value node - per unique `qubits`, `component_type`,
     and `property_type` combination - in the property values dictionary
 
     This iterator will only output the last value nodes for each combination of
@@ -258,11 +258,12 @@ class DevicePropertyValueUploader:
                         f"Could not find an associated component of type {value_node['component_type']} for qubits {value_node['qubits']}"
                     )
             # Get the device property type
-            device_property_type = self.client.get_device_property_type_for(
-                py_name=value_node['property_type'])
-            if device_property_type is None:
+            try:
+                device_property_type = self.client.get_device_property_type_for(
+                    py_name=value_node['property_type'])
+            except Exception as e:
                 raise ValueError(
-                    f"Could not find a device property type with py_name {value_node['property_type']}"
+                    f"Could not find a device property type with py_name {value_node['property_type']}. Failed with error {e}"
                 )
 
             # Check that the value_node value is within the device property type range
@@ -277,17 +278,21 @@ class DevicePropertyValueUploader:
                     f"Value node's value is larger than the allowed maximum value for the device property type:\n\tvalue = {value_node['value']} > {device_property_type.max_value} = max_value"
                 )
 
+            if self.client.setup == None:
+                raise ValueError(
+                    f"The config object was created without a valid setup. Please specify the setup."
+                )
+
             # Create objects on the database
             if not dry_run:
                 # We now have the component for the raw_data and device property value
                 try:
-                    raw_data = device_db_client.model.file_folder_raw_data.FileFolderRawData(
-                        host=self.host,
-                        path=value_node['rawdata_folder_path'],
-                        is_file=False,
-                        timestamp=value_node['timestamp'],
+                    raw_data = device_db_client.model.timestamp_raw_data.TimestampRawData(
+                        setup=int(self.client.setup.id),
+                        property_name=value_node['property_type'],
+                        timestamp=value_node['timestamp'].replace("_",""),
                     )
-                    raw_data = self.client.get_or_create_filefolder_raw_data(
+                    raw_data = self.client.get_or_create_timestamp_raw_data(
                         raw_data)
                 except Exception as e:
                     raise RuntimeError(
