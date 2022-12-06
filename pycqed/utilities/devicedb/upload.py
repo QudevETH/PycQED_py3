@@ -109,7 +109,7 @@ class DevicePropertyValueUploader:
         # Check if the client has a device on the database, which is required
         if not self.client.has_db_device:
             raise ValueError(
-                f"PropertyValueUploader requires that the database client is using a device with a valid entry in the database"
+                f"DevicePropertyValueUploader requires that the database client is using a device with a valid entry in the database"
             )
 
         # Set db_experiment, create if None, throw if it's an unknown type
@@ -135,7 +135,7 @@ class DevicePropertyValueUploader:
         return datetime.strptime(timestamp, TIMESTAMP_DATETIME_FORMAT)
 
     def create_experiment_instance(self, experiment_comments=None):
-        """Creates a `Experiment` instance for all property values uploaded by `PropertyValueUploader`
+        """Creates a `Experiment` instance for all property values uploaded by `DevicePropertyValueUploader`
 
         Args:
             experiment_comments (str, optional): an optional comment for the `Experiment` instance. Defaults to None.
@@ -211,7 +211,7 @@ class DevicePropertyValueUploader:
             qubits = value_node['qubits']
             if isinstance(qubits, list) and len(qubits) != 1:
                 raise NotImplementedError(
-                    f"PropertyValueUploader does not currently support value nodes with multiple qubits"
+                    f"DevicePropertyValueUploader does not currently support value nodes with multiple qubits"
                 )
             if (isinstance(qubits, list)
                     and not isinstance(qubits[0], str)) or not isinstance(

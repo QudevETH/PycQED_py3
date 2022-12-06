@@ -11,11 +11,6 @@ from device_db_client import model
 from device_db_client.api import api_api
 from pycqed.utilities.devicedb import decorators, utils
 
-# TODO: Where is the best place to store such pynames? I.e. how can I access a certain type in the database without knowing its id?
-PY_NAME_NORMAL_STATE_RESISTANCE = "nsr"
-PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES = "qb_qb_coupl_res"
-PY_NAME_COMPONENT_TYPE_QB = "qb"
-
 class Config:
     @decorators.at_least_one_not_none(['username', 'token'])
     @decorators.all_or_none(['username', 'password'])
@@ -241,11 +236,14 @@ class Client:
             device_design: the updated device_design instance from the database
         """
         utils.throw_if_not_db_model(device_design)
-        maybe_device_design = self.get_device_design_for(name=device_design.name,
-                                           log_empty_list=False)
+        maybe_device_design = self.get_device_design_for(
+            name=device_design.name,
+            log_empty_list=False)
+
         if maybe_device_design is None:
             log.info(f"Could not find a device design, creating one instead")
-            return self.get_api_instance().create_device_design(device_design=device_design)
+            return self.get_api_instance().create_device_design(
+                device_design=device_design)
         else:
             log.debug(f"Found an already existing device design")
             return maybe_device_design
@@ -307,7 +305,10 @@ class Client:
         """
         utils.throw_if_not_db_model(device_property_type)
         maybe_device_property_type = self.get_device_property_type_for(
-            py_name=device_property_type.py_name, log_empty_list=False)
+            py_name=device_property_type.py_name,
+            log_empty_list=False
+        )
+
         if maybe_device_property_type is None:
             log.info(f"Could not find a device_property_type, creating one instead")
             return self.get_api_instance().create_device_property_type(
@@ -377,13 +378,21 @@ class Client:
             timestamp_raw_data: the updated timestamp raw data instance from the database
         """
         utils.throw_if_not_db_model(timestamp_raw_data)
-        maybe_timestamp_raw_data = self.get_api_instance().list_timestamp_raw_datas(timestamp=timestamp_raw_data.timestamp, setup=str(timestamp_raw_data.setup))
-        if len(maybe_timestamp_raw_data) == 0: # If no instance in the database was found with that timestamp and setup
+        maybe_timestamp_raw_data = self.get_api_instance().list_timestamp_raw_datas(
+            timestamp=timestamp_raw_data.timestamp,
+            setup=str(timestamp_raw_data.setup)
+        )
+
+        # If no instance in the database was found with that timestamp and setup
+        if len(maybe_timestamp_raw_data) == 0:
             log.info(
                 f"Could not find a timestamp_raw_data, creating one instead")
             return self.get_api_instance().create_timestamp_raw_data(
                 timestamp_raw_data=timestamp_raw_data)
-        else: # len(maybe_timestamp_raw_data) > 0. Since the combination of timestamp and setup should be unique, we just return the first element
+        else:
+            # len(maybe_timestamp_raw_data) > 0. Since the combination of
+            # timestamp and setup should be unique, we just return the
+            # first element
             log.debug(f"Found an already existing timestamp_raw_data")
             return maybe_timestamp_raw_data[0]
 
@@ -476,11 +485,13 @@ class Client:
                                                  number=component.number,
                                                  log_empty_list=False)
         if maybe_component is None:
-            log.info(f"Could not find a component, creating one instead")
+            log.info("Could not find a component, creating one instead")
             return self.get_api_instance().create_component(
                 component=component)
         else:
-            log.debug(f"Found an already existing component for DeviceDesign id {component.devicedesign}, type {component.type} and number {component.number}")
+            log.debug('Found an already existing component for DeviceDesign '
+                f'id {component.devicedesign}, type {component.type} and number '
+                '{component.number}.')
             return maybe_component
 
     def get_or_create_coupling(
@@ -558,7 +569,12 @@ class Client:
             regex_matches = re.search('(.*)_(.*)_(.*)', name)
             if name.count('_') > 2:
                 raise ValueError(
-                    f"Device name contains `_` more than two times and cannot be uniquely decomposed into `WAFER_DESIGN_DEVICE`. So either the wafer, design or device name contain an underscore which is not allowed. Please look up the device id in the Device Database admin interface and call the function with the id instead of the name."
+                    'Device name contains `_` more than two times and cannot '
+                    'be uniquely decomposed into `WAFER_DESIGN_DEVICE`. So either '
+                    'the wafer, design or device name contain an underscore which '
+                    'is not allowed. Please look up the device id in the Device '
+                    'Database admin interface and call the function with the id '
+                    'instead of the name.'
                 )
             elif regex_matches != None:
                 wafer_name = regex_matches[1]
@@ -583,7 +599,11 @@ class Client:
                 )
             else:
                 raise ValueError(
-                    f"Device name does not follow the pattern `WAFER_DESIGN_DEVICE`. Please specify the full device name in this format or look up the device id in the Device Database admin interface and call the function with the id instead of the name."
+                    'Device name does not follow the pattern '
+                    '`WAFER_DESIGN_DEVICE`. Please specify the full device name '
+                    'in this format or look up the device id in the Device '
+                    'Database admin interface and call the function with the id '
+                    'instead of the name.'
                 )
         else:
             try:
@@ -651,10 +671,10 @@ class Client:
             log.debug("Getting component using py_name_num")
             # Check that we can get database
             if not self.has_db_device:
-                log.error(
-                    f"Cannot get component using py_name_num if the client does not have a valid database device"
+                raise SystemError(
+                    'Cannot get component using py_name_num if the client '
+                    'does not have a valid database device.'
                 )
-                return None
 
             # Get the component type from py_name_num
             comp_type_py_name, number = utils.numbered_py_name_to_type_and_num(
@@ -664,22 +684,22 @@ class Client:
 
             # Check if component type exists from py_name
             if component_type is None:
-                log.error(
-                    f"Could not find a component type with py_name {comp_type_py_name}"
+                raise SystemError(
+                    f'Could not find a component type with py_name {comp_type_py_name}'
                 )
-                return None
 
             # Get the component
             component = self.get_component_for(
                 type=str(component_type.id),
-                devicedesign=str(self.db_device.devicedesign), # Get the id of the design that is related to the device (TODO: Check if this concatenation works)
+                devicedesign=str(self.db_device.devicedesign),
                 number=str(number),
             )
             return component
         elif type is not None:
             log.debug("Getting component using type, devicedesign, and number")
             if number == None:
-                raise SyntaxError("When calling get_component_for() without a py_name_num argument, a number has to be provided.")
+                raise SyntaxError('When calling get_component_for() without a '
+                    'py_name_num argument, a number has to be provided.')
             search_kwargs = {
                 "type": str(type),
                 "devicedesign": str(devicedesign),
@@ -707,7 +727,7 @@ class Client:
                                name=None,
                                py_name=None,
                                **kwargs):
-        """Get the component type for the provided search terms
+        """Get the component type for the provided search terms.
 
         Args:
             id (int|str): the primary key of the component_type instance on the database
@@ -737,7 +757,7 @@ class Client:
 
     @decorators.at_least_one_not_none(['id', 'component_ids'])
     def get_coupling_for(self, id=None, component_ids: list = None, **kwargs):
-        """Get the coupling for the provided search terms
+        """Get the coupling for the provided search terms.
 
         Args:
             id (int|str): the primary key of the coupling instance on the database
@@ -771,7 +791,7 @@ class Client:
                               verbose_name=None,
                               py_name=None,
                               **kwargs):
-        """Get the device property type for the provided search terms
+        """Get the device property type for the provided search terms.
 
         Args:
             id (int|str): the primary key of the property_type instance on the database
@@ -787,10 +807,12 @@ class Client:
         api = self.get_api_instance()
         if id is None:
             log.debug(
-                "Getting device property type using either name, verbose_name, or py_name"
+                'Getting device property type using either name, verbose_name, '
+                'or py_name.'
             )
             search_kwargs = utils.noneless(**search_kwargs)
-            device_property_type_list = api.list_device_property_types(**search_kwargs)
+            device_property_type_list = api.list_device_property_types(
+                **search_kwargs)
             device_property_type = utils.find_model_from_list(
                 device_property_type_list,
                 'device_property_type',
@@ -813,7 +835,7 @@ class Client:
                               verbose_name=None,
                               py_name=None,
                               **kwargs):
-        """Get the device design property type for the provided search terms
+        """Get the device design property type for the provided search terms.
 
         Args:
             id (int|str): the primary key of the property_type instance on the database
@@ -829,7 +851,8 @@ class Client:
         api = self.get_api_instance()
         if id is None:
             log.debug(
-                "Getting device design property type using either name, verbose_name, or py_name"
+                'Getting device design property type using either name, '
+                'verbose_name, or py_name.'
             )
             search_kwargs = utils.noneless(**search_kwargs)
             device_design_property_type_list = api.list_device_design_property_types(**search_kwargs)
@@ -849,7 +872,7 @@ class Client:
 
     @decorators.at_least_one_not_none(['id', 'name'])
     def get_unit_for(self, id=None, name=None, **kwargs):
-        """Get the unit for the provided search terms
+        """Get the unit for the provided search terms.
 
         Args:
             id (int|str): the primary key of the unit instance on the database
@@ -882,7 +905,7 @@ class Client:
                                     host=None,
                                     path=None,
                                     **kwargs):
-        """Get the File/Folder raw data for the provided search terms
+        """Get the File/Folder raw data for the provided search terms.
 
         Args:
             id (int): the primary key of the filefolder_raw_data instance on the database
@@ -921,7 +944,7 @@ class Client:
                                  section_id=None,
                                  page_id=None,
                                  **kwargs):
-        """Get the OneNote raw data for the provided search terms
+        """Get the OneNote raw data for the provided search terms.
 
         Args:
             id (int|str): the primary key of the onenote_raw_data instance on the database
@@ -955,7 +978,7 @@ class Client:
         return onenote_raw_data
 
     def get_experiment_for(self, id, **kwargs):
-        """Get the experiment for the provided search terms
+        """Get the experiment for the provided search terms.
 
         Args:
             id (int|str): the primary key of the experiment instance on the database
@@ -975,9 +998,11 @@ class Client:
                                                 component=None,
                                                 coupling=None,
                                                 device_property_type=None):
-        """Internal helper function to determine if the input arguments to `Client.get_device_property_value_for` are valid.
+        """Internal helper function to determine if the input arguments to
+        `Client.get_device_property_value_for` are valid.
 
-        Only one of `component` and `coupling` can be None, the other must be defined. `device_property_type` is required.
+        Only one of `component` and `coupling` can be None, the other must be
+        defined. `device_property_type` is required.
 
         Args:
             component (int, optional): the component id for the device property value, or None
@@ -1046,7 +1071,7 @@ class Client:
                                     component=None,
                                     coupling=None,
                                     **kwargs):
-        """Get all device property values for the provided search terms
+        """Get all device property values for the provided search terms.
 
         One of `component` and `coupling` must always be None and the other an
         id.
@@ -1075,7 +1100,7 @@ class Client:
 
     def create_device_property_value(
             self, device_property_value: model.device_property_value.DevicePropertyValue):
-        """Creates a device property value, and returns its new instance (with an id)
+        """Creates a device property value, and returns its new instance (with an id).
 
         Args:
             device_property_value (model.device_property_value.DevicePropertyValue): the DevicePropertyValue instance to create
@@ -1097,7 +1122,9 @@ class Client:
             assoc_comp_i = self.get_component_for(id=assoc_comp_id)
             if assoc_comp_i is None:
                 log.error(
-                    f"Could not find an associated component with id {assoc_comp_id}, but it should exist on the database as it has a foreign key constraint..."
+                    'Could not find an associated component with id '
+                    f'{assoc_comp_id}, but it should exist on the database as it '
+                    'has a foreign key constraint...'
                 )
             else:
                 if assoc_comp_i.type == associated_component_type.id:
@@ -1111,7 +1138,8 @@ class Client:
         # Handle no valid associated component found
         if assoc_comp is None:
             log.debug(
-                f"Could not find an associated component of type {associated_component_type} for qubit {qubit}"
+                'Could not find an associated component of type '
+                f'{associated_component_type} for qubit {qubit}.'
             )
             return None
 
@@ -1124,9 +1152,11 @@ class Client:
             qubit_py_name_num,
             device_property_type_py_name,
             associated_component_type_hint=None):
-        """Finds an accepted device property value, from a py_name, for a qubit or an associated component
+        """Finds an accepted device property value, from a py_name, for a qubit
+        or an associated component
 
-        This is a utilities function to easily interface with the settings functionality for automated calibration routines.
+        This is a utilities function to easily interface with the settings
+        functionality for automated calibration routines.
 
         Example:
             .. code-block:: python
@@ -1152,24 +1182,30 @@ class Client:
         # Get the qubit
         qubit = self.get_component_for(py_name_num=qubit_py_name_num)
         if qubit is None:
-            raise ValueError(f"Could not find qubit {qubit_py_name_num}")
+            log.warning(f"Could not find qubit {qubit_py_name_num}")
+            return None
 
         # Get the device property type
         device_property_type = self.get_device_property_type_for(
             py_name=device_property_type_py_name)
         if device_property_type is None:
-            log.error(
-                f"Could not find a device property type with py_name {device_property_type_py_name}. Make sure it's added to the database."
+            log.warning(
+                'Could not find a device property type with py_name '
+                f'{device_property_type_py_name}. Make sure it\'s added to the '
+                'database.'
             )
             return None
 
-        # If associated_component_type_hint is not None, we can check for an associated component from the qubit
+        # If associated_component_type_hint is not None, we can check for an
+        # associated component from the qubit
         if associated_component_type_hint is not None:
             assoc_comp_type = self.get_component_type_for(
                 py_name=associated_component_type_hint)
             if assoc_comp_type is None:
                 log.warning(
-                    f"Associated component type hint {associated_component_type_hint} does not identify a valid component type on the database"
+                    'Associated component type hint '
+                    f'{associated_component_type_hint} does not identify a valid '
+                    'component type on the database.'
                 )
             else:
                 device_property_value = self.__get_device_property_value_from_param_args_for_associated_component(
@@ -1178,11 +1214,13 @@ class Client:
                     associated_component_type=assoc_comp_type)
                 if device_property_value is not None:
                     log.debug(
-                        f"Found a device property value for the associated component")
+                        "Found a device property value for the associated component")
                     return device_property_value
                 else:
                     log.debug(
-                        f"Could not find a device property value for an associated component of qubit, will try on the qubit itself"
+                        'Could not find a device property value for an '
+                        'associated component of qubit, will try on the qubit '
+                        'itself.'
                     )
 
         # Try find a device property value for the type on the qubit
@@ -1190,12 +1228,14 @@ class Client:
             component=qubit.id, device_property_type=device_property_type.id)
         if device_property_value is None:
             log.debug(
-                f"Could not find a device property value of type {device_property_type_py_name} for qubit {qubit}"
+                'Could not find a device property value of type '
+                f'{device_property_type_py_name} for qubit {qubit}.'
             )
             return None
         else:
             log.debug(
-                f"Found a device property value of type {device_property_type_py_name} on qubit {qubit}"
+                'Found a device property value of type '
+                f'{device_property_type_py_name} on qubit {qubit}.'
             )
             return device_property_value
 
@@ -1210,7 +1250,9 @@ class Client:
             assoc_comp_i = self.get_component_for(id=assoc_comp_id)
             if assoc_comp_i is None:
                 log.error(
-                    f"Could not find an associated component with id {assoc_comp_id}, but it should exist on the database as it has a foreign key constraint..."
+                    'Could not find an associated component with id '
+                    f'{assoc_comp_id}, but it should exist on the database as it '
+                    'has a foreign key constraint...'
                 )
             else:
                 if assoc_comp_i.type == associated_component_type.id:
@@ -1224,22 +1266,27 @@ class Client:
         # Handle no valid associated component found
         if assoc_comp is None:
             log.debug(
-                f"Could not find an associated component of type {associated_component_type} for qubit {qubit}"
+                'Could not find an associated component of type '
+                f'{associated_component_type} for qubit {qubit}'
             )
             return None
 
         # A valid associated component was found
-        return self.get_all_device_property_values_for(component=assoc_comp.id,
-                                                device_property_type=device_property_type.id)
+        return self.get_all_device_property_values_for(
+            component=assoc_comp.id,
+            device_property_type=device_property_type.id
+        )
 
     def get_all_device_property_values_from_param_args(
             self,
             qubit_py_name_num,
             device_property_type_py_name,
             associated_component_type_hint=None):
-        """Finds all accepted device property values, from a py_name, for a qubit or an associated component
+        """Finds all accepted device property values, from a py_name, for a
+        qubit or an associated component.
 
-        This is a utilities function to easily interface with the settings functionality for automated calibration routines.
+        This is a utilities function to easily interface with the settings
+        functionality for automated calibration routines.
 
         Example:
             .. code-block:: python
@@ -1273,7 +1320,9 @@ class Client:
             py_name=device_property_type_py_name)
         if device_property_type is None:
             log.error(
-                f"Could not find a property type with py_name {device_property_type_py_name}. Make sure it's added to the database."
+                'Could not find a property type with py_name'
+                f'{device_property_type_py_name}. Make sure it\'s added to the '
+                'database.'
             )
             return None
 
@@ -1283,7 +1332,9 @@ class Client:
                 py_name=associated_component_type_hint)
             if assoc_comp_type is None:
                 log.warning(
-                    f"Associated component type hint {associated_component_type_hint} does not identify a valid component type on the database"
+                    'Associated component type hint '
+                    f'{associated_component_type_hint} does not identify a valid '
+                    'component type on the database'
                 )
             else:
                 device_property_value = self.__get_device_property_value_from_param_args_for_associated_component(
@@ -1292,11 +1343,14 @@ class Client:
                     associated_component_type=assoc_comp_type)
                 if device_property_value is not None:
                     log.debug(
-                        f"Found a device property value for the associated component")
+                        'Found a device property value for the associated '
+                        'component')
                     return device_property_value
                 else:
                     log.debug(
-                        f"Could not find a device property value for an associated component of qubit, will try on the qubit itself"
+                        'Could not find a device property value for an '
+                        'associated component of qubit, will try on the qubit '
+                        'itself.'
                     )
 
         # Try find property values for the type on the qubit
@@ -1306,80 +1360,110 @@ class Client:
 
     @decorators.only_one_not_none(['id', 'name'])
     def get_device_design_connectivity_graph(self, name=None, id=None):
-        """Returns the connectivity graph of a device design
+        """Returns the connectivity graph of a device design.
+
+        For example for the S17v2 design, it will return
+        [(1, 2), (1, 3), (4, 2), (4, 3), (4, 5), (4, 9), (6, 5),
+        (6, 11), (8, 3), (8, 7), (8, 9), (8, 13), (10, 5), (10, 9),
+        (10, 11), (10, 15), (12, 7), (12, 13), (14, 9), (14, 13),
+        (14, 15), (14, 16), (17, 15), (17, 16)]
 
         Args:
             id (int|str): id of the device design
             name (str): name of the device design
 
         Returns:
-            list: list of tuples, representing the connectivity graph of the device design
+            list: list of tuples, representing the connectivity graph of the
+                device design
         """
         api = self.get_api_instance()
 
-        # if id is None, a name has to be provided instead and we can find the id over the name
+        # if id == None, a name has to be provided instead and we can find
+        # the id over the name
         if id==None:
             try:
                 device_design = self.get_device_design_for(name=name)
                 id = device_design.id
             except Exception as e:
-                log.warning(
-                    f"Could not find the device design related to the name {name}. Exception: {e}"
+                raise SystemError(
+                    'Could not find the device design related to the name '
+                    f'{name}. Exception: {e}'
                 )
-                return False
 
         # Get the id of the component type for qubit qubit coupling resonators
         try:
-            component_type = self.get_component_type_for(py_name=PY_NAME_COMPONENT_TYPE_QB_QB_COUPLING_RES)
+            component_type = self.get_component_type_for(py_name="qb_qb_coupl_res")
         except Exception as e:
-            log.warning(
-                f"Could not find the qubit-qubit coupling resonator component type in the database. Exception: {e}"
+            raise SystemError(
+                'Could not find the qubit-qubit coupling resonator component '
+                f'type in the database. Exception: {e}'
             )
             return False
 
         # Get the list of all the qubit qubit coupling resonators on that design
         try:
-            component_list = api.list_components(type=str(component_type.id), devicedesign=str(id))
+            component_list = api.list_components(
+                type=str(component_type.id),
+                devicedesign=str(id)
+            )
         except Exception as e:
-            log.warning(
-                f"Could not get the component list of qubit-qubit coupling resonators. Exception: {e}"
+            raise SystemError(
+                'Could not get the component list of qubit-qubit coupling '
+                f'resonators. Exception: {e}'
             )
             return False
 
         connectivity_graph = [] # Array which stores qubit connections
 
-        # Iterate over every coupling resonator, find the two qubits connected to the resonator and add the to the connectivity graph
-        for component in component_list: # Find qubits for coupling resonator {component.id}
+        # Iterate over every coupling resonator, find the two qubits connected
+        # to the resonator and add them to the connectivity graph
+        for component in component_list:
             coupling_list = api.list_couplings(components=str(component.id))
             if len(coupling_list) > 2:
-                raise SystemError("Found more than two qubits connected to a qubit-qubit coupling resonator. How can that happen?")
+                raise SystemError('Found more than two qubits connected to a '
+                    'qubit-qubit coupling resonator. How can that happen?')
             elif len(coupling_list) < 2:
-                raise SystemError("Could not find two qubits that are connected to a qubit-qubit coupling resonator. How can that happen?")
+                raise SystemError('Could not find two qubits that are connected '
+                    'to a qubit-qubit coupling resonator. How can that happen?')
             else:
                 qbs_list = []
-                for coupling in coupling_list: # There are two couplings associated to one coupling resonator: One coupling to the one qubit and one coupling to the other qubit
+                # There are two couplings associated to one coupling resonator:
+                # One coupling to the one qubit and one coupling to the other qubit
+                for coupling in coupling_list:
                     if len(coupling["components"]) != 2: # Consistency check
-                        raise SystemError("A coupling instance contains more or less than 2 elements. How can that happen? It should always contain exactly 2 elements.")
+                        raise SystemError('Coupling between more or less than '
+                            'two qubits is not supported at the moment.')
 
-                    # Check what of the two elements is the coupling resonator and what is the qubit
+                    # Check what of the two elements is the coupling resonator
+                    # and what is the qubit
                     el1 = coupling["components"][0]
                     el2 = coupling["components"][1]
                     if el1 == component.id:
                         qb = el2
                     elif el2 == component.id:
                         qb = el1
-                    else:
-                        print("This should not happen.")
 
-                    # Instead of the component id of the qubit in the database, find the number of the qubit on the device design
+                    # Instead of the component id of the qubit in the database,
+                    # find the number of the qubit on the device design
                     qb_id_on_design = api.retrieve_component(id=str(qb))
                     qbs_list.append(qb_id_on_design.number)
-                connectivity_graph.append((qbs_list[0], qbs_list[1])) # For having tuples. Otherwise one can also just use connectivity_graph.append(qbs_list)
+
+                # Append the two qubits as tuples. If tuples are not required,
+                # one can also just use connectivity_graph.append(qbs_list)
+                connectivity_graph.append((qbs_list[0], qbs_list[1]))
 
         return connectivity_graph
 
-    def upload_normal_state_resistances(self, path=None, device_name=None, device_id=None, comments="", values_in_kOhm=True, set_accepted=True):
-        """Uploads normal state resistance measurements that are stored in a file to the database.
+    def upload_normal_state_resistances(self,
+        path=None,
+        device_name=None,
+        device_id=None,
+        comments="",
+        values_in_kOhm=True,
+        set_accepted=True
+        ):
+        """Uploads normal state resistance measurements that are stored in a
+        file to the database.
 
         Args:
             path (str): path of the file in which all measurements are stored
@@ -1390,21 +1474,24 @@ class Client:
             set_accepted (bool): if True (default), the stored normal state resistances are directly marked as accepted
 
         Returns:
-
+            device_property_value_array (list): array of created device property value objects
         """
 
         # Check if correct arguments were provided
         if path == None:
             raise ValueError(
-                f"You have to provide a path to the text file in which the normal state resistances are stored."
+                'You have to provide a path to the text file in which the '
+                'normal state resistances are stored.'
             )
         elif device_name == None and device_id == None:
             raise ValueError(
-                f"You have to provide either the device name or the device id to which the normal state resistances are related."
+                'You have to provide either the device name or the device id '
+                'to which the normal state resistances are related.'
             )
         elif device_name != None and device_id != None:
             raise ValueError(
-                f"You can only specify the device name or the device id but not both together (both should be unique by their own already)."
+                'You can only specify the device name or the device id but not '
+                'both together (both should be unique by their own already).'
             )
 
         if device_name != None: # If device name was provided, get id
@@ -1414,24 +1501,24 @@ class Client:
         else: # In that the device id was provided. Check if the id is valid and what the related device design is
             try:
                 device = self.get_device_for(id=device_id)
-                device_name = f"{self.get_wafer_for(id=device.wafer).name}_{self.get_device_design_for(id=device.devicedesign).name}_{device.name}" # Used for creating the experiment object
+                device_name = f"{self.get_wafer_for(id=device.wafer).name}_"\
+                    f"{self.get_device_design_for(id=device.devicedesign).name}_"\
+                    f"{device.name}" # Used for creating the experiment object
                 device_design = device.devicedesign
             except Exception as e:
-                print("Could not find a device for the provided id '{device_id}'. Exception: %s\n" % e)
+                print('Could not find a device for the provided id '
+                    '"{device_id}". Exception: %s\n' % e)
 
         # Find the right device property type for the normal state resistance
         try:
-            nsr_property_type = self.get_device_property_type_for(
-                py_name=PY_NAME_NORMAL_STATE_RESISTANCE
-            )
+            nsr_property_type = self.get_device_property_type_for(py_name="nsr")
         except Exception as e:
-            print("Could not find the right device property type for normal state resistances. Exception: %s\n" % e)
+            print('Could not find the right device property type for normal '
+            'state resistances. Exception: %s\n' % e)
 
         # Find the right component type for a qubit
         try:
-            qubit_component_type = self.get_component_type_for(
-                py_name=PY_NAME_COMPONENT_TYPE_QB
-            )
+            qubit_component_type = self.get_component_type_for(py_name="qb")
         except Exception as e:
             print("Could not find the right qubit component type: %s\n" % e)
 
@@ -1454,8 +1541,11 @@ class Client:
             file = open(path, "r")
         except FileNotFoundError:
             raise ValueError(
-                f"The file '{path}' could not be opnened. Please provide a valid path to the file."
+                f'The file `{path}` could not be opnened. Please provide a '
+                'valid path to the file.'
             )
+
+        device_property_value_array = []
         for line in file:
             if line.strip() != "": # If the line is empty (e.g. if there is an empty line at the end), skip it
                 regex_matches = re.search('(.*): (.*)', line)
@@ -1472,7 +1562,8 @@ class Client:
                         number=qb_num,
                     )
                 except Exception as e:
-                    print("Could not find the right qubit component for number '{qb_num}': %s\n" % e)
+                    print('Could not find the right qubit component for number '
+                        '{qb_num}: %s\n' % e)
 
                 # Create the device property value object
                 device_property_value = device_db_client.model.device_property_value.DevicePropertyValue(
@@ -1488,8 +1579,10 @@ class Client:
                     created_device_property_value = api.create_device_property_value(
                         device_property_value=device_property_value
                     )
+                    device_property_value_array.append(device_property_value)
                 except device_db_client.ApiException as e:
-                    print("Exception when calling ApiApi->create_device_property_value: %s\n" % e)
+                    print('Exception when calling ApiApi->'
+                        'create_device_property_value: {e}' % e)
 
                 if set_accepted: # Set the created device property value to accepted
                     try:
@@ -1497,7 +1590,8 @@ class Client:
                             id=str(created_device_property_value.id))
                     except Exception as e:
                         raise RuntimeError(
-                            f"Failed to set property value as accepted, with error {e}"
+                            "Failed to set property value as accepted, with "
+                            f"error {e}"
                         )
 
-        return None
+        return device_property_value_array
