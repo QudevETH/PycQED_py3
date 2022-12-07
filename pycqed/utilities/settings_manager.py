@@ -396,57 +396,113 @@ class SettingsManager:
             timestamp=timestamp)
         snapshot_viewer.spawn_snapshot_viewer()
 
-    def _compare_dict_instances(self, dict_list, name_list, instruments='all',
-                                verbose=True):
+    def spawn_comparison_viewer(self, timestamps, reduced_compare=False):
+        import pycqed.gui.dict_viewer as dict_viewer
+        diff_dict, diff_msg = self.compare_stations(timestamps=timestamps,
+                                          reduced_compare=reduced_compare)
+        if timestamps == 'all':
+            timestamps = list(self.stations.keys())
+        snapshot_viewer = dict_viewer.SnapshotViewer(
+            snapshot=diff_dict,
+            timestamp=timestamps)
+        snapshot_viewer.spawn_comparison_viewer()
+
+    def _compare_dict_instances(self, dict_list, name_list, verbose=True):
         all_keys = set()
         all_msg = []
         all_diff = {}
+        # set of all keys
         for dic in dict_list:
             all_keys.update(set(dic.keys()))
         for key in all_keys:
-            if instruments != 'all' and key not in instruments:
-                continue
-            key_not_in_instrument = False
+            diff = {}
+            key_not_in_dicts = False
+            dicts_with_key = []
+
             for i, dic in enumerate(dict_list):
                 if key not in dic.keys():
                     all_msg.append(
                         f'\nInstrument "{key}" missing in dict '
                         f'{name_list[i]}.\n')
-                    key_not_in_instrument = True
-            if key_not_in_instrument:
-                continue
+                    key_not_in_dicts = True
+                else:
+                    dicts_with_key.append(i)
 
-            diff = {}
-
-            for i, dic in enumerate(dict_list[1:]):
-                try:
-                    np.testing.assert_equal(dict_list[0][key], dic[key])
-                except AssertionError:
-                    if all(isinstance(dic[key], dict) for dic in dict_list):
-                        diff[key] = self._compare_dict_instances(
-                            [dic[key] for dic in dict_list], name_list)
-                        break
-                    else:
-                        diff[key] = \
-                            {name_list[i]: dic[key]
-                             for i, dic in enumerate(dict_list)}
-                        break
-
+            if key_not_in_dicts:
+                diff[key] = \
+                    {Timestamp(name_list[i]): dict_list[i][key]
+                     for i in dicts_with_key}
+            else:
+                for i, dic in enumerate(dict_list[1:]):
+                    try:
+                        np.testing.assert_equal(dict_list[0][key], dic[key])
+                    except AssertionError:
+                        if all(isinstance(dic[key], dict) for dic in dict_list):
+                            diff[key] = self._compare_dict_instances(
+                                [dic[key] for dic in dict_list], name_list)
+                            break
+                        else:
+                            diff[key] = \
+                                {Timestamp(name_list[i]): dic[key]
+                                 for i, dic in enumerate(dict_list)}
+                            break
             all_diff.update(diff)
 
         return all_diff
 
-    def compare_stations(self, timestamps, instruments='all', verbose=True):
+    def _compare_station_components(self, timestamps, instruments='all',
+                                    verbose=True, reduced_compare=False):
+        all_components = set()
+        all_msg = []
+        all_diff = {}
+
+        # create a set of all components of the given snapshots
+        for tsp in timestamps:
+            all_components.update(set(self.stations[tsp].components.keys()))
+
+        # check which components coincide in all stations
+        for component in all_components:
+            if instruments != 'all' and component not in instruments:
+                continue
+
+            # marker if all stations contain component
+            component_not_in_all_stations = False
+            for i, tsp in enumerate(timestamps):
+                if component not in self.stations[tsp].components.keys():
+                    all_msg.append(
+                        f'\nComponent/Instrument "{component}" missing in dict '
+                        f'{tsp}.\n')
+                    component_not_in_all_stations = True
+            if component_not_in_all_stations:
+                continue
+
+            component_snaps = \
+                [self.stations[tsp].components[component].snapshot(reduced=reduced_compare)
+                 for tsp in timestamps]
+
+            diff = self._compare_dict_instances(component_snaps, timestamps,
+                                                verbose=verbose)
+            if diff != {}:
+                all_diff[component] = diff
+
+        return all_diff, all_msg
+
+    def compare_stations(self, timestamps, instruments='all', verbose=True,
+                         reduced_compare=False):
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
-
         elif isinstance(timestamps, list):
             ts_list = timestamps
         else:
-            return
-        return self._compare_dict_instances(
-            [self.stations[ts].snapshot() for ts in ts_list],ts_list)
+            raise NotImplementedError(f'Timestamp "{timestamps}" is not a '
+                                      f'list of timestamps or "all"')
+        return self._compare_station_components(ts_list,
+                                                instruments=instruments,
+                                                reduced_compare=reduced_compare)
 
+
+class Timestamp(str):
+    pass
 
 
 class Loader:
