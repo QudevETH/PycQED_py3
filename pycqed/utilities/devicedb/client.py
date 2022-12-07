@@ -205,7 +205,25 @@ class Client:
             device: the updated device instance from the database
         """
         utils.throw_if_not_db_model(device)
-        maybe_device = self.get_device_for(name=device.name,
+
+        # Construct the full device name because that should be unique
+        # and we can only search for this full unique name and not the
+        # device name without device design and wafer
+        wafer = self.get_wafer_for(id=device.wafer)
+        if wafer==None:
+            raise ValueError(
+                f'No wafer found for id "{device.wafer}"'
+            )
+
+        device_design = self.get_device_design_for(id=device.devicedesign)
+        if device_design==None:
+            raise ValueError(
+                f'No device design found for id "{device.devicedesign}"'
+            )
+
+        full_device_name = f"{wafer.name}_{device_design.name}_{device.name}"
+
+        maybe_device = self.get_device_for(name=full_device_name,
                                            log_empty_list=False)
         if maybe_device is None:
             log.info(f"Could not find a device, creating one instead")
@@ -582,7 +600,15 @@ class Client:
                 device_name = regex_matches[3]
 
                 wafer = self.get_wafer_for(name=wafer_name)
+                if wafer==None:
+                    raise ValueError(
+                        f'No wafer found for name "{wafer}"'
+                    )
                 device_design = self.get_device_design_for(name=device_design_name)
+                if device_design==None:
+                    raise ValueError(
+                        f'No device design found for name "{device_design}"'
+                    )
 
                 search_kwargs = {
                     "name": device_name,
