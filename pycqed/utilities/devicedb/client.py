@@ -379,7 +379,7 @@ class Client:
         """
         utils.throw_if_not_db_model(timestamp_raw_data)
         maybe_timestamp_raw_data = self.get_api_instance().list_timestamp_raw_datas(
-            timestamp=timestamp_raw_data.timestamp,
+            timestamp=str(timestamp_raw_data.timestamp),
             setup=str(timestamp_raw_data.setup)
         )
 
@@ -557,7 +557,7 @@ class Client:
 
     @decorators.at_least_one_not_none(['id', 'name'])
     def get_device_for(self, id=None, name=None, **kwargs):
-        """Get the device for the provided search terms
+        """Get the device for the provided search terms.
 
         Args:
             id (int|str): the primary key of the device instance on the database
@@ -684,8 +684,9 @@ class Client:
 
             # Check if component type exists from py_name
             if component_type is None:
-                raise SystemError(
-                    f'Could not find a component type with py_name {comp_type_py_name}'
+                raise ValueError(
+                    'Could not find a component type with py_name '
+                    f'{comp_type_py_name}'
                 )
 
             # Get the component
