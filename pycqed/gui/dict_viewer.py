@@ -534,10 +534,7 @@ class DictView(qt.QtWidgets.QWidget):
                 i.e. parent.data(0,0) = 'parameters'
         """
         for key, val in dictdata.items():
-            if len(self.column_header) > 2:
-                self.tree_add_row_mc(str(key), val, parent)
-            else:
-                self.tree_add_row(str(key), val, parent, param)
+            self.tree_add_row(str(key), val, parent, param)
 
     def tree_add_row(self, key: str, val,
                      tree_widget: qt.QtWidgets.QTreeWidgetItem,
@@ -573,30 +570,48 @@ class DictView(qt.QtWidgets.QWidget):
             row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
 
+
+class ComparisonDictView(DictView):
+    def __init__(self, snap: dict, title: str = '', screen=None,
+                 timestamps=None):
+        super().__init__(snap, title, screen, timestamps)
+
+    def dict_to_titem(self, dictdata: dict,
+                      parent: qt.QtWidgets.QTreeWidgetItem,
+                      param=False):
+        for key, val in dictdata.items():
+            self.tree_add_row_mc(str(key), val, parent)
+
     def tree_add_row_mc(self, key: str, val,
                         tree_widget: qt.QtWidgets.QTreeWidgetItem):
+        from pycqed.utilities.settings_manager import Timestamp as Timestamp
         if isinstance(val, dict):
             values = [''] * len(self.column_header[1:])
-            if sorted(list(val.keys())) == sorted(self.column_header[1:]):
-                try:
-                    for i, header in enumerate(self.column_header[1:]):
-                        if isinstance(val[header], dict):
-                            values[i] = str(val[header].get('value', val[header]))
-                        else:
-                            values[i] = str(val[header])
-                    row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
-                except KeyError:
-                    print(val.keys())
-                    print(self.column_header[1:])
+            if all((tsp in self.column_header[1:] and
+                   (isinstance(tsp, Timestamp)))
+                   for tsp in val.keys()):
+                for param in val.keys():
+                    if isinstance(val[param], dict):
+                        values[self.column_header[1:].index(param)] =\
+                            str(val[param].get('value', val[param]))
+                    else:
+                        values[self.column_header[1:].index(param)] = \
+                            str(val[param])
+                row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+                for i in range(len(self.column_header) - 1):
+                    if not self.column_header[i+1] in val.keys():
+                        row_item.setBackground(i+1, qt.QtGui.QBrush(
+                            qt.QtGui.QColor('darkGrey')))
             else:
                 row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
                 self.dict_to_titem(val, row_item)
         else:
-            print('neverhappen')
-            row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
+            raise NotImplementedError('No Timestamp object encountered')
 
-        if '\n' in row_item.data(1, 0):
-            row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
+        if any('\n' in row_item.data(i, 0)
+               for i in range(len(self.column_header))):
+            for i in range(len(self.column_header)):
+                row_item.setSizeHint(i, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
 
 
@@ -784,6 +799,26 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
             self.close()
 
 
+class ComparisonViewerWindow(qt.QtWidgets.QMainWindow):
+    def __init__(self, dic: dict, title: str = '', screen=None,
+                 timestamps=None):
+        super(ComparisonViewerWindow, self).__init__()
+        self.screen = screen
+        comparison_view = ComparisonDictView(dic, title, screen,
+                                             timestamps=timestamps)
+
+        self.setCentralWidget(comparison_view)
+        self.setWindowTitle("Comparison Viewer")
+        screen_geom = screen.size()
+        # layout options (x-coordinate, y-coordinate, width, height) in px
+        self.setGeometry(int(0.1 * screen_geom.width()),
+                         int(0.1 * screen_geom.height()),
+                         int(0.4 * screen_geom.width()),
+                         int(0.7 * screen_geom.height()))
+
+        self.show()
+
+
 class SnapshotViewer:
     def __init__(self, snapshot: dict, timestamp):
         self.snapshot = snapshot
@@ -792,18 +827,22 @@ class SnapshotViewer:
     def spawn_snapshot_viewer(self):
         qt_app = qt.QtWidgets.QApplication(sys.argv)
         screen = qt_app.primaryScreen()
-        if isinstance(self.timestamp, list):
-            snap_viewer = DictViewerWindow(
-                dic=self.snapshot,
-                title='Comparison of %s snapshots' % len(self.timestamp),
-                timestamps=self.timestamp,
-                screen=screen)
-        else:
-            snap_viewer = DictViewerWindow(
-                dic=self.snapshot,
-                title='Snapshot timestamp: %s' % self.timestamp,
-                screen=screen)
+        snap_viewer = DictViewerWindow(
+            dic=self.snapshot,
+            title='Snapshot timestamp: %s' % self.timestamp,
+            screen=screen)
         qt_app.exec_()
+
+    def spawn_comparison_viewer(self):
+        qt_app = qt.QtWidgets.QApplication(sys.argv)
+        screen = qt_app.primaryScreen()
+        comparison_viewer = ComparisonViewerWindow(
+            dic=self.snapshot,
+            title='Comparison of %s snapshots' % len(self.timestamp),
+            timestamps=self.timestamp,
+            screen=screen)
+        qt_app.exec_()
+
 
 
 def get_snapshot_from_filepath(filepath):
