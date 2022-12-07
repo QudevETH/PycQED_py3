@@ -1506,21 +1506,22 @@ class Client:
                     f"{device.name}" # Used for creating the experiment object
                 device_design = device.devicedesign
             except Exception as e:
-                print('Could not find a device for the provided id '
+                raise ValueError('Could not find a device for the provided id '
                     '"{device_id}". Exception: %s\n' % e)
 
         # Find the right device property type for the normal state resistance
         try:
             nsr_property_type = self.get_device_property_type_for(py_name="nsr")
         except Exception as e:
-            print('Could not find the right device property type for normal '
-            'state resistances. Exception: %s\n' % e)
+            raise SystemError('Could not find the right device property type '
+            'for normal state resistances. Exception: %s\n' % e)
 
         # Find the right component type for a qubit
         try:
             qubit_component_type = self.get_component_type_for(py_name="qb")
         except Exception as e:
-            print("Could not find the right qubit component type: %s\n" % e)
+            raise SystemError('Could not find the right qubit component type: '
+                f'%s\n' % e)
 
         api = self.get_api_instance()
 
@@ -1528,13 +1529,14 @@ class Client:
         experiment = device_db_client.model.experiment.Experiment(
             datetime_taken=datetime.datetime.now(),
             datetime_uploaded=datetime.datetime.now(),
-            type="Normal state resistance measurements on device " + device_name,
+            type="Normal state resistance measurements on device "+device_name,
             comments=comments,
         )
         try:
             experiment_uploaded = api.create_experiment(experiment=experiment)
         except device_db_client.ApiException as e:
-            print("Exception when calling ApiApi->create_experiment: %s\n" % e)
+            raise SystemError('Exception when calling ApiApi->'
+                'create_experiment: %s\n' % e)
 
         # Read file
         try:
@@ -1562,8 +1564,8 @@ class Client:
                         number=qb_num,
                     )
                 except Exception as e:
-                    print('Could not find the right qubit component for number '
-                        '{qb_num}: %s\n' % e)
+                    raise SystemError('Could not find the right qubit '
+                        'component for number {qb_num}: %s\n' % e)
 
                 # Create the device property value object
                 device_property_value = device_db_client.model.device_property_value.DevicePropertyValue(
@@ -1581,7 +1583,7 @@ class Client:
                     )
                     device_property_value_array.append(device_property_value)
                 except device_db_client.ApiException as e:
-                    print('Exception when calling ApiApi->'
+                    raise SystemError('Exception when calling ApiApi->'
                         'create_device_property_value: {e}' % e)
 
                 if set_accepted: # Set the created device property value to accepted
@@ -1590,8 +1592,8 @@ class Client:
                             id=str(created_device_property_value.id))
                     except Exception as e:
                         raise RuntimeError(
-                            "Failed to set property value as accepted, with "
-                            f"error {e}"
+                            'Failed to set property value as accepted, with '
+                            f'error {e}'
                         )
 
         return device_property_value_array
