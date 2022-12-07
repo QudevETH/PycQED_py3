@@ -614,6 +614,50 @@ class ComparisonDictView(DictView):
                 row_item.setSizeHint(i, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
 
+    def copy_content(self, column: int):
+        cb = qt.QtWidgets.QApplication.clipboard()
+        cb.clear(mode=cb.Mode.Clipboard)
+        if column == 0:
+            cb.setText(self.tree_widget.currentItem().data(0, 0),
+                       mode=cb.Mode.Clipboard)
+        if column == 1:
+            data = {
+                self.column_header[i+1]:
+                    self.tree_widget.currentItem().data(i+1, 0)
+                for i in range(len(self.column_header[1:]))}
+            cb.setText(str(data),
+                       mode=cb.Mode.Clipboard)
+
+    def make_search_ui(self):
+        """
+        Creates the UI layout for the search bar and its options.
+
+        Returns: QLayout of search bar
+        """
+        # Text box
+        self.find_box = qt.QtWidgets.QLineEdit()
+        self.find_box.returnPressed.connect(self.find_button_clicked)
+
+        # Find Button
+        find_button = qt.QtWidgets.QPushButton("Find")
+        find_button.clicked.connect(self.find_button_clicked)
+
+        # 'Entries Found' QLabel
+        self.find_text = qt.QtWidgets.QLabel('Entries found:')
+
+        self.make_find_checkbox()
+
+        # adding widgets to layout
+        layout = qt.QtWidgets.QHBoxLayout()
+        layout.addWidget(self.find_box)
+        layout.addWidget(find_button)
+
+        layout3 = qt.QtWidgets.QVBoxLayout()
+        layout3.addLayout(layout)
+        layout3.addWidget(self.find_text)
+
+        return layout3
+
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
     """
