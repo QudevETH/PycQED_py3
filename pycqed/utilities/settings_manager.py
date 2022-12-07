@@ -100,12 +100,18 @@ class Parameter(DelegateAttributes):
         self.gettable = gettable
         self.settable = settable
 
-    def snapshot(self) -> dict[any, any]:
+    def snapshot(self, reduced=False) -> dict[any, any]:
         """
         Creates a dictionary out of value attribute
         Returns: dictionary
         """
-        snap: dict[any, any] = self._value
+        if reduced:
+            if isinstance(self._value, dict):
+                snap = self._value.get('value', self._value)
+            else:
+                snap = self._value
+        else:
+            snap: dict[any, any] = self._value
         return snap
 
     def __call__(self, *args, **kwargs):
@@ -153,7 +159,7 @@ class Instrument(DelegateAttributes):
         # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
 
-    def snapshot(self) -> dict[any, any]:
+    def snapshot(self, reduced=False) -> dict[any, any]:
         """
         Creates recursively a snapshot (dictionary) which has the same structure
         as the snapshot from QCodes instruments.
@@ -164,11 +170,11 @@ class Instrument(DelegateAttributes):
         """
         param: dict[any, any] = {}
         for key, item in self.parameters.items():
-            param[key] = item.snapshot()
+            param[key] = item.snapshot(reduced=reduced)
 
         submod: dict[any, any] = {}
         for key, item in self.submodules.items():
-            submod[key] = item.snapshot()
+            submod[key] = item.snapshot(reduced=reduced)
 
         snap = {
             'functions': self.functions,
@@ -242,7 +248,7 @@ class Station(DelegateAttributes):
             from pycqed.analysis import analysis_toolbox as a_tools
             self.timestamp = '_'.join(a_tools.verify_timestamp(timestamp))
 
-    def snapshot(self) -> dict[any, any]:
+    def snapshot(self, reduced=False) -> dict[any, any]:
         """
         Returns a snapshot as a dictionary of the entire station based on the
         structure of QCodes.
@@ -254,13 +260,13 @@ class Station(DelegateAttributes):
         components: dict[any, any] = {}
         for key, item in self.components.items():
             if isinstance(item, Instrument):
-                inst[key] = item.snapshot()
+                inst[key] = item.snapshot(reduced=reduced)
             else:
-                components[key] = item.snapshot()
+                components[key] = item.snapshot(reduced=reduced)
 
         param: dict[any, any] = {}
         for key, item in self.parameters.items():
-            param[key] = item.snapshot()
+            param[key] = item.snapshot(reduced=reduced)
 
         snap = {
             'instruments': inst,
