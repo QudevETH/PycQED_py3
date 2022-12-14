@@ -222,7 +222,7 @@ class SettingsDictionary(dict):
                     raise ValueError(
                         "When using the database, only parameters associated "
                         "with a qubit are allowed. Provide qubit as a keyword.")
-                db_value = self.db_client.get_property_value_from_param_args(
+                db_value = self.db_client.get_device_property_value_from_param_args(
                     qubit.name, param, associated_component_type_hint)
                 success = db_value is not None
                 if success:
