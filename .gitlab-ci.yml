@@ -32,7 +32,6 @@ ci_image:
     changes:
       - Dockerfile
       - requirements.txt
-      - .gitlab-ci.yml
 
 # Build the documentation, and copy it to the QuDev documentation webshare
 pages:
