@@ -46,8 +46,8 @@ pages:
     - ssh wwwqudevdoc@documentation.qudev.phys.ethz.ch "rm -rf public/$DOC_UPLOAD_FOLDER/*"
     - scp -r ./build/html/* "wwwqudevdoc@documentation.qudev.phys.ethz.ch:public/$DOC_UPLOAD_FOLDER"
     - echo "Documentation accessible at https://documentation.qudev.phys.ethz.ch/$DOC_UPLOAD_FOLDER/index.html"
-  only:
-    # The documentation will only be built for the listed branches
-    - qudev_master
-    - /^Proj\/.*$/
-    - /^doc\/.*$/
+  # only:
+  #   # The documentation will only be built for the listed branches
+  #   - qudev_master
+  #   - /^Proj\/.*$/
+  #   - /^doc\/.*$/
