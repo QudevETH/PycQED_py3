@@ -38,6 +38,9 @@ ci_image:
 pages:
   image: $CI_IMAGE_NAME
   script:
+    # Register private SSH key
+    - eval $(ssh-agent -s)
+    - echo "$QUDEV_DOC_PRIVATE_SSH_KEY" | ssh-add -
     - cd docs
     - make html
     # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
