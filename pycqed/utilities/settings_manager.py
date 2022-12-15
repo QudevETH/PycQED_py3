@@ -337,7 +337,7 @@ class SettingsManager:
                             'station is not a QCode or Mock station class '
                             'or is not snapshotable.')
 
-    def load_from_file(self, timestamp: str, file_format='msgpack',
+    def load_from_file(self, timestamp: str, file_format=None,
                        compression=False, extension=None,
                        filepath=None):
         """
@@ -358,6 +358,10 @@ class SettingsManager:
         Returns: Station which was created by the saved data.
 
         """
+        if file_format is None:
+            # if no file format is given, the loader tries to get the file
+            # format by the extension of the file
+            file_format, compression = Loader.get_file_format(timestamp)
         if file_format == 'hdf5':
             loader = HDF5Loader(timestamp=timestamp, h5mode='r',
                                 extension=extension, filepath=filepath)
@@ -532,6 +536,57 @@ class Loader:
         self.filepath = a_tools.measurement_filename(folder_dir,
                                                      ext=self.extension)
         return self.filepath
+
+    @staticmethod
+    def get_file_format(timestamp: str):
+        """
+        Returns the file format and the compression (bool) of a given timestamp.
+        Args:
+            timestamp (str): timestamp of the file
+
+        Returns (str and bool): file format as a string ('hdf5', 'pickle',
+            'msgpack') and if the file is compressed
+
+        """
+        from pycqed.analysis import analysis_toolbox as a_tools
+        import os
+        from pathlib import Path
+
+        folder_dir = a_tools.get_folder(timestamp, suppress_printing=True)
+        dirname = os.path.split(folder_dir)[1]
+        if dirname[6:9] == '_X_':
+            fn = dirname[0:7]+dirname[9:]
+        else:
+            fn = dirname
+        path = Path(folder_dir)
+
+        file_path = sorted(path.glob(fn+".*"))
+        if len(file_path) > 1:
+            raise KeyError(f"More than one file found for "
+                           f"timestamp '{timestamp}'")
+        elif len(file_path) == 0:
+            raise KeyError(f"No file found for timestamp '{timestamp}'")
+        else:
+            file_name, file_extension = os.path.splitext(file_path[0])
+
+        if 'pickle' in file_extension:
+            if file_extension == '.picklec':
+                return "pickle", True
+            else:
+                return "pickle", False
+
+        elif 'msg' in file_extension:
+            if file_extension == '.msgc':
+                return "msgpack", True
+            else:
+                return "msgpack", False
+
+        elif 'hdf5' in file_extension:
+            return "hdf5", False
+
+        else:
+            raise KeyError(f"File extension '{file_extension}' not in "
+                           f"standard form (.hdf5, .pickle(c), .msg(c)")
 
     @staticmethod
     def load_instrument(inst_name, inst_dict):
