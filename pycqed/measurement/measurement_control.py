@@ -171,6 +171,23 @@ class MeasurementControl(Instrument):
                            initial_value=None,
                            vals=vals.Strings())
 
+        self.add_parameter(
+            'settings_file_format',
+            docstring='File format of the file which contains the instrument'
+                      'settings.',
+            initial_value='hdf5',
+            vals=vals.Enum('hdf5', 'pickle', 'msgpack'),
+            parameter_class=ManualParameter)
+
+        self.add_parameter(
+            'settings_file_compression',
+            vals=vals.Bool(),
+            docstring='True if file should be compressed with blosc2. '
+                      'Does not support hdf5 files.',
+            initial_value=True,
+            parameter_class=ManualParameter
+        )
+
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
             self.open_plotmon_windows()
@@ -203,15 +220,19 @@ class MeasurementControl(Instrument):
         '''
         Saves a snapshot of the current instrument settings without carrying
         out a measurement.
+        File format is taken from parameter "settings_file_format".
 
         :param label: (optional str) a label to be used in the filename
             (will be appended to the default label Instrument_settings)
         '''
         label = '' if label is None else '_' + label
         self.set_measurement_name('Instrument_settings' + label)
-        with h5d.Data(name=self.get_measurement_name(),
-                      datadir=self.datadir()) as self.data_object:
-            self.save_instrument_settings(self.data_object)
+        if self.settings_file_format() == 'hdf5':
+            with h5d.Data(name=self.get_measurement_name(),
+                          datadir=self.datadir()) as self.data_object:
+                self.save_instrument_settings(self.data_object)
+        else:
+            self.save_instrument_settings()
 
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
@@ -1887,36 +1908,54 @@ class MeasurementControl(Instrument):
         uses QCodes station snapshot to save the last known value of any
         parameter. Only saves the value and not the update time (which is
         known in the snapshot)
+        File format in which the snapshot is saved is specified in parameter
+        'settings_file_format'.
         '''
 
-        import numpy
-        import sys
-        opt = numpy.get_printoptions()
-        numpy.set_printoptions(threshold=sys.maxsize)
+        if self.settings_file_format() == 'hdf5':
+            import numpy
+            import sys
+            opt = numpy.get_printoptions()
+            numpy.set_printoptions(threshold=sys.maxsize)
 
-        if data_object is None:
-            data_object = self.data_object
-        if not hasattr(self, 'station'):
-            log.warning('No station object specified, could not save '
-                        'instrument settings')
-        else:
-            # # This saves the snapshot of the entire setup
-            # snap_grp = data_object.create_group('Snapshot')
-            # snap = self.station.snapshot()
-            # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
+            if data_object is None:
+                data_object = self.data_object
+            if not hasattr(self, 'station'):
+                log.warning('No station object specified, could not save '
+                            'instrument settings')
+            else:
+                # # This saves the snapshot of the entire setup
+                # snap_grp = data_object.create_group('Snapshot')
+                # snap = self.station.snapshot()
+                # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
 
-            # Below is old style saving of snapshot, exists for the sake of
-            # preserving deprecated functionality. Here only the values
-            # of the parameters are saved.
-            set_grp = data_object.create_group('Instrument settings')
-            inslist = dict_to_ordered_tuples(self.station.components)
-            for (iname, ins) in inslist:
-                instrument_grp = set_grp.create_group(iname)
-                inst_snapshot = ins.snapshot()
-                self.store_snapshot_parameters(inst_snapshot,
-                                               entry_point=instrument_grp,
-                                               instrument=ins)
-        numpy.set_printoptions(**opt)
+                # Below is old style saving of snapshot, exists for the sake of
+                # preserving deprecated functionality. Here only the values
+                # of the parameters are saved.
+                set_grp = data_object.create_group('Instrument settings')
+                inslist = dict_to_ordered_tuples(self.station.components)
+                for (iname, ins) in inslist:
+                    instrument_grp = set_grp.create_group(iname)
+                    inst_snapshot = ins.snapshot()
+                    self.store_snapshot_parameters(inst_snapshot,
+                                                   entry_point=instrument_grp,
+                                                   instrument=ins)
+            numpy.set_printoptions(**opt)
+
+        elif self.settings_file_format() == 'msgpack':
+            from pycqed.utilities.settings_manager import MsgDumper
+            dumper = MsgDumper(name=self.get_measurement_name(),
+                               datadir=self.datadir(),
+                               data=self.station.snapshot(),
+                               compression=self.settings_file_compression())
+            dumper.dump()
+        elif self.settings_file_format() == 'pickle':
+            from pycqed.utilities.settings_manager import PickleDumper
+            dumper = PickleDumper(name=self.get_measurement_name(),
+                                  datadir=self.datadir(),
+                                  data=self.station.snapshot(),
+                                  compression=self.settings_file_compression())
+            dumper.dump()
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
                                   instrument):
