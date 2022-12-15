@@ -888,3 +888,108 @@ class MsgLoader(Loader):
             snap = msgpack.unpackb(
                 byte_data, use_list=False, strict_map_key=False)
         return snap
+
+
+class Dumper:
+    """
+    Generic class to serialize dictionaries into a file.
+    """
+
+    def __init__(self, name: str, data: dict, datadir: str = None,
+                 compression=False):
+        """
+        Creates a folder for the file.
+        Args:
+            name (str): additional label for the file
+            data (dict): Dictionary which will be serialized
+            datadir (str): root directory
+            compression (bool): True if the file should be compressed with
+                blosc2
+        """
+        import time
+        from pycqed.measurement.hdf5_data import DateTimeGenerator \
+            as DateTimeGenerator
+        import os
+
+        self._name = name
+        self.data = data
+        self.compression = compression
+
+        self._localtime = time.localtime()
+        self._timestamp = time.asctime(self._localtime)
+        self._timemark = time.strftime('%H%M%S', self._localtime)
+        self._datemark = time.strftime('%Y%m%d', self._localtime)
+
+        # sets the file path
+        self.filepath = DateTimeGenerator().new_filename(
+            self, folder=datadir)
+
+        self.filepath = self.filepath.replace("%timemark", self._timemark)
+
+        self.folder, self._filename = os.path.split(self.filepath)
+        # creates the folder if needed
+        if not os.path.isdir(self.folder):
+            os.makedirs(self.folder)
+
+    def rdg_to_dict(self, raw_dict: dict):
+        # helper function to convert Relative_Delay_Graph type to dict
+        from pycqed.instrument_drivers.meta_instrument.device \
+            import RelativeDelayGraph
+        new_snap = {}
+        for key, item in raw_dict.items():
+            if isinstance(item, dict):
+                new_snap[key] = self.rdg_to_dict(item)
+            elif isinstance(item, RelativeDelayGraph):
+                new_snap[key] = item._reld
+            else:
+                new_snap[key] = item
+        return new_snap
+
+
+class MsgDumper(Dumper):
+    """
+    Class to dump dictionaries into msg files.
+    """
+    def __init__(self, name: str, data: dict, datadir: str = None,
+                 compression=False):
+        super().__init__(name, data, datadir=datadir, compression=compression)
+        self.filepath = self.filepath.replace("hdf5", "msg")
+        if self.compression:
+            self.filepath = self.filepath + "c"
+
+    def dump(self):
+        """
+        Dumps the data as a binary into a msg file with optional compression
+        """
+        import msgpack
+        import msgpack_numpy as msg_np
+        msg_np.patch()
+
+        with open(self.filepath, 'wb') as file:
+            packed = msgpack.packb(self.rdg_to_dict(self.data))
+            if self.compression:
+                import blosc2
+                packed = blosc2.compress(packed)
+            file.write(packed)
+
+
+class PickleDumper(Dumper):
+
+    def __init__(self, name: str, data: dict, datadir: str = None,
+                 compression=False):
+        super().__init__(name, data, datadir=datadir, compression=compression)
+        self.filepath = self.filepath.replace("hdf5", "pickle")
+        if self.compression:
+            self.filepath = self.filepath + "c"
+
+    def dump(self):
+        """
+        Dumps the data as a binary into a pickle file with optional compression
+        """
+        import pickle
+        with open(self.filepath, 'wb') as file:
+            packed = pickle.dumps(self.rdg_to_dict(self.data))
+            if self.compression:
+                import blosc2
+                packed = blosc2.compress(packed)
+            file.write(packed)
