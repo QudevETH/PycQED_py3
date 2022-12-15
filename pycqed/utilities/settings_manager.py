@@ -400,20 +400,22 @@ class SettingsManager:
             timestamp=timestamp)
         snapshot_viewer.spawn_snapshot_viewer()
 
-    def spawn_comparison_viewer(self, timestamps, reduced_compare=False):
-        import pycqed.gui.dict_viewer as dict_viewer
-        diff_dict, diff_msg = self.compare_stations(timestamps=timestamps,
-                                          reduced_compare=reduced_compare)
-        if timestamps == 'all':
-            timestamps = list(self.stations.keys())
-        snapshot_viewer = dict_viewer.SnapshotViewer(
-            snapshot=diff_dict,
-            timestamp=timestamps)
-        snapshot_viewer.spawn_comparison_viewer()
+    def _compare_dict_instances(self, dict_list, name_list):
+        """
+        Helper function which compares n dictionaries and returns a combined
+        dictionary with the intersection of all keys which values do not
+        coincide
+        Args:
+            dict_list (list of dict): list of dictionaries which are compared
+            name_list (list of strings): list of unique names of the
+                dictionaries (e.g. timestamp). Names are used as Timestamps
+                 objects for unique keys for the combined dictionaries.
 
-    def _compare_dict_instances(self, dict_list, name_list, verbose=True):
+        Returns (dict): combined dictionary of with values which do not coincide
+            between the different dictionaries
+
+        """
         all_keys = set()
-        all_msg = []
         all_diff = {}
         # set of all keys
         for dic in dict_list:
@@ -425,27 +427,31 @@ class SettingsManager:
 
             for i, dic in enumerate(dict_list):
                 if key not in dic.keys():
-                    all_msg.append(
-                        f'\nInstrument "{key}" missing in dict '
-                        f'{name_list[i]}.\n')
+                    # flags that at least one of the dictionaries does not have
+                    # the particular key
                     key_not_in_dicts = True
                 else:
                     dicts_with_key.append(i)
 
+            # if at least one of the dictionaries does not have the key, the
+            # compared dictionaries is build
             if key_not_in_dicts:
                 diff[key] = \
                     {Timestamp(name_list[i]): dict_list[i][key]
                      for i in dicts_with_key}
             else:
+                # if all the dictionaries have the key, the values are compared
                 for i, dic in enumerate(dict_list[1:]):
                     try:
                         np.testing.assert_equal(dict_list[0][key], dic[key])
                     except AssertionError:
+                        # items do not coincide
                         if all(isinstance(dic[key], dict) for dic in dict_list):
                             diff[key] = self._compare_dict_instances(
                                 [dic[key] for dic in dict_list], name_list)
                             break
                         else:
+                            # this occurs when not all items are dictionaries
                             diff[key] = \
                                 {Timestamp(name_list[i]): dic[key]
                                  for i, dic in enumerate(dict_list)}
@@ -455,16 +461,31 @@ class SettingsManager:
         return all_diff
 
     def _compare_station_components(self, timestamps, instruments='all',
-                                    verbose=True, reduced_compare=False):
+                                    reduced_compare=False):
+        """
+        Helper function to compare multiple stations
+        Args:
+            timestamps (list of str): timestamps of the station of the settings
+                manager which are compared
+            instruments (str, list of str): either 'all' (default) or a list of
+                instrument names to compare only a subset of instruments
+            reduced_compare (bool): if True it compares only the reduced
+                snapshot of the stations (i.e. only values and no metadata)
+
+        Returns:
+            dict and str of the compared dictionary and the messages of the
+            missing instruments/components
+
+        """
         all_components = set()
         all_msg = []
         all_diff = {}
 
-        # create a set of all components of the given snapshots
+        # create a set of all components of all given stations
         for tsp in timestamps:
             all_components.update(set(self.stations[tsp].components.keys()))
 
-        # check which components coincide in all stations
+        # check which components are in all stations
         for component in all_components:
             if instruments != 'all' and component not in instruments:
                 continue
@@ -478,21 +499,48 @@ class SettingsManager:
                         f'{tsp}.\n')
                     component_not_in_all_stations = True
             if component_not_in_all_stations:
+                # if one of the stations does not have the component, the
+                # comparison of this component cannot be done
+                # (You have to compare like with like)
                 continue
 
-            component_snaps = \
-                [self.stations[tsp].components[component].snapshot(reduced=reduced_compare)
-                 for tsp in timestamps]
+            # snapshots of the components
+            if reduced_compare:
+                component_snaps = \
+                    [self.stations[tsp].components[component].snapshot(
+                        reduced=reduced_compare)
+                        for tsp in timestamps]
+            else:
+                component_snaps = \
+                    [self.stations[tsp].components[component].snapshot()
+                        for tsp in timestamps]
 
-            diff = self._compare_dict_instances(component_snaps, timestamps,
-                                                verbose=verbose)
+            # comparison of the snapshots
+            diff = self._compare_dict_instances(component_snaps, timestamps)
             if diff != {}:
                 all_diff[component] = diff
 
         return all_diff, all_msg
 
-    def compare_stations(self, timestamps, instruments='all', verbose=True,
-                         reduced_compare=False):
+    def compare_stations(self, timestamps, instruments='all',
+                         reduced_compare=False, output='viewer'):
+        """
+        Compare instrument settings from n different station in the settings
+        manager.
+        Args:
+            timestamps (list of str): timestamps of the stations which are
+                compared. If station is not part of the settings_manager object
+                it will be loaded into the settings_manager.
+            instruments (str, list of str): either 'all' (default) or a list of
+                instrument names to compare only a subset of instruments
+            reduced_compare (bool): if True it compares only the reduced
+                snapshot of the stations (i.e. only values and no metadata)
+            output (str): One of the following output formats:
+                'str': return comparison report as str
+                'dict': return comparison results as a dict
+                'viewer' (default): opens a gui with the compared dictionary
+
+        """
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
         elif isinstance(timestamps, list):
@@ -500,12 +548,41 @@ class SettingsManager:
         else:
             raise NotImplementedError(f'Timestamp "{timestamps}" is not a '
                                       f'list of timestamps or "all"')
-        return self._compare_station_components(ts_list,
-                                                instruments=instruments,
-                                                reduced_compare=reduced_compare)
+
+        # checks if stations with respective timestamps are already in the
+        # settings manager. otherwise, it loads the station into the sm
+        for tsp in set(ts_list).difference(self.stations.keys()):
+            print(f"timestamp '{tsp}' will be loaded onto the station.")
+            self.load_from_file(tsp)
+
+        # for QCode station reduced comparison is not supported
+        if not all(isinstance(station, Station) for station in self.stations) \
+                and reduced_compare:
+            logger.warning(f"QCode stations do not support reduced comparison. "
+                           f"reduced_compare is set to False.")
+            reduced_compare = False
+
+        diff, msg = self._compare_station_components(
+            ts_list, instruments=instruments, reduced_compare=reduced_compare)
+
+        if output == 'str':
+            return msg
+        elif output == 'dict':
+            return diff
+        elif output == 'viewer':
+            import pycqed.gui.dict_viewer as dict_viewer
+            snapshot_viewer = dict_viewer.SnapshotViewer(
+                snapshot=diff,
+                timestamp=ts_list)
+            snapshot_viewer.spawn_comparison_viewer()
 
 
 class Timestamp(str):
+    """
+    Generic timestamp class. Used to distinguish between regular strings and
+    timestamp strings. Can be extended with custom timestamp functions (e.g.
+    validator of timestamps, output in a particular format, ...)
+    """
     pass
 
 
