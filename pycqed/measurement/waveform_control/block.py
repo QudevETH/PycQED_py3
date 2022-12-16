@@ -376,7 +376,7 @@ def parse_pulse_search_pattern(pattern):
         pattern (str, int): the representation of the search pattern can be:
           - a string as described in the docstring of Block.build,
             param sweep_dicts_list
-          - and int i, which will be interpreted as the string
+          - an int i, which will be interpreted as the string
             f'occurrence={i}'
           - the str 'all' for matching all pulses
 
