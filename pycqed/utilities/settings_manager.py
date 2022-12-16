@@ -556,11 +556,13 @@ class SettingsManager:
             self.load_from_file(tsp)
 
         # for QCode station reduced comparison is not supported
-        if not all(isinstance(station, Station) for station in self.stations) \
-                and reduced_compare:
-            logger.warning(f"QCode stations do not support reduced comparison. "
-                           f"reduced_compare is set to False.")
-            reduced_compare = False
+        if reduced_compare:
+            for ts in ts_list:
+                if not isinstance(self.stations[ts], Station):
+                    logger.warning(
+                        f"QCode stations do not support reduced comparison. "
+                        f"reduced_compare is set to False.")
+                    reduced_compare = False
 
         diff, msg = self._compare_station_components(
             ts_list, instruments=instruments, reduced_compare=reduced_compare)
