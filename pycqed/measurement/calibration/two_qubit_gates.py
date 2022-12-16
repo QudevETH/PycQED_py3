@@ -439,15 +439,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         else:
             self.all_main_blocks = self.all_main_blocks[0]
         sweep_points = self.get_sweep_points_for_sweep_n_dim()
-        if len(sweep_points[0]) == 0:
-            # Create a single segement if no hard sweep points are provided.
-            sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
-                                             dimension=0)
-        if self._num_sweep_dims == 2 and len(sweep_points[1]) == 0:
-            # With this dummy soft sweep, exactly one sequence will be created
-            # and the data format will be the same as for a true soft sweep.
-            sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
-                                             dimension=1)
+        self._create_dummy_sweep_params(self.sweep_points)
+        if sweep_points is not self.sweep_points:
+            self._create_dummy_sweep_params(sweep_points)
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
@@ -458,6 +452,17 @@ class MultiTaskingExperiment(QuantumExperiment):
         return self.sweep_n_dim(sweep_points,
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points, **kw)
+
+    def _create_dummy_sweep_params(self, sweep_points):
+        if len(sweep_points[0]) == 0:
+            # Create a single segement if no hard sweep points are provided.
+            sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
+                                             dimension=0)
+        if self._num_sweep_dims == 2 and len(sweep_points[1]) == 0:
+            # With this dummy soft sweep, exactly one sequence will be created
+            # and the data format will be the same as for a true soft sweep.
+            sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
+                                             dimension=1)
 
     def get_sweep_points_for_sweep_n_dim(self):
         """Return the sweep_points list that is passed to sweep_n_dim.

@@ -799,10 +799,11 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 raise ValueError(f'QuantumExperiment needs to have attribute '
                                  f'self.sequences not None and not empty.')
 
-    def save_timers(self, quantum_experiment=True, sequence=True, segments=True, filepath=None):
+    def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp, filepath=filepath, mode="r+")
+        data_file = helper_functions.open_hdf_file(self.timestamp,
+                                                   filepath=filepath, mode="r+")
         try:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
@@ -824,20 +825,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                         f"Only last instance will be kept")
                         s.timer.save(seq_group)
 
-                        if segments:
-                            seg_group = seq_group[timer_seq_name].create_group(timer_seq_name + ".segments")
-                            for _, seg in s.segments.items():
-                                try:
-                                    timer_seg_name = seg.timer.name
-                                    # check that name doesn't exist and it case it does, append an index
-                                    # Note: normally that should not happen (not desirable)
-                                    if timer_seg_name in seg_group.keys():
-                                        log.warning(f"Timer with name {timer_seg_name} already "
-                                                    f"exists in Segments timers. "
-                                                    f"Only last instance will be kept")
-                                    seg.timer.save(seg_group)
-                                except AttributeError:
-                                    pass
 
                     except AttributeError:
                         pass # in case some sequences don't have timers

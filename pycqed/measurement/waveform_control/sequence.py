@@ -30,12 +30,12 @@ class Sequence:
             segments (list, tuple): list of segments to add to the sequence
         """
         self.name = name
+        self.timer = Timer(self.name)
         self.pulsar = ps.Pulsar.get_instance()
         self.segments = odict()
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
-        self.timer = Timer(self.name)
         self.is_resolved = False
 
     def add(self, segment):
@@ -45,6 +45,7 @@ class Sequence:
         self.segments[segment.name] = segment
         if len(self.segments) == 1:
             self.segments[segment.name].is_first_segment = True
+        self.timer.children.update({segment.name: segment.timer})
 
     def extend(self, segments):
         """
