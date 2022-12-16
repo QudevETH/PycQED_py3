@@ -120,7 +120,6 @@ class VC707(VC707_core, AcquisitionDevice):
                 #     f"Processed triggers: {p:.1f}% -- {self.histogrammer.has_finished()}")
             )
         elif module == "state_discriminator":
-            self.state_discriminator.upload_weights()
             self.state_discriminator.run()
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
@@ -149,80 +148,16 @@ class VC707(VC707_core, AcquisitionDevice):
             elif mode == "int_avg":
                 self.averager_nb_segments.set(n_results)
             self.averager.configure()
-        elif module == 'histogrammer':
-            self._acquisition_nodes = ['histogram']
+        elif module in ["histogrammer", "state_discriminator"]:
+            if module == 'histogrammer':
+                self._acquisition_nodes = ['histogram']
+                nb_states = 3  # use two integrators
+            elif module == 'state_discriminator':
+                nb_states = (
+                    3 if self._acq_data_type == 'digitized_qutrit' else 2)
+
+            module_obj = self._get_current_fpga_module()
             nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
-            self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
-            pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
-            # FIXME: shouldn't it be set(pair_lookup.values()) in the next line?
-            pairs = OrderedDict({k: None for k in set(pair_lookup)})
-            for pair_id in pairs:
-                if pair_id[0] != 0:
-                    raise NotImplementedError(
-                        'Histogrammer can only be used on physical channel 0 '
-                        'until someone fixes a bug in the FPGA.')
-                unit = DiscriminationUnit()
-                unit.nb_states = 3  # use two integrators
-                unit.weights = [np.zeros(nb_samples) for i in range(4)]
-                unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
-                unit.source_adc = pair_id[0]
-                pairs[pair_id] = unit
-            n_ch_in_pair = {pair_id: 0 for pair_id in pairs}
-            for ch in self._acq_channels:
-                pair_id = pair_lookup[ch]
-                for i in range(2):
-                    w = self._acq_integration_weights[ch][i]
-                    p = max(nb_samples - len(w), 0)
-                    pairs[pair_id].weights[2*n_ch_in_pair[pair_id] + i] =\
-                        np.pad(w, p)[:nb_samples]
-                n_ch_in_pair[pair_id] += 1
-            self.state_discriminator.settings.units = list(pairs.values())
-            self.state_discriminator.settings.nb_samples = nb_samples
-            self.state_discriminator.settings.use_list_output = False
-            self.histogrammer.settings.nb_segments = (
-                self._acq_n_results // self._acq_loop_cnt)
-            self.histogrammer.settings.nb_states = 1  # no state discrimination
-            self.histogrammer.settings.enable_time_resolve = False
-            nb_triggers = self._acq_n_results
-            nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
-            nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
-            if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
-                log.warning(f'nb_triggers_pow4 got rounded up')  # TODO
-            self.histogrammer.settings.nb_triggers_pow4 = nb_triggers_pow4
-            integrator_lookup = {}
-            for pair_nr, pair_id in enumerate(pairs):
-                for ch in [ch for ch in self._acq_channels
-                           if pair_lookup[ch] == pair_id]:
-                    integrator_lookup[ch] = pair_nr * 2 + (ch[1] % 2)
-            bin_settings = []
-            self._histogrammer_result_lookup = {}
-            used_hists = 0
-            for i in range(self.n_acq_units):
-                if not any([ch[0] == i for ch in self._acq_channels]):
-                    continue
-                for j in range(self.n_acq_int_channels):
-                    # Here, log2(1) as default means: no histogram
-                    nb_bins_pow2 = int(np.log2(self.nb_bins.get((i, j), 1)))
-                    if nb_bins_pow2:
-                        self._histogrammer_result_lookup[(i, j)] = used_hists
-                        used_hists += 1
-                    bin_settings.append(BinSettings(
-                        # the following exploits that INT_i are consecutive ints
-                        DataInput.INT_0 + integrator_lookup.get((i, j), 0),
-                        peak_to_peak=-1, # FIXME (hardcoded for now)
-                        nb_bins_pow2=nb_bins_pow2,
-                        delay=0))
-            self.histogrammer.settings.bin_settings = bin_settings
-            # FIXME: Downscaling is set to zero here: histogram doesn't work
-            # if downscaling is not set to zero and we don't know why exactly
-            self.preprocessing_down_scaling(0)
-            self.histogrammer.configure()
-            self.state_discriminator.upload_weights(discriminate=False)
-
-        elif module == "state_discriminator":
-            nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
-
-
             self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
             pairs = OrderedDict({k: None for k in set(pair_lookup.values())})
@@ -232,14 +167,12 @@ class VC707(VC707_core, AcquisitionDevice):
                         'Histogrammer can only be used on physical channel 0 '
                         'until someone fixes a bug in the FPGA.')
                 unit = DiscriminationUnit()
-                unit.nb_states = (
-                    3 if self._acq_data_type == 'digitized_qutrit' else 2)
+                unit.nb_states = nb_states
                 unit.weights = [np.zeros(nb_samples) for i in range(
                     4 if unit.nb_states == 3 else 2)]
                 unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
                 unit.source_adc = pair_id[0]
                 pairs[pair_id] = unit
-
             n_ch_in_pair = {pair_id: 0 for pair_id in pairs}
             for ch in self._acq_channels:
                 pair_id = pair_lookup[ch]
@@ -249,34 +182,61 @@ class VC707(VC707_core, AcquisitionDevice):
                     pairs[pair_id].weights[2*n_ch_in_pair[pair_id] + i] =\
                         np.pad(w, p)[:nb_samples]
                 n_ch_in_pair[pair_id] += 1
-
-            for pair_id in pairs:
-                channels = [ch for ch in self._acq_channels
-                            if pair_lookup[ch] == pair_id]
-                pairs[pair_id].center_coordinates = tuple(
-                    self._acq_classifier_params[tuple(channels)]['means_'])
+            if module == 'state_discriminator':
+                for pair_id in pairs:
+                    channels = [ch for ch in self._acq_channels
+                                if pair_lookup[ch] == pair_id]
+                    pairs[pair_id].center_coordinates = tuple(
+                        self._acq_classifier_params[tuple(channels)]['means_'])
 
             self.state_discriminator.settings.units = list(pairs.values())
             self.state_discriminator.settings.nb_samples = nb_samples
-            self.state_discriminator.settings.use_list_output = True
-
-            self.state_discriminator.settings.nb_segments = (
+            self.state_discriminator.settings.use_list_output = (
+                module == "state_discriminator")
+            module_obj.settings.nb_segments = (
                 self._acq_n_results // self._acq_loop_cnt)
             nb_triggers = self._acq_n_results
             nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
             nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
             if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
                 log.warning(f'nb_triggers_pow4 got rounded up')  # TODO
-            self.state_discriminator.settings.nb_triggers_pow4 = nb_triggers_pow4
-
-            # FIXME: Downscaling is set to zero here: state disc doesn't work
+            module_obj.settings.nb_triggers_pow4 = nb_triggers_pow4
+            if module == 'histogrammer':
+                self.histogrammer.settings.nb_states = 1  # no state disc.
+                self.histogrammer.settings.enable_time_resolve = False
+                integrator_lookup = {}
+                for pair_nr, pair_id in enumerate(pairs):
+                    for ch in [ch for ch in self._acq_channels
+                               if pair_lookup[ch] == pair_id]:
+                        integrator_lookup[ch] = pair_nr * 2 + (ch[1] % 2)
+                bin_settings = []
+                self._histogrammer_result_lookup = {}
+                used_hists = 0
+                for i in range(self.n_acq_units):
+                    if not any([ch[0] == i for ch in self._acq_channels]):
+                        continue
+                    for j in range(self.n_acq_int_channels):
+                        # Here, log2(1) as default means: no histogram
+                        nb_bins_pow2 = int(np.log2(self.nb_bins.get(
+                            (i, j), 1)))
+                        if nb_bins_pow2:
+                            self._histogrammer_result_lookup[
+                                (i, j)] = used_hists
+                            used_hists += 1
+                        bin_settings.append(BinSettings(
+                            # this exploits that INT_i are consecutive ints
+                            DataInput.INT_0 + integrator_lookup.get((i, j), 0),
+                            peak_to_peak=-1, # FIXME (hardcoded for now)
+                            nb_bins_pow2=nb_bins_pow2,
+                            delay=0))
+                self.histogrammer.settings.bin_settings = bin_settings
+            # FIXME: Downscaling set to zero here: hist and state don't work
             # if downscaling is not set to zero and we don't know why exactly
             self.preprocessing_down_scaling(0)
             # TODO does the order of configure and upload matter?
-            self.state_discriminator.configure()
-            self.state_discriminator.upload_weights(discriminate=True)
-
-
+            module_obj.configure()
+            self.state_discriminator.upload_weights(discriminate=(
+                module == "state_discriminator"))
 
     def acquisition_progress(self):
         return self._fpga.fpga_interface.trigger_counter()
