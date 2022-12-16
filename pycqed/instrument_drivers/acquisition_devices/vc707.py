@@ -70,6 +70,7 @@ class VC707(VC707_core, AcquisitionDevice):
         self._acq_classifier_params = {}
         self._last_traces = []
         self.nb_bins = {}
+        self.peak_to_peak = {}
         self._histogrammer_result_lookup = {}
         self.add_parameter(
             'acq_start_after_awgs', initial_value=False,
@@ -226,7 +227,7 @@ class VC707(VC707_core, AcquisitionDevice):
                         bin_settings.append(BinSettings(
                             # this exploits that INT_i are consecutive ints
                             DataInput.INT_0 + integrator_lookup.get((i, j), 0),
-                            peak_to_peak=-1, # FIXME (hardcoded for now)
+                            peak_to_peak=self.peak_to_peak.get((i, j), -1),
                             nb_bins_pow2=nb_bins_pow2,
                             delay=0))
                 self.histogrammer.settings.bin_settings = bin_settings

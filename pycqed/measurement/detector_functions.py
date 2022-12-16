@@ -1594,7 +1594,8 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
     Detector used for integrated single-shot acquisition.
     """
 
-    def __init__(self, acq_dev, nr_shots: int = 4094, nr_bins=None, **kw):
+    def __init__(self, acq_dev, nr_shots: int = 4094, nr_bins=None,
+                 peak_to_peak=None, **kw):
         """
         Init of the IntegratingSingleShotPollDetector.
         See the IntegratingAveragingPollDetector for the full dostring of the
@@ -1604,6 +1605,10 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
             nr_bins (dict)     : TODO (index by tuples representing int channels)
+            peak_to_peak (dict): TODO (index by tuples representing int
+                channels, values are passed to BinSettings)
+                FIXME: this should be the actual value, and then caculate
+                       the setting for the VC707 in the VC707 class
 
         Keyword args:
             passed to the init of the parent class. In addition,
@@ -1621,6 +1626,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.nr_bins = nr_bins
         self.bins = [b for b in itertools.product(*[
             range(self.nr_bins[k]) for k in self.channels])]
+        self.peak_to_peak = peak_to_peak or {}
         # self.acq_data_len_scaling = np.prod(
         #     self.nr_bins.values())  # to be used in MC
         # Disable MC live plotting by default for histogram acquisition
@@ -1631,7 +1637,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
 
     def prepare(self, sweep_points=None):
         self.acq_dev.nb_bins = self.nr_bins
-        # TODO peak_to_peak
+        self.acq_dev.peak_to_peak = deepcopy(self.peak_to_peak)
         super().prepare(sweep_points=sweep_points)
         # undo scaling done in super method because we receive only 1 histogram
         self.nr_sweep_points //= self.nr_shots
