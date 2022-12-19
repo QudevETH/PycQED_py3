@@ -161,7 +161,9 @@ class VC707(VC707_core, AcquisitionDevice):
             nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
             self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
-            pairs = OrderedDict({k: None for k in set(pair_lookup.values())})
+            pairs = OrderedDict({k: None for k in pair_lookup.values()})
+            if self._acq_data_type == 'digitized_qutrit':
+                self._acquisition_nodes = list(pairs)
             for pair_id in pairs:
                 if pair_id[0] != 0:
                     raise NotImplementedError(
@@ -304,12 +306,12 @@ class VC707(VC707_core, AcquisitionDevice):
         # FIXME: revisit this code if state disc with second physical
         #  input is fixed at some point
         for i in self._acq_units_used:
-            int_channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
             # FIXME: the following only works for a single qubit/qutrit.
             #   If there are, e.g., 2 qubits, the states 00, 01, 10, 11 are
             #   represented as 0, ..., 3 and this needs to be split up here
-            dataset.update({(i, ch): [raw_results]
-                            for n, ch in enumerate(int_channels)})
+            dataset.update({
+                pair: [raw_results]
+                for pair in self._acquisition_nodes if pair[0] == i})
 
         return dataset
 
@@ -377,6 +379,18 @@ class VC707(VC707_core, AcquisitionDevice):
             return self.histogrammer
         elif module == "state_discriminator":
             return self.state_discriminator
+
+    def get_int_channels_value_names_map(self, channels, data_type='raw'):
+        if data_type == 'digitized_qutrit':
+            pair_lookup = {(i, j): (i, j // 2) for (i, j) in channels}
+            ch_vn_map = OrderedDict()
+            for ch in channels:
+                pair = pair_lookup[ch]
+                chs = '_'.join([c[1] for c, p in pair_lookup if p == pair])
+                vn = f'{self.name}_{ch[0]}_{data_type} w{chs}'
+                ch_vn_map[ch] = vn
+            return ch_vn_map
+        return super().get_int_channels_value_names_map(channels, data_type)
 
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         properties = super().get_value_properties(
