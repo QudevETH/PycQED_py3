@@ -295,6 +295,22 @@ class AcquisitionDevice():
         """
         pass
 
+    def get_int_channels_value_names_map(self, channels, data_type='raw'):
+        """Returns column names of the returned values of the given channels.
+
+        Args:
+            channels (list of tuple of int): integration channels for which the
+                names should be returned (channel format as in the docstring of
+                acquisition_initialize)
+            data_type (str): data type. One of the str listed in
+                self.allowed_modes for the chosen mode.
+
+        Returns:
+            dict with channels as keys and value names as values
+        """
+        return {ch: f'{self.name}_{ch[0]}_{data_type} w{ch[1]}'
+                for ch in channels}
+
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         """Returns properties of the returned values of a given data type.
 

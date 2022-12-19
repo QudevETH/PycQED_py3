@@ -699,6 +699,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         else:
             self.channels = deepcopy(channels)
         self.value_names = []
+        self._channels_value_names_map = None
 
     def prepare(self, sweep_points=None):
         self.prepare_pulsar()
@@ -872,9 +873,16 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             dict, where each key is a measurement object name, and each value
             the list of corresponding value_names from self.value_names
         """
-        ch_vn_map = {ch: vn for ch, vn in zip(self.channels, self.value_names)}
-        return {mobj: [ch_vn_map[ch] for ch in chs]
-                for mobj, chs in self.meas_obj_channel_map.items()}
+        if self._channels_value_names_map is None:
+            self._channels_value_names_map = {
+                ch: vn for ch, vn in zip(self.channels, self.value_names)}
+        movnm = {}
+        for mobj, chs in self.meas_obj_channel_map.items():
+            movnm[mobj] = []
+            for ch, vn in self._channels_value_names_map.items():
+                if ch in chs and vn not in movnm[mobj]:
+                    movnm[mobj].append(vn)
+        return movnm
 
 
 class MultiPollDetector(PollDetector):
@@ -1282,12 +1290,15 @@ class IntegratingAveragingPollDetector(PollDetector):
         super().__init__(acq_dev, channels=channels, **kw)
         self.name = '{}_integrated_average'.format(data_type)
 
-        self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} w{ch[1]}'
-                            for ch in self.channels]
+        self._channels_value_names_map = \
+            acq_dev.get_int_channels_value_names_map(self.channels, data_type)
+        for ch, vn in self._channels_value_names_map.items():
+            if vn not in self.value_names:
+                self.value_names.append(vn)
         value_properties = acq_dev.get_value_properties(
             data_type, integration_length)
         self.value_units = ([value_properties['value_unit']] *
-                            len(self.channels))
+                            len(self.value_names))
         self.scaling_factor = value_properties['scaling_factor']
         self.value_names, self.value_units = self._add_value_name_suffix(
             value_names=self.value_names, value_units=self.value_units,
