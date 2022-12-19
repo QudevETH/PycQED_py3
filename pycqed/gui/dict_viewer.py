@@ -1,5 +1,8 @@
 from pycqed.gui import qt_compat as qt
 import sys
+import multiprocessing as mp
+import logging
+log = logging.getLogger(__name__)
 
 
 class DictView(qt.QtWidgets.QWidget):
@@ -868,25 +871,68 @@ class SnapshotViewer:
         self.snapshot = snapshot
         self.timestamp = timestamp
 
-    def spawn_snapshot_viewer(self):
-        qt_app = qt.QtWidgets.QApplication(sys.argv)
-        screen = qt_app.primaryScreen()
-        snap_viewer = DictViewerWindow(
-            dic=self.snapshot,
-            title='Snapshot timestamp: %s' % self.timestamp,
-            screen=screen)
-        qt_app.exec_()
+    def _prepare_new_process(self):
+        """
+        Helper function to start a new process. Sets the start method.
+        """
+        try:
+            mp.set_start_method('spawn')
+        except RuntimeError:
+            if mp.get_start_method() != 'spawn':
+                log.warning('Child process should be spawned')
 
-    def spawn_comparison_viewer(self):
-        qt_app = qt.QtWidgets.QApplication(sys.argv)
-        screen = qt_app.primaryScreen()
-        comparison_viewer = ComparisonViewerWindow(
-            dic=self.snapshot,
-            title='Comparison of %s snapshots' % len(self.timestamp),
-            timestamps=self.timestamp,
-            screen=screen)
-        qt_app.exec_()
+    def spawn_snapshot_viewer(self, new_process=False):
+        """
+        Spawns the snapshot viewer
+        Args:
+            new_process (bool): True if new process should be started, which
+                does not block the IPython kernel. False by default because
+                it takes some time to start the new process.
+        """
+        if new_process:
+            self._prepare_new_process()
+            from pycqed.gui.gui_process import dict_viewer_process
+            qt_lib = qt.QtWidgets.__package__
+            args = (self.snapshot, self.timestamp, qt_lib, )
+            process = mp.Process(target=dict_viewer_process,
+                                 args=args)
+            process.daemon = False
+            process.start()
+        else:
+            qt_app = qt.QtWidgets.QApplication(sys.argv)
+            screen = qt_app.primaryScreen()
+            snap_viewer = DictViewerWindow(
+                dic=self.snapshot,
+                title='Snapshot timestamp: %s' % self.timestamp,
+                screen=screen)
+            qt_app.exec_()
 
+    def spawn_comparison_viewer(self, new_process=True):
+        """
+        Spawns the comparison viewer.
+        Args:
+            new_process (bool): True if new process should be started, which
+                does not block the IPython kernel. False by default because
+                it takes some time to start the new process.
+        """
+        if new_process:
+            self._prepare_new_process()
+            from pycqed.gui.gui_process import comparison_viewer_process
+            qt_lib = qt.QtWidgets.__package__
+            args = (self.snapshot, self.timestamp, qt_lib,)
+            process = mp.Process(target=comparison_viewer_process,
+                                 args=args)
+            process.daemon = False
+            process.start()
+        else:
+            qt_app = qt.QtWidgets.QApplication(sys.argv)
+            screen = qt_app.primaryScreen()
+            comparison_viewer = ComparisonViewerWindow(
+                dic=self.snapshot,
+                title='Comparison of %s snapshots' % len(self.timestamp),
+                timestamps=self.timestamp,
+                screen=screen)
+            qt_app.exec_()
 
 
 def get_snapshot_from_filepath(filepath):

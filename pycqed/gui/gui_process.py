@@ -69,3 +69,57 @@ def _start_qapp_in_new_process(sequences, qubit_channel_maps,
         sys.modules.get('matplotlib').get_backend()
     sys.modules.get('matplotlib').use('Agg')
     app.exec_()
+
+
+def dict_viewer_process(snapshot, timestamp, qt_lib):
+    """
+    Helper function to spawn the dict viewer in a new process.
+    Function needs to be in a different file than the mp.process object.
+    For more information see:
+    https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
+    Args:
+        snapshot (dict): Snapshot which is displayed in the gui
+        timestamp (str): Timestamp of the snapshot which is used as the header
+        qt_lib (str): Name of the qt binding to be used in the new process
+
+    """
+    qt = __import__(qt_lib, fromlist=['QtWidgets'])
+    if not qt.QtWidgets.QApplication.instance():
+        app = qt.QtWidgets.QApplication(sys.argv)
+    else:
+        app = qt.QtWidgets.QApplication.instance()
+    from pycqed.gui.dict_viewer import DictViewerWindow
+    screen = app.primaryScreen()
+    snap_viewer = DictViewerWindow(
+        dic=snapshot,
+        title='Snapshot timestamp: %s' % timestamp,
+        screen=screen)
+    app.exec()
+
+
+def comparison_viewer_process(comparison_dict, timestamps, qt_lib):
+    """
+    Helper function to spawn the comparison viewer in a new process.
+    Function needs to be in a different file than the mp.process object.
+    For more information see:
+    https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
+    Args:
+        comparison_dict (dict): Dictionary of the compared snapshots
+        timestamps (list of str): List of timestamps of the compared
+            dictionaries
+        qt_lib (str): Name of the qt binding to be used in the new process
+
+    """
+    qt = __import__(qt_lib, fromlist=['QtWidgets'])
+    if not qt.QtWidgets.QApplication.instance():
+        app = qt.QtWidgets.QApplication(sys.argv)
+    else:
+        app = qt.QtWidgets.QApplication.instance()
+    from pycqed.gui.dict_viewer import ComparisonViewerWindow
+    screen = app.primaryScreen()
+    comparison_viewer = ComparisonViewerWindow(
+        dic=comparison_dict,
+        title='Comparison of %s snapshots' % len(timestamps),
+        timestamps=timestamps,
+        screen=screen)
+    app.exec()
