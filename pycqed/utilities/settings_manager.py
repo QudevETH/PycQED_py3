@@ -379,26 +379,23 @@ class SettingsManager:
         self.add_station(station, timestamp)
         return station
 
-    def spawn_snapshot_viewer(self, timestamp):
+    def spawn_snapshot_viewer(self, timestamp, new_process=False):
         """
         Opens a gui window to display the snapshot of the given station.0
         Args:
             timestamp (str): address the station which is already loaded onto
                 the settings manager.
-
+            new_process (bool): True if new process should be started, which
+                does not block the IPython kernel. False by default because
+                it takes some time to start the new process.
         Returns:
 
         """
-        # snap = self.stations[timestamp].snapshot()
-        # qt_app = QtWidgets.QApplication(sys.argv)
-        # snap_viewer = dict_viewer.DictViewerWindow(
-        #     snap, 'Snapshot timestamp: %s' % timestamp)
-        # qt_app.exec_()
         import pycqed.gui.dict_viewer as dict_viewer
         snapshot_viewer = dict_viewer.SnapshotViewer(
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
-        snapshot_viewer.spawn_snapshot_viewer()
+        snapshot_viewer.spawn_snapshot_viewer(new_process=new_process)
 
     def _compare_dict_instances(self, dict_list, name_list):
         """
@@ -523,7 +520,8 @@ class SettingsManager:
         return all_diff, all_msg
 
     def compare_stations(self, timestamps, instruments='all',
-                         reduced_compare=False, output='viewer'):
+                         reduced_compare=False, output='viewer',
+                         new_process=False):
         """
         Compare instrument settings from n different station in the settings
         manager.
@@ -539,7 +537,9 @@ class SettingsManager:
                 'str': return comparison report as str
                 'dict': return comparison results as a dict
                 'viewer' (default): opens a gui with the compared dictionary
-
+            new_process (bool): True if new process should be started, which
+                does not block the IPython kernel. False by default because
+                it takes some time to start the new process.
         """
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
@@ -576,7 +576,7 @@ class SettingsManager:
             snapshot_viewer = dict_viewer.SnapshotViewer(
                 snapshot=diff,
                 timestamp=ts_list)
-            snapshot_viewer.spawn_comparison_viewer()
+            snapshot_viewer.spawn_comparison_viewer(new_process=new_process)
 
 
 class Timestamp(str):
