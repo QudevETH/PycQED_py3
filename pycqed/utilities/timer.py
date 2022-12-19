@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import datetime as dt
 import logging
@@ -19,11 +21,31 @@ class Timer(OrderedDict):
     NAME_CKPT_END = "end"
 
     def __init__(self, name="timer", fmt="%Y-%m-%d %H:%M:%S.%f", name_separator=".",
-                 verbose=False, auto_start=True, **kwargs):
+                 verbose=False, auto_start=True, children=None, **kwargs):
+        """
+        Creates a timer.
+        Args:
+            name (str): name of the timer.
+            fmt (str): string format to save and parse datetime objects
+            name_separator (str): separator between timer name and checkpoint name
+            verbose (bool): Whether or not logging messages should be shown
+            when the timer is used in a `with` block.
+            auto_start (bool): whether or not to create a first checkpoint when
+            opening creating the timer
+            children (dict): dictionary of subtimers, where the keys are the
+            timer names and values Timers.
+            **kwargs:
+                Any additional keyword argument is understood to be a checkpoint
+                or a child timer if the value of the keyword argument is a dictionary
+                This allows to create a Timer from a dictionary.
+                e.g. Timer(**dict(my_checkpoint=[datetime.now()]) or
+                Timer(**dict(my_child_timer=dict(children_checkpoint=[datetime.now()]))
+        """
         self.fmt = fmt
         self.name = name
         self.name_separator = name_separator
         self.verbose = verbose
+        self.children = {} if children is None else children
         # timer should not start logging when initializing with previous values
         if len(kwargs):
             auto_start = False
@@ -33,7 +55,13 @@ class Timer(OrderedDict):
             if isinstance(values, str):
                 values = eval(values)
             try:
-                self.checkpoint(ckpt_name, values=values, log_init=False)
+                if isinstance(values, dict):
+                    # assume values is a child timer
+                    self.children.update({ckpt_name: Timer(ckpt_name,
+                                                          auto_start=False,
+                                                          **values)})
+                else:
+                    self.checkpoint(ckpt_name, values=values, log_init=False)
             except Exception as e:
                 log.warning(f'Could not initialize checkpoint {ckpt_name}. Skipping.')
         if auto_start:
@@ -47,19 +75,38 @@ class Timer(OrderedDict):
             tm.checkpoint(ckpt_name, values=values, log_init=False)
         return tm
 
-    def __call__(self, func):
+    def __deepcopy__(self, memo):
+        # the default implementation of deepcopy somehow creates a new
+        # checkpoint at creation time. prevent this using a custom deepcopy
+        cls = self.__class__
+        result = cls.__new__(cls, auto_start=False)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, deepcopy(v, memo))
+        for k, v in self.items():
+            result[(deepcopy(k, memo))] = deepcopy(v, memo)
+        return result
 
+    def __call__(self, func):
+        # this function implements a decorator for methods (they can be
+        # decorated using @Timer()), which will create a checkpoint
+        # with the name of the decorated function in the self.timer attribute
+        # of the object.
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # print(args)
+            # make explicit name with instance name if the object has the attribute "name"
+            if hasattr(args[0], "name"):
+                prefix = args[0].name + self.name_separator + ".".join(func.__qualname__.split(".")[1:])
+            else:
+                prefix = func.__qualname__
             if hasattr(args[0], "timer"):
-                args[0].timer.checkpoint(func.__qualname__ + self.name_separator + self.NAME_CKPT_START)
+                args[0].timer.checkpoint(prefix + self.name_separator + self.NAME_CKPT_START)
             else:
                 log.warning(f'Using @Timer decorator on {args[0]} but {args[0]} has no .timer attribute.'
                             'Time will not be logged.')
             output = func(*args, **kwargs)
             if hasattr(args[0], "timer"):
-                args[0].timer.checkpoint(func.__qualname__ + self.name_separator + self.NAME_CKPT_END)
+                args[0].timer.checkpoint(prefix + self.name_separator + self.NAME_CKPT_END)
             return output
 
         return wrapper
@@ -108,7 +155,7 @@ class Timer(OrderedDict):
         except KeyError as ke:
             log.error(f"Could not find key in timer: {ke}. Available keys: {self.keys()}")
 
-    def find_keys(self, query="", mode='endswith'):
+    def find_keys(self, query="", mode='endswith', search_children=False):
         """
         Finds keys of checkpoints based on query. Defaults to returning all keys.
         Args:
@@ -127,7 +174,40 @@ class Timer(OrderedDict):
                               startswith=s.startswith, endswith=s.endswith)
             if match_func[mode](query):
                 matches.append(s)
+
+        if search_children:
+            for subtimer in self.children.values():
+                keys = subtimer.find_keys(query, mode=mode,
+                                   search_children=search_children)
+                matches.extend([subtimer.name + "." + k for k in keys])
+
         return matches
+
+    def __getitem__(self, item):
+        """
+        Access a checkpoint or child timer. The searching sequences is the
+        following:
+        - checkpoint from the timer: timer['ckpt_name']
+        - Children of a timer: timer['child_timer_name']
+        - Checkpoint of the child timer: timer['child_timer_name +
+                                               self.name_separator + ckpt_name']
+        If none of the above is found, a KeyError is raised.
+        """
+        try:
+            return super().__getitem__(item)
+        except KeyError as ke:
+            try:
+                return self.children[item]
+            except KeyError as kke:
+                try:
+                    split = item.split(self.name_separator)
+                    child = split[0]
+                    val = f"{self.name_separator}".join(split[1:])
+                    return self.children[child][val]
+                except KeyError as kkke:
+                    log.error(f"No checkpoint in {self.name} or its children "
+                                f"has name: {item}")
+                    raise kkke
 
     def find_earliest(self, after=None, checkpoints="all"):
         if checkpoints == "all":
@@ -160,15 +240,24 @@ class Timer(OrderedDict):
         return latest_val
 
     def save(self, data_object, group_name=None):
-        '''
-        Saves metadata on the MC (such as timings)
-        '''
+        """
+        Saves timer object in a data_object (hdf5 file)
+        Args:
+            data_object (HDF5 object): data file object/group under which
+             the timers should be saved
+            group_name (str): name of the group of the timer. Defaults to the
+                name of the timer
+
+        """
+
         if group_name is None:
             group_name = self.name
-        set_grp = data_object.create_group(group_name)
+        entry_grp = data_object.create_group(group_name)
         d = {k: repr(v) for k, v in self.items()}
-        write_dict_to_hdf5(d, entry_point=set_grp,
+        write_dict_to_hdf5(d, entry_point=entry_grp,
                                overwrite=False)
+        for name, subtimer in self.children.items():
+            subtimer.save(entry_grp)
 
     def sort(self, sortby="earliest", reverse=False, checkpoints="all"):
         """
@@ -300,7 +389,7 @@ class Timer(OrderedDict):
     def plot(self, checkpoints="all", type="bar", fig=None, ax=None, bar_width=0.45,
              xunit='min', xlim=None, date_format=None, annotate=True, title=None,
              time_axis=False, alpha=None, show_sum="absolute", ax_kwargs=None,
-             tight_layout=True, milliseconds=False):
+             tight_layout=True, milliseconds="auto"):
         """
         Plots a timer as a timeline or broken horizontal bar chart.
         Args:
@@ -328,8 +417,9 @@ class Timer(OrderedDict):
             ax_kwargs (dict): additional kwargs for the axes properties (
                 overwrite labels, scales, etc.).
             tight_layout (bool):
-            milliseconds (bool): whether or not to include milliseconds in
-                displayed total durations.
+            milliseconds (bool, str): whether or not to include milliseconds in
+                displayed total durations. Defaults to "auto" (displays ms if
+                 duration is < 1s)
 
         Returns:
 
@@ -337,22 +427,42 @@ class Timer(OrderedDict):
         from pycqed.analysis_v3 import plotting as plot_mod
         unit_to_t_factor = dict(us=1e-6, ms=1e-3, s=1, min=60, h=3600,
                                 day=3600 * 24, week=3600 * 24 * 7)
+
         all_start_and_durations = self.get_ckpt_fragments(checkpoints)
         total_durations = {ckpt_name: np.sum([t[1] for t in times])
                            for ckpt_name, times in all_start_and_durations.items()}
-
-        total_durations_rel = {n: v.total_seconds() / self.duration() if
-                               self.duration() != 0 else 1 for n, v in
-                               total_durations.items() }
-
         # plotting
         if ax_kwargs is None:
             ax_kwargs = dict()
         if ax is None and fig is None:
-            fig, ax = plt.subplots(figsize=(plot_mod.FIGURE_WIDTH_2COL, 2.104))
+            fig, ax = plt.subplots(figsize=(plot_mod.FIGURE_WIDTH_1COL,
+                                            len(all_start_and_durations) * 0.5))
         if fig is None:
             fig = ax.get_figure()
         y_ticklabels = []
+
+        # nothing to plot
+        if len(all_start_and_durations) == 0:
+            log.warning(f'Trying to plot empty timer:{self.name}')
+            return fig
+
+        # check whether there might be inaccuracies in durations
+        max_dur = self.duration(return_type="time_delta")
+        for ckpt_name, dur in total_durations.items():
+            if dur > max_dur:
+                log.warning(f'Total duration of checkpoint {ckpt_name} in '
+                            f'timer {self.name} computed by adding all start '
+                            f'and stop together is larger than the largest'
+                            f' time interval found in the timer (computed'
+                            f' by finding earliest and latest absolute time)'
+                            f': {dur} vs {max_dur}. It could be due to '
+                            f'imprecision of datetime.now() when '
+                            f'checkpoints are used to time very short '
+                            f'time-intervals.')
+        total_durations_rel = {n: v.total_seconds() / self.duration() if
+                               self.duration() != 0 else 1 for n, v in
+                               total_durations.items()}
+
         ref_time = self.find_earliest()[-1]
         t_factor = unit_to_t_factor.get(xunit, xunit)
         for i, (label, values) in enumerate(all_start_and_durations.items()):
@@ -418,6 +528,27 @@ class Timer(OrderedDict):
             fig.tight_layout()
         return fig
 
+    def rename_checkpoints(self, prefix="", suffix="", which=None):
+        """
+        Rename checkpoints
+        Args:
+            prefix (str): prefix for all new names
+            suffix (str): suffix for all new names
+            which (str, dict):
+                - "all" will rename all existing checkpoint
+                    with the given prefix and/or suffix
+                - a dict where keys are the old checkpoint names and
+                    values are the new checkpoint names. This will
+                    rename only the provided checkpoints in the dictionary.
+
+        """
+        if which is None:
+            which = {}
+        if which == "all":
+            which = {ckptn: ckptn for ckptn in self}
+        for old_ckpt_name, new_ckpt_name in which.items():
+            self[prefix + new_ckpt_name + suffix] = self.pop(old_ckpt_name)
+
     def table(self, checkpoints="all"):
         """
         Table representation of the duration stored in a timer.
@@ -441,34 +572,40 @@ class Timer(OrderedDict):
         return df
 
     @staticmethod
-    def _human_delta(tdelta, milliseconds=False):
+    def _human_delta(tdelta, milliseconds="auto", return_empty=False):
         """
         Takes a timedelta object and formats it for humans.
-        Usage:
-            # 149 day(s) 8 hr(s) 36 min 19 sec
-            print human_delta(datetime(2014, 3, 30) - datetime.now())
-        Example Results:
-            23 sec
-            12 min 45 sec
-            1 hr(s) 11 min 2 sec
-            3 day(s) 13 hr(s) 56 min 34 sec
         :param tdelta: The timedelta object.
+        :param milliseconds (bool, str): "auto" will display ms in case
+        the time delta is < 1s.
+        :param return_empty (bool): If True, returns a label even if
+        the time delta is 0. Defaults to False.
         :return: The human formatted timedelta
         """
+
+        if tdelta == dt.timedelta() and not return_empty:
+            return ""
+
         d = dict(days=tdelta.days)
         d['hrs'], rem = divmod(tdelta.seconds, 3600)
         d['min'], d['sec'] = divmod(rem, 60)
         if milliseconds:
-            d['msecs'] = int(np.round(tdelta.microseconds * 1e-3))
+            d['msec'] = int(np.round(tdelta.microseconds * 1e-3))
         else:
+            d['msec'] = 0
             d['sec'] += int(np.round(tdelta.microseconds * 1e-6))
 
         if d['days'] != 0:
-            fmt = '{days} day(s) {hrs:02}:{min:02}:{sec:02}'
+            fmt = '{days} day(s) {hrs:02}:{min:02}'
+        elif (d['hrs'] == 0 and
+              d['min'] == 0 and
+              d['sec'] == 0 and milliseconds == "auto"):
+            fmt = '{msec:03} ms'
         else:
             fmt = '{hrs:02}:{min:02}:{sec:02}'
-        if milliseconds:
-            fmt += '.{msecs:03}'
+
+        if milliseconds and milliseconds != "auto":
+            fmt += '.{msec:03}'
         return fmt.format(**d)
 
 
@@ -484,9 +621,12 @@ def multi_plot(timers, **plot_kwargs):
 
     """
     # create dummy timer that contains checkpoints of other timers
-    # note: this won't work if several timers have the same checkpoint names
     tm = Timer(auto_start=False)
-    [tm.update(t) for t in timers]
+    for t in timers:
+        tt = deepcopy(t) # do not modify original timer
+        tt.rename_checkpoints(tt.name + "_", which="all")
+        tm.update(tt)
+
     return tm.plot(**plot_kwargs)
 
 

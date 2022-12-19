@@ -5,8 +5,8 @@ from numpy import float64
 log = logging.getLogger(__name__)
 
 
-class PropertyValuesDictValidator:
-    """Class to validate property values dictionaries
+class DevicePropertyValuesDictValidator:
+    """Class to validate device property values dictionaries
     """
 
     STEP_NODE_KEYS = ['step_type', 'property_values']
@@ -35,7 +35,7 @@ class PropertyValuesDictValidator:
         """Validates whether node is a valid value node
 
         Args:
-            node (dict): a property values dictionary node
+            node (dict): a device property values dictionary node
 
         Returns:
             bool: whether the node is a valid value node
@@ -51,7 +51,7 @@ class PropertyValuesDictValidator:
         A root step node is a step node with `timestamp` set.
 
         Args:
-            node (dict): a property values dictionary node
+            node (dict): a device property values dictionary node
 
         Returns:
             bool: whether the node is a valid root step node
@@ -71,19 +71,19 @@ class PropertyValuesDictValidator:
         self,
         node: dict,
     ):
-        """Validates a single node (dict) of a property values dictionary
+        """Validates a single node (dict) of a device property values dictionary
 
         A node is either a step node or a value node. A value node is identified
         by the presence of a `value` key, and associated metadata such as
-        `qubits` and `property_type`. A step node is identified by a `step_type`
+        `qubits` and `device_property_type`. A step node is identified by a `step_type`
         key, and a list of other nodes, called `property_values`. A root step
         node must also contain a `timestamp` entry.
 
         Args:
-            node (dict): a node from a property values dictionary
+            node (dict): a node from a device property values dictionary
 
         Returns:
-            bool: whether the node is a valid property values dictionary node
+            bool: whether the node is a valid device property values dictionary node
         """
         if self.is_step_node(node):
             # The node is a step node, check types

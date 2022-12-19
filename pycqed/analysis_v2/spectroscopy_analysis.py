@@ -1747,7 +1747,9 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
         pdd = self.proc_data_dict
         plotsize = self.get_default_plot_params(set=False)['figure.figsize']
         for qb_name in self.qb_names:
-            fig_title = f'Magnitude and Phase Plot {qb_name}'
+            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                         self.raw_data_dict['measurementstring'] +
+                         '\nMagnitude and Phase Plot ' + qb_name)
             plot_name = f'raw_mag_phase_{qb_name}'
             frequency = pdd['sweep_points_dict'][qb_name]['sweep_points']
             for ax_id, key in enumerate(['Magnitude', 'Phase']):
@@ -1775,10 +1777,12 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                                         plotsize[1]*2),
                             'title': fig_title if not ax_id else None,
                             'setlabel': f'|{state}>',
-                            'do_legend': True,
+                            'do_legend': ax_id == 0,
                     }
-            fig_title = f'S21 distance {qb_name}'
             plot_name = f's21_distance_{qb_name}'
+            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                         self.raw_data_dict['measurementstring'] +
+                         '\nS21 distance ' + qb_name)
             for dkey, val in pdd['projected_data_dict'][qb_name]['distance'].items():
                 distance, argmax = val
                 self.plot_dicts[f's21_distance_{dkey}_{qb_name}'] = {
@@ -1808,8 +1812,8 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'do_legend': True,
                 }
 
-    def get_state_color(self, state):
-        state_colors = {'g': 'blue', 'e': 'orange', 'f': 'green'}
+    def get_state_color(self, state, cmap=plt.get_cmap('tab10')):
+        state_colors = {'g': cmap(0), 'e': cmap(1), 'f': cmap(2)}
         INT_TO_STATE = 'gef'
         if isinstance(state, int):
             state = INT_TO_STATE[state]

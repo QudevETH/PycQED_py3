@@ -5363,9 +5363,10 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         if self.do_fitting:
             apd = self.proc_data_dict['analysis_params_dict']
             for outer_key, ramsey_pars_dict in apd.items():
-                if outer_key in ['qubit_frequencies', 'reparking_params']:
-                    # This is only for ReparkingRamseyAnalysis.
-                    # It is handled by prepare_fitting_qubit_freqs of that class
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # This is only for ReparkingRamseyAnalysis and
+                    # ResidualZZAnalysis. It is handled those classes directly.
                     continue
                 # outer_key is of the form qbn_i if TwoD else qbn.
                 # split into qbn and i. (outer_key + '_') is needed because if
@@ -5687,6 +5688,175 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
                     'linestyle': ''}
+
+
+class ResidualZZAnalysis(RamseyAnalysis):
+    """
+    Analysis for a ResidualZZ measurement.
+
+    Extracts the residual ZZ couling by comparing the frequencies of two Ramsey
+    measurements and adds one additional plot for each residual ZZ measurement
+    to display the extracted residual ZZ couling.
+    """
+
+    def __init__(self, echo=False, **kwargs):
+        """
+        Args:
+            echo (bool, optional): Whether the Ramsey sequence included an echo
+                pulse or not. This is relevant for the analysis as this causes a
+                factor of 1/2 in the frequency difference between the two Ramsey
+                measurements compared to the measurements without echo pulse.
+                Defaults to False.
+        """
+        self.echo = echo
+        super().__init__(**kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        task_list = self.get_param_value('task_list', default_value=[])
+        for task in task_list:
+            params_dict[f'qbc_of_' + task['qb']] = task['qbc']
+        self.raw_data_dict.update(params_dict)
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        residual_ZZs_dicts = OrderedDict()
+        for qbn in self.qb_names:
+            residual_ZZs_dicts[qbn] = OrderedDict()
+            for fk in self.fit_keys:
+                fit_res_base = self.fit_dicts[f'{fk}{qbn}_0']['fit_res']
+                fit_res_prep = self.fit_dicts[f'{fk}{qbn}_1']['fit_res']
+                residual_ZZs_dicts[qbn][f'{fk}'] = \
+                    self.get_residual_zz(fit_res_base, fit_res_prep)
+        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
+            residual_ZZs_dicts
+        hdf_group_name_suffix = self.get_param_value(
+            'hdf_group_name_suffix', '')
+        self.save_processed_data(key='analysis_params_dict' +
+                                     hdf_group_name_suffix)
+
+    def get_residual_zz(self, fit_res_base, fit_res_prep):
+        """Compute the residual ZZ coupling from the two Ramsey fits.
+
+        Args:
+            fit_res_base (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit in the ground state the whole time.
+            fit_res_prep (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit excited.
+
+        Returns:
+            dict with the individual detunings ('freq_g', 'freq_e') and the
+            extracted residual ZZ ('shift_Hz') and its standard error
+            ('shift_Hz_stderr').
+        """
+        freq_g = fit_res_base.best_values['frequency']
+        freq_e = fit_res_prep.best_values['frequency']
+        shift = freq_e - freq_g
+        stderr = np.sqrt(fit_res_prep.params['frequency'].stderr**2
+                         + fit_res_base.params['frequency'].stderr**2)
+        # When the measurement was implemented using an echo pulse, the control
+        # qubit only got excited during the second half of the Ramsey sequence.
+        # The resulting shift between the fitted detuning frequencies therefore
+        # corresponds to only half the residual ZZ coupling. This is compensated
+        # by the following factor:
+        x = 2 if self.echo else 1
+        return {'freq_g': freq_g, 'freq_e': freq_e,
+                'shift_Hz': x*shift, 'shift_Hz_stderr': x*stderr}
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting:
+            apd = self.proc_data_dict['analysis_params_dict']
+            for qb, residual_zz_dict in apd['residual_ZZs'].items():
+                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                plot_name = f'ResidualZZ_{qb}_{qbc}'
+
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
+                    'sweep_points']
+                dtf = self.proc_data_dict['data_to_fit'][qb]
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[0],
+                    data_label=f'{qbc} in g',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qb+'fit0',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[1][:-self.num_cal_points],
+                    plot_cal_points=False,
+                    data_label=f'{qbc} in e',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qb+'fit1',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+
+                textstr = ''
+                for fk, residual_zz in residual_zz_dict.items():
+                    key = fk.split('_')[0]
+                    textstr += f'$\Delta f_{{0_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_g"]:.3f} kHz\n'
+                    textstr += f'$\Delta f_{{1_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
+                    textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
+                               + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
+                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} ' \
+                               + f'kHz\n'
+                textstr += f'target: {qb}, control: {qbc}'
+                self.plot_dicts['text_msg'] = {
+                    'fig_id': plot_name,
+                    'ypos': -0.2,
+                    'xpos': -0.025,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'color': 'black',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr,}
+
+
+            # helper variable to prevent having labels twice in the legend
+            labels_set = False
+            for outer_key, ramsey_pars_dict in apd.items():
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # We only care about the fit types saved in the apd.
+                    continue
+                # outer_key is of the form qbn_i if TwoD else qbn.
+                # split into qbn and i. (outer_key + '_') is needed because if
+                # outer_key = qbn doing outer_key.split('_') will only have one
+                # output and assignment to two variables will fail.
+                qbn = (outer_key + '_').split('_')[0]
+
+                qbc = self.raw_data_dict[f'qbc_of_{qbn}']
+                plot_name = f'ResidualZZ_{qbn}_{qbc}'
+
+                for i, fit_type in enumerate(ramsey_pars_dict):
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}'][
+                        'fit_res']
+                    label = 'exp decay fit' if i == 0 else 'gauss decay fit'
+                    self.plot_dicts[
+                        f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
+                            'fig_id': plot_name,
+                            'plotfn': self.plot_fit,
+                            'fit_res': fit_res,
+                            'color': 'r' if i == 0 else 'C4',
+                            'setlabel': label if not labels_set else '',
+                        }
+                    if not labels_set:
+                        self.plot_dicts[
+                            f'ResidualZZ_fit_{outer_key}_{fit_type}'].update({
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1.0, -0.15),
+                                'legend_pos': 'upper right',
+                            })
+                labels_set = True
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9222,8 +9392,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
+        self.nr_averages = self._extract_nr_averages()
+
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
+            ref_time=self.get_param_value("ref_time")
+        )
+
+        # Extract bare experiment timer
+        self.timers['BareExperiment'] = self.bare_experiment_timer(
             ref_time=self.get_param_value("ref_time")
         )
 
@@ -9231,14 +9408,23 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         pass
 
     def plot(self, **kwargs):
-        timers = [t for t in self.timers.values() if len(t)]
+        timers = [t for t in self.timers.values()]
         plot_kws = self.get_param_value('plot_kwargs', {})
         for t in timers:
             try:
-                self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                if len(t):
+                    self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                # plot combined plot of children
+                if self.get_param_value('children_timer', True) and len(t.children):
+                    self.figs['timer_' + t.name + "_children"] = \
+                        tm_mod.multi_plot(list(t.children.values()), **plot_kws)
+                    # recursive plot
+                    for n, subtimer in t.children.items():
+                        if len(subtimer.children):
+                            self.figs[f'timer_{n}'] = subtimer.plot(**plot_kws)
             except Exception as e:
                 if self.raise_exceptions:
-                    raise
+                    raise e
                 log.error(f'Could not plot Timer: {t.name}: {e}')
 
         if self.get_param_value('combined_timer', True):
@@ -9247,6 +9433,18 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
     def bare_measurement_timer(self, ref_time=None,
                                checkpoint='bare_measurement', **kw):
+        """
+        Creates and returns an additional timer for the bare measurement time,
+        which is defined as the repetition period between two master triggers
+        times the total number of runs
+
+        Args:
+            ref_time: Reference time for the start of the bare measurement timer.
+                If None, the earliest time found in self.timers is used.
+            checkpoint (str): name of the bare measurement checkpoint
+            **kw: remaining keywords are passed to bare_measurement_time
+
+        """
         bmtime = self.bare_measurement_time(**kw)
         bmtimer = tm_mod.Timer('BareMeasurement', auto_start=False)
         if ref_time is None:
@@ -9263,7 +9461,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 raise e
 
         # TODO add more options of how to distribute the bm time in the timer
-        #  (not only start stop but e.g. distribute it)
+        #  (not only start stop to get the correct duration but
+        #  add it when the acquisition device is actually acquiring data)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.start",
                            values=[ref_time], log_init=False)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.end",
@@ -9272,21 +9471,83 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return bmtimer
 
-    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
-                              count_nan_measurements=False):
+    def bare_experiment_timer(self, ref_time=None,
+                                   checkpoint='bare_experiment', **kw):
+        tot_sec = self.bare_experiment_time(**kw)
+        tm = tm_mod.Timer('BareExperiment', auto_start=False)
+        if ref_time is None:
+            try:
+                ts = [t.find_earliest() for t in self.timers.values()]
+                ts = [t[-1] for t in ts if len(t)]
+                arg_sorted = sorted(range(len(ts)),
+                                    key=list(ts).__getitem__)
+                ref_time = ts[arg_sorted[0]]
+            except Exception as e:
+                log.error('Failed to extract reference time for bare'
+                          f'Experiment timer. Please fix the error'
+                          f'or pass in a reference time manually.')
+                raise e
+
+        # TODO add more options of how to distribute the bm time in the timer
+        #  (not only start stop but e.g. distribute it)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.start",
+                           values=[ref_time], log_init=False)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.end",
+                           values=[ref_time + dt.timedelta(seconds=tot_sec)],
+                           log_init=False)
+
+        return tm
+
+    def _extract_nr_averages(self):
+        try:
+            sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
+            if sa is not None and sa != 1:
+                log.warning('Currently, soft averages are not taken into account'
+                          'when extracting the number of averages. This might lead'
+                          'to unexpected timings.')
+            sr = self.get_hdf_param_value('Instrument settings/MC', "soft_repetitions")
+            if sr is not None and sr != 1:
+                log.warning('Currently, soft repetitions are not taken into account'
+                          'when extracting the number of shots. This might lead'
+                          'to unexpected timings.')
+        except:
+            # in case some of the attributes do not exist
+            pass
+        #TODO Currently does not support soft averages or soft repetitions
         det_metadata = self.metadata.get("Detector Metadata", None)
-        if nr_averages is None:
-            nr_averages = self.get_param_value('nr_averages', None)
+        nr_averages = self.get_param_value('nr_averages', None)
         if det_metadata is not None and nr_averages is None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            det = list(det_metadata.get('detectors', {}).values())[0]
-            nr_averages = det.get('nr_averages', det.get('nr_shots', None))
+            nr_averages = det_metadata.get('nr_averages',
+                                           det_metadata.get('nr_shots', None))
+            if nr_averages is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
         if nr_averages is None:
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
-        self.nr_averages = nr_averages
+        return nr_averages
+
+    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
+                              count_nan_measurements=False):
+        """
+        Computes the measurement time i.e. the number of segments * the repetition rate
+        * number of averages.
+        Args:
+            nr_averages: number of averages for each segment
+            repetition_rate: time interval between two main triggers of
+                subsequent segments
+            count_nan_measurements: whether or not to account for segments in
+                unfinished measurements.
+
+        Returns:
+
+        """
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        det_metadata = self.metadata.get("Detector Metadata", None)
         # metadata['detectors'] is a dict for MultiPollDetector and else a list
         df_names = list(det_metadata['detectors'])
         # Testing the first detector, since detectors in a MultiPollDetector
@@ -9308,6 +9569,44 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             perc_meas = 1 - np.sum(np.isnan(vals)) / np.prod(vals.shape)
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
+
+    def bare_experiment_time(self, nr_averages=None):
+        """
+        Computes the bare experiment time from the segments durations,
+        which are extracted from the segment timers.
+        Note: unlike bare_measurement_time,
+            for now this function always accounts for the full experiment time
+            even if the measurement was interrupted.
+        Args:
+            nr_averages: Number of averages for each segment.
+                Defaults to self.nr_averages, which is extracted by
+                self._extract_nr_averages()
+
+        Returns:
+            Total experiment time (in seconds)
+        """
+
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        try:
+            # duration of segments are stored with the .dt checkpoint end
+            ckpts = self.timers['Sequences'].find_keys('.dt',
+                                                       search_children=True)
+            # since ns are not supported by datetime, the durations are stored
+            # in micro seconds, so we need to set them back to nanoseconds
+            segment_durations = [
+                (self.timers['Sequences'][ck][0] -
+                 dt.datetime.utcfromtimestamp(0)).total_seconds() / 1e3
+                for ck in ckpts]
+            self.proc_data_dict["segment_durations"] = \
+                {ck:d for ck, d in zip(ckpts, segment_durations)}
+
+            tot_secs = np.sum(segment_durations) * nr_averages
+            return tot_secs
+        except Exception as e:
+            log.error(f'Could not compute bare experiment time : {e}.'
+                      f'Returning timer with 0s duration.')
+            return 0
 
     @staticmethod
     def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,
@@ -11012,10 +11311,15 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             'msmt_sweep_points']
                         Delta = self.proc_data_dict['Delta'][qbH]
                         offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
-                        Delta_fine = np.linspace(-2*abs(min(Delta)), 2*max(Delta), steps) # for fit plotting
+                        Delta_fine = np.linspace(-2*abs(min(Delta)-abs(
+                            offset_freq)), 2*(max(Delta)+offset_freq),
+                                                 steps) # for fit plotting
                         J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
                         offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
-                        t_CZ = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['t_CZ_Chevron']
+                        mmt_string = self.measurement_strings[
+                                        qbH].partition('_')[0]
+                        t_CZ = self.proc_data_dict['analysis_params_dict'][
+                                f'{qbH}_{qbL}']['t_CZ_'+mmt_string]
                         textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
                         textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
                         textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
@@ -11036,7 +11340,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
                                 f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
                             J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
-                            xvals_fit = self.t_CARB(J, Delta_fine, n)  if actual_detuning else \
+                            xvals_fit = self.t_CARB(J, Delta_fine, n) if actual_detuning else \
                                 self.t_CARB(J, Delta_fine + offset_freq, n)
                             self.plot_dicts[f'{fit_plot_name}_main'] = {
                                 'plotfn': self.plot_line,
@@ -11061,8 +11365,11 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
                                 'plotfn': self.plot_line,
                                 'fig_id': base_plot_name,
-                                'xvals': xvals,
-                                'yvals': J*np.ones(len(xvals)) * (-1) ** negative_J - offset_freq * (1-actual_detuning),
+                                'xvals': [0, 2*xvals[-1]-xvals[-2]], # make
+                                # sure the horizontal lines indicating J are
+                                # wide enough to cover the entire plot
+                                'yvals': J*np.ones(2) * (-1) ** negative_J - \
+                                         offset_freq * (1-actual_detuning),
                                 'color': 'white',
                                 'marker': 'None',
                                 # 'setlabel': 'J',
