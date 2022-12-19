@@ -911,25 +911,22 @@ class Segment:
         # the AWG that do not trigger any other AWGs, then the AWGs that
         # trigger these AWGs and so on.
         trigger_group_hierarchy = self.find_trigger_group_hierarchy()
+        # Initialize variables for resolving the main trigger time
+        masters, delays = {}, {}
+        t_main_trig = np.inf
 
         for group in trigger_group_hierarchy:
             if group not in self.elements_on_awg:
                 continue
             if len(self.pulsar.get_trigger_channels(group)) == 0:
                 # master AWG directly triggered by main trigger
-                t_main_trig = self.pulsar.main_trigger_time()
-                if t_main_trig != 'auto':
-                    # find first element in trigger group
-                    el = self.find_trigger_element(group, -np.inf)
-                    start_end = self.element_start_end[el][group]
-                    if start_end[0] < t_main_trig:
-                        raise ValueError(
-                            f'Fixed main trigger time {t_main_trig} is too '
-                            f'late for this segment, which starts at '
-                            f'{start_end[0]}.')
-                    # update element start such that the waveforms start at
-                    # the requested fixed main trigger time.
-                    self.element_start_length(el, group, t_start=t_main_trig)
+                # find and store the first element
+                masters[group] = self.find_trigger_element(group, -np.inf)
+                # determine required main trigger timer, taking into account
+                # the delay settings of this master trigger group
+                delays[group] = self.pulsar.get_trigger_delay(group)
+                start_end = self.element_start_end[masters[group]][group]
+                t_main_trig = min(start_end[0] + delays[group], t_main_trig)
                 continue  # for master AWG no trigger_pulse has to be added
 
             trigger_pulses = []
@@ -949,6 +946,24 @@ class Segment:
                          if group in getattr(self, 'skip_trigger', []) else {}))
 
             add_trigger_pulses(trigger_pulses)
+
+        # if a fixed main trigger time is set: check compatibility and
+        # overwrite with fixed value
+        t_main_trig_setting = self.pulsar.main_trigger_time()
+        if t_main_trig_setting != 'auto':
+            if t_main_trig < t_main_trig_setting:
+                raise ValueError(
+                    f'Fixed main trigger time {t_main_trig_setting} is too '
+                    f'late for this segment, which starts at {t_main_trig}.')
+            t_main_trig = t_main_trig_setting
+        for group in masters:
+            # update element start such that the waveforms start at the
+            # main trigger time determined above, taking into account the
+            # delay settings (subtract a positive/negative delay from the
+            # start time = waveform gets more/less zeros at the start =
+            # original waveform starts later/earlier)
+            self.element_start_length(
+                masters[group], group, t_start=t_main_trig - delays[group])
 
         # checks if elements on AWGs overlap
         self._test_overlap(allow_overlap=allow_overlap)
