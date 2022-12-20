@@ -146,6 +146,10 @@ class BaseDataAnalysis(object):
                 self.options_dict = OrderedDict()
             else:
                 self.options_dict = options_dict
+            # The following dict can be populated by child classes to set
+            # default values that are different from the default behavior of
+            # the base class.
+            self.default_options = {}
 
             ################################################
             # These options determine what data to extract #
@@ -180,6 +184,8 @@ class BaseDataAnalysis(object):
             self.figs = OrderedDict()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
+            self.transparent_background = self.options_dict.get(
+                'transparent_background', self.presentation_mode)
             self.do_individual_traces = self.options_dict.get(
                 'do_individual_traces', False)
             self.tight_fig = self.options_dict.get('tight_fig', True)
@@ -229,15 +235,29 @@ class BaseDataAnalysis(object):
             self.process_data()  # binning, filtering etc
             if self.do_fitting:
                 self.prepare_fitting()  # set up fit_dicts
-                self.run_fitting()  # fitting to models
-                self.save_fit_results()
-                self.analyze_fit_results()  # analyzing the results of the fits
+                try:
+                    self.run_fitting()  # fitting to models
+                except Exception as e:
+                    if self.raise_exceptions:
+                        raise e
+                    else:
+                        log.error('Fitting has failed.')
+                        log.error(traceback.format_exc())
+                        self.do_fitting = False
+
+            if self.do_fitting:
+                # Fitting has not failed: continue with saving and analysing
+                # the fit results
+                self.save_fit_results()  # saving the fit results
+                self.analyze_fit_results()  # analyzing the fit results
+
 
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
                 self.prepare_plots()  # specify default plots
                 if not self.extract_only:
-                    self.plot(key_list='auto')  # make the plots
+                    # make the plots
+                    self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -419,7 +439,8 @@ class BaseDataAnalysis(object):
                 param_name, default_value))
 
     def get_param_value(self, param_name, default_value=None, index=0,
-                        search_attrs=('options_dict', 'metadata', 'raw_data_dict')):
+                        search_attrs=('options_dict', 'metadata',
+                                      'raw_data_dict', 'default_options')):
         """
         Gets a value from a set of searchable hashable attributes.
         :param param_name: name of the parameter to be searched
@@ -449,9 +470,12 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
-    def get_data_from_timestamp_list(self, params_dict, numeric_params=()):
+    def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
+                                     timestamps=None):
+        if timestamps is None:
+            timestamps = self.timestamps
         raw_data_dict = []
-        for timestamp in self.timestamps:
+        for timestamp in timestamps:
             raw_data_dict_ts = OrderedDict([(param, []) for param in
                                             params_dict])
 
@@ -723,8 +747,8 @@ class BaseDataAnalysis(object):
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
-            if 'TwoD' not in self.options_dict:
-                self.options_dict['TwoD'] = TwoD
+            if 'TwoD' not in self.default_options:
+                self.default_options['TwoD'] = TwoD
         else:
             temp_dict_list = []
             twod_list = []
@@ -743,13 +767,13 @@ class BaseDataAnalysis(object):
                 temp_dict_list.append(rdd,)
                 twod_list.append(TwoD)
             self.raw_data_dict = tuple(temp_dict_list)
-            if 'TwoD' not in self.options_dict:
+            if 'TwoD' not in self.default_options:
                 if not all(twod_list):
                     log.info('Not all measurements have the same '
                              'number of sweep dimensions. TwoD flag '
                              'will remain unset.')
                 else:
-                    self.options_dict['TwoD'] = twod_list[0]
+                    self.default_options['TwoD'] = twod_list[0]
 
     def process_data(self):
         """
@@ -945,6 +969,13 @@ class BaseDataAnalysis(object):
             guessfn_pars = fit_dict.get('guessfn_pars', {})
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
+            method = fit_dict.get('method', 'leastsq')
+            fit_kwargs = {}
+            if 'steps' in fit_dict:
+                # We add this to the kwargs only if it is explicitly provided
+                # because we have observed recent lmfit versions showing a
+                # warning when passing this parameter.
+                fit_kwargs['steps'] = fit_dict['steps']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -976,8 +1007,8 @@ class BaseDataAnalysis(object):
                     for key, val in list(guess_dict.items()):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
-            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
-                                            params=guess_pars)
+            fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
+                                            params=guess_pars, **fit_kwargs)
 
             self.fit_res[key] = fit_dict['fit_res']
 
@@ -1127,14 +1158,37 @@ class BaseDataAnalysis(object):
                         dic['params'][param_name][k] = getattr(param, k)
         return dic
 
-    def plot(self, key_list=None, axs_dict=None,
-             presentation_mode=None, no_label=False):
+    def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
+             transparent_background=None, no_label=False):
         """
-        Goes over the plots defined in the plot_dicts and creates the
-        desired figures.
+        Plot figures defined in self.plot_dict.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            presentation_mode (bool): whether to prepare for presentation
+            no_label (bool): whether figure should have a label
         """
+        self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
             presentation_mode = self.presentation_mode
+        if transparent_background is None:
+            transparent_background = self.transparent_background
+        if presentation_mode:
+            self.plot_for_presentation(self.key_list, transparent_background)
+        else:
+            self._plot(self.key_list, transparent_background)
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+        """
+        Goes over the entries in self.plot_dict specified by key_list, and
+        prepares them for plotting. If key_list is None, the keys of
+        self.plot_dicts will be used.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+            axs_dict (dict): will be used to define self.axs
+            no_label (bool): whether figure should have a label
+        """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
@@ -1167,7 +1221,8 @@ class BaseDataAnalysis(object):
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
-                    figsize=pdict.get('plotsize', None)
+                    figsize=pdict.get('plotsize', None),
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
                 )
                 if pdict.get('3d', False):
@@ -1178,60 +1233,75 @@ class BaseDataAnalysis(object):
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
 
+        # Allows to specify a cax (axis for plotting a colorbar) by its
+        # index, instead of the axis object itself (since the axes are not
+        # created yet in the plot_dicts)
+        ax_keys = ['cax']
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            for ak in ax_keys:
+                if isinstance(i := pdict.get(ak + '_id'), int):
+                    pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
+
+    def _plot(self, key_list, transparent_background=False):
+        """
+        Creates the figures specified by key_list.
+
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            plot_touching = pdict.get('touching', False)
+
+            if type(pdict['plotfn']) is str:
+                plotfn = getattr(self, pdict['plotfn'])
+            else:
+                plotfn = pdict['plotfn']
+
+            # used to ensure axes are touching
+            if plot_touching:
+                self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
+                                                                 hspace=0)
+
+            # Check if pdict is one of the accepted arguments, these are
+            # the plotting functions in the analysis base class.
+            if 'pdict' in signature(plotfn).parameters:
+                if pdict['ax_id'] is None:
+                    plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+
+            # most normal plot functions also work, it is required
+            # that these accept an "ax" argument to plot on and **kwargs
+            # the pdict is passed in as kwargs to such a function
+            elif 'ax' in signature(plotfn).parameters:
+                # Calling the function passing along anything
+                # defined in the specific plot dict as kwargs
+                if pdict['ax_id'] is None:
+                    plotfn(ax=self.axs[pdict['fig_id']], **pdict)
+                else:
+                    plotfn(pdict=pdict,
+                           axs=self.axs[pdict['fig_id']].flatten()[
+                               pdict['ax_id']])
+                    self.axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.35)
+            else:
+                raise ValueError(
+                    '"{}" is not a valid plot function'.format(plotfn))
+
+            if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
 
-        if presentation_mode:
-            self.plot_for_presentation(key_list=key_list, no_label=no_label)
-        else:
-            for key in key_list:
-                pdict = self.plot_dicts[key]
-                plot_touching = pdict.get('touching', False)
-
-                if type(pdict['plotfn']) is str:
-                    plotfn = getattr(self, pdict['plotfn'])
-                else:
-                    plotfn = pdict['plotfn']
-
-                # used to ensure axes are touching
-                if plot_touching:
-                    self.axs[pdict['fig_id']].figure.subplots_adjust(wspace=0,
-                                                                     hspace=0)
-
-                # Check if pdict is one of the accepted arguments, these are
-                # the plotting functions in the analysis base class.
-                if 'pdict' in signature(plotfn).parameters:
-                    if pdict['ax_id'] is None:
-                        plotfn(pdict=pdict, axs=self.axs[pdict['fig_id']])
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-
-                # most normal plot functions also work, it is required
-                # that these accept an "ax" argument to plot on and **kwargs
-                # the pdict is passed in as kwargs to such a function
-                elif 'ax' in signature(plotfn).parameters:
-                    # Calling the function passing along anything
-                    # defined in the specific plot dict as kwargs
-                    if pdict['ax_id'] is None:
-                        plotfn(ax=self.axs[pdict['fig_id']], **pdict)
-                    else:
-                        plotfn(pdict=pdict,
-                               axs=self.axs[pdict['fig_id']].flatten()[
-                                   pdict['ax_id']])
-                        self.axs[pdict['fig_id']].flatten()[
-                            pdict['ax_id']].figure.subplots_adjust(
-                            hspace=0.35)
-                else:
-                    raise ValueError(
-                        '"{}" is not a valid plot function'.format(plotfn))
-
-            self.format_datetime_xaxes(key_list)
-            self.add_to_plots(key_list=key_list)
+        self.format_datetime_xaxes(key_list)
+        self.add_to_plots(key_list=key_list)
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1245,14 +1315,18 @@ class BaseDataAnalysis(object):
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
+    def plot_for_presentation(self, key_list=None, transparent_background=True):
+        """
+        Prepares and produces plots for presentation.
+        Args.
+            key_list (list): list of keys in self.plot_dicts
+        """
         if key_list is None:
             key_list = list(self.plot_dicts.keys())
         for key in key_list:
             self.plot_dicts[key]['title'] = None
 
-        self.plot(key_list=key_list, presentation_mode=False,
-                  no_label=no_label)
+        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
@@ -1858,7 +1932,9 @@ class BaseDataAnalysis(object):
 
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
-            axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+            axs.xaxis.set_ticklabels(plot_xtick_labels,
+                                     rotation=pdict.get(
+                                         'xlabels_rotation', 90))
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels)
         if plot_xtick_loc is not None:
@@ -2212,6 +2288,249 @@ class BaseDataAnalysis(object):
             return 1.2e9
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
+
+    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+        """
+        Returns all attributes in a path. Path could also be e.g. a particular qubit
+        """
+        h5mode = 'r'
+        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
+        h5filepath = a_tools.measurement_filename(folder)
+        data_file = h5py.File(h5filepath, h5mode)
+
+        try:
+            attr_names = list(data_file[path]) + list(data_file[path].attrs)
+            data_file.close()
+            return attr_names
+        except Exception as e:
+            data_file.close()
+            raise e
+
+    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+        """
+        Returns all instruments of a given class
+        """
+        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
+        dev_names = []
+        for instrument in instruments:
+            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
+                                                        attribute='__class__', hdf_file_index=hdf_file_index)
+            if  instrument_class == instr_class:
+                dev_names.append(instrument)
+        return dev_names
+
+
+class NDim_BaseDataAnalysis(BaseDataAnalysis):
+
+    def __init__(self, mobj_names=None, auto=True, **kwargs):
+        """
+        Basic analysis class for NDimQuantumExperiment and child classes.
+        Processes the data of several QuantumExperiment to reconstruct one or
+        multiple N-dimensional datasets and corresponding SweepPoints.
+
+        The idea is that running n N-dimensional measurements will yield in
+        total M=M1+M2+...+Mn measurement timestamps, where N-dimensional
+        measurement i consists of Mi data timestamps. For example,
+        MultiTWPA_SNR_Analysis expects n=4 groups with M=num_ts+num_ts+1+1
+        timestamps. By default this base class expects n=1 group (M=num_ts).
+        Starting from a list of M timestamps, this class partitions them back
+        into lists of M1+M2+...+Mn as indicated in get_measurement_groups,
+        then calls tile_data_ndim to reconstruct n groups of N-dimensional data.
+
+        The N-dimensional SweepPoints extracted for each group are saved in
+        pdd['group_sweep_points'][group], and global SweepPoints are saved in
+        pdd['sweep_points'] (should be overriden in child classes). That the
+        SweepPoints are extracted in the pdd does not matter for the processing
+        and is only meant as a convenience for the user and for plotting,
+        so this could be modified.
+
+        This class does not take more arguments than BaseDataAnalysis.
+        Child classes should override get_measurement_groups to indicate how
+        to partition the timestamps into groups to reconstruct the
+        N-dimensional measurements.
+        See MultiTWPA_SNR_Analysis for an example.
+
+        """
+
+        self.mobj_names = mobj_names
+        super().__init__(**kwargs)
+        if auto:
+            self.run_analysis()
+
+    def extract_data(self):
+        super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict,)
+
+    def process_data(self):
+        super().process_data()
+        pdd = self.proc_data_dict
+        pdd['group_sweep_points'] = {}
+        measurement_groups = self.get_measurement_groups()
+        for group, kwargs in measurement_groups.items():
+            pdd[group], pdd['group_sweep_points'][group] = self.tile_data_ndim(
+                **kwargs)
+        pdd['sweep_points'] = pdd['group_sweep_points'][
+            list(measurement_groups)[0]]  # default
+        self.save_processed_data()
+
+    def get_measurement_groups(self):
+        """
+        Returns:
+            a dictionary indicating how the measured timestamps should be
+            combined into groups (key), each group being one N-dimensional
+            measurement. The value for each group name should be a dictionary
+            containing kwargs for tile_data_ndim.
+        """
+
+        default_proc = lambda data_dict, ch_map: np.sqrt(
+            data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2)
+        # We have a set of num_ts experiments in total
+        num_ts = len(self.raw_data_dict)
+        measurement_groups = {
+            'ndim_data': dict(
+                ana_ids=range(0, num_ts),
+                post_proc_func=default_proc,
+            ),
+        }
+        return measurement_groups
+
+    def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+        """
+        Creates an N-dimensional dataset from separate timestamps each
+        containing 2-dimensional data, and returns the corresponding
+        N-dim SweepPoints. Additionally, performs possible post-processing on
+        the data as specified by post_proc_func.
+
+        Args:
+            ana_ids (list of tuple): indices of timestamps whose data should be
+                used
+            post_proc_func (function): specifies how to convert the raw data
+                per channel
+            on_qb (bool): whether the measurement was run on a qubit instead
+                of a MeasurementObject (to be removed, see FIXME below)
+        into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
+
+        """
+
+        # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
+        #  Once spectroscopies can be done without a qb, this can be cleaned
+        #  up since we can remove on_qb and replace the interleaved list of
+        #  mobjs and qb to a proper list of mobj
+
+        data_ndim = {}
+        sweep_points_ndim = {}
+
+        for mobj_id in range(len(self.mobj_names) // 2):
+            mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
+            data_ndim[mobjn] = {}
+            sweep_points_ndim[mobjn] =\
+                self.get_ndim_sweep_points_from_mobj_name(
+                    ana_ids, self.mobj_names[2 * mobj_id + on_qb])
+            sweep_lengths = sweep_points_ndim[mobjn].length()
+            data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
+            for ana_id in ana_ids:
+                # idxs: see NDimQuantumExperiment
+                # idxs are for now the same for all tasks, they are just stored
+                # in the task list for convenience
+                idxs = \
+                self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
+                    'ndim_current_idxs']
+                ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
+                    'meas_obj_value_names_map'][
+                    self.mobj_names[2 * mobj_id + on_qb]]
+                ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
+                spectrum = post_proc_func(ana_data_dict, ch_map)
+                for i in range(sweep_lengths[0]):
+                    for j in range(sweep_lengths[1]):
+                        data_ndim[mobjn][(i, j, *idxs)] = spectrum[i, j]
+        return data_ndim, sweep_points_ndim
+
+    def get_meas_objs_from_task(self, task):
+        """
+        FIXME there are now several such functions with slightly different
+         functionalities, this should be cleaned up and unified after
+         refactoring QuDev_Transmon to inherit from MeasurementObject
+        """
+        return [task.get('mobj', task.get('qb'))]
+
+    def get_ndim_sweep_points_from_mobj_name(self, ana_ids, mobjn):
+        """
+        Convenience method to reconstruct SweepPoints. Here we simply take
+        the N-dim SweepPoints originally passed in the task_list, and add the
+        2-dim SweepPoints from the experiment, since these can get overriden
+        before running e.g. in spectroscopy.
+
+        Note: This behaviour could be improved or extended once there are
+        more complicated use cases, e.g. by really extracting each
+        SweepPoints values in dimensions >=2 from the corresponding
+        QuantumExperiment instead of getting those saved in the task list.
+        This would provide flexibility by avoiding to hardcode the experiment
+        structure in get_measurement_groups.
+        """
+
+        task_list = self.raw_data_dict[ana_ids[0]]['exp_metadata']['task_list']
+        # Find task containing this mobj
+        tasks = \
+        [t for t in task_list if mobjn in self.get_meas_objs_from_task(t)]
+        if len(tasks)!=1:
+            raise ValueError(f"{len(tasks)} tasks found containing"
+                             f" {mobjn} in experiments {ana_ids}")
+        task = tasks[0]
+        sweep_points_ndim = SweepPoints(task['sweep_points'],
+                                               min_length=2)
+        # Cleanup swept SP in dim>=2 which contain only one value
+        sweep_points_ndim.prune_constant_values()
+        sweep_points_ndim.update(task['ndim_sweep_points'])
+        return sweep_points_ndim
+
+    @staticmethod
+    def get_slice(data, sp, sliceat):
+        """
+        Slices an N-dim numpy array indexed by SweepPoints, based on a list
+        of values to give to the SweepPoints. For example:
+            data: a 3-D array
+            sp: SweepPoints([
+                {"RO_freq": ...},
+                {"TWPA_pump_freq": ...},
+                {"TWPA_pump_power": ...},
+            ])
+            sliceat: {"RO_freq": 7.1e9, "TWPA_pump_power": 3.2}
+            -> returns 1-D data sliced at these values of the SweepPoints, and
+            remaining SweepPoints([{"RO_freq": ...}]) that index the data
+        If sliceat doesn't exactly match one value of the SweepPoints,
+        the closest row of data is returned
+
+        Args:
+            data (np.array): data to slice, with same dimensions as sp
+            sp (SweepPoints): sweep points indexing the data array
+            sliceat (dict): (list of tuples: (str, float)): list of sp names and
+            corresponding values at which to slice the data
+
+        Returns:
+            sliced data (with len(sliceat) less dimensions) and corresponding sp
+        """
+
+        data = copy.deepcopy(data)
+        sp = copy.deepcopy(sp)
+
+        for key, val in sliceat.items():
+            # Determine in which dimension to slice
+            id_of_slice = sp.find_parameter(key)
+            # Determine at what value to slice
+            sp_vals = sp.get_values(key)
+            id_in_slice = (np.abs(sp_vals - val)).argmin()
+            # Slice data, and prune sp accordingly
+            data = np.take(data, [id_in_slice],
+                                    axis=id_of_slice)
+            sp.pop(sp.find_parameter(key))
+            # Clean up unused dimensions
+            shape = np.array(data.shape)
+            useless_dims = np.where(shape == 1)
+            shape = np.delete(shape, useless_dims)
+            data = np.reshape(data, shape)
+
+        return data, sp
 
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):

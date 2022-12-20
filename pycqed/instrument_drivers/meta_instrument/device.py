@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon as qdt
 import pycqed.measurement.waveform_control.pulse as bpl
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import (ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -70,6 +70,9 @@ class Device(Instrument):
                            initial_value=qb_names,
                            parameter_class=ManualParameter)
 
+        self.MWGs = []
+        self.TWPAs = []
+
         self._operations = {}  # dictionary containing dictionaries of operations with parameters
 
         # Instrument reference parameters
@@ -103,6 +106,12 @@ class Device(Instrument):
                            docstring='stores all two qubit gate names',
                            get_cmd=lambda s=self: copy(s._two_qb_gates)
                            )
+        self.add_parameter(
+            'default_cz_gate_name',
+            parameter_class=ManualParameter, initial_value=None,
+            vals=vals.MultiType(vals.Strings(), vals.Enum(None)),
+            set_parser=self._valid_cz_gate,
+            docstring='Name of the CZ gate that should be used by default.')
 
         self.add_parameter('relative_delay_graph',
                            label='Relative Delay Graph',
@@ -210,6 +219,10 @@ class Device(Instrument):
         # add sqb operations
         for qb in self.get_qubits(qubits):
             operation_dict.update(qb.get_operation_dict())
+
+        # add meas_obj operations
+        for mobj in self.TWPAs:
+            operation_dict.update(mobj.get_operation_dict())
 
         return operation_dict
 
@@ -444,6 +457,38 @@ class Device(Instrument):
                                  f'{gate_name} {qb1_name} {qb2_name} '
                                  f'does not exist!')
 
+    def prepare_mwg(self):
+        for MWG in self.MWGs:
+            MWG.off()
+        for TWPA in self.TWPAs:
+            TWPA.on()
+            pass
+
+    def update_cancellation_params(self):
+        for qbc in self.get_qubits():
+            if qbc.ge_pulse_type() != 'SSB_DRAG_pulse_with_cancellation':
+                continue
+            cpars = qbc.ge_cancellation_params()
+            for qb in self.get_qubits():
+                iq = (qb.ge_I_channel(), qb.ge_Q_channel())
+                if iq not in cpars:
+                    continue
+                cpars[iq]['mod_frequency'] = (qbc.ge_freq() - qb.ge_freq() +
+                                            qb.ge_mod_freq())
+                cpars[iq]['phi_skew'] = qb.ge_phi_skew()
+                cpars[iq]['alpha'] = qb.ge_alpha()
+
+    def set_default_acq_channels(self):
+        qbs = self.get_qubits()
+        feedlines = {(qb.instr_acq(), qb.acq_unit()) for qb in qbs}
+        for fl in feedlines:
+            qb_fl = [qb for qb in qbs
+                    if qb.instr_acq() == fl[0]
+                    and qb.acq_unit() == fl[1]]
+            for i, qb in enumerate(qb_fl):
+                qb.acq_I_channel(2 * i)
+                qb.acq_Q_channel(2 * i + 1)
+
     def check_connection(self, qubit_a, qubit_b, connectivity_graph=None, raise_exception=True):
         """
         Checks whether two qubits are connected.
@@ -512,6 +557,17 @@ class Device(Instrument):
                     else:
                         self.set_pulse_par(gate_name, qb1, qb2, c, channel)
 
+        if self.default_cz_gate_name() is None:
+            # Make the newly added gate the default
+            self.default_cz_gate_name(gate_name)
+
+    def _valid_cz_gate(self, gate_name):
+        if gate_name is not None and gate_name not in self._two_qb_gates:
+            raise ValueError(
+                f'{gate_name} is not a valid two-qubit gate name. Valid '
+                f'names are: {self._two_qb_gates}')
+        return gate_name
+
     def get_channel_delays(self):
         """
         Get AWG channel delays
@@ -544,7 +600,7 @@ class Device(Instrument):
         # configure channel delays
         channel_delays = self.get_channel_delays()
         for ch, v in channel_delays.items():
-            awg = pulsar.AWG_obj(channel=ch)
+            awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
             awg.set(f'sigouts_{chid}_delay', v)
 

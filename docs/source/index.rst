@@ -18,7 +18,6 @@ Welcome to PycQED's documentation!
    conventions/docstring
    conventions/git
    writing_documentation
-   demo_notebooks
    glossary
 
 

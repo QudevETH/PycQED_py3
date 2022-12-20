@@ -11,14 +11,14 @@ class Sweep_function(object):
     '''
 
     def __init__(self, **kw):
-        self.set_kw()
+        self.set_kw(**kw)
 
     def set_kw(self, **kw):
         '''
         convert keywords to attributes
         '''
         for key in list(kw.keys()):
-            exec('self.%s = %s' % (key, kw[key]))
+            setattr(self, key, kw[key])
 
     def prepare(self, **kw):
         pass
@@ -36,11 +36,126 @@ class Sweep_function(object):
         '''
         pass
 
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        """Try to configure the sequence upload.
+
+        This method on the highest level of dependencies allows for recursive
+        search. Child classes that require special handling of this task need
+        to implement their own configure_upload method.
+
+        Args:
+            upload (bool, optional): Determines whether the sweep function will
+                upload in general. Defaults to `True`.
+            upload_first (bool, optional): Determines if method prepare should
+                upload the first sequence. Is governed by upload parameter.
+                Defaults to `True`.
+            start_pulsar (bool, optional): Whether to start pulsar in prepare.
+                Defaults to `True`.
+
+        Returns:
+            bool: Returns `True` if a sweep function was found that is able to
+                upload and was configured successfully.
+        """
+        return False
+
+
+class UploadingSweepFunction(Sweep_function):
+    def __init__(self, sequence=None, upload=True, upload_first=True,
+                 start_pulsar=False, start_exclude_awgs=tuple(),
+                 upload_finished_callback=None, **kw):
+        """Extends any sweep function to be able to upload sequences.
+
+        Args:
+            sequence (:class:`~pycqed.measurement.waveform_control.sequence.Sequence`):
+                Sequence of segments to sweep over.
+            upload (bool, optional):
+                Whether to upload the sequences before measurement.
+                Defaults to True.
+            start_pulsar (bool, optional):
+                Whether (a sub set of) the used AWGs will be started directly
+                after upload. This can be used, e.g., to start AWGs that have
+                only one unique segment and do not need to be synchronized to
+                other AWGs and therefore do not need to be stopped when
+                switching to the next segment in the sweep. Defaults to False.
+                FIXME: Check whether start_pulsar can be removed in the future
+                 by instead letting measurements configure the detector
+                 functions such that it starts pulsar.
+            start_exclude_awgs (collection[str], optional):
+                A collection of AWG names that will not be started directly
+                after upload in case start_pulsar is True. Defaults to empty
+                tuple.
+            upload_finished_callback (function, optional): if a function is
+                provided, it will be called after every upload.
+        """
+        super().__init__(**kw)
+        self.sequence = sequence
+        self.upload = upload
+        self.upload_first = upload_first
+        self.start_pulsar = start_pulsar
+        self.start_exclude_awgs = start_exclude_awgs
+        self.upload_finished_callback = upload_finished_callback
+
+    def prepare(self, **kw):
+        """Takes care of uploading the first sequence and starting the pulsar.
+
+        Behaviour depends on self.upload_first and self.start_pulsar.
+
+        Raises:
+            ValueError: Raised if start_pulsar but sequence is None.
+        """
+        if self.upload_first:
+            self.upload_sequence()
+        if self.start_pulsar:
+            if self.sequence is not None:
+                self.sequence.pulsar.start(exclude=self.start_exclude_awgs)
+            else:
+                raise ValueError('Cannot start pulsar with sequence being None')
+
+    def upload_sequence(self, force_upload=False):
+        """Wrapper around meth:sequence.upload to ensure correct behaviour
+        depending on self.upload
+
+        Args:
+            force_upload (bool, optional): Overwrites self.upload.
+                Defaults to False.
+
+        Raises:
+            ValueError: Raised if sequence is None and force_upload is True.
+        """
+        if self.sequence is None and force_upload:
+            raise ValueError('Cannot upload with sequence being None')
+        if (self.upload or force_upload) and self.sequence is not None:
+            self.sequence.upload()
+            if self.upload_finished_callback is not None:
+                self.upload_finished_callback()
+
+    def configure_upload(self, upload=True, upload_first=True,
+                        start_pulsar=True):
+        """Overwrites parent method
+        :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
+        and sets the correspoding attributes.
+
+        Args:
+            upload (bool, optional): Defaults to True.
+            upload_first (bool, optional): Defaults to True.
+            start_pulsar (bool, optional): Defaults to True.
+
+        Returns:
+            bool: True if a sequence to upload is stored in the
+                UploadingSweepFunction, and False otherwise
+        """
+        self.upload = upload
+        self.upload_first = upload_first
+        self.start_pulsar = start_pulsar
+        return self.sequence is not None
+
 
 class Soft_Sweep(Sweep_function):
+    sweep_control = 'soft'
+
     def __init__(self, **kw):
-        self.set_kw()
-        self.sweep_control = 'soft'
+        self.set_kw(**kw)
 
 
 ##############################################################################
@@ -149,9 +264,10 @@ class Delayed_None_Sweep(Soft_Sweep):
 
 
 class Hard_Sweep(Sweep_function):
+    sweep_control = 'hard'
+
     def __init__(self, **kw):
         super().__init__()
-        self.sweep_control = 'hard'
         self.parameter_name = 'None'
         self.name = 'Hard_Sweep'
         self.unit = 'a.u.'
@@ -180,21 +296,115 @@ class multi_sweep_function(Soft_Sweep):
                  parameter_name=None,
                  name=None,
                  **kw):
-        self.set_kw()
-        self.sweep_functions = [mc_parameter_wrapper.wrap_par_to_swf(s)
-                                if isinstance(s, qcodes.Parameter) else s
-                                for s in sweep_functions]
+        self.set_kw(**kw)
         self.sweep_control = 'soft'
         self.name = name or 'multi_sweep'
-        self.unit = sweep_functions[0].unit
         self.parameter_name = parameter_name or 'multiple_parameters'
-        for i, sweep_function in enumerate(sweep_functions):
+        self.sweep_functions = []
+        self.add_sweep_functions(sweep_functions)
+        # we need to set unit here because it will not get set in
+        # self.insert_sweep_function() inside the call above if sweep_functions
+        # is an empty list
+        self.set_unit()
+
+    def set_unit(self, unit=None):
+        """Set self.unit either from self.sweep_functions or passed string.
+
+        If the parameter unit is not specified and self.sweep_functions is empty
+        the unit will be set to an ampty string ''.
+
+        Args:
+            unit (String, optional): Manually specified unit. Defaults to None.
+        """
+        if unit is not None:
+            self.unit = unit
+        elif len(self.sweep_functions) != 0:
+            self.unit = self.sweep_functions[0].unit
+        else:
+            self.unit = ''
+
+    def check_units(self):
+        """Checks that all sweep functions inside self.sweep_functions have
+        the same unit as specified in self.unit.
+
+        Raises:
+            ValueError: Thrown if self.sweep_functions contains a
+                sweep_function with a unit different from self.unit
+        """
+        for i, sweep_function in enumerate(self.sweep_functions):
             if self.unit.lower() != sweep_function.unit.lower():
-                raise ValueError('units of the sweepfunctions are not equal')
+                raise ValueError(f'Unit {sweep_function.unit} of the'
+                    f' sweepfunction {sweep_function.name} is not equal to the'
+                    f' multi sweep unit {self.unit}. All sweep functions in a'
+                    f' multi_sweep_function have to have the same unit.')
 
     def set_parameter(self, val):
         for sweep_function in self.sweep_functions:
             sweep_function.set_parameter(val)
+
+    def add_sweep_functions(self, sweep_functions: list):
+        """Adds the passed sweep_functions to the multi_sweep.
+
+        Also takes care of changing the unit of self and calls self.check_units
+        to make sure all sweep_fucntions are compatible.
+
+        Args:
+            sweep_functions (list): List of Sweep_function objects that will
+                be added to the multi_sweep_function. The list might also
+                contain qcodes.Parameter objects, these will be converted to
+                Sweep_functions before they are added to the
+                multi_sweep_function.
+        """
+        for s in sweep_functions:
+            self.add_sweep_function(s)
+
+    def add_sweep_function(self, sweep_function):
+        """Adds a single sweep_function to the multi_sweep_function
+
+        Implemented as simple wrapper around add_sweep_functions. See docstring
+        of add_sweep_functions for details.
+        """
+        self.insert_sweep_function(len(self.sweep_functions), sweep_function)
+
+    def insert_sweep_function(self, pos, sweep_function):
+        """Inserts sweep_function at specified position to self.sweep_functions.
+
+        Args:
+            pos (int): Index of the position the sweep_function is inserted.
+            sweep_function (Sweep_function or qcodes.Parameter): Sweep_function
+                that is inserted into the self.sweep_functions list. If a
+                qcodes.Parameter object is passed it will be converted to a
+                Sweep_function beforehand.
+        """
+        if not self.sweep_functions:
+            self.sweep_control = sweep_function.sweep_control
+        elif self.sweep_control != sweep_function.sweep_control:
+            raise ValueError(f'Sweep control "{sweep_function.sweep_control}" '
+                             f'of added sweep function does not match the '
+                             f'sweep control of the previously added functions '
+                             f'("{self.sweep_control}"). '
+                             f'All sweep functions must have the same '
+                             f'sweep_control.')
+
+        if isinstance(sweep_function, qcodes.Parameter):
+            sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
+                sweep_function
+            )
+        self.sweep_functions.insert(pos, sweep_function)
+        self.set_unit()
+        self.check_units()
+
+    def prepare(self, **kw):
+        for sweep_function in self.sweep_functions:
+            sweep_function.prepare(**kw)
+
+    def configure_upload(self, upload=True, upload_first=True,
+                        start_pulsar=True):
+        for sweep_function in self.sweep_functions:
+            if sweep_function.configure_upload(upload, upload_first,
+                                               start_pulsar):
+                return True
+        return False
 
 
 class two_par_joint_sweep(Soft_Sweep):
@@ -205,7 +415,7 @@ class two_par_joint_sweep(Soft_Sweep):
     """
 
     def __init__(self, par_A, par_B, preserve_ratio: bool = True, **kw):
-        self.set_kw()
+        self.set_kw(**kw)
         self.unit = par_A.unit
         self.sweep_control = 'soft'
         self.par_A = par_A
@@ -265,6 +475,13 @@ class Transformed_Sweep(Soft_Sweep):
     def set_parameter(self, val):
         self.sweep_function.set_parameter(self.transformation(val))
 
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        if self.sweep_function is not None:
+            return self.sweep_function.configure_upload(upload, upload_first,
+                                                        start_pulsar)
+        return False
+
 
 class Offset_Sweep(Transformed_Sweep):
     """
@@ -298,7 +515,7 @@ class Indexed_Sweep(Transformed_Sweep):
                  unit=''):
         self.values = values
         super().__init__(sweep_function,
-                 transformation=lambda i, v=self.values : v[i],
+                 transformation=lambda i, v=self.values : v[int(i)],
                  name=name, parameter_name=parameter_name, unit=unit)
 
     def default_param_name(self):
@@ -365,8 +582,16 @@ class MajorMinorSweep(Soft_Sweep):
         # target value
         self.minor_sweep_function.set_parameter(val - mval)
 
+    def configure_upload(self, upload=True, upload_first=True,
+                         start_pulsar=True):
+        if not self.major_sweep_function.configure_upload(upload,
+                upload_first, start_pulsar):
+            return self.minor_sweep_function.configure_upload(upload,
+                upload_first, start_pulsar)
+        return True
 
-class FilteredSweep(multi_sweep_function):
+
+class FilteredSegmentSweep(multi_sweep_function):
     """
     Records only a specified consecutive subset of segments of a
     SegmentHardSweep for each soft sweep point while performing the soft
@@ -394,6 +619,14 @@ class FilteredSweep(multi_sweep_function):
         super().__init__(sweep_functions, parameter_name, name, **kw)
 
     def set_parameter(self, val):
+        # Set the soft sweep parameter in the sweep_functions. This is done
+        # before updating filter_segments in pulsar. In case the following
+        # set_parameter triggers a reprogramming, pulsar will skip the
+        # programming of AWGs for which filter segments emulation is needed,
+        # and those AWGs will be programmed during the following update of
+        # filter_segments, so that only the needed segments of the new
+        # sequence get programmed.
+        super().set_parameter(val)
         # Determine the current segment filter and inform Pulsar.
         filter_segments = self.filter_lookup[val]
         self.sequence.pulsar.filter_segments(filter_segments)
@@ -405,5 +638,45 @@ class FilteredSweep(multi_sweep_function):
         acqs = self.sequence.n_acq_elements(per_segment=True)
         self.filtered_sweep = [m for m, a in zip(seg_mask, acqs) for i in
                                range(a)]
-        # set the soft sweep parameter in the sweep_functions
+
+
+class FilteredSoftSweep(multi_sweep_function):
+    """For each dim-1 sweep point, record only a subset of dim-0 soft sweep
+    points while performing the dim-1 soft sweep defined in sweep_functions.
+
+    (further parameters as in multi_sweep_function)
+    :param filter_lookup: (dict) A dictionary where each key is a dimension 1
+        sweep point and the corresponding value is a mask (list of bool)
+        indicating which dimension 0 sweep points should be recorded.
+    """
+    def __init__(self, filter_lookup, sweep_functions: list, **kw):
+        self.filter_lookup = filter_lookup
+        self.filtered_sweep = None
+        super().__init__(sweep_functions, **kw)
+
+    def set_parameter(self, val):
         super().set_parameter(val)
+        # The filtered_sweep property stores a mask indicating which
+        # sweep points of dimension 0 MC should record.
+        self.filtered_sweep = self.filter_lookup.get(val, [])
+
+
+class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
+    """Defines a hard sweep function used for hard spectroscopy.
+
+    The frequency range over which this sweep function should sweep is not
+    set in the sweep function itself, but either in the metadata of the elements
+    in the used segment. This gives Pulsar access to the frequency range,
+    allowing Pulsar to program the corresponding frequency parameters in the
+    seqc code.
+
+    set_parameter is implemented as a pass method to prevent warning messages.
+    """
+    def __init__(self, parameter_name='None', upload_first=True,
+                 start_pulsar=False):
+        super().__init__(upload_first=upload_first, start_pulsar=start_pulsar)
+        self.parameter_name = parameter_name
+        self.unit = 'Hz'
+
+    def set_parameter(self, value):
+        pass  # Set in the Segment, see docstring

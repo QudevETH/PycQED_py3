@@ -24,6 +24,7 @@ from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
 from pycqed.utilities.general import temporary_value
+from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
     import Qubit
 from pycqed.measurement import optimization as opti
@@ -61,17 +62,20 @@ class QuDev_transmon(Qubit):
         self.add_parameter('instr_mc',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ge_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_pulsar',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_acq',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_ro_lo',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
-            parameter_class=InstrumentRefParameter)
+            parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()))
 
         # device parameters for user only
         # could be cleaned up
@@ -110,9 +114,18 @@ class QuDev_transmon(Qubit):
                            label='Chi')
 
         # readout pulse parameters
-        self.add_parameter('ro_freq', unit='Hz',
-                           parameter_class=ManualParameter,
-                           label='Readout frequency')
+        self.add_parameter(
+            'ro_fixed_lo_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                'ro', ro_fixed_lo_freq=f),
+            docstring='Fix the ro LO to a single frequency or to a set of '
+                      'allowed frequencies. For allowed options, see the '
+                      'argument fixed_lo in the docstring of '
+                      'get_closest_lo_freq.')
+        self.add_parameter(
+            'ro_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs('ro', ro_freq=f),
+            label='Readout frequency')
         self.add_parameter('ro_I_offset', unit='V', initial_value=0,
                            parameter_class=ManualParameter,
                            label='DC offset for the readout I channel')
@@ -148,9 +161,11 @@ class QuDev_transmon(Qubit):
                                  initial_value=2e-6, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_delay', 'pulse_delay',
                                  initial_value=0, vals=vals.Numbers())
-        self.add_pulse_parameter('RO', 'ro_mod_freq', 'mod_frequency',
-                                 initial_value=100e6,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+        self.add_pulse_parameter(
+            'RO', 'ro_mod_freq', 'mod_frequency', initial_value=100e6,
+            set_parser=lambda f, s=self: s.configure_mod_freqs('ro',
+                                                               ro_mod_freq=f),
+            vals=vals.MultiType(vals.Numbers(), vals.Lists()))
         self.add_pulse_parameter('RO', 'ro_phase', 'phase',
                                  initial_value=0,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
@@ -176,6 +191,12 @@ class QuDev_transmon(Qubit):
                                            ' this qubit.',
                                  label='RO pulse basis rotation dictionary',
                                  vals=vals.Dict())
+        self.add_pulse_parameter(
+            'RO', 'ro_disable_repeat_pattern', 'disable_repeat_pattern',
+            initial_value=False, vals=vals.Bool(),
+            docstring='True means that repeat patterns are not used for '
+                      'readout pulses of this qubit even if higher layers '
+                      '(like CircuitBuilder) configure a repeat pattern.')
         self.add_pulse_parameter(
             'RO', 'ro_trigger_channels', 'trigger_channels',
             vals=vals.MultiType(vals.Enum(None), vals.Strings(),
@@ -206,10 +227,10 @@ class QuDev_transmon(Qubit):
                                      'UHFQA and up to 4 for SHFQA).',
                            parameter_class=ManualParameter)
         self.add_parameter('acq_I_channel', initial_value=0,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_Q_channel', initial_value=1,
-                           vals=vals.Enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                           vals=vals.Ints(min_value=0),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_averages', initial_value=1024,
                            vals=vals.Ints(0, 1000000),
@@ -317,13 +338,37 @@ class QuDev_transmon(Qubit):
                                  'the same change in flux.',
                            initial_value=None, vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('amp_scaling_correction_coeffs',
+                           initial_value=[0, 0],
+                           parameter_class=ManualParameter,
+                           docstring='List/array of two floats representing '
+                                     'the coefficients a, b of the 5th order '
+                                     'polynomial used to correct for drive '
+                                     'electronics nonlinearity when scaling '
+                                     'the drive pulse amplitude with respect '
+                                     'to the pi-pulse amplitude. Used in '
+                                     'calculate_nonlinearity_correction.',
+                           vals=vals.MultiType(vals.Lists(), vals.Arrays()))
 
         # add drive pulse parameters
         for tr_name in self.transition_names:
+            if tr_name == 'ge':
+                self.add_parameter(
+                    f'{tr_name}_fixed_lo_freq', unit='Hz',
+                    set_cmd=lambda f, s=self, t=tr_name: s.configure_mod_freqs(
+                        t, **{f'{t}_fixed_lo_freq': f}),
+                    docstring=f'Fix the {tr_name} LO to a single frequency or '
+                              f'to a set of allowed frequencies. For allowed '
+                              f'options, see the argument fixed_lo in the '
+                              f'docstring of get_closest_lo_freq.')
+                freq_kw = dict(set_cmd=lambda f, s=self, t=tr_name:
+                               s.configure_mod_freqs(t, **{f'{t}_freq': f}))
+            else:
+                freq_kw = dict(parameter_class=ManualParameter)
             self.add_parameter(f'{tr_name}_freq',
                                label=f'Qubit {tr_name} drive frequency',
                                unit='Hz', initial_value=0,
-                               parameter_class=ManualParameter)
+                               **freq_kw)
             tn = '' if tr_name == 'ge' else f'_{tr_name}'
             self.add_operation(f'X180{tn}')
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_pulse_type',
@@ -368,10 +413,12 @@ class QuDev_transmon(Qubit):
                                          'Q_channel',
                                          initial_value=None,
                                          vals=vals.Strings())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_mod_freq',
-                                         'mod_frequency',
-                                         initial_value=-100e6,
-                                         vals=vals.Numbers())
+                self.add_pulse_parameter(
+                    f'X180{tn}', f'{tr_name}_mod_freq',
+                    'mod_frequency', initial_value=-100e6,
+                    set_parser=lambda f, s=self, t=tr_name:
+                               s.configure_mod_freqs(t, **{f'{t}_mod_freq': f}),
+                    vals=vals.Numbers())
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
                                          'phi_skew',
                                          initial_value=0,
@@ -396,6 +443,12 @@ class QuDev_transmon(Qubit):
         self.add_parameter('spec_power', unit='dBm', initial_value=-20,
                            parameter_class=ManualParameter,
                            label='Qubit spectroscopy power')
+        self.add_parameter('spec_mod_amp', unit='V', initial_value=0.1,
+                           parameter_class=ManualParameter,
+                           label='IF amplitude in qb spec',
+                           docstring='This configures the amplitude of the IF '
+                            'tone when doing a modulated qb spectroscopy (not '
+                            'bypassing the mixer, used for multi qb spec).')
         self.add_operation('Spec')
         self.add_pulse_parameter('Spec', 'spec_pulse_type', 'pulse_type',
                                  initial_value='SquarePulse',
@@ -591,6 +644,19 @@ class QuDev_transmon(Qubit):
             return None
         return eval(freq_func)(ge_freq)
 
+    def calculate_nonlinearity_correction(self, x):
+        """
+        Calculates the correction to a linear scaling of the pulse amplitude
+        with respect to the pi-pulse amplitude using a 5th order odd polynomial
+        and the coefficients from self.amp_scaling_correction_coeffs()
+
+        Args:
+             x: drive amplitude scaling factor with respect to the amplitude of
+                the pi-pulse (amp180)
+        """
+        a, b = self.amp_scaling_correction_coeffs()
+        return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
+
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
                             model='transmon_res', flux=None, update=False):
         """
@@ -624,13 +690,15 @@ class QuDev_transmon(Qubit):
             and flux are None and the model is 'transmon' or 'transmon_res',
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
-            stored as ge_freq parameter of the qubit object.
+            stored as {transition}_freq parameter of the qubit object.
         :return: calculated ge transition frequency
         """
 
-        if transition not in ['ge']:
+        if transition not in ['ge', 'ef'] or (transition == 'ef' and
+                                              model not in ['transmon_res']):
             raise NotImplementedError(
-                'Currently, only ge transition is implemented.')
+                f'calculate_frequency: Currently, transition {transition} is '
+                f'not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
@@ -650,32 +718,36 @@ class QuDev_transmon(Qubit):
                 amplitude = self.calculate_voltage_from_flux(flux, model)
 
         if model == 'approx':
-            ge_freq = fit_mods.Qubit_dac_to_freq(
+            freq = fit_mods.Qubit_dac_to_freq(
                 amplitude + (0 if bias is None or np.all(bias == 0) else
                              bias * flux_amplitude_bias_ratio), **vfc)
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
+            # FIXME: 'fr' refers to the bare readout-resonator frequency,
+            #  this is not a very descriptive name. Should it be changed to
+            #  'bare_ro_res_freq'? This is relevant to the device database.
             kw.pop('fr', None)
-            ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+            freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
                 else amplitude / flux_amplitude_bias_ratio), **kw)
         elif model == 'transmon_res':
-            ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
-                0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **vfc)
+            freq = fit_mods.Qubit_dac_to_freq_res(
+                bias + (0 if np.all(amplitude == 0)
+                        else amplitude / flux_amplitude_bias_ratio),
+                return_ef=True, **vfc)[0 if transition == 'ge' else 1]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
                 "'transmon_res' are implemented.")
         if update:
-            self.ge_freq(ge_freq)
-        return ge_freq
+            self.parameters[f'{transition}_freq'](freq)
+        return freq
 
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
                                model='transmon_res', flux=None,
-                               branch='negative'):
+                               branch=None):
         """
         Calculates the flux pulse amplitude or DC bias required to reach a
         transition frequency using fit parameters stored in the qubit
@@ -705,7 +777,8 @@ class QuDev_transmon(Qubit):
             This parameter is ignored if the model is 'approx'.
         :param branch: which branch of the flux-to-frequency curve should be
             used. See the meaning of this parameter in Qubit_freq_to_dac
-            and Qubit_freq_to_dac_res.
+            and Qubit_freq_to_dac_res. If None, this is set to the bias (if
+            not None)
         :return: calculated bias or amplitude, depending on which parameters
             are passed in (see above and notes below).
 
@@ -739,11 +812,31 @@ class QuDev_transmon(Qubit):
                     'flux_amplitude_bias_ratio is None, but is '
                     'required for this calculation.')
 
+        if branch is None:
+            if bias is None and flux is None:
+                branch = 'negative'
+            else:
+                # select well-defined branch close to requested flux
+                if flux is None:
+                    flux = (bias - vfc['dac_sweet_spot']) / vfc['V_per_phi0']
+                if flux % 0.5:
+                    pass  # do not shift (well-defined branch)
+                elif flux != self.flux_parking():
+                    # shift slightly in the direction of flux parking
+                    flux += np.sign(self.flux_parking()-flux) * 0.25
+                elif flux != 0:
+                    # shift slightly in the direction of 0
+                    flux += -np.sign(flux) * 0.25
+                else:
+                    # shift slightly to the left to use rising branch as default
+                    flux = -0.25
+                branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
+
         if model == 'approx':
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch)
+                frequency, **vfc, branch=branch, single_branch=True)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"
@@ -805,8 +898,11 @@ class QuDev_transmon(Qubit):
         if flux is not None:
             bias = self.calculate_voltage_from_flux(flux)
         v = fit_mods.Qubit_freq_to_dac_res(
-            ge_freq, **self.fit_ge_freq_from_dc_offset())
+            ge_freq, **self.fit_ge_freq_from_dc_offset(), branch=bias)
         flux_amplitude_bias_ratio = amplitude / (v - bias)
+        if flux_amplitude_bias_ratio < 0:
+            log.warning('The extracted flux_amplitude_bias_ratio is negative, '
+                        'please check your input values.')
         if update:
             self.flux_amplitude_bias_ratio(flux_amplitude_bias_ratio)
         return flux_amplitude_bias_ratio
@@ -954,21 +1050,32 @@ class QuDev_transmon(Qubit):
             integration_length=self.acq_length(),
             data_type='digitized')
 
+        awg_ctrl = self.instr_acq.get_instr().get_awg_control_object()[0]
         self.int_avg_det_spec = det.IntegratingAveragingPollDetector(
             acq_dev=self.instr_acq.get_instr(),
-            AWG=self.instr_acq.get_instr(),
-            channels=int_channels,
+            AWG=awg_ctrl,
+            channels=self.get_acq_int_channels(n_channels=2),
             nr_averages=self.acq_averages(),
             integration_length=self.acq_length(),
-            data_type='raw', real_imag=False, single_int_avg=True)
+            data_type='raw', polar=True, single_int_avg=True)
 
-        if hasattr(self.instr_acq.get_instr(), 'daq') and hasattr(
+        if 'UHF' in self.instr_acq.get_instr().__class__.__name__ and hasattr(
                 self.instr_acq.get_instr().daq, 'scopeModule'):
             self.scope_fft_det = det.UHFQC_scope_detector(
                 UHFQC=self.instr_acq.get_instr(),
                 AWG=self.instr_pulsar.get_instr(),
                 fft_mode='fft_power',
                 nr_averages=self.acq_averages(),
+                acquisition_length=self.acq_length()
+            )
+        else:
+            self.scope_fft_det = det.ScopePollDetector(
+                acq_dev=self.instr_acq.get_instr(),
+                AWG=awg_ctrl,
+                channels=self.get_acq_inp_channels(),
+                data_type='fft_power',
+                nr_averages=self.acq_averages(),
+                nr_shots=1,
                 acquisition_length=self.acq_length()
             )
 
@@ -986,34 +1093,31 @@ class QuDev_transmon(Qubit):
         Args:
             drive (str, None): the kind of drive to be applied, which can be
                 None (no drive), 'continuous_spec' (continuous spectroscopy),
+                'continuous_spec_modulated' (continuous spectroscopy using
+                the modulated configuation of the switch),
                 'pulsed_spec' (pulsed spectroscopy), or the default
                 'timedomain' (AWG-generated signal upconverted by the mixer)
             switch (str): the required switch mode. Can be a switch mode
                 understood by set_switch or the default value 'default', in
                 which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy;
+                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
                 'no_drive' if drive is None and a switch mode 'no_drive' is
                 configured for this qubit; 'modulated' in all other cases).
         """
+        self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
         ge_lo = self.instr_ge_lo
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
         # configure readout local oscillators
-        # in case of multichromatic readout, take first ro freq, else just
-        # wrap the frequency in a list and take the first
-        if np.ndim(self.ro_freq()) == 0:
-            ro_freq = [self.ro_freq()]
-        else:
-            ro_freq = self.ro_freq()
-        if np.ndim(self.ro_mod_freq()) == 0:
-            ro_mod_freq = [self.ro_mod_freq()]
-        else:
-            ro_mod_freq = self.ro_mod_freq()
-        ro_lo_freq = ro_freq[0] - ro_mod_freq[0]
+        ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -1025,7 +1129,7 @@ class QuDev_transmon(Qubit):
         if ge_lo() is not None:
             if drive is None:
                 ge_lo.get_instr().off()
-            elif drive == 'continuous_spec':
+            elif 'continuous_spec' in drive :
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
@@ -1040,13 +1144,18 @@ class QuDev_transmon(Qubit):
             elif drive == 'timedomain':
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.ge_lo_power())
-                ge_lo.get_instr().frequency(self.ge_freq() - self.ge_mod_freq())
+                ge_lo.get_instr().frequency(self.get_ge_lo_freq())
                 ge_lo.get_instr().on()
             else:
                 raise ValueError("Invalid drive parameter '{}'".format(drive)
                                  + ". Valid options are None, 'continuous_spec"
-                                 + "', 'pulsed_spec' and 'timedomain'.")
+                                 + "', 'pulsed_spec', "
+                                 + "'continuous_spec_modulated' and "
+                                 + "'timedomain'.")
 
+        param = f'{self.ge_I_channel()}_centerfreq'
+        if param in self.instr_pulsar.get_instr().parameters:
+            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
 
         # other preparations
         self.update_detector_functions()
@@ -1069,6 +1178,66 @@ class QuDev_transmon(Qubit):
             # switch mode was explicitly provided by the caller (e.g.,
             # for mixer calib)
             self.set_switch(switch)
+
+    def get_ge_lo_freq(self):
+        """Returns the required local oscillator frequency for drive pulses
+
+        The drive LO freq is calculated from the ge_mod_freq (intermediate
+        frequency) and the ge_freq stored in the qubit object.
+        """
+        return self.ge_freq() - self.ge_mod_freq()
+
+    def get_ge_lo_identifier(self):
+        """Returns the ge LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of drive pulse generating device name (str) and
+              synthesizer unit index (int), identifying the internal
+              LO in an signal generation unit of an drive pulse
+              generating device
+          """
+
+        if self.instr_ge_lo() is None:
+            pulsar = self.instr_pulsar.get_instr()
+            awg = pulsar.get_channel_awg(self.ge_I_channel())
+            gen = pulsar.get_centerfreq_generator(self.ge_I_channel())
+            return (awg.name, gen)
+        else:
+            return self.instr_ge_lo()
+
+    def get_ro_lo_freq(self):
+        """Returns the required local oscillator frequency for readout pulses
+
+        The RO LO freq is calculated from the ro_mod_freq (intermediate
+        frequency) and the ro_freq stored in the qubit object.
+        """
+        # in case of multichromatic readout, take first ro freq, else just
+        # wrap the frequency in a list and take the first
+        if np.ndim(self.ro_freq()) == 0:
+            ro_freq = [self.ro_freq()]
+        else:
+            ro_freq = self.ro_freq()
+        if np.ndim(self.ro_mod_freq()) == 0:
+            ro_mod_freq = [self.ro_mod_freq()]
+        else:
+            ro_mod_freq = self.ro_mod_freq()
+        return ro_freq[0] - ro_mod_freq[0]
+
+    def get_ro_lo_identifier(self):
+        """Returns the ro LO identifier in one of the formats specified below.
+
+        Returns:
+            str indicating the instrument name of an external LO
+            tuple of acquisition device name (str) and acquisition
+              unit index (int), identifying the internal LO in an
+              acquisition unit of an acquisition device
+        """
+
+        if self.instr_ro_lo() is None:
+            return (self.instr_acq(), self.acq_unit())
+        else:
+            return self.instr_ro_lo()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
@@ -1142,6 +1311,7 @@ class QuDev_transmon(Qubit):
         return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
     def get_operation_dict(self, operation_dict=None):
+        self.configure_mod_freqs()
         if operation_dict is None:
             operation_dict = {}
         operation_dict = super().get_operation_dict(operation_dict)
@@ -1186,7 +1356,32 @@ class QuDev_transmon(Qubit):
             op['op_code'] = code
         return operation_dict
 
-    def swf_ro_freq_lo(self):
+    def swf_drive_lo_freq(self, allow_IF_sweep=True):
+        """Create a sweep function for sweeping the drive frequency.
+
+        The sweep is implemented as an LO sweep in case of drive pulse
+        generation with an external LO. The implementation depends on the
+        get_frequency_sweep_function method of the acquisition device in case
+        of an internal LO.
+
+        Args:
+            allow_IF_sweep (bool): specifies whether an IF sweep (or a combined
+                LO and IF sweep) may be used (default: True). Note that
+                setting this to False might lead to a sweep function that is
+                only allowed to take specific values supported by the
+                internal LO.
+
+        Returns: the Sweep_function object
+        """
+        if self.instr_ge_lo() is not None:  # external LO
+            return mc_parameter_wrapper.wrap_par_to_swf(
+                self.instr_ge_lo.get_instr().frequency)
+        else:  # no external LO
+            pulsar = self.instr_pulsar.get_instr()
+            return pulsar.get_frequency_sweep_function(
+                self.ge_I_channel(), allow_IF_sweep=allow_IF_sweep)
+
+    def swf_ro_freq_lo(self, bare=False):
         """Create a sweep function for sweeping the readout frequency.
 
         The sweep is implemented as an LO sweep in case of an acquisition
@@ -1195,17 +1390,28 @@ class QuDev_transmon(Qubit):
         internal LO (note that it might be an IF sweep or a combined LO and
         IF sweep in that case.)
 
+        Args:
+            bare (bool): return the bare LO freq swf without any automatic
+                offsets applied. Defaults to False.
+
         Returns: the Sweep_function object
         """
-        if self.instr_ro_lo() is not None:
-            return swf.Offset_Sweep(
-                self.instr_ro_lo.get_instr().frequency,
-                -self.ro_mod_freq(),
-                name='Readout frequency',
-                parameter_name='Readout frequency')
-        else:
+        if self.instr_ro_lo() is not None:  # external LO
+            if bare:
+                return swf.mc_parameter_wrapper.wrap_par_to_swf(
+                    self.instr_ro_lo.get_instr().frequency)
+            else:
+                return swf.Offset_Sweep(
+                    self.instr_ro_lo.get_instr().frequency,
+                    -self.ro_mod_freq(),
+                    name='Readout frequency',
+                    parameter_name='Readout frequency')
+        else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit(), self.ro_mod_freq())
+                self.acq_unit(),
+                0 if (self.ro_fixed_lo_freq() or bare) else self.ro_mod_freq(),
+                get_closest_lo_freq=(lambda f, s=self:
+                                     s.get_closest_lo_freq(f, operation='ro')))
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
@@ -1213,6 +1419,7 @@ class QuDev_transmon(Qubit):
             self.instr_ro_lo.get_instr().frequency(),
             name='Readout frequency',
             parameter_name='Readout frequency')
+
     def measure_resonator_spectroscopy(self, freqs, sweep_points_2D=None,
                                        sweep_function_2D=None,
                                        trigger_separation=3e-6,
@@ -1229,19 +1436,40 @@ class QuDev_transmon(Qubit):
                 label = 'resonator_scan_2d' + self.msmt_suffix
             else:
                 label = 'resonator_scan' + self.msmt_suffix
-
         self.prepare(drive=None)
+        sweep_function = self.swf_ro_freq_lo()
         if upload:
             ro_pars = self.get_ro_pars()
-            if self.instr_ro_lo() is None:
+            if getattr(sweep_function, 'includes_IF_sweep', False):
                 ro_pars['mod_frequency'] = 0
             seq = sq.pulse_list_list_seq([[ro_pars]], upload=False)
+
             for seg in seq.segments.values():
-                seg.acquisition_mode = 'sweeper'
+                if hasattr(self.instr_acq.get_instr(),
+                           'use_hardware_sweeper') and \
+                        self.instr_acq.get_instr().use_hardware_sweeper():
+                    self.int_avg_det_spec.AWG = self.instr_pulsar.get_instr()
+                    lo_freq, delta_f, _ = self.instr_acq.get_instr()\
+                        .get_params_for_spectrum(
+                            freqs, get_closest_lo_freq=(
+                                lambda f, s=self: s.get_closest_lo_freq(
+                                    f, operation='ro')))
+                    self.instr_acq.get_instr().set_lo_freq(self.acq_unit(),
+                                                           lo_freq)
+                    seg.acquisition_mode = dict(
+                        sweeper='hardware',
+                        f_start=freqs[0] - lo_freq,
+                        f_step=delta_f,
+                        n_step=len(freqs),
+                    )
+                else:
+                    seg.acquisition_mode = dict(
+                        sweeper='software'
+                    )
             self.instr_pulsar.get_instr().program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.swf_ro_freq_lo())
+        MC.set_sweep_function(sweep_function)
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
@@ -1250,13 +1478,23 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the acq
+            # dev provided a sweep function for a hardware IF sweep.
+            self.int_avg_det.set_polar(True)
+            self.int_avg_det.AWG = self.int_avg_det_spec.AWG
+            MC.set_detector_function(self.int_avg_det)
 
         with temporary_value(self.instr_trigger.get_instr().pulse_period,
                              trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+                self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            if self.int_avg_det_spec.AWG != self.instr_pulsar.get_instr():
+                self.instr_pulsar.get_instr().stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
@@ -1270,6 +1508,22 @@ class QuDev_transmon(Qubit):
         if np.any(freqs < 500e6):
             log.warning(('Some of the values in the freqs array might be '
                              'too small. The units should be Hz.'))
+        temp_vals = list()
+        pulsar = self.instr_pulsar.get_instr()
+        awg_name = pulsar.get(f'{self.ge_I_channel()}_awg')
+        hard_sweep = f'{awg_name}_use_hardware_sweeper' in pulsar.parameters and \
+                     pulsar.get(f"{awg_name}_use_hardware_sweeper")
+
+        # For pulsed and hard_sweep spectroscopies we add an empty spec pulse to
+        # trigger the the drive/marker AWG and afterwards add the actual spec
+        # pulse (either empty for a continuous hard sweep or the pulse for the
+        # pulsed spectroscopy). This way we are able to implement a delay
+        # between the trigger and the spec pulse that is needed in hard_sweeps
+        # to set the osc. frequency.
+        # FIXME: think about cleaner solution
+        empty_trigger = self.get_spec_pars()
+        empty_trigger['length'] = 0
+        empty_trigger['pulse_delay'] = 0
         if pulsed:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1278,8 +1532,21 @@ class QuDev_transmon(Qubit):
                     label = 'pulsed_spec' + self.msmt_suffix
             self.prepare(drive='pulsed_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_spec_pars(),
-                                         self.get_ro_pars()]])
+                spec_pulse = self.get_spec_pars()
+                if hard_sweep or self.instr_ge_lo() is None:
+                    # No external LO, use pulse to set the spec power
+                    # The factor of 2 is needed here because the spec pulse is
+                    # applied only to the I channel. This means that we get
+                    # half the amplitude after upconversion when the
+                    # outputamplitude node is set to 0.5, which is the reasonable
+                    # setting to use for digital IQ modulation in time-domain
+                    # experiments (output pulse has the programmed pulse
+                    # amplitude).
+                    spec_pulse["amplitude"] = 2 * dbm_to_vp(self.spec_power())
+                seq = sq.pulse_list_list_seq([[empty_trigger,
+                                               spec_pulse,
+                                               self.get_ro_pars()]],
+                                             upload=False)
         else:
             if label is None:
                 if sweep_function_2D is not None:
@@ -1288,10 +1555,48 @@ class QuDev_transmon(Qubit):
                     label = 'continuous_spec' + self.msmt_suffix
             self.prepare(drive='continuous_spec')
             if upload:
-                sq.pulse_list_list_seq([[self.get_ro_pars()]])
+                if self.instr_ge_lo() is None and not hard_sweep:
+                    amp_range = pulsar.get(f'{self.ge_I_channel()}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_mod_freq"],
+                                   self.ge_mod_freq())]
+                    temp_vals += [(pulsar.parameters[
+                                       f"{self.ge_I_channel()}_direct_output_amp"],
+                                   gain)]
+                if hard_sweep:
+                    # we use the empty pulse to tell pulsar how to configure the
+                    # osc sweep and sine output. The empty pulse is also used
+                    # to trigger the SeqC code to set the next osc. frequency.
+                    # This needs to be done after the RO.
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars(),
+                                                   empty_trigger]],
+                                                 upload=False)
+                else:
+                    seq = sq.pulse_list_list_seq([[self.get_ro_pars()]],
+                                                 upload=False)
+        if upload:
+            for seg in seq.segments.values():
+                ch = self.ge_I_channel()
+                seg.mod_config[ch] = \
+                    dict(internal_mod=pulsed)
+                if hard_sweep:
+                    amp_range = pulsar.get(f'{ch}_amp')
+                    amp = dbm_to_vp(self.spec_power())
+                    gain = amp / amp_range
+                    center_freq, mod_freqs = \
+                        pulsar.get_params_for_spectrum(ch, freqs)
+                    pulsar.set(f'{ch}_centerfreq', center_freq)
+                    seg.sine_config[ch] = dict(continuous=not pulsed,
+                                               ignore_waveforms=not pulsed,
+                                               gains=tuple(gain * x for x in (
+                                               0.0, 1.0, 1.0, 0.0)))
+                    seg.sweep_params[f'{ch}_osc_sweep'] = mod_freqs
+            pulsar.program_awgs(seq)
 
         MC = self.instr_mc.get_instr()
-        MC.set_sweep_function(self.instr_ge_lo.get_instr().frequency)
+        MC.set_sweep_function(self.swf_drive_lo_freq())
         if sweep_function_2D is not None:
             MC.set_sweep_function_2D(sweep_function_2D)
             mode = '2D'
@@ -1300,615 +1605,24 @@ class QuDev_transmon(Qubit):
         MC.set_sweep_points(freqs)
         if sweep_points_2D is not None:
             MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det_spec)
-
-        with temporary_value(self.instr_trigger.get_instr().pulse_period,
-                             trigger_separation):
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+        if MC.sweep_functions[0].sweep_control == 'soft':
+            MC.set_detector_function(self.int_avg_det_spec)
+        else:
+            # The following ensures that we use a hard detector if the swf
+            # provided by swf_drive_lo_freq uses a hardware IF sweep.
+            self.int_avg_det.set_polar(True)
+            MC.set_detector_function(self.int_avg_det)
+        temp_vals += [(self.instr_trigger.get_instr().pulse_period,
+                       trigger_separation)]
+        with temporary_value(*temp_vals):
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            pulsar.start(exclude=[awg_name])
             MC.run(name=label, mode=mode)
-            self.instr_pulsar.get_instr().stop()
+            pulsar.stop()
 
         if analyze:
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
                                    TwoD=(mode == '2D'))
-
-    def measure_rabi(self, amps, analyze=True, upload=True, label=None, n=1,
-                     last_ge_pulse=False, n_cal_points_per_state=2,
-                     cal_states='auto', for_ef=False, classified_ro=False,
-                     prep_params=None, exp_metadata=None):
-
-        """
-        Varies the amplitude of the qubit drive pulse and measures the readout
-        resonator transmission.
-
-        Args:
-            amps            the array of drive pulse amplitudes
-            analyze         whether to create a (base) MeasurementAnalysis
-                            object for this measurement; offers possibility to
-                            manually analyse data using the classes in
-                            measurement_analysis.py
-            close_fig       whether or not to close the default analysis figure
-            cal_points      whether or not to use calibration points
-            no_cal_points   how many calibration points to use
-            upload          whether or not to upload the sequence to the AWG
-            label           the measurement label
-            n               the number of times the drive pulses with the same
-                            amplitude should be repeated in each measurement
-        """
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        # Define the measurement label
-        if label is None:
-            label = 'Rabi_ef' if for_ef else 'Rabi'
-            if n != 1:
-                label += f'-n{n}'
-            if classified_ro:
-                label += '_classified'
-            if 'active' in prep_params['preparation_type']:
-                label += '_reset'
-            label += self.msmt_suffix
-
-        # Prepare the physical instruments for a time domain measurement
-        self.prepare(drive='timedomain')
-
-        MC = self.instr_mc.get_instr()
-        cal_states = CalibrationPoints.guess_cal_states(cal_states, for_ef)
-        cp = CalibrationPoints.single_qubit(self.name, cal_states,
-                                            n_per_state=n_cal_points_per_state)
-        seq, sweep_points = sq.rabi_seq_active_reset(
-            amps=amps, qb_name=self.name, cal_points=cp, n=n, for_ef=for_ef,
-            operation_dict=self.get_operation_dict(), upload=False,
-            last_ge_pulse=last_ge_pulse, prep_params=prep_params)
-        # Specify the sweep function, the sweep points,
-        # and the detector function, and run the measurement
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_classif_det if classified_ro else
-                                 self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: amps},
-                             'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'rotate': False if classified_ro else
-                                len(cp.states) != 0,
-                             'last_ge_pulses': [last_ge_pulse],
-                             'data_to_fit': {self.name: 'pf' if for_ef else 'pe'},
-                             "sweep_name": "Amplitude",
-                             "sweep_unit": "V"})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        # Create a MeasurementAnalysis object for this measurement
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-    def measure_rabi_amp90(self, scales=np.linspace(0.3, 0.7, 31), n=1,
-                           MC=None, analyze=True, close_fig=True, upload=True):
-
-        self.prepare(drive='timedomain')
-
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        MC.set_sweep_function(awg_swf.Rabi_amp90(
-            pulse_pars=self.get_ge_pars(), RO_pars=self.get_ro_pars(), n=n,
-            upload=upload))
-        MC.set_sweep_points(scales)
-        MC.set_detector_function(self.int_avg_det)
-        MC.run('Rabi_amp90_scales_n{}'.format(n)+ self.msmt_suffix)
-
-    def measure_T1(self, times=None, analyze=True, upload=True,
-                   last_ge_pulse=False, n_cal_points_per_state=2,
-                   cal_states='auto', for_ef=False, classified_ro=False,
-                   prep_params=None, label=None,
-                   exp_metadata=None):
-
-        if times is None:
-            raise ValueError("Unspecified times for measure_T1")
-        if np.any(times > 1e-3):
-            log.warning('The values in the times array might be too large.'
-                        'The units should be seconds.')
-
-        self.prepare(drive='timedomain')
-        MC = self.instr_mc.get_instr()
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        # Define the measurement label
-        if label is None:
-            label = f'T1{"_ef" if for_ef else ""}' + self.msmt_suffix
-
-        cal_states = CalibrationPoints.guess_cal_states(cal_states, for_ef)
-        cp = CalibrationPoints.single_qubit(self.name, cal_states,
-                                            n_per_state=n_cal_points_per_state)
-
-        seq, sweep_points = sq.t1_active_reset(
-            times=times, qb_name=self.name, cal_points=cp, for_ef=for_ef,
-            operation_dict=self.get_operation_dict(), upload=False,
-            last_ge_pulse=last_ge_pulse, prep_params=prep_params)
-
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Time', unit='s'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_classif_det if classified_ro else
-                                 self.int_avg_det)
-
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: times},
-                             'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'rotate': False if classified_ro else
-                                len(cp.states) != 0,
-                             'last_ge_pulses': [last_ge_pulse],
-                             'data_to_fit': {self.name: 'pf' if for_ef else 'pe'},
-                             "sweep_name": "Time",
-                             "sweep_unit": "s"})
-
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-    def measure_qscale(self, qscales=None, analyze=True, upload=True, label=None,
-                       cal_states="auto", n_cal_points_per_state=2,
-                       last_ge_pulse=False, for_ef=False, classified_ro=False,
-                       prep_params=None, exp_metadata=None):
-        if qscales is None:
-            raise ValueError("Unspecified qscale values for measure_qscale")
-        uniques = np.unique(qscales[range(3)])
-        if uniques.size > 1:
-            raise ValueError("The values in the qscales array are not repeated "
-                             "3 times.")
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-            log.debug(f"Preparation Parameters:\n{prep_params}")
-
-        # Define the measurement label
-        if label is None:
-            label = f'Qscale{"_ef" if for_ef else ""}'
-            if classified_ro:
-                label += '_classified'
-            if 'active' in prep_params['preparation_type']:
-                label += '_reset'
-            label += self.msmt_suffix
-
-        MC = self.instr_mc.get_instr()
-
-        self.prepare(drive='timedomain')
-
-        # create cal points
-        cal_states = CalibrationPoints.guess_cal_states(cal_states, for_ef)
-        cp = CalibrationPoints.single_qubit(self.name, cal_states,
-                                            n_per_state=n_cal_points_per_state)
-        # create sequence
-        seq, sweep_points = sq.qscale_active_reset(qscales=qscales,
-            qb_name=self.name, cal_points=cp,  for_ef=for_ef,
-            operation_dict=self.get_operation_dict(), upload=False,
-            last_ge_pulse=last_ge_pulse, prep_params=prep_params)
-
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Qscale factor'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_classif_det if classified_ro else
-                                 self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: qscales},
-             'sweep_name': 'Qscale factor',
-             'sweep_unit': '',
-             'preparation_params': prep_params,
-             'cal_points': repr(cp),
-             'rotate': False if classified_ro else len(cp.states) != 0,
-             'last_ge_pulses': [last_ge_pulse],
-             'data_to_fit': {self.name: 'pf' if for_ef else 'pe'}})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-
-    def measure_ramsey_multiple_detunings(self, times=None,
-                                          artificial_detunings=None, label='',
-                                          MC=None, analyze=True, close_fig=True,
-                                          cal_points=True, upload=True,
-                                          exp_metadata=None):
-        log.error("This function is deprecated, please use measure_ramsey()")
-        if times is None:
-            raise ValueError("Unspecified times for measure_ramsey")
-        if artificial_detunings is None:
-            log.warning('Artificial detuning is 0.')
-        uniques = np.unique(times[range(len(artificial_detunings))])
-        if uniques.size>1:
-            raise ValueError("The values in the times array are not repeated "
-                             "len(artificial_detunings) times.")
-        if np.any(np.asarray(np.abs(artificial_detunings))<1e3):
-            log.warning('The artificial detuning is too small. The units '
-                            'should be Hz.')
-        if np.any(times>1e-3):
-            log.warning('The values in the times array might be too large.'
-                            'The units should be seconds.')
-
-        self.prepare(drive='timedomain')
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        # Define the measurement label
-        if label == '':
-            label = 'Ramsey_mult_det' + self.msmt_suffix
-
-        if cal_points:
-            len_art_det = len(artificial_detunings)
-            step = np.abs(times[-1] - times[-len_art_det-1])
-            sweep_points = np.concatenate(
-                [times, [times[-1] + step, times[-1] + 2*step,
-                    times[-1] + 3*step, times[-1] + 4*step]])
-        else:
-            sweep_points = times
-
-        Rams_swf = awg_swf.Ramsey_multiple_detunings(
-            pulse_pars=self.get_ge_pars(), RO_pars=self.get_ro_pars(),
-            artificial_detunings=artificial_detunings, cal_points=cal_points,
-            upload=upload)
-        MC.set_sweep_function(Rams_swf)
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: sweep_points},
-                             'use_cal_points': cal_points,
-                             'artificial_detunings': artificial_detunings})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            ma.MeasurementAnalysis(auto=True, close_fig=close_fig,
-                                   qb_name=self.name)
-
-    def measure_ramsey_dyn_decoupling(self, times=None, artificial_detuning=0,
-                                      label='', MC=None, analyze=True,
-                                      close_fig=True, cal_points=True,
-                                      upload=True, nr_echo_pulses=4,
-                                      seq_func=None, cpmg_scheme=True,
-                                      exp_metadata=None):
-
-        if times is None:
-            raise ValueError("Unspecified times for measure_ramsey")
-        if np.any(times > 1e-3):
-            log.warning('The values in the times array might be too large.'
-                            'The units should be seconds.')
-
-        if artificial_detuning is None:
-            log.warning('Artificial detuning is 0.')
-        if np.abs(artificial_detuning) < 1e3:
-            log.warning('The artificial detuning is too small. The units'
-                            'should be Hz.')
-
-        if seq_func is None:
-            seq_func = sq.ramsey_seq
-
-        self.prepare(drive='timedomain')
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        # Define the measurement label
-        if label == '':
-            label = 'Ramsey' + self.msmt_suffix
-
-        if cal_points:
-            step = np.abs(times[-1]-times[-2])
-            sweep_points = np.concatenate(
-                [times, [times[-1]+step,  times[-1]+2*step,
-                         times[-1]+3*step, times[-1]+4*step]])
-        else:
-            sweep_points = times
-
-        Rams_swf = awg_swf.Ramsey_decoupling_swf(
-            seq_func=seq_func,
-            pulse_pars=self.get_ge_pars(), RO_pars=self.get_ro_pars(),
-            artificial_detuning=artificial_detuning, cal_points=cal_points,
-            upload=upload, nr_echo_pulses=nr_echo_pulses, cpmg_scheme=cpmg_scheme)
-        MC.set_sweep_function(Rams_swf)
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: sweep_points},
-                             'use_cal_points': cal_points,
-                             'cpmg_scheme': cpmg_scheme,
-                             'nr_echo_pulses': nr_echo_pulses,
-                             'seq_func': seq_func,
-                             'artificial_detuning': artificial_detuning})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            RamseyA = ma.Ramsey_Analysis(
-                auto=True,
-                label=label,
-                qb_name=self.name,
-                NoCalPoints=4,
-                artificial_detuning=artificial_detuning,
-                close_fig=close_fig)
-
-
-    def measure_ramsey(self, times, artificial_detunings=None, label=None,
-                       analyze=True, close_fig=True,
-                       cal_states="auto", n_cal_points_per_state=2,
-                       n=1, upload=True, last_ge_pulse=False, for_ef=False,
-                       classified_ro=False, prep_params=None, exp_metadata=None):
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        # Define the measurement label
-        if label is None:
-            label = f'Ramsey{"_ef" if for_ef else ""}'
-            if classified_ro:
-                label += '_classified'
-            if 'active' in prep_params['preparation_type']:
-                label += '_reset'
-            label += self.msmt_suffix
-
-        MC = self.instr_mc.get_instr()
-        self.prepare(drive='timedomain')
-
-        # create cal points
-        cal_states = CalibrationPoints.guess_cal_states(cal_states, for_ef)
-        cp = CalibrationPoints.single_qubit(self.name, cal_states,
-                                            n_per_state=n_cal_points_per_state)
-        # create sequence
-        seq, sweep_points = sq.ramsey_active_reset(
-            times=times, artificial_detunings=artificial_detunings,
-            qb_name=self.name, cal_points=cp, n=n, for_ef=for_ef,
-            operation_dict=self.get_operation_dict(), upload=False,
-            last_ge_pulse=last_ge_pulse, prep_params=prep_params)
-
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Delay', unit='s'))
-        MC.set_sweep_points(sweep_points)
-
-        MC.set_detector_function(self.int_avg_classif_det if classified_ro else
-                                 self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update(
-            {'sweep_points_dict': {self.name: times},
-             'sweep_name': 'Delay',
-             'sweep_unit': 's',
-             'cal_points': repr(cp),
-             'preparation_params': prep_params,
-             'last_ge_pulses': [last_ge_pulse],
-             'artificial_detuning': artificial_detunings,
-             'rotate': False if classified_ro else len(cp.states) != 0,
-             'data_to_fit': {self.name: 'pf' if for_ef else 'pe'}})
-
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-    def measure_echo(self, times=None, artificial_detuning=None,
-                     upload=True, analyze=True, close_fig=True, cal_points=True,
-                     label=None, exp_metadata=None):
-
-        if times is None:
-            raise ValueError("Unspecified times for measure_echo")
-
-        # Define the measurement label
-        if label == '':
-            label = 'Echo' + self.msmt_suffix
-
-        if cal_points:
-            step = np.abs(times[-1]-times[-2])
-            sweep_points = np.concatenate(
-                [times, [times[-1]+step,  times[-1]+2*step,
-                         times[-1]+3*step, times[-1]+4*step]])
-            cal_states_dict = {'g': [-4, -3], 'e': [-2, -1]}
-            cal_states_rotations = {'g': 0, 'e': 1}
-        else:
-            sweep_points = times
-            cal_states_dict = None
-            cal_states_rotations = {}
-
-        self.prepare(drive='timedomain')
-        MC = self.instr_mc.get_instr()
-
-        Echo_swf = awg_swf.Echo(
-            pulse_pars=self.get_ge_pars(), RO_pars=self.get_ro_pars(),
-            artificial_detuning=artificial_detuning, upload=upload)
-        MC.set_sweep_function(Echo_swf)
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_classif_det if
-                                 self.acq_weights_type() == 'optimal_qutrit'
-                                 else self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: sweep_points},
-                             'use_cal_points': cal_points,
-                             'rotate': cal_points,
-                             'cal_states_dict': cal_states_dict,
-                             'cal_states_rotations': cal_states_rotations if
-                                self.acq_weights_type() != 'optimal_qutrit'
-                                else None,
-                             'data_to_fit': {self.name: 'pe'},
-                             'artificial_detuning': artificial_detuning})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-    def measure_echo_2nd_exc(self, times=None, artificial_detuning=None,
-                             label=None, analyze=True,
-                             cal_points=True, no_cal_points=6, upload=True,
-                             last_ge_pulse=False, exp_metadata=None):
-
-        if times is None:
-            raise ValueError("Unspecified times for measure_ramsey")
-        if artificial_detuning is None:
-            log.warning('Artificial detuning is 0.')
-        if np.abs(artificial_detuning) < 1e3:
-            log.warning('The artificial detuning is too small. The units'
-                            'should be Hz.')
-        if np.any(times > 1e-3):
-            log.warning('The values in the times array might be too large.'
-                            'The units should be seconds.')
-
-        if label is None:
-            label = 'Echo_ef' + self.msmt_suffix
-
-        self.prepare(drive='timedomain')
-        MC = self.instr_mc.get_instr()
-
-        cal_states_dict = None
-        cal_states_rotations = {}
-        if cal_points:
-            step = np.abs(times[-1]-times[-2])
-            if no_cal_points == 6:
-                sweep_points = np.concatenate(
-                    [times, [times[-1]+step,  times[-1]+2*step,
-                                 times[-1]+3*step, times[-1]+4*step,
-                                 times[-1]+5*step, times[-1]+6*step]])
-                cal_states_dict = {'g': [-6, -5], 'e': [-4, -3], 'f': [-2, -1]}
-                cal_states_rotations = {'g': 0, 'f': 1} if last_ge_pulse else \
-                    {'e': 0, 'f': 1}
-            elif no_cal_points == 4:
-                sweep_points = np.concatenate(
-                    [times, [times[-1]+step,  times[-1]+2*step,
-                                 times[-1]+3*step, times[-1]+4*step]])
-                cal_states_dict = {'g': [-4, -3], 'e': [-2, -1]}
-                cal_states_rotations = {'g': 0, 'e': 1}
-            elif no_cal_points == 2:
-                sweep_points = np.concatenate(
-                    [times, [times[-1]+step,  times[-1]+2*step]])
-                cal_states_dict = {'g': [-2, -1]}
-                cal_states_rotations = {'g': 0}
-            else:
-                sweep_points = times
-        else:
-            sweep_points = times
-
-        Echo_2nd_swf = awg_swf.Echo_2nd_exc(
-            pulse_pars=self.get_ge_pars(),
-            pulse_pars_2nd=self.get_ef_pars(),
-            RO_pars=self.get_ro_pars(),
-            artificial_detuning=artificial_detuning,
-            cal_points=cal_points, upload=upload,
-            no_cal_points=no_cal_points,
-            last_ge_pulse=last_ge_pulse)
-        MC.set_sweep_function(Echo_2nd_swf)
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_classif_det if
-                                 self.acq_weights_type() == 'optimal_qutrit'
-                                 else self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: sweep_points},
-                             'rotate': cal_points,
-                             'last_ge_pulse': last_ge_pulse,
-                             'data_to_fit': {self.name: 'pf'},
-                             'cal_states_dict': cal_states_dict,
-                             'cal_states_rotations': cal_states_rotations if
-                                self.acq_weights_type() != 'optimal_qutrit'
-                                else None,
-                             'artificial_detuning': artificial_detuning})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            tda.MultiQubit_TimeDomain_Analysis(qb_names=[self.name])
-
-    def measure_randomized_benchmarking(
-            self, cliffords, nr_seeds, cl_seq=None,
-            gate_decomp='HZ', interleaved_gate=None,
-            n_cal_points_per_state=2, cal_states=(),
-            classified_ro=False, thresholded=True, label=None,
-            upload=True, analyze=True, prep_params=None,
-            exp_metadata=None, sampling_seeds=None, **kw):
-        '''
-        Performs a randomized benchmarking experiment on 1 qubit.
-        '''
-
-        # Define the measurement label
-        if label is None:
-            if interleaved_gate is None:
-                label = 'RB_{}_{}_seeds_{}_cliffords'.format(
-                    gate_decomp, nr_seeds, cliffords[-1]) + self.msmt_suffix
-            else:
-                label = 'IRB_{}_{}_{}_seeds_{}_cliffords'.format(
-                    interleaved_gate, gate_decomp, nr_seeds, cliffords[-1]) + \
-                        self.msmt_suffix
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-        # Prepare the physical instruments for a time domain measurement
-        self.prepare(drive='timedomain')
-
-        MC = self.instr_mc.get_instr()
-        cal_states = CalibrationPoints.guess_cal_states(cal_states)
-        cp = CalibrationPoints.single_qubit(self.name, cal_states,
-                                            n_per_state=n_cal_points_per_state)
-        if sampling_seeds is None:
-            sampling_seeds = np.random.randint(0, 1e8, nr_seeds)
-        sequences, hard_sweep_points, soft_sweep_points = \
-            sq.randomized_renchmarking_seqs(
-                qb_name=self.name, operation_dict=self.get_operation_dict(),
-                cliffords=cliffords, nr_seeds=np.arange(nr_seeds),
-                gate_decomposition=gate_decomp, cl_sequence=cl_seq,
-                interleaved_gate=interleaved_gate, upload=False,
-                cal_points=cp, prep_params=prep_params,
-                sampling_seeds=sampling_seeds)
-
-        hard_sweep_func = awg_swf.SegmentHardSweep(
-            sequence=sequences[0], upload=upload,
-            parameter_name='Nr. Cliffords', unit='')
-        MC.set_sweep_function(hard_sweep_func)
-        MC.set_sweep_points(hard_sweep_points)
-
-        MC.set_sweep_function_2D(awg_swf.SegmentSoftSweep(
-            hard_sweep_func, sequences, 'Nr. Seeds', ''))
-        MC.set_sweep_points_2D(soft_sweep_points)
-        if thresholded:
-            det_func = self.dig_avg_det
-        elif classified_ro:
-            det_func = self.int_avg_classif_det
-        else:
-            det_func = self.int_avg_det
-        MC.set_detector_function(det_func)
-
-        # create sweep points object
-        sp = SweepPoints('seeds', np.arange(nr_seeds), '', 'Nr. Seeds')
-        sp.add_sweep_dimension()
-        sp.add_sweep_parameter('cliffords', cliffords, '',
-                               'Number of applied Cliffords, $m$')
-        # create analysis pipeline object
-        pp = ProcessingPipeline()
-        pp.add_node('average_data', keys_in='raw',
-                    shape=(len(cliffords), nr_seeds),
-                    meas_obj_names=[self.name])
-        pp.add_node('get_std_deviation', keys_in='raw',
-                    shape=(len(cliffords), nr_seeds),
-                    meas_obj_names=[self.name])
-        pp.add_node('rb_analysis', keys_in='previous average_data',
-                    keys_in_std='previous get_std_deviation', keys_out=None,
-                    meas_obj_names=[self.name], plot_T1_lim=True, d=2)
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'sweep_points': sp,
-                             'interleaved_gate': interleaved_gate,
-                             'sampling_seeds': sampling_seeds,
-                             'gate_decomposition': gate_decomp,
-                             'meas_obj_sweep_points_map':
-                                 sp.get_meas_obj_sweep_points_map([self.name]),
-                             'meas_obj_value_names_map':
-                                 {self.name: det_func.value_names},
-                             'processing_pipeline': pp})
-        MC.run_2D(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            pla.process_pipeline(pla.extract_data_hdf(**kw), **kw)
 
     def measure_transients(self, states=('g', 'e'), upload=True,
                            analyze=True, acq_length=4096/1.8e9,
@@ -1986,6 +1700,11 @@ class QuDev_transmon(Qubit):
             comm_freq: The readout pulse separation will be a multiple of
                        1/comm_freq
         """
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment "
+                                      "ReadoutPulseScope instead.")
 
         if delays is None:
             raise ValueError("Unspecified delays for "
@@ -2035,140 +1754,6 @@ class QuDev_transmon(Qubit):
         # Create a MeasurementAnalysis object for this measurement
         if analyze:
             ma.MeasurementAnalysis(TwoD=True, auto=True, close_fig=close_fig,
-                                   qb_name=self.name)
-
-    def measure_residual_readout_photons(
-            self, delays_to_relax, ramsey_times, delay_buffer=0,
-            cal_points=((-4, -3), (-2, -1)), verbose=False,
-            artificial_detuning=None, analyze=True,
-            label=None, close_fig=True, MC=None):
-        """
-        From the documentation of the used sequence function:
-
-        The sequence consists of two readout pulses sandwitching two ramsey
-        pulses inbetween. The delay between the first readout pulse and first
-        ramsey pulse is swept, to measure the ac stark shift and dephasing
-        from any residual photons.
-
-        Important: This sequence includes two readouts per segment. For this
-        reason the calibration points are also duplicated.
-
-        Args:
-            delays_to_relax: delay between the end of the first readout
-                            pulse and the start of the first ramsey pulse.
-
-            pulse_pars: Pulse dictionary for the ramsey pulse.
-            RO_pars: Pulse dictionary for the readout pulse.
-            ramsey_times: delays between ramsey pulses
-            delay_buffer: delay between the start of the last ramsey pulse and
-                          the start of the second readout pulse.
-            cal_points: True for default calibration points, False for no
-                        calibration points or a list of two lists,
-                        containing the indices of the calibration
-                        segments for the ground and excited state.
-        """
-
-
-        if label is None:
-            label = 'residual_readout_photons' + self.msmt_suffix
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-        # duplicate sweep points for the two preparation states
-        ramsey_times = np.vstack((ramsey_times, ramsey_times)).\
-                       reshape((-1,), order='F')
-
-        self.prepare(drive='timedomain')
-        sf1 = awg_swf.readout_photons_in_resonator_swf(
-            delay_to_relax=delays_to_relax[0],
-            delay_buffer=delay_buffer,
-            ramsey_times=ramsey_times,
-            pulse_pars=self.get_ge_pars(),
-            RO_pars=self.get_ro_pars(),
-            cal_points=cal_points,
-            verbose=verbose,
-            artificial_detuning=artificial_detuning,
-            upload=False)
-        MC.set_sweep_function(sf1)
-        MC.set_sweep_points(ramsey_times)
-        sf2 = awg_swf.readout_photons_in_resonator_soft_swf(sf1)
-        MC.set_sweep_function_2D(sf2)
-        MC.set_sweep_points_2D(delays_to_relax)
-
-        d = det.UHFQC_integrated_average_detector(
-            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(),
-            nr_averages=self.acq_averages(),
-            channels=self.int_avg_det.channels,
-            integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffix=['_test', '_measure'])
-        MC.set_detector_function(d)
-        MC.run_2D(label)
-        self.artificial_detuning = artificial_detuning
-        # Create a MeasurementAnalysis object for this measurement
-        if analyze:
-            kappa = list(map(lambda w:0.5*(self.RO_purcell_kappa() - np.real(
-                np.sqrt(-16*self.RO_J_coupling()*self.RO_J_coupling() +
-                        (self.RO_purcell_kappa()-2j*(np.abs(w-self.f_RO_purcell())))*
-                        (self.RO_purcell_kappa()-2j*(np.abs(w-self.f_RO_purcell())))
-                        ))),
-                             [self.f_RO_resonator() - self.chi(),
-                              self.f_RO_resonator() + self.chi()]))
-            if not (self.T2_star_ef() == 0):
-                T2star = self.T2_star_ef()
-            else:
-                if self.T2_star() == 0:
-                   raise ValueError('T2star is not given.')
-                else:
-                    T2star = self.T2_star()
-            tda.ReadoutROPhotonsAnalysis(t_start=None,
-                  close_figs=close_fig, options_dict={
-                      'f_qubit': self.f_qubit(),
-                      'chi': self.chi(),
-                      'kappa-effective': kappa,
-                      'T2echo': T2star ,
-                      'do_analysis': True,
-                      'artif_detuning': self.artificial_detuning() },
-                  do_fitting=True)
-
-    def measure_multi_element_segment_timing(
-            self, phases, ramsey_time=4e-6, nr_wait_elems=16,
-            elem_type='interleaved', cal_points=((-4, -3), (-2, -1)),
-            label=None, MC=None, upload=True, analyze=True, close_fig=True):
-
-        if label is None:
-            label = 'Multi_element_segment_timing' + self.msmt_suffix
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        self.prepare(drive='timedomain')
-        MC.set_sweep_function(awg_swf.MultiElemSegmentTimingSwf(
-            phases=phases,
-            qbn=self.name,
-            op_dict=self.get_operation_dict(),
-            ramsey_time=ramsey_time,
-            nr_wait_elems=nr_wait_elems,
-            elem_type=elem_type,
-            cal_points=cal_points,
-            upload=upload))
-        MC.set_sweep_points(phases)
-        d = det.UHFQC_integrated_average_detector(
-            self.instr_acq.get_instr(), self.instr_pulsar.get_instr(), nr_averages=self.acq_averages(),
-            channels=self.int_avg_det.channels,
-            integration_length=self.acq_length(),
-            values_per_point=2, values_per_point_suffix=['_single_elem',
-                                                         '_multi_elem'])
-        MC.set_detector_function(d)
-
-        metadata = dict(
-            ramsey_time=ramsey_time,
-            nr_wait_elems=nr_wait_elems,
-            elem_type=elem_type,
-            cal_points=cal_points
-        )
-        MC.run(label, exp_metadata=metadata)
-
-        # Create a MeasurementAnalysis object for this measurement
-        if analyze:
-            ma.MeasurementAnalysis(auto=True, close_fig=close_fig,
                                    qb_name=self.name)
 
     def measure_drive_mixer_spectrum(self, if_freqs, amplitude=0.5,
@@ -2277,7 +1862,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(detector_generator())
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -2385,8 +1971,8 @@ class QuDev_transmon(Qubit):
             other_qb.prepare(drive=None)
             MC.set_detector_function(det.IndexDetector(
                 other_qb.int_avg_det_spec, 0))
-            other_qb.instr_pulsar.get_instr().start(
-                exclude=[other_qb.instr_uhf()])
+            awg_n = other_qb.instr_acq().get_instr().get_awg_control_object()[1]
+            other_qb.instr_pulsar.get_instr().start(exclude=[awg_n])
             MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
 
@@ -2510,7 +2096,8 @@ class QuDev_transmon(Qubit):
 
             self.prepare(drive='timedomain', switch='calib')
             MC.set_detector_function(self.int_avg_det_spec)
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name='drive_carrier_calibration' + self.msmt_suffix,
                    exp_metadata=exp_metadata)
 
@@ -2593,108 +2180,6 @@ class QuDev_transmon(Qubit):
             self.ge_alpha(alpha)
             self.ge_phi_skew(phi)
         return alpha, phi
-
-    def calibrate_drive_mixer_skewness_NN(
-            self, update=True,make_fig=True, meas_grid=None, n_meas=100,
-            amplitude=0.1, trigger_sep=5e-6, two_rounds=False,
-            estimator='GRNN_neupy', hyper_parameter_dict=None,
-            first_round_limits=(0.6, 1.2, -50, 35), **kwargs):
-        if not len(first_round_limits) == 4:
-            log.error('Input variable `first_round_limits` in function call '
-                      '`calibrate_drive_mixer_skewness_NN` needs to be a list '
-                      'or 1D array of length 4.\nFound length '
-                      '{} object instead!'.format(len(first_round_limits)))
-        if hyper_parameter_dict is None:
-            log.warning('No hyperparameters passed to predictive mixer '
-                        'calibration routine. Default values for the estimator'
-                        'will be used!\n')
-            hyper_parameter_dict = {'hidden_layers': [10],
-                                    'learning_rate': 1e-3,
-                                    'regularization_coefficient': 0.,
-                                    'std_scaling': 0.6,
-                                    'learning_steps': 5000,
-                                    'cv_n_fold': 5,
-                                    'polynomial_dimension': 2}
-        std_devs = kwargs.get('std_devs', [0.1, 10])
-        c = kwargs.pop('second_round_std_scale', 0.4)
-
-        # Could make sample size variable (maxiter) for better adapting)
-        if isinstance(std_devs, (list, np.ndarray)):
-            if len(std_devs) != 2:
-                log.error('std_devs passed in kwargs of `calibrate_drive_'
-                          'mixer_NN` is of length: {}. '
-                          'Requires length 2 instead.'.format(len(std_devs)))
-
-        MC = self.instr_mc.get_instr()
-        _alpha = self.ge_alpha()
-        _phi = self.ge_phi_skew()
-        for runs in range(3 if two_rounds else 2):
-            if runs == 0:
-                # half as many points from a uniform distribution at first run
-                meas_grid = np.array([
-                    np.random.uniform(first_round_limits[0],
-                                      first_round_limits[1], n_meas//2),
-                    np.random.uniform(first_round_limits[2],
-                                      first_round_limits[3], n_meas//2)])
-            else:
-                k = 1. if runs == 1 else c
-                meas_grid = np.array([
-                    np.random.normal(_alpha, k*std_devs[0], n_meas),
-                    np.random.normal(_phi, k*std_devs[1], n_meas)])
-
-            s1 = swf.Hard_Sweep()
-            s1.name = 'Amplitude ratio hardware sweep'
-            s1.parameter_name = r'Amplitude ratio, $\alpha$'
-            s1.unit = ''
-            s2 = swf.Hard_Sweep()
-            s2.name = 'Phase skew hardware sweep'
-            s2.parameter_name = r'Phase skew, $\phi$'
-            s2.unit = 'deg'
-            MC.set_sweep_functions([s1, s2])
-            MC.set_sweep_points(meas_grid.T)
-
-            with temporary_value(
-                    (self.ro_freq, self.ge_freq() - 2 * self.ge_mod_freq()),
-                    (self.acq_weights_type, 'SSB'),
-                    (self.instr_trigger.get_instr().pulse_period, trigger_sep),
-                    *self._drive_mixer_calibration_tmp_vals()
-            ):
-                pulse_list_list = []
-                for alpha, phi_skew in meas_grid.T:
-                    pulse_list_list.append([self.get_acq_pars(), dict(
-                                pulse_type='GaussFilteredCosIQPulse',
-                                pulse_length=self.acq_length(),
-                                ref_point='start',
-                                amplitude=amplitude,
-                                I_channel=self.ge_I_channel(),
-                                Q_channel=self.ge_Q_channel(),
-                                mod_frequency=self.ge_mod_freq(),
-                                phase_lock=False,
-                                alpha=alpha,
-                                phi_skew=phi_skew,
-                            )])
-                sq.pulse_list_list_seq(pulse_list_list)
-
-                self.prepare(drive='timedomain', switch='calib')
-                MC.set_detector_function(self.int_avg_det)
-                MC.run(name='drive_skewness_calibration' + self.msmt_suffix)
-
-            a = ma.OptimizationAnalysisNN(
-                label='drive_skewness_calibration',
-                hyper_parameter_dict=hyper_parameter_dict,
-                meas_grid=meas_grid.T,
-                estimator=estimator,
-                two_rounds=two_rounds,
-                round=runs, make_fig=make_fig)
-
-            _alpha = a.optimization_result[0]
-            _phi = a.optimization_result[1]
-
-            if update:
-                self.ge_alpha(_alpha)
-                self.ge_phi_skew(_phi)
-
-        return _alpha, _phi, a
 
     def calibrate_drive_mixer_skewness_model(
             self, update=True, meas_grid=None, n_meas=(10, 10),
@@ -2787,8 +2272,9 @@ class QuDev_transmon(Qubit):
             *self._drive_mixer_calibration_tmp_vals()
         ):
             pulse_list_list = []
+            acq_pars = self.get_acq_pars()
             for alpha, phi_skew in meas_grid.T:
-                pulse_list_list.append([self.get_acq_pars(), dict(
+                pulse_list_list.append([deepcopy(acq_pars), dict(
                             pulse_type='GaussFilteredCosIQPulse',
                             pulse_length=self.acq_length(),
                             ref_point='start',
@@ -2805,10 +2291,8 @@ class QuDev_transmon(Qubit):
             self.prepare(drive='timedomain', switch='calib')
 
             # Check commensurability of LO frequencies with trigger sep.
-            ro_lo = self.instr_ro_lo.get_instr()
-            dr_lo = self.instr_ge_lo.get_instr()
-            ro_lo_freq = ro_lo.frequency()
-            dr_lo_freq = dr_lo.frequency()
+            ro_lo_freq = self.get_ro_lo_freq()
+            dr_lo_freq = self.ge_freq() - self.ge_mod_freq()
             # Frequency of the LO phases is given by the LOs beat frequency.
             beat_freq = 0.5*(dr_lo_freq - ro_lo_freq)
             #         = 0.5*(ge_mod_freq + ro_mod_freq) in our case
@@ -2820,7 +2304,13 @@ class QuDev_transmon(Qubit):
                             'is not an integer multiple of the trigger '
                             'seperation.')
                 if not force_ro_mod_freq:
+                    if self.ro_fixed_lo_freq() is not None:
+                        log.warning(
+                            'Automatic adjustment of the RO IF might lead to '
+                            'wrong results since ro_fixed_lo_freq is set.')
                     beats_per_trigger = int(beats_per_trigger + 0.5)
+                    # FIXME: changing the IF here is probably the wrong moment
+                    #  because the pulse seq has already been created above.
                     self.ro_mod_freq(2 * beats_per_trigger/trigger_sep \
                                      - self.ge_mod_freq())
                     log.warning('To ensure commensurability the RO ' 
@@ -2864,291 +2354,6 @@ class QuDev_transmon(Qubit):
             self.ge_phi_skew(_phi)
 
         return _alpha, _phi, a
-
-    def find_optimized_weights(self, update=True, measure=True,
-                               qutrit=False, acq_length=4097/1.8e9, **kw):
-        # FIXME: Make a proper analysis class for this (Ants, 04.12.2017)
-        # I agree (Christian, 07.11.2018 -- around 1 year later)
-        # Still no analysis class in 2020. (Michael, 28.01.2020)
-
-        levels = ('g', 'e', 'f') if qutrit else ('g', 'e')
-        if measure:
-            self.measure_transients(analyze=True, states=levels,
-                                    acq_length=acq_length, **kw)
-
-        # create label, measurement analysis and data for each level
-        if kw.get("name_extra", False):
-            labels = {l: 'timetrace_{}_'.format(l) + kw.get('name_extra')
-                         + "_{}".format(self.name) for l in levels}
-        else:
-            labels = {l: 'timetrace_{}'.format(l)
-                         + "_{}".format(self.name) for l in levels}
-        m_a = {l: ma.MeasurementAnalysis(label=labels[l]) for l in levels}
-        iq_traces = {l: m_a[l].measured_values[0]
-                        + 1j * m_a[l].measured_values[1] for l in levels}
-        final_basis_labels = ['ge'] # default basis vector if only qubit ro
-        if qutrit:
-            ref_state = kw.get('ref_state', 'g')
-            basis = [iq_traces[l] - iq_traces[ref_state] for l in levels
-                     if l != ref_state]
-            basis_labels = [l + ref_state for l in levels if l != ref_state]
-            final_basis = math.gram_schmidt(np.array(basis).transpose())
-            final_basis = final_basis.transpose()  # obtain basis vect as rows
-            # basis using second vector as primary vector
-            basis_2nd = list(reversed(basis))
-            final_basis_2nd = math.gram_schmidt(np.array(basis_2nd).transpose())
-            final_basis_2nd = final_basis_2nd.transpose()
-            if kw.get('non_ortho_basis', False):
-                final_basis_labels = basis_labels
-                final_basis = np.array([final_basis[0], final_basis_2nd[0]])
-            elif kw.get('basis_2nd', False):
-                final_basis_labels = [basis_labels[1]] + ['ortho']
-                final_basis = final_basis_2nd
-            else:
-                final_basis_labels = [basis_labels[0]] + ['ortho']
-
-            log.info(f"Setting Basis: {final_basis_labels}")
-        if update:
-            # FIXME: could merge qutrit and non qutrit although normalization is not
-            #  the same but would be a good thing to do. First test if qutrit works
-            #  well. idem in plot
-            if qutrit:
-                self.acq_weights_I(final_basis[0].real)
-                self.acq_weights_Q(final_basis[0].imag)
-                self.acq_weights_I2(final_basis[1].real)
-                self.acq_weights_Q2(final_basis[1].imag)
-                self.acq_weights_basis(final_basis_labels)
-            else:
-                wre = np.real(iq_traces['e'] - iq_traces['g'])
-                wim = np.imag(iq_traces['e'] - iq_traces['g'])
-                k = max(np.max(np.abs(wre)), np.max(np.abs(wim)))
-                wre /= k
-                wim /= k
-                self.acq_weights_I(wre)
-                self.acq_weights_Q(wim)
-        if kw.get('plot', True):
-            # TODO: Nathan: plot amplitude instead of I, Q ?
-            npoints = len(m_a['g'].sweep_points)
-            plot_ylabels = dict(g='d.c. voltage,\nNo pulse (V)',
-                                e='d.c. voltage,\nPi_ge pulse (V)',
-                                f='d.c. voltage,\nPi_gf pulse (V)')
-            tbase = np.linspace(0, npoints/1.8e9, npoints, endpoint=False)
-            modulation = np.exp(2j * np.pi * self.ro_mod_freq() * tbase)
-            fig, ax = plt.subplots(len(levels) + 1, figsize=(20,20))
-            ax[0].set_title('optimized weights ' + self.name +
-                        "".join('\n' + m_a[l].timestamp_string for l in levels)
-                        + f'\nWeight Basis: {final_basis_labels}')
-            for i, l in enumerate(levels):
-                ax[i].plot(tbase / 1e-9, np.real(iq_traces[l] * modulation), '-',
-                         label='I_' + l)
-                ax[i].plot(tbase / 1e-9, np.imag(iq_traces[l] * modulation), '-',
-                         label='Q_' + l)
-                ax[i].set_ylabel(plot_ylabels[l])
-                ax[i].set_xlim(0, kw.get('tmax', 300))
-                ax[i].legend(loc='upper right')
-            if qutrit:
-                for i, vect in enumerate(final_basis):
-                    ax[-1].plot(tbase / 1e-9, np.real(vect * modulation), '-',
-                                label='I_' + str(i))
-                    ax[-1].plot(tbase / 1e-9, np.imag(vect * modulation), '-',
-                                label='Q_' + str(i))
-            else:
-                ax[-1].plot(tbase / 1e-9,
-                            np.real((iq_traces['e'] - iq_traces['g']) * modulation), '-',
-                            label='I')
-                ax[-1].plot(tbase / 1e-9,
-                            np.imag((iq_traces['e'] - iq_traces['g']) * modulation), '-',
-                            label='Q')
-            ax[-1].set_ylabel('d.c. voltage\ndifference (V)')
-            ax[-1].set_xlim(0, kw.get('tmax', 300))
-            ax[-1].legend(loc='upper right')
-            ax[-1].set_xlabel('Time (ns)')
-            m_a['g'].save_fig(plt.gcf(), 'timetraces', xlabel='time',
-                           ylabel='voltage')
-            plt.tight_layout()
-            plt.close()
-
-    def find_ssro_fidelity(self, analyze=True, close_fig=True, no_fits=False,
-                           upload=True, thresholded=False, label=None,
-                           qutrit=False, update=False, prep_params=None):
-        """
-        Conduct an off-on measurement on the qubit recording single-shot
-        results and determine the single shot readout fidelity.
-
-        Calculates the assignment fidelity `F_a` which is the average
-        probability of correctly guessing the state that was prepared. If
-        `no_fits` is `False` also finds the discrimination fidelity F_d, that
-        takes into account the probability of an bit flip after state
-        preparation, by fitting double gaussians to both |0> prepared and |1>
-        prepared datasets.
-
-        Args:
-            reps: Number of repetitions. If greater than 1, a 2D sweep will be
-                  made with the second sweep function a NoneSweep with number of
-                  sweep points equal to reps. Default 1.
-            analyze: Boolean flag, whether to analyse the measurement results.
-                     Default `True`.
-            close_fig: Boolean flag to close the matplotlib's figure. If
-                       `False`, then the plots can be viewed with `plt.show()`
-                       Default `True`.
-            no_fits: Boolean flag to disable finding the discrimination
-                     fidelity. Default `False`.
-            qutrit: SSRO for 3 levels readout
-        Returns:
-            If `no_fits` is `False` returns assigment fidelity, discrimination
-            fidelity and SNR = 2 |mu00 - mu11| / (sigma00 + sigma11). Else
-            returns just assignment fidelity.
-        """
-        MC = self.instr_mc.get_instr()
-        if label is None:
-            label = 'SSRO_fidelity'
-        if thresholded:
-            label += '_thresh'
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        if prep_params['preparation_type'] not in ['preselection', 'wait']:
-            raise NotImplementedError()
-        preselection = prep_params['preparation_type'] == 'preselection'
-        RO_spacing = prep_params.get('ro_separation', None)
-        if prep_params and RO_spacing is None:
-            log.warning('This measurement will do preselection but '
-                        'ro_separation is not specified in the prep_params.')
-
-        self.prepare(drive='timedomain')
-
-        if thresholded:
-            det_func = self.dig_log_det
-        else:
-            det_func = self.int_log_det
-
-        if qutrit:
-            states = ('g', 'e', 'f')
-            for state in states:
-                seq, swp = sq.single_state_active_reset(
-                    operation_dict=self.get_operation_dict(),
-                    qb_name=self.name, state=state,
-                    prep_params=prep_params, upload=False)
-                # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
-                MC.set_sweep_points(swp)
-                MC.set_detector_function(det_func)
-                with temporary_value(MC.soft_avg, 1):
-                    MC.run(name=label + '_{}'.format(state) + self.msmt_suffix)
-
-        else:
-            MC.set_sweep_function(awg_swf2.n_qubit_off_on(
-                pulse_pars_list=[self.get_ge_pars()],
-                RO_pars_list=[self.get_ro_pars()],
-                upload=upload,
-                preselection=preselection,
-                RO_spacing=RO_spacing))
-            MC.set_sweep_points(np.arange(4 if preselection else 2))
-            MC.set_detector_function(det_func)
-            with temporary_value(MC.soft_avg, 1):
-                MC.run(name=label + self.msmt_suffix)
-
-        if analyze:
-            if qutrit:
-                # TODO Nathan: could try and merge this with no qutrit to
-                #  avoid logical branching
-                options = \
-                    dict(classif_method='threshold' if thresholded else 'gmm',
-                         pre_selection=preselection)
-                # options = 'gmm'
-                labels = [label + '_{}'.format(l) for l in states]
-                ssqtro = \
-                    Singleshot_Readout_Analysis_Qutrit(label=labels,
-                                                          options_dict=options)
-                state_prob_mtx = ssqtro.proc_data_dict[
-                    'analysis_params']['state_prob_mtx_masked']
-                classifier_params = ssqtro.proc_data_dict[
-                    'analysis_params'].get('classifier_params', None)
-                if update:
-                    self.acq_classifier_params().update(classifier_params)
-                    self.acq_state_prob_mtx(state_prob_mtx)
-                return state_prob_mtx, classifier_params
-            else:
-                rotate = self.acq_weights_type() in {'SSB', 'DSB', 'DSB2'}
-                preselection = prep_params['preparation_type'] == 'preselection'
-                channels = det_func.value_names
-                if preselection:
-                    nr_samples = 4
-                    sample_0 = 0
-                    sample_1 = 2
-                else:
-                    nr_samples = 2
-                    sample_0 = 0
-                    sample_1 = 1
-                ana = ma.SSRO_Analysis(auto=True, close_fig=close_fig,
-                                       qb_name=self.name,
-                                       rotate=rotate, no_fits=no_fits,
-                                       channels=channels, nr_samples=nr_samples,
-                                       sample_0=sample_0, sample_1=sample_1,
-                                       preselection=preselection)
-                if not no_fits:
-                    return ana.F_a, ana.F_d, ana.SNR
-                else:
-                    return ana.F_a
-    def find_readout_angle(self, MC=None, upload=True, close_fig=True, update=True, nreps=10):
-        """
-        Finds the optimal angle on the IQ plane for readout (optimal phase for
-        the boxcar integration weights)
-        If the Q wint channel is set to `None`, sets it to the next channel
-        after I.
-
-        Args:
-            MC: MeasurementControl object to use. Default `None`.
-            upload: Whether to update the AWG sequence. Default `True`.
-            close_fig: Wheter to close the figures in measurement analysis.
-                       Default `True`.
-            update: Whether to update the integration weights and the  Default `True`.
-            nreps: Default 10.
-        """
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        label = 'RO_theta'
-        if self.acq_weights_Q() is None:
-            self.acq_weights_Q(
-                (self.acq_weights_I() + 1) % 9)
-        self.set_readout_weights(weights_type='SSB')
-        prev_shots = self.acq_shots()
-        self.acq_shots(2*(self.acq_shots()//2))
-        self.prepare(drive='timedomain')
-        MC.set_sweep_function(awg_swf.SingleLevel(
-            pulse_pars=self.get_ge_pars(),
-            RO_pars=self.get_ro_pars(),
-            upload=upload,
-            preselection=False))
-        spoints = np.arange(self.acq_shots())
-        MC.set_sweep_points(np.arange(self.acq_shots()))
-        MC.set_detector_function(self.int_log_det)
-        prev_avg = MC.soft_avg()
-        MC.soft_avg(1)
-
-        mode = '1D'
-        if nreps > 1:
-            MC.set_sweep_function_2D(swf.None_Sweep())
-            MC.set_sweep_points_2D(np.arange(nreps))
-            mode = '2D'
-
-        MC.run(name=label+self.msmt_suffix, mode=mode)
-
-        MC.soft_avg(prev_avg)
-        self.acq_shots(prev_shots)
-
-        rotate = self.acq_weights_Q() is not None
-        channels = self.int_log_det.value_names
-        ana = ma.SSRO_Analysis(auto=True, close_fig=close_fig,
-                               rotate=rotate, no_fits=True,
-                               channels=channels,
-                               preselection=False)
-        if update:
-            self.acq_IQ_angle(self.acq_IQ_angle() + ana.theta)
-        return ana.theta
 
     def find_qubit_frequency(self, freqs, method='cw_spectroscopy',
                              update=False, trigger_separation=3e-6,
@@ -3272,610 +2477,6 @@ class QuDev_transmon(Qubit):
                 return f0
         else:
             return
-
-    def find_amplitudes(self, rabi_amps=None, label=None, for_ef=False,
-                        n_cal_points_per_state=2, cal_states='auto',
-                        upload=True, last_ge_pulse=False, classified_ro=False,
-                        prep_params=None, analyze=True, update=False,
-                        exp_metadata=None, **kw):
-        """
-            Finds the pi and pi/2 pulse amplitudes from the fit to a Rabi
-            experiment. Uses the Rabi_Analysis(_new)
-            class from measurement_analysis.py
-            WARNING: Does not automatically update the qubit amplitudes.
-            Set update=True if you want this!
-
-            Analysis script for the Rabi measurement:
-            1. The I and Q data are rotated and normalized based on the calibration
-                points. In most analysis routines, the latter are typically 4:
-                2 X180 measurements, and 2 identity measurements, which get
-                averaged resulting in one X180 point and one identity point.
-                However, the default for Rabi is 2 (2 identity measurements)
-                because we typically do Rabi in order to find the correct amplitude
-                for an X180 pulse. However, if a previous such value exists, this
-                routine also accepts 4 cal pts. If X180_ef pulse was also
-                previously calibrated, this routine also accepts 6 cal pts.
-            2. The normalized data is fitted to a cosine function.
-            3. The pi-pulse and pi/2-pulse amplitudes are calculated from the fit.
-            4. The normalized data, the best fit results, and the pi and pi/2
-                pulses are plotted.
-
-            The ef analysis assumes the the e population is zero (because of the
-            ge X180 pulse at the end).
-
-            Arguments:
-                rabi_amps:          amplitude sweep points for the
-                                    Rabi experiment
-                label:              label of the analysis routine
-                for_ef:             find amplitudes for the ef transition
-                update:             update the qubit amp180 and amp90 parameters
-                MC:                 the measurement control object
-                close_fig:          close the resulting figure?
-                cal_points          whether to used calibration points of not
-                no_cal_points       number of calibration points to use; if it's
-                                    the first time rabi is run
-                                    then 2 cal points (two I pulses at the end)
-                                    should be used for the ge Rabi,
-                                    and 4 (two I pulses and 2 ge X180 pulses at
-                                    the end) for the ef Rabi
-                last_ge_pulse       whether to map the population to the ground
-                                    state after each run of the Rabi experiment
-                                    on the ef level
-            Keyword arguments:
-                other keyword arguments. The Rabi sweep parameters 'amps_mean',
-                 'amps_span', and 'nr_poinys' should be passed here. This will
-                 result in a sweep over rabi_amps = np.linspace(amps_mean -
-                 amps_span/2, amps_mean + amps_span/2, nr_points)
-
-                auto              (default=True)
-                    automatically perform the entire analysis upon call
-                print_fit_results (default=True)
-                    print the fit report
-                make_fig          {default=True)
-                    whether or not to make a figure
-                show              (default=True)
-                    show the plots
-                show_guess        (default=False)
-                    plot with initial guess values
-                show_amplitudes   (default=True)
-                    print the pi&piHalf pulses amplitudes
-                plot_amplitudes   (default=True)
-                    plot the pi&piHalf pulses amplitudes
-                no_of_columns     (default=1)
-                    number of columns in your paper; figure sizes will be adjusted
-                    accordingly (1 col: figsize = ( 7in , 4in ) 2 cols: figsize =
-                    ( 3.375in , 2.25in ), PRL guidelines)
-
-            Returns:
-                pi and pi/2 pulses amplitudes + their stderr as a dictionary with
-                keys 'piPulse', 'piHalfPulse', 'piPulse_std', 'piHalfPulse_std'.
-            """
-
-        if not update:
-            log.warning("Does not automatically update the qubit pi and "
-                        "pi/2 amplitudes. Set update=True if you want this!")
-
-        #how many times to apply the Rabi pulse
-        n = kw.get('n', 1)
-
-        if rabi_amps is None:
-            raise ValueError('rabi_amps is None.')
-
-        #Perform Rabi
-        self.measure_rabi(amps=rabi_amps, analyze=False,
-                          upload=upload, label=label, n=n,
-                          n_cal_points_per_state=n_cal_points_per_state,
-                          cal_states=cal_states, last_ge_pulse=last_ge_pulse,
-                          for_ef=for_ef, classified_ro=classified_ro,
-                          prep_params=prep_params, exp_metadata=exp_metadata)
-
-        #get pi and pi/2 amplitudes from the analysis results
-        if analyze:
-            rabi_ana = tda.RabiAnalysis(qb_names=[self.name])
-            if update:
-                amp180 = rabi_ana.proc_data_dict['analysis_params_dict'][
-                    self.name]['piPulse']
-                if not for_ef:
-                    self.ge_amp180(amp180)
-                    self.ge_amp90_scale(0.5)
-                else:
-                    self.ef_amp180(amp180)
-                    self.ef_amp90_scale(0.5)
-
-        return
-
-    def find_T1(self, times, n_cal_points_per_state=2, cal_states='auto',
-                upload=True, last_ge_pulse=False, classified_ro=False,
-                prep_params=None, analyze=True, update=False, label=None,
-                for_ef=False, exp_metadata=None, **kw):
-
-        """
-        Finds the relaxation time T1 from the fit to an exponential
-        decay function.
-        WARNING: Does not automatically update the qubit T1 parameter.
-        Set update=True if you want this!
-
-        Routine:
-            1. Apply pi pulse to get population in the excited state.
-            2. Wait for different amounts of time before doing a measurement.
-
-        Uses the T1_Analysis class from measurement_analysis.py.
-        The ef analysis assumes the the e population is zero (because of the
-        ge X180 pulse at the end).
-
-        Arguments:
-            times:                   array of times to wait before measurement
-            label:                   label of the analysis routine
-            for_ef:                  find T1 for the 2nd excitation (ef)
-            update:                  update the qubit T1 parameter
-            MC:                      the measurement control object
-            close_fig:               close the resulting figure?
-
-        Keyword Arguments:
-            other keyword arguments. The the parameters times_mean, times_span,
-            nr_points should be passed here. These are an alternative to
-            passing the times array.
-
-            auto              (default=True)
-                automatically perform the entire analysis upon call
-            print_fit_results (default=True)
-                print the fit report
-            make_fig          (default=True)
-                whether to make the figures or not
-            show_guess        (default=False)
-                plot with initial guess values
-            show_T1           (default=True)
-                print the T1 and T1_stderr
-            no_of_columns     (default=1)
-                number of columns in your paper; figure sizes will be adjusted
-                accordingly  (1 col: figsize = ( 7in , 4in ) 2 cols:
-                figsize = ( 3.375in , 2.25in ), PRL guidelines)
-
-        Returns:
-            the relaxation time T1 + standard deviation as a dictionary with
-            keys: 'T1', and 'T1_std'
-
-        ! Specify either the times array or the times_mean value (defaults to
-        5 micro-s) and the span around it (defaults to 10 micro-s) as kw.
-        Then the script will construct the sweep points as
-        np.linspace(times_mean - times_span/2, times_mean + times_span/2,
-        nr_points)
-        """
-
-        if not update:
-            log.warning("Does not automatically update the qubit "
-                        "T1 parameter. Set update=True if you want this!")
-        if np.any(times > 1e-3):
-            raise ValueError('Some of the values in the times array might be too '
-                             'large. The units should be seconds.')
-
-        if times is None:
-            times_span = kw.get('times_span', 10e-6)
-            times_mean = kw.get('times_mean', 5e-6)
-            nr_points = kw.get('nr_points', 50)
-            if times_mean == 0:
-                log.warning("find_T1 does not know how long to wait before"
-                            "doing the read out. Please specify the "
-                            "times_mean or the times function parameter.")
-                return 0
-            else:
-                times = np.linspace(times_mean - times_span / 2, times_mean +
-                                    times_span / 2, nr_points)
-
-        # Perform measurement
-        self.measure_T1(times=times,
-                        analyze=False, upload=upload,
-                        last_ge_pulse=last_ge_pulse, for_ef=for_ef,
-                        n_cal_points_per_state=n_cal_points_per_state,
-                        cal_states=cal_states, classified_ro=classified_ro,
-                        prep_params=prep_params, label=label,
-                        exp_metadata=exp_metadata)
-
-        # Extract T1 and T1_stddev from ma.T1_Analysis
-        if analyze:
-            T1_ana = tda.T1Analysis(qb_names=[self.name])
-            if update:
-                T1 = T1_ana.proc_data_dict['analysis_params_dict'][
-                    self.name]['T1']
-                if for_ef:
-                    self.T1_ef(T1)
-                else:
-                    self.T1(T1)
-            return T1
-
-    def find_rb_gate_fidelity(self, cliffords, nr_seeds, label=None,
-                              gate_decomposition='HZ', interleaved_gate=None,
-                              thresholded=True, classified_ro=False,
-                              n_cal_points_per_state=2, cal_states=(),
-                              upload=True, analyze=True,
-                              prep_params=None, exp_metadata=None, **kw):
-
-        if cliffords is None:
-            raise ValueError("Unspecified cliffords array")
-
-        if label is None:
-            if interleaved_gate is None:
-                label = 'RB_{}_{}_seeds_{}_cliffords'.format(
-                    gate_decomposition, nr_seeds,
-                    cliffords[-1]) + self.msmt_suffix
-            else:
-                label = 'IRB_{}_{}_{}_seeds_{}_cliffords'.format(
-                    interleaved_gate, gate_decomposition,
-                    nr_seeds, cliffords[-1]) + self.msmt_suffix
-
-        #Perform measurement
-        self.measure_randomized_benchmarking(
-            cliffords=cliffords, nr_seeds=nr_seeds,
-            gate_decomp=gate_decomposition, interleaved_gate=interleaved_gate,
-            n_cal_points_per_state=n_cal_points_per_state, cal_states=cal_states,
-            classified_ro=classified_ro, thresholded=thresholded, label=label,
-            upload=upload, analyze=False, prep_params=prep_params,
-            exp_metadata=exp_metadata)
-
-        #Analysis
-        if analyze:
-            pla.PipelineDataAnalysis()
-
-    def find_frequency_T2_ramsey(self, times, artificial_detunings=None,
-                                 upload=True, label=None, n=1,
-                                 cal_states="auto", n_cal_points_per_state=2,
-                                 analyze=True, update=False, for_ef=False,
-                                 last_ge_pulse=False, classified_ro=False,
-                                 prep_params=None, exp_metadata=None, **kw):
-        """
-        Finds the real qubit GE or EF transition frequencies and the dephasing
-        rates T2* or T2*_ef from the fit to a Ramsey experiment.
-
-        Uses the Ramsey_Analysis class for Ramsey with one artificial detuning,
-        and the Ramsey_Analysis_multiple_detunings class for Ramsey with 2
-        artificial detunings.
-
-        Has support only for 1 or 2 artifical detunings.
-
-        WARNING: Does not automatically update the qubit freq and T2_star
-        parameters. Set update=True if you want this!
-
-        Arguments:
-            times                    array of times over which to sweep in
-                                        the Ramsey measurement
-            artificial_detunings:     difference between drive frequency and
-                                        qubit frequency estimated from
-                                        qubit spectroscopy. Must be a list with
-                                        one or two entries.
-            upload:                  upload sequence to AWG
-            update:                  update the qubit frequency and T2*
-                                        parameters
-            label:                   measurement label
-            cal_points:              use calibration points or not
-            no_cal_points:           number of cal_points (4 for ge;
-                                        2,4,6 for ef)
-            analyze:                 perform analysis
-            close_fig:               close the resulting figure
-            update:                  update relevant parameters
-            for_ef:                  perform msmt and analysis on ef transition
-            last_ge_pulse:           ge pi pulse at the end of each sequence
-
-        Keyword arguments:
-            For one artificial detuning, the Ramsey sweep time delays array
-            'times', or the parameter 'times_mean' should be passed
-            here (in seconds).
-
-        Returns:
-            The real qubit frequency + stddev, the dephasing rate T2* + stddev.
-
-        For 1 artificial_detuning:
-            ! Specify either the times array or the times_mean value (defaults
-            to 2.5 micro-s) and the span around it (times_mean; defaults to 5
-            micro-s) as kw. Then the script will construct the sweep points as
-            times = np.linspace(times_mean - times_span/2, times_mean +
-            times_span/2, nr_points).
-        """
-        if not update:
-            log.warning("Does not automatically update the qubit frequency "
-                            "and T2_star parameters. "
-                            "Set update=True if you want this!")
-        if artificial_detunings is None:
-            log.warning('Artificial_detuning is None; qubit driven at "%s" '
-                        'estimated with spectroscopy' %self.f_qubit())
-        if np.any(np.asarray(np.abs(artificial_detunings)) < 1e3):
-            log.warning('The artificial detuning is too small.')
-        if np.any(times > 1e-3):
-            log.warning('The values in the times array might be too large.')
-
-        self.measure_ramsey(times, artificial_detunings=artificial_detunings,
-                            label=label, cal_states=cal_states, n=n,
-                            n_cal_points_per_state=n_cal_points_per_state,
-                            last_ge_pulse=last_ge_pulse, for_ef=for_ef,
-                            classified_ro=classified_ro, upload=upload,
-                            prep_params=prep_params, exp_metadata=exp_metadata,
-                            analyze=False)
-
-        # # Check if one or more artificial detunings
-        if (hasattr(artificial_detunings, '__iter__') and
-                (len(artificial_detunings) > 1)):
-            multiple_detunings = True
-        else:
-            multiple_detunings = False
-
-        if analyze:
-            if multiple_detunings:
-                ramsey_ana = ma.Ramsey_Analysis(
-                    auto=True,
-                    label=label,
-                    qb_name=self.name,
-                    NoCalPoints=len(cal_states)*n_cal_points_per_state,
-                    for_ef=for_ef,
-                    last_ge_pulse=last_ge_pulse,
-                    artificial_detuning=artificial_detunings, **kw)
-
-                # get new freq and T2* from analysis results
-                new_qubit_freq = ramsey_ana.qubit_frequency  # value
-                T2_star = ramsey_ana.T2_star['T2_star']  # dict
-
-            else:
-                ramsey_ana = tda.RamseyAnalysis(
-                    qb_names=[self.name], options_dict=dict(
-                        fit_gaussian_decay=kw.get('fit_gaussian_decay', True)))
-                new_qubit_freq = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name][
-                    'exp_decay']['new_qb_freq']
-                T2_star = ramsey_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name][
-                    'exp_decay']['T2_star']
-
-            if update:
-                if for_ef:
-                    try:
-                        self.ef_freq(new_qubit_freq)
-                        self.anharmonicity(self.ef_freq() - self.ge_freq())
-                    except AttributeError as e:
-                        log.warning('%s. This parameter will not be '
-                                        'updated.'%e)
-                    try:
-                        self.T2_star_ef(T2_star)
-                    except AttributeError as e:
-                        log.warning('%s. This parameter will not be '
-                                        'updated.'%e)
-                else:
-                    try:
-                        self.ge_freq(new_qubit_freq)
-                    except AttributeError as e:
-                        log.warning('%s. This parameter will not be '
-                                        'updated.'%e)
-                    try:
-                        self.T2_star(T2_star)
-                    except AttributeError as e:
-                        log.warning('%s. This parameter will not be '
-                                        'updated.'%e)
-
-
-    def find_T2_echo(self, times, artificial_detuning=None,
-                     upload=True, label=None,
-                     cal_points=True, no_cal_points=None,
-                     analyze=True, for_ef=False,
-                     close_fig=True, update=False,
-                     last_ge_pulse=False, **kw):
-        """
-        Finds the qubit T2 Echo.
-        Uses the EchoAnalysis class in timedomain_analysis.py.
-
-        WARNING: Does not automatically update the qubit freq and T2_star
-        parameters. Set update=True if you want this!
-
-        Arguments:
-            times                    array of times over which to sweep in
-                                        the Ramsey measurement
-            artificial_detuning:     difference between drive frequency and
-                                        qubit frequency estimated from
-                                        qubit spectroscopy. Must be a list with
-                                        one or two entries.
-            upload:                  upload sequence to AWG
-            update:                  update the qubit frequency and T2*
-                                        parameters
-            label:                   measurement label
-            cal_points:              use calibration points or not
-            analyze:                 perform analysis
-            close_fig:               close the resulting figure
-            update:                  update relevant parameters
-
-        Keyword arguments:
-            The time delays array 'times', or the parameter 'times_mean'
-            should be passed here (in seconds).
-
-        Returns:
-            Nothing
-        """
-        if not update:
-            log.warning("Does not automatically update the qubit "
-                            "T2_echo parameter. "
-                            "Set update=True if you want this!")
-        if artificial_detuning == None:
-            log.warning('Artificial_detuning is None; applying resonant '
-                            'drive.')
-        else:
-            if np.any(np.asarray(np.abs(artificial_detuning)) < 1e3):
-                log.warning('The artificial detuning is too small.')
-        if np.any(times > 1e-3):
-            log.warning('The values in the times array might be too large.')
-
-        if cal_points and no_cal_points is None:
-            log.warning('no_cal_points is None. Defaults to 4 if '
-                            'for_ef==False, or to 6 if for_ef==True.')
-            if for_ef:
-                no_cal_points = 6
-            else:
-                no_cal_points = 4
-
-        if not cal_points:
-            no_cal_points = 0
-
-        if label is None:
-            if for_ef:
-                label = 'Echo_ef' + self.msmt_suffix
-            else:
-                label = 'Echo' + self.msmt_suffix
-
-        if times is None:
-            times_span = kw.get('times_span', 5e-6)
-            times_mean = kw.get('times_mean', 2.5e-6)
-            nr_points = kw.get('nr_points', 50)
-            if times_mean == 0:
-                log.warning("find_T2_echo does not know "
-                                "over which times to do Ramsey. Please "
-                                "specify the times_mean or the times "
-                                "function parameter.")
-                return 0
-            else:
-                times = np.linspace(times_mean - times_span/2,
-                                    times_mean + times_span/2,
-                                    nr_points)
-
-        # perform measurement
-        if for_ef:
-            self.measure_echo_2nd_exc(times=times,
-                                      artificial_detuning=artificial_detuning,
-                                      label=label, cal_points=cal_points,
-                                      no_cal_points=no_cal_points, upload=upload,
-                                      last_ge_pulse=last_ge_pulse)
-        else:
-            self.measure_echo(
-                times=times, artificial_detuning=artificial_detuning,
-                cal_points=cal_points,
-                close_fig=close_fig, upload=upload, label=label)
-
-        if analyze:
-            echo_ana = tda.EchoAnalysis(
-                qb_names=[self.name],
-                options_dict={
-                    'artificial_detuning': artificial_detuning,
-                    'fit_gaussian_decay':
-                                  kw.get('fit_gaussian_decay', True)})
-            if update:
-                T2_echo = echo_ana.proc_data_dict[
-                    'analysis_params_dict'][self.name]['T2_echo']
-                try:
-                    self.T2(T2_echo)
-                except AttributeError as e:
-                    log.warning('%s. This parameter will not be '
-                                    'updated.'%e)
-
-        return
-
-    def find_qscale(self, qscales, label=None, for_ef=False,
-                    last_ge_pulse=False, upload=True, analyze=True,
-                    cal_states="auto", n_cal_points_per_state=2,
-                    classified_ro=False, prep_params=None,
-                    exp_metadata=None, update=False, **kw):
-
-        '''
-        Performs the QScale calibration measurement ( (xX)-(xY)-(xmY) ) and
-        extracts the optimal QScale parameter
-        from the fits (ma.QScale_Analysis).
-        WARNING: Does not automatically update the qubit qscale parameter. Set
-        update=True if you want this!
-
-        ma.QScale_Analysis:
-        1. The I and Q data are rotated and normalized based on the calibration
-            points. In most
-            analysis routines, the latter are typically 4: 2 X180 measurements,
-            and 2 identity measurements, which get averaged resulting in one
-            X180 point and one identity point.
-        2. The data points for the same qscale value are extracted (every other
-            3rd point because the sequence
-            used for this measurement applies the 3 sets of pulses
-            ( (xX)-(xY)-(xmY) ) consecutively for each qscale value).
-        3. The xX data is fitted to a lmfit.models.ConstantModel(), and the
-            other 2 to an lmfit.models.LinearModel().
-        4. The data and the resulting fits are all plotted on the same graph
-            (self.make_figures).
-        5. The optimal qscale parameter is obtained from the point where the 2
-            linear fits intersect.
-
-        Other possible  input parameters:
-            qscales
-                array of qscale values over which to sweep...
-            or qscales_mean and qscales_span
-                ...or the mean qscale value and the span around it
-                (defaults to 3) as kw. Then the script will construct the sweep
-                points as np.linspace(qscales_mean - qscales_span/2,
-                qscales_mean + qscales_span/2, nr_points)
-
-        Keyword parameters:
-            label             (default=none?)
-                label of the analysis routine
-            for_ef            (default=False)
-                whether to obtain the drag_qscale_ef parameter
-            update            (default=True)
-                whether or not to update the qubit drag_qscale parameter with
-                the found value
-            MC                (default=self.MC)
-                the measurement control object
-            close_fig         (default=True)
-                close the resulting figure
-            last_ge_pulse     (default=True)
-                whether to apply an X180 ge pulse at the end
-
-            Keyword parameters:
-                qscale_mean       (default=self.drag_qscale()
-                    mean of the desired qscale sweep values
-                qscale_span       (default=3)
-                    span around the qscale mean
-                nr_points         (default=30)
-                    number of sweep points between mean-span/2 and mean+span/2
-                auto              (default=True)
-                    automatically perform the entire analysis upon call
-                folder            (default=working folder)
-                    Working folder
-                NoCalPoints       (default=4)
-                    Number of calibration points
-                cal_points        (default=[[-4, -3], [-2, -1]])
-                    The indices of the calibration points
-                show              (default=True)
-                    show the plot
-                show_guess        (default=False)
-                    plot with initial guess values
-                plot_title        (default=measurementstring)
-                    the title for the plot as a string
-                xlabel            (default=self.xlabel)
-                    the label for the x axis as a string
-                ylabel            (default=r'$F|1\rangle$')
-                    the label for the x axis as a string
-                close_file        (default=True)
-                    close the hdf5 file
-
-        Returns:
-            the optimal DRAG QScale parameter + its stderr as a dictionary with
-            keys 'qscale' and 'qscale_std'.
-        '''
-
-        if not update:
-            log.warning("Does not automatically update the qubit qscale "
-                            "parameter. "
-                            "Set update=True if you want this!")
-
-        qscales = np.repeat(qscales, 3)
-
-        #Perform the qscale calibration measurement
-        self.measure_qscale(qscales=qscales, upload=upload, label=label,
-                            cal_states=cal_states, exp_metadata=exp_metadata,
-                            n_cal_points_per_state=n_cal_points_per_state,
-                            last_ge_pulse=last_ge_pulse, for_ef=for_ef,
-                            classified_ro=classified_ro,
-                            prep_params=prep_params, analyze=False)
-
-        # Perform analysis and extract the optimal qscale parameter
-        # Returns the optimal qscale parameter
-        if analyze:
-            qscale_ana = tda.QScaleAnalysis(qb_names=[self.name])
-            if update:
-                qscale = qscale_ana.proc_data_dict['analysis_params_dict'][
-                    self.name]['qscale']
-                if for_ef:
-                    self.ef_motzoi(qscale)
-                else:
-                    self.ge_motzoi(qscale)
-        return
-
 
     def find_readout_frequency(self, freqs=None, update=False, MC=None,
                                qutrit=False, **kw):
@@ -4036,7 +2637,8 @@ class QuDev_transmon(Qubit):
             MC.set_sweep_points(freqs)
             MC.set_detector_function(self.int_avg_det_spec)
 
-            self.instr_pulsar.get_instr().start(exclude=[self.instr_acq()])
+            awg_name = self.instr_acq.get_instr().get_awg_control_object()[1]
+            self.instr_pulsar.get_instr().start(exclude=[awg_name])
             MC.run(name=f"{state}-spec" + self.msmt_suffix)
             self.instr_pulsar.get_instr().stop()
 
@@ -4044,315 +2646,12 @@ class QuDev_transmon(Qubit):
                 ma.MeasurementAnalysis(auto=True, close_fig=close_fig,
                                     qb_name=self.name)
 
-    def calibrate_flux_pulse_timing(self, freqs=None, delays=None, MC=None,
-                                    analyze=False, update=False,**kw):
-        """
-        flux pulse timing calibration
-
-        does a 2D measuement of the type:
-
-                -------|X180|  ----------------  |RO|
-                   <----->
-                   | fluxpulse |
-
-        where the flux pulse delay and the drive pulse frequency of the X180 pulse
-        are swept.
-
-        Args:
-            MC: measurement control object
-            freqs: numpy array frequencies in Hz for the flux pulse scope type experiment
-            delays: numpy array with delays (in s) swept through
-                    as delay of the drive pulse
-            analyze: bool, if True, then the measured data
-                        gets analyzed (for detailed documentation of the analysis see in
-                        the FluxPulse_timing_calibration class update: bool, if True,
-                        the AWG channel delay gets corrected, such that single qubit
-                        gates and flux pulses have no relative delay
-
-        Returns:
-            fitted_delay: float, only returned, if analyze is True.
-        """
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        channel = self.flux_pulse_channel()
-
-        pulse_length = kw.pop('pulse_length', 100e-9)
-        self.flux_pulse_length(pulse_length)
-        amplitude = kw.pop('amplitude', 0.5)
-        self.flux_pulse_amp(amplitude)
-
-        measurement_string = 'Flux_pulse_delay_calibration_{}'.format(self.name)
-
-        if freqs is None:
-            freqs = self.f_qubit() + np.linspace(-50e6, 50e6, 20, endpoint=False)
-        if delays is None:
-            delays = np.linspace(-100e-9, pulse_length + 100e-9, 40, endpoint=False)
-
-        self.prepare(drive='timedomain')
-
-        detector_fun = self.int_avg_det
-
-        s1 = awg_swf.Fluxpulse_scope_swf(self)
-        s2 = awg_swf.Fluxpulse_scope_drive_freq_sweep(self)
-
-        MC.set_sweep_function(s1)
-        MC.set_sweep_points(delays)
-        MC.set_sweep_function_2D(s2)
-        MC.set_sweep_points_2D(freqs)
-        MC.set_detector_function(detector_fun)
-        MC.run_2D(measurement_string)
-
-        if analyze:
-            flux_pulse_timing_ma = ma.FluxPulse_timing_calibration(
-                        label=measurement_string,
-                        flux_pulse_length=pulse_length,
-                        qb_name=self.name,
-                        auto=True,
-                        plot=True)
-
-            if update:
-                new_delay = self.instr_pulsar.get_instr().get('{}_delay'.format(channel)) + \
-                            flux_pulse_timing_ma.fitted_delay
-                self.instr_pulsar.get_instr().set('{}_delay'.format(channel), new_delay)
-                print('updated delay of channel {}.'.format(channel))
-            else:
-                log.warning('Not updated, since update was disabled.')
-            return flux_pulse_timing_ma.fitted_delay
-        else:
-            return
-
-
-
-    def calibrate_flux_pulse_frequency(self, MC=None, thetas=None, ampls=None,
-                                       analyze=False,
-                                       plot=False,
-                                       ampls_bidirectional = False,
-                                       **kw):
-        """
-        flux pulse frequency calibration
-
-        does a 2D measuement of the type:
-
-                      X90_separation
-                < -- ---- ----------- --->
-                |X90|  --------------     |X90|  ---  |RO|
-                       | fluxpulse |
-
-        where the flux pulse amplitude and the angle of the second X90 pulse
-        are swept.
-
-        Args:
-            MC: measurement control object
-            thetas: numpy array with angles (in rad) for the Ramsey type
-            ampls: numpy array with amplitudes (in V) swept through
-                as flux pulse amplitudes
-            ampls_bidirectional: bool, for use if the qubit is parked at sweetspot.
-                                If true, the flux pulse amplitudes are swept to positive
-                                and negative voltages and the frequency model fit is ]
-                                performed on the combined dataset
-            analyze: bool, if True, then the measured data
-                     gets analyzed ( ma.fit_qubit_frequency() )
-
-
-        """
-
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        channel = self.flux_pulse_channel()
-        clock_rate = MC.station.pulsar.clock(channel)
-
-        X90_separation = kw.pop('X90_separation', 200e-9)
-
-        distorted = kw.pop('distorted', False)
-        distortion_dict = kw.pop('distortion_dict', None)
-
-        pulse_length = kw.pop('pulse_length', 30e-9)
-        self.flux_pulse_length(pulse_length)
-
-        pulse_delay = kw.pop('pulse_delay', 50e-9)
-        self.flux_pulse_delay(pulse_delay)
-
-        if thetas is None:
-            thetas = np.linspace(0, 2*np.pi, 8, endpoint=False)
-
-        if ampls is None:
-            ampls = np.linspace(0, 1, 21)
-            ampls_flag = True
-
-        self.prepare(drive='timedomain')
-        detector_fun = self.int_avg_det
-
-        s1 = awg_swf.Ramsey_interleaved_fluxpulse_sweep(
-            self,
-            X90_separation=X90_separation,
-            distorted=distorted,
-            distortion_dict=distortion_dict)
-        s2 = awg_swf.Ramsey_fluxpulse_ampl_sweep(self, s1)
-
-        MC.set_sweep_function(s1)
-        MC.set_sweep_points(thetas)
-        MC.set_sweep_function_2D(s2)
-        MC.set_sweep_points_2D(ampls)
-        MC.set_detector_function(detector_fun)
-
-        measurement_string_1 = 'Flux_pulse_frequency_calibration_{}_1'.format(self.name)
-        MC.run_2D(measurement_string_1)
-
-        if ampls_bidirectional:
-            MC.set_sweep_function(s1)
-            MC.set_sweep_points(thetas)
-            MC.set_sweep_function_2D(s2)
-            MC.set_sweep_points_2D(-ampls)
-            MC.set_detector_function(detector_fun)
-
-
-            measurement_string_2 = 'Flux_pulse_frequency_calibration_{}_2'.format(self.name)
-            MC.run_2D(measurement_string_2)
-
-        if analyze:
-            flux_pulse_ma_1 = ma.Fluxpulse_Ramsey_2D_Analysis(
-                label=measurement_string_1,
-                X90_separation=X90_separation,
-                flux_pulse_length=pulse_length,
-                qb_name=self.name,
-                auto=False)
-            flux_pulse_ma_1.fit_all(extrapolate_phase=True, plot=True)
-
-            phases = flux_pulse_ma_1.fitted_phases
-            ampls = flux_pulse_ma_1.sweep_points_2D
-
-
-            if ampls_bidirectional:
-                flux_pulse_ma_2 = ma.Fluxpulse_Ramsey_2D_Analysis(
-                    label=measurement_string_2,
-                    X90_separation=X90_separation,
-                    flux_pulse_length=pulse_length,
-                    qb_name=self.name,
-                    auto=False)
-                flux_pulse_ma_2.fit_all(extrapolate_phase=True, plot=True)
-
-                phases = np.concatenate(flux_pulse_ma_2.fitted_phases[-1:0:-1],
-                                        flux_pulse_ma_1.fitted_phases)
-                ampls = np.concatenate(flux_pulse_ma_2.sweep_points_2D[-1:0:-1],
-                                   flux_pulse_ma_1.sweep_points_2D)
-
-            instrument_settings = flux_pulse_ma_1.data_file['Instrument settings']
-            qubit_attrs = instrument_settings[self.name].attrs
-            E_c = kw.pop('E_c', qubit_attrs.get('E_c', 0.3e9))
-            f_max = kw.pop('f_max', qubit_attrs.get('f_max', self.f_qubit()))
-            V_per_phi0 = kw.pop('V_per_phi0',
-                                qubit_attrs.get('V_per_phi0', 1.))
-            dac_sweet_spot = kw.pop('dac_sweet_spot',
-                                    qubit_attrs.get('dac_sweet_spot', 0))
-
-
-            freqs = f_max - phases/(2*np.pi*pulse_length)
-
-            fit_res = ma.fit_qubit_frequency(ampls, freqs, E_c=E_c, f_max=f_max,
-                                             V_per_phi0=V_per_phi0,
-                                             dac_sweet_spot=dac_sweet_spot
-                                             )
-            print(fit_res.fit_report())
-
-            if plot and ampls_bidirectional:
-                fit_res.plot()
-            if ampls_bidirectional:
-                return fit_res
-
-
-    def calibrate_CPhase_dynamic_phases(self,
-                                        flux_pulse_length=None,
-                                        flux_pulse_amp=None,
-                                        flux_pulse_delay=None,
-                                        thetas=None,
-                                        X90_separation=None,
-                                        flux_pulse_channel=None,
-                                        MC=None, label=None,
-                                        analyze=True, update=True, **kw):
-        """
-        CPhase dynamic phase calibration
-
-        does a measuement of the type:
-
-                      X90_separation
-                < -- ---- ----------- --->
-                |X90|  --------------     |X90|  ---  |RO|
-                       | fluxpulse |
-
-        where  the angle of the second X90 pulse is swept for
-        the flux pulse amplitude  in [0,cphase_ampl].
-
-        Args:
-            MC: measurement control object
-            thetas: numpy array with angles (in rad) for the Ramsey type
-            ampls: numpy array with amplitudes (in V) swept through
-                as flux pulse amplitudes
-            analyze: bool, if True, then the measured data
-                gets analyzed (
-
-
-        """
-
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-
-        if flux_pulse_amp is None:
-            flux_pulse_amp = self.flux_pulse_amp()
-            log.warning('flux_pulse_amp is not specified. Using the value'
-                            'in the flux_pulse_amp parameter.')
-        if flux_pulse_length is None:
-            flux_pulse_length = self.flux_pulse_length()
-            log.warning('flux_pulse_length is not specified. Using the value'
-                            'in the flux_pulse_length parameter.')
-        if flux_pulse_delay is None:
-            flux_pulse_delay = self.flux_pulse_delay()
-            log.warning('flux_pulse_delay is not specified. Using the value'
-                            'in the flux_pulse_delay parameter.')
-        if flux_pulse_channel is None:
-            flux_pulse_channel = self.flux_pulse_channel()
-            log.warning('flux_pulse_channel is not specified. Using the value'
-                            'in the flux_pulse_channel parameter.')
-        if thetas is None:
-            thetas = np.linspace(0, 4*np.pi, 16)
-            print('Sweeping over phases thata=np.linspace(0, 4*np.pi, 16).')
-
-        if label is None:
-            label = 'Dynamic_phase_measurement_{}_{}_filter'.format(
-                self.name, self.flux_pulse_channel())
-
-        self.measure_dynamic_phase(flux_pulse_length=flux_pulse_length,
-                                   flux_pulse_amp=flux_pulse_amp,
-                                   flux_pulse_channel=flux_pulse_channel,
-                                   flux_pulse_delay=flux_pulse_delay,
-                                   X90_separation=X90_separation,
-                                   thetas=thetas,
-                                   MC=MC,
-                                   label=label)
-
-        if analyze:
-            MA = ma.Dynamic_phase_Analysis(
-                    TwoD=True,
-                    flux_pulse_amp=flux_pulse_amp,
-                    flux_pulse_length=flux_pulse_length,
-                    qb_name=self.name, **kw)
-
-            dynamic_phase = MA.dyn_phase
-            print('fitted dynamic phase on {}: {:0.3f} [deg]'.format(self.name,
-                                                                dynamic_phase))
-            if update:
-                try:
-                    self.dynamic_phase(dynamic_phase)
-                except Exception:
-                    log.warning('Could not update '
-                                    '{}.dynamic_phase().'.format(self.name))
-
-            return dynamic_phase
-        else:
-            return
-
     def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
+                                      "implemented for setups without ge LO. "
+                                      "Use quantum experiment FluxPulseTiming "
+                                      "instead.")
         if label is None:
             label = 'Flux_pulse_timing_{}'.format(self.name)
         self.measure_flux_pulse_scope([self.ge_freq()], delays,
@@ -4389,6 +2688,12 @@ class QuDev_transmon(Qubit):
         Returns: None
 
         '''
+        if self.instr_ge_lo() is None:
+            raise NotImplementedError('qb.measure_flux_pulse_scope is '
+                                      'not implemented for setups '
+                                      'without external drive LO. Use '
+                                      'FluxPulseScope class instead!')
+
         if label is None:
             label = 'Flux_scope_{}'.format(self.name)
         MC = self.instr_mc.get_instr()
@@ -4456,230 +2761,58 @@ class QuDev_transmon(Qubit):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=True)
 
-    def measure_flux_pulse_amplitude(self, freqs, amplitudes, cz_pulse_name=None,
-                                     analyze=True, cal_points=True,
-                                     upload=True, label=None,
-                                     n_cal_points_per_state=2, delay=None,
-                                     cal_states='auto', prep_params=None,
-                                     exp_metadata=None, update=False):
-        '''
-        Flux pulse amplitude measurement used to determine the qubits energy in
-        dependence of flux pulse amplitude.
-
-        pulse sequence:
-           |    -------------    |X180|  ---------------------  |RO|
-           |    ---   | ---- fluxpulse ----- |
-
-
-        Args:
-            freqs (numpy array): array of drive frequencies
-            amplitudes (numpy array): array of amplitudes of the flux pulse
-            delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
-
-        Returns: None
-
-        '''
-
-        if cz_pulse_name is None:
-            cz_pulse_name = 'FP ' + self.name
-
-        if label is None:
-            label = 'Flux_amplitude_{}'.format(self.name)
-        MC = self.instr_mc.get_instr()
-        self.prepare(drive='timedomain')
-
-        if cal_points:
-            cal_states = CalibrationPoints.guess_cal_states(cal_states)
-            cp = CalibrationPoints.single_qubit(
-                self.name, cal_states, n_per_state=n_cal_points_per_state)
-        else:
-            cp = None
-        if prep_params is None:
-            prep_params = self.preparation_params()
-        seq, sweep_points, sweep_points_2D = \
-            fsqs.fluxpulse_amplitude_sequence(
-                amplitudes=amplitudes, freqs=freqs, qb_name=self.name,
-                operation_dict=self.get_operation_dict(), delay=delay,
-                cz_pulse_name=cz_pulse_name, cal_points=cp,
-                prep_params=prep_params, upload=False)
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_sweep_function_2D(swf.Offset_Sweep(
-            self.instr_ge_lo.get_instr().frequency,
-            -self.ge_mod_freq(),
-            name='Drive frequency',
-            parameter_name='Drive frequency', unit='Hz'))
-        MC.set_sweep_points_2D(sweep_points_2D)
-        MC.set_detector_function(self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-
-        sp = SweepPoints()
-        sp.add_sweep_parameter(f'{self.name}_amplitude', amplitudes, 'V',
-                               'Flux pulse amplitude')
-        sp.add_sweep_dimension()
-        sp.add_sweep_parameter(f'{self.name}_freq', freqs, 'Hz',
-                               'Qubit frequency')
-        exp_metadata.update({'sweep_points': sp,
-                             'meas_obj_sweep_points_map':
-                                 sp.get_meas_obj_sweep_points_map([self.name]),
-                             'use_cal_points': cal_points,
-                             'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'rotate': cal_points,
-                             'data_to_fit': {self.name: 'pe'},
-                             "sweep_name": "Amplitude",
-                             "sweep_unit": "V",
-                             "rotation_type": 'global_PCA'})
-        MC.run_2D(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            try:
-                MA = tda.FluxAmplitudeSweepAnalysis(qb_names = [self.name],
-                                                    options_dict=dict(TwoD=True))
-            except Exception:
-                ma.MeasurementAnalysis(TwoD=True)
-
-        if update:
-            self.fit_ge_freq_from_flux_pulse_amp(
-                MA.fit_res[f'freq_fit_{self.name}'].best_values)
-
-    def measure_T1_freq_sweep(self, flux_lengths, cz_pulse_name=None,
-                              freqs=None, amplitudes=None,
-                              analyze=True,cal_states='auto', cal_points=True,
-                              upload=True, label=None,n_cal_points_per_state=2,
-                              exp_metadata=None, all_fits=False,
-                              prep_params=None):
-        '''
-        Flux pulse amplitude measurement used to determine the qubits energy in
-        dependence of flux pulse amplitude.
-
-        Timings of sequence
-
-       |          ---|X180|  ------------------------------|RO|
-       |          --------| --------- fluxpulse ---------- |
-
-
-        Args:
-            freqs (numpy array): array of drive frequencies
-            amplitudes (numpy array): array of amplitudes of the flux pulse
-            delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
-
-        Returns: None
-
-        '''
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        # Define the measurement label
-        if label is None:
-            label = 'T1_frequency_sweep'
-            if 'active' in prep_params['preparation_type']:
-                label += '_reset'
-            label += self.msmt_suffix
-
-        if cz_pulse_name is None:
-            cz_pulse_name = 'FP ' + self.name
-
-        fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
-        if freqs is not None:
-            amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
-
-        amplitudes = np.array(amplitudes)
-
-        if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes += fit_paras['V_per_phi0']
-
-        if np.any(np.isnan(amplitudes)):
-            raise ValueError('Specified frequencies resulted in nan amplitude. '
-                             'Check frequency range!')
-
-        if amplitudes is None:
-            raise ValueError('Either freqs or amplitudes need to be specified')
-
-        MC = self.instr_mc.get_instr()
-        self.prepare(drive='timedomain')
-
-        amplitudes = np.array(amplitudes)
-        flux_lengths = np.array(flux_lengths)
-
-        if cal_points:
-            cal_states = CalibrationPoints.guess_cal_states(cal_states)
-            cp = CalibrationPoints.single_qubit(
-                self.name, cal_states, n_per_state=n_cal_points_per_state)
-        else:
-            cp = None
-
-        seq, sweep_points = \
-            fsqs.T1_freq_sweep_seq(
-                amplitudes=amplitudes, qb_name=self.name,
-                operation_dict=self.get_operation_dict(), flux_lengths=flux_lengths,
-                cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp,
-                prep_params=prep_params)
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_detector_function(self.int_avg_det)
-        if exp_metadata is None:
-            exp_metadata = {}
-        # create SweepPoints
-        sp = SweepPoints(f'{self.name}_pulse_length', flux_lengths, 's',
-                         'Flux pulse length')
-        sp.add_sweep_dimension()
-        sp.add_sweep_parameter(f'{self.name}_amplitude', amplitudes, 'V',
-                               'Flux pulse amplitude')
-        mospm = sp.get_meas_obj_sweep_points_map(self.name)
-        if freqs is not None:
-            sp.add_sweep_parameter(f'{self.name}_qubit_freqs', freqs, 'Hz',
-                                   'Qubit frequency')
-            mospm[self.name] += [f'{self.name}_qubit_freqs']
-        exp_metadata.update({'sweep_points': sp,
-                             'meas_obj_sweep_points_map': mospm,
-                             'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'rotate': cal_points,
-                             'data_to_fit': {self.name: 'pe'},
-                             "rotation_type": 'global_PCA' if not cal_points \
-                                else 'cal_states'})
-        MC.run(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            try:
-                tda.T1FrequencySweepAnalysis(qb_names=[self.name],
-                            options_dict=dict(TwoD=True, all_fits=all_fits))
-            except Exception:
-                ma.MeasurementAnalysis(TwoD=False)
-
-    def measure_T2_freq_sweep(self, flux_lengths, cz_pulse_name=None,
+    def measure_T2_freq_sweep(self, flux_lengths=None, n_pulses=None,
+                              cz_pulse_name=None,
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
                               exp_metadata=None):
-        '''
+        """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
 
-        Timings of sequence
-
-       |          ----|X90| --------------------------- |X90|--|RO|
-       |          --------| --------- fluxpulse ------- |
-
+        2 sorts of sequences can be generated based on the combination of
+        (flux_lengths, n_pulses):
+        1. (None, array):
+         The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+        |          --------(| - fp -| ) x n_pulses[i] ---------
+       Each flux pulse has a duration equal to the stored value in the
+       operations dict. Note that in this case, the flux_lengths stored in
+       the metadata (and hence used by the default analysis) is
+       fpl * n_pulses, where fpl is the flux pulse length stored in the
+       cz_pulse_name operation, i.e. the total time spent away from sweetspot
+       (but it does not account for buffer times before and after each pulse,
+       which will however be in the sequence).
+        2. (array, None):
+        The ith created pulse sequence is:
+        |          ---|X90|  ---------------------------------|X90||RO|
+       |          --------| -- fp --length=flux_lengths[i]----|
+       and the duration of the single flux pulse is adapted according to
+       the values specified in flux_lengths
 
         Args:
-            freqs (numpy array): array of drive frequencies
-            amplitudes (numpy array): array of amplitudes of the flux pulse
-            delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
+            flux_lengths (array):  array containing the flux pulse durations.
+                Used if n_pulses is None.
+            n_pulses (array): array containing the number of flux pulses. Used
+                if flux_lengths is None.
+            cz_pulse_name: name of the flux pulse
+            freqs: array of drive frequencies (from which the flux pulse
+            amplitudes are inferred)
+            amplitudes: array of amplitudes of the flux pulse
+            phases (array, list): array of phases for the second pi-half pulse
+                for the Ramsey experiment
+            analyze:
+            cal_states:
+            cal_points:
+            upload:
+            label:
+            n_cal_points_per_state:
+            exp_metadata:
 
-        Returns: None
+        Returns:
 
-        '''
+        """
         fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
         if freqs is not None:
             amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
@@ -4712,8 +2845,10 @@ class QuDev_transmon(Qubit):
         self.prepare(drive='timedomain')
 
         amplitudes = np.array(amplitudes)
-        flux_lengths = np.array(flux_lengths)
+        if flux_lengths is not None:
+            flux_lengths = np.array(flux_lengths)
         phases = np.array(phases)
+
 
         if cal_points:
             cal_states = CalibrationPoints.guess_cal_states(cal_states)
@@ -4725,6 +2860,7 @@ class QuDev_transmon(Qubit):
         seq, sweep_points = \
             fsqs.T2_freq_sweep_seq(
                 amplitudes=amplitudes, qb_name=self.name,
+                n_pulses=n_pulses,
                 operation_dict=self.get_operation_dict(),
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
@@ -4734,10 +2870,17 @@ class QuDev_transmon(Qubit):
         MC.set_detector_function(self.int_avg_det)
         if exp_metadata is None:
             exp_metadata = {}
+        # for legacy reason, store flux lengths in metadata even if n_pulses
+        # were used to determine the flux lengths, such that the analysis can
+        # easily access them
+        if flux_lengths is None and n_pulses is not None:
+            flux_lengths = np.array(n_pulses) * \
+                           self.get_operation_dict()[cz_pulse_name]['pulse_length']
         exp_metadata.update({'amplitudes': amplitudes,
                              'frequencies': freqs,
                              'phases': phases,
                              'flux_lengths': flux_lengths,
+                             'n_pulses': n_pulses,
                              'use_cal_points': cal_points,
                              'cal_points': repr(cp),
                              'rotate': cal_points,
@@ -4753,41 +2896,134 @@ class QuDev_transmon(Qubit):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=False)
 
-    def measure_flux_pulse_scope_nzcz_alpha(
-            self, nzcz_alphas, delays, CZ_pulse_name=None,
-            cal_points=True, upload=True, upload_all=True,
-            spacing=30e-9, MC=None):
+    def get_closest_lo_freq(self, target_lo_freq, fixed_lo='default',
+                            operation=None):
+        """Get the closest allowed LO freq for given target LO freq.
 
-        if MC is None:
-            MC = self.instr_mc.get_instr()
+        Args:
+            target_lo_freq (float): the target Lo freq
+            fixed_lo: specification of the allowed LO freq(s), can be:
+                - None: no restrictions on the LO freq
+                - float: LO fixed to a single freq
+                - str: (operation must be provided in this case)
+                    - 'default' (default value): use the setting in the qubit
+                      object.
+                    - a qb name to indicated that the LO must be fixed to be
+                      the same as for that qb.
+                - dict with (a subset of) the following keys:
+                    'min' and/or 'max': minimal/maximal allowed LO freq
+                    'step': LO fixed to a grid with this step width (grid
+                            starting at 'min' if provided and at 0 otherwise)
+                - list, np.array: LO fixed to be one of the listed values
+            operation (str): the operation for which the LO freq is to be
+                determined (e.g., 'ge', 'ro'). Only needed if fixed_lo is a str.
 
-        self.prepare(drive='timedomain')
+        Returns:
+            The allowed LO freq that most closely matches the target
+            combination of RF and IF.
 
-        if cal_points:
-            step = np.abs(delays[-1] - delays[-2])
-            sweep_points = np.concatenate(
-                [delays, [delays[-1]+step, delays[-1]+2*step,
-                          delays[-1]+3*step, delays[-1]+4*step]])
+        Examples:
+            >>> freq, mod_freq = 5898765432, 150e6
+            >>> target_lo_freq = freq - mod_freq
+            >>> qb.get_closest_lo_freq(target_lo_freq, 'qb1', 'ge')
+            >>> qb.get_closest_lo_freq(target_lo_freq, 5.8e9)
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, np.arange(4e9, 6e9 + 1e6, 1e6))
+            >>> qb.get_closest_lo_freq(target_lo_freq, {'step': 100e6})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 5.6e9})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 6.3e9, 'max': 6.9e9})
+            >>> qb.get_closest_lo_freq(
+            >>>     target_lo_freq, {'min': 5.4e9, 'max': 6.9e9, 'step': 10e6})
+        """
+        if fixed_lo == 'default':
+            fixed_lo = self.get(f'{operation}_fixed_lo_freq')
+        if fixed_lo is None:
+            return target_lo_freq
+        elif isinstance(fixed_lo, float):
+            return fixed_lo
+        elif isinstance(fixed_lo, str):
+            instr = self.find_instrument(fixed_lo)
+            return getattr(instr, f'get_{operation}_lo_freq')()
+        elif isinstance(fixed_lo, dict):
+            f_min = fixed_lo.get('min', 0)
+            f_max = fixed_lo.get('max', np.inf)
+            step = fixed_lo.get('step', None)
+            lo_freq = max(min(target_lo_freq, f_max) - f_min, 0)
+            if step is not None:
+                lo_freq = round(lo_freq / step) * step
+                if lo_freq > f_max:
+                    lo_freq -= step
+            lo_freq += f_min
+            return lo_freq
         else:
-            sweep_points = delays
+            ind = np.argmin(np.abs(np.array(fixed_lo) - (target_lo_freq)))
+            return fixed_lo[ind]
 
-        s1 = awg_swf.Fluxpulse_scope_nzcz_alpha_hard_swf(
-            qb_name=self.name, nzcz_alpha=nzcz_alphas[0],
-            CZ_pulse_name=CZ_pulse_name,
-            operation_dict=self.get_operation_dict(),
-            cal_points=cal_points, upload=False,
-            upload_all=upload_all, spacing=spacing)
-        s2 = awg_swf.Fluxpulse_scope_nzcz_alpha_soft_sweep(
-            s1, upload=upload)
+    def configure_mod_freqs(self, operation=None, **kw):
+        """Configure modulation freqs (IF) to be compatible with fixed LO freqs
 
-        MC.set_sweep_function(s1)
-        MC.set_sweep_points(sweep_points)
-        MC.set_sweep_function_2D(s2)
-        MC.set_sweep_points_2D(nzcz_alphas)
-        MC.set_detector_function(self.int_avg_det)
-        MC.run_2D('Flux_scope_nzcz_alpha' + self.msmt_suffix)
+        If {op}_fixed_lo_freq is not None for the operation {op},
+        {op}_mod_freq will be updated to {op}_freq' - {op}_fixed_lo_freq.
+        The method can be called with kw (see below) as a set_cmd when a
+        relevant paramter changes, or without kw as a sanity check, in which
+        case it shows a warning when updating an IF.
 
-        ma.MeasurementAnalysis(TwoD=True)
+        Args:
+            operation (str, None): configure the IF only for the operation
+                indicated by the string or for all operations for which a
+                fixed LO freq is configured.
+            **kw: If a kew equals the name of a qcodes parameter of the qb,
+                the corresponding value supersedes the parameter value.
+
+        Returns:
+            - The new IF if called with arguments operation and
+              {operation}_mod_freq (can be used as set_parser).
+            - None otherwise.
+        """
+        def get_param(param):
+            if param in kw:
+                return kw[param]
+            else:
+                return self.get(param)
+
+        fixed_lo_suffix = '_fixed_lo_freq'
+        if operation is None:
+            ops = [k[:-len(fixed_lo_suffix)] for k in self.parameters
+                   if k.endswith(fixed_lo_suffix)]
+        else:
+            ops = [operation]
+
+        for op in ops:
+            fixed_lo = get_param(f'{op}{fixed_lo_suffix}')
+            if fixed_lo is None:
+                if operation is not None and f'{op}_mod_freq' in kw:
+                    # called for IF change of single op: behave as set_parser
+                    return kw[f'{op}_mod_freq']
+            else:
+                freq = get_param(f'{op}_freq')
+                old_mod_freq = get_param(f'{op}_mod_freq')
+                if np.ndim(old_mod_freq):
+                    raise NotImplementedError(
+                        f'{op}: Fixed LO freq in combination with '
+                        f'multichromatic mod freq is not implemented.')
+                lo_freq = self.get_closest_lo_freq(
+                    freq - old_mod_freq, fixed_lo, operation=op)
+                mod_freq = get_param(f'{op}_freq') - lo_freq
+                if operation is not None and f'{op}_mod_freq' in kw:
+                    # called for IF change of single op: behave as set_parser
+                    return mod_freq
+                elif old_mod_freq != mod_freq:
+                    if not any([k.startswith(f'{op}_') and k != f'{op}_mod_freq'
+                            for k in kw]):
+                        log.warning(
+                            f'{self.name}: {op}_mod_freq {old_mod_freq} is not '
+                            f'consistent '
+                            f'with the fixed LO freq {fixed_lo} and will be '
+                            f'adjusted to {mod_freq}.')
+                    self.parameters[f'{op}_mod_freq'].cache._set_from_raw_value(
+                        mod_freq)
 
     def configure_pulsar(self):
         """
@@ -4828,10 +3064,10 @@ class QuDev_transmon(Qubit):
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            else:
+            elif ge_lo() is not None:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
@@ -4909,159 +3145,3 @@ class QuDev_transmon(Qubit):
             list of channels
         """
         return {self.name: self.get_channels(drive=drive, ro=ro, flux=flux)}
-
-def add_CZ_pulse(qbc, qbt):
-    """
-    Args:
-        qbc: Control qubit. A QudevTransmon object corresponding to the qubit
-             that we apply the flux pulse on.
-        qbt: Target qubit. A QudevTransmon object corresponding to the qubit
-             we induce the conditional phase on.
-    """
-
-    # add flux pulse parameters
-    op_name = 'upCZ ' + qbt.name
-    ps_name = 'upCZ_' + qbt.name
-
-    if np.any([op_name == i for i in qbc.get_operation_dict().keys()]):
-        # do not try to add it again if operation already exists
-        raise ValueError('Operation {} already exists.'.format(op_name))
-    else:
-        qbc.add_operation(op_name)
-
-        qbc.add_pulse_parameter(op_name, ps_name + '_cz_target_qb',
-                                'cz_target_qb',
-                                initial_value=qbt.name,
-                                vals=vals.Enum(qbt.name))
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_type', 'pulse_type',
-                                initial_value='BufferedCZPulse',
-                                vals=vals.Enum('BufferedSquarePulse',
-                                               'BufferedCZPulse',
-                                               'NZBufferedCZPulse',
-                                               ))
-        qbc.add_pulse_parameter(op_name, ps_name + '_channel', 'channel',
-                                initial_value='', vals=vals.Strings())
-        qbc.add_pulse_parameter(op_name, ps_name + '_aux_channels_dict',
-                                'aux_channels_dict',
-                                initial_value={}, vals=vals.Dict())
-        qbc.add_pulse_parameter(op_name, ps_name + '_amplitude', 'amplitude',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_frequency', 'frequency',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_phase', 'phase',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_length',
-                                'pulse_length',
-                                initial_value=0, vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_alpha', 'alpha',
-                                initial_value=1, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_buffer_length_start',
-                                'buffer_length_start', initial_value=10e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_buffer_length_end',
-                                'buffer_length_end', initial_value=10e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_extra_buffer_aux_pulse',
-                                'extra_buffer_aux_pulse', initial_value=5e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_delay',
-                                'pulse_delay',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_basis_rotation',
-                                'basis_rotation', initial_value={},
-                                vals=vals.Dict())
-        qbc.add_pulse_parameter(op_name, ps_name + '_gaussian_filter_sigma',
-                                'gaussian_filter_sigma', initial_value=2e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_chevron_func',
-                                'chevron_func', initial_value=None,
-                                vals=vals.Callable(),
-                                docstring="Callable required when using "
-                                          "effective time CZ pulse to "
-                                          "straighten Chevron.")
-
-
-def add_CZ_MG_pulse(qbc, qbt):
-    """
-    Args:
-        qbc: Control qubit. A QudevTransmon object corresponding to the qubit
-             that we apply the flux pulse on.
-        qbt: Target qubit. A QudevTransmon object corresponding to the qubit
-             we induce the conditional phase on.
-    """
-
-    # add flux pulse parameters
-    op_name = 'CZ ' + qbt.name
-    ps_name = 'CZ_' + qbt.name
-
-    if np.any([op_name == i for i in qbc.get_operation_dict().keys()]):
-        # do not try to add it again if operation already exists
-        raise ValueError('Operation {} already exists.'.format(op_name))
-    else:
-        qbc.add_operation(op_name)
-
-        qbc.add_pulse_parameter(op_name, ps_name + '_cz_target_qb',
-                                'cz_target_qb',
-                                initial_value=qbt.name,
-                                vals=vals.Enum(qbt.name))
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_type', 'pulse_type',
-                                initial_value='NZMartinisGellarPulse',
-                                vals=vals.Enum('NZMartinisGellarPulse',
-                                               'BufferedCZPulse'))
-        qbc.add_pulse_parameter(op_name, ps_name + '_channel', 'channel',
-                                initial_value='', vals=vals.Strings())
-        qbc.add_pulse_parameter(op_name, ps_name + '_aux_channels_dict',
-                                'aux_channels_dict',
-                                initial_value={}, vals=vals.Dict())
-        qbc.add_pulse_parameter(op_name, ps_name + '_theta_f', 'theta_f',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_lambda_2', 'lambda_2',
-                                initial_value=0, vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_qbc_freq', 'qbc_freq',
-                                initial_value=qbc.ge_freq(),
-                                vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_qbt_freq', 'qbt_freq',
-                                initial_value=qbt.ge_freq(),
-                                vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_length',
-                                'pulse_length',
-                                initial_value=0, vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_alpha', 'alpha',
-                                initial_value=1, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_buffer_length_start',
-                                'buffer_length_start', initial_value=10e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_buffer_length_end',
-                                'buffer_length_end', initial_value=10e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_extra_buffer_aux_pulse',
-                                'extra_buffer_aux_pulse', initial_value=5e-9,
-                                vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_anharmonicity',
-                                'anharmonicity',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_J', 'J',
-                                initial_value=0, vals=vals.Numbers())
-        qbc.add_pulse_parameter(op_name, ps_name + '_basis_rotation',
-                                'basis_rotation', initial_value={},
-                                vals=vals.Dict())
-        qbc.add_pulse_parameter(op_name, ps_name + '_dv_dphi', 'dv_dphi',
-                                initial_value=0, vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_loop_asym', 'loop_asym',
-                                initial_value=0, vals=vals.Numbers(0))
-        qbc.add_pulse_parameter(op_name, ps_name + '_wave_generation_func',
-                                'wave_generation_func', initial_value=None,
-                                vals=vals.Callable())
-        qbc.add_pulse_parameter(op_name, ps_name + '_pulse_delay',
-                                'pulse_delay',
-                                initial_value=0, vals=vals.Numbers())
-
-
-
-
-
-
-
-
-
-

@@ -30,12 +30,12 @@ class Sequence:
             segments (list, tuple): list of segments to add to the sequence
         """
         self.name = name
+        self.timer = Timer(self.name)
         self.pulsar = ps.Pulsar.get_instance()
         self.segments = odict()
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
-        self.timer = Timer(self.name)
         self.is_resolved = False
 
     def add(self, segment):
@@ -45,6 +45,7 @@ class Sequence:
         self.segments[segment.name] = segment
         if len(self.segments) == 1:
             self.segments[segment.name].is_first_segment = True
+        self.timer.children.update({segment.name: segment.timer})
 
     def extend(self, segments):
         """
@@ -55,10 +56,21 @@ class Sequence:
         for seg in segments:
             self.add(seg)
 
+    def upload(self, awgs_to_upload='all'):
+        """Upload the sequence to the AWG using self.pulsar instrument.
+        """
+        if awgs_to_upload != 'all':
+            log.warning('Sequence:upload: reducing upload overhead manually '
+                        'with awgs_to_upload is deprecated. Set '
+                        'pulsar.use_sequence_cache to True for automatic '
+                        'reduction of upload overhead.')
+        self.pulsar.program_awgs(self, awgs=awgs_to_upload)
+
     @Timer()
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
-                                     resolve_segments=None):
+                                     resolve_segments=None,
+                                     trigger_groups=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -93,22 +105,31 @@ class Sequence:
                 seg.resolve_segment()
                 seg.gen_elements_on_awg()
 
+        if trigger_groups is None:
+            trigger_groups = set()
+            for seg in self.segments.values():
+                trigger_groups |= set(seg.elements_on_awg)
+
         if awgs is None:
             awgs = set()
-            for seg in self.segments.values():
-                awgs |= set(seg.elements_on_awg)
+            for group in trigger_groups:
+                awgs.add(self.pulsar.get_awg_from_trigger_group(group))
 
-        for awg in awgs:
-            sequences[awg] = odict()
-            for segname, seg in self.segments.items():
-                # Store the name of the segment
-                sequences[awg][segname] = None
-                elnames = seg.elements_on_awg.get(awg, [])
+        for segname, seg in self.segments.items():
+            for group in trigger_groups:
+                awg = self.pulsar.get_awg_from_trigger_group(group)
+                if awg not in awgs:
+                    continue
+                sequences.setdefault(awg, odict())
+                # Store name of the segment as key and None as value.
+                # This is used when compiling docstrings in seqc.
+                sequences[awg].setdefault(segname, None)
+                elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
-                    sequences[awg][elname] = {'metadata': {}}
-                    for cw in seg.get_element_codewords(elname, awg=awg):
-                        sequences[awg][elname][cw] = {}
-                        for ch in seg.get_element_channels(elname, awg=awg):
+                    sequences[awg].setdefault(elname, {'metadata': {}})
+                    for cw in seg.get_element_codewords(elname, trigger_group=group):
+                        sequences[awg][elname].setdefault(cw, {})
+                        for ch in seg.get_element_channels(elname, trigger_group=group):
                             h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
                             sequences[awg][elname][cw][chid] = h
@@ -132,6 +153,15 @@ class Sequence:
                         sequences[awg][elname]['metadata']['acq'] = False
                     sequences[awg][elname]['metadata']['allow_filter'] = \
                         seg.allow_filter
+                    sequences[awg][elname]['metadata'].setdefault('trigger_groups', set())
+                    sequences[awg][elname]['metadata']['trigger_groups'].add(group)
+                    # Write modulation and sine configuration to element
+                    if seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] = \
+                                seg.mod_config
+                    if seg.sine_config:
+                        sequences[awg][elname]['metadata']['sine_config'] = \
+                                seg.sine_config
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
@@ -160,36 +190,37 @@ class Sequence:
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
         """
-        seq_awgs = [awgs] * len(sequences)
+        seq_groups = []
+        if awgs is None:
+            awgs = sequences[0].pulsar.awgs
         # collect element lengths
         lengths = odict()
         for i, seq in enumerate(sequences):
+            seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
                 seg.gen_elements_on_awg()
-            if awgs is None:
-                # find awgs for this sequence
-                seq_awgs[i] = set()
-                for seg in seq.segments.values():
-                    seq_awgs[i] |= set(seg.elements_on_awg)
-            for awg in seq_awgs[i]:
-                if awg not in lengths:
-                    lengths[awg] = odict()
+            seq_groups[i] |= set(
+                [group for group in seg.elements_on_awg
+                 if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
+            for group in seq_groups[i]:
+                if group not in lengths:
+                    lengths[group] = odict()
                 for segname, seg in seq.segments.items():
-                    elnames = seg.elements_on_awg.get(awg, [])
+                    elnames = seg.elements_on_awg.get(group, [])
                     for elname in elnames:
-                        if elname not in lengths[awg]:
-                            lengths[awg][elname] = []
-                        lengths[awg][elname].append(
-                            seg.element_start_end[elname][awg][1])
+                        if elname not in lengths[group]:
+                            lengths[group][elname] = []
+                        lengths[group][elname].append(
+                            seg.element_start_end[elname][group][1])
         # set element lengths to the maximum of the collected values
         for i, seq in enumerate(sequences):
-            for awg in seq_awgs[i]:
+            for group in seq_groups[i]:
                 for segname, seg in seq.segments.items():
-                    elnames = seg.elements_on_awg.get(awg, [])
+                    elnames = seg.elements_on_awg.get(group, [])
                     for elname in elnames:
-                        seg.element_start_end[elname][awg][1] = max(
-                            lengths[awg][elname])
+                        seg.element_start_end[elname][group][1] = max(
+                            lengths[group][elname])
             # test for overlaps
             for segname, seg in seq.segments.items():
                 seg._test_overlap()
@@ -236,10 +267,13 @@ class Sequence:
             pulse=pulse_name
         else:
             pulse = operation_dict[pulse_name]
-        repeat = dict()
-        for ch in pulse_channel_names:
-            repeat[pulse[ch]] = pattern
-        self.repeat_patterns.update(repeat)
+        if not pulse.get('disable_repeat_pattern', False):
+            repeat = dict()
+            for ch in pulse_channel_names:
+                if pulse[ch] is None:
+                    continue
+                repeat[pulse[ch]] = pattern
+            self.repeat_patterns.update(repeat)
         return self.repeat_patterns
 
     def repeat_ro(self, pulse_name, operation_dict):
@@ -387,6 +421,10 @@ class Sequence:
         interleaved_seqs = len(seq_list_list) * len(seq_list_list[0]) * ['']
         for i in range(len(seq_list_list)):
             interleaved_seqs[i::len(seq_list_list)] = seq_list_list[i]
+
+        # rename sequences and timers
+        for i, seq in enumerate(interleaved_seqs):
+            seq.rename(f"Interleaved_Sequence_{i}")
 
         mc_points = [np.arange(interleaved_seqs[0].n_acq_elements()),
                      np.arange(len(interleaved_seqs))]

@@ -54,6 +54,7 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                                                correlations=None,
                                                add_channels=None,
                                                det_get_values_kws=None,
+                                               enforce_pulsar_restart=False,
                                                **kw):
     """
     Creates an instances of the MultiPollDetector with the detector classes
@@ -134,6 +135,9 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             Keys are acquisition devices and values are dictionaries
             corresponding to get_values_function_kwargs (see docstring of the
             ClassifyingPollDetector).
+        enforce_pulsar_restart (bool): Whether or not to pass pulsar as AWG to
+            the detector and thereby enforce restarting the pulsar, e.g. after
+            a poll. Defaults to `False`.
 
     Keyword args: passed to the instantiation call of the detector classes that
         are used to instantiate the MultiPollDetector's
@@ -164,17 +168,21 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
         max_int_len[uhf] = max(max_int_len[uhf], qb.acq_length())
 
         if uhf not in int_channels:
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
-        int_channels[uhf] += qb.get_acq_int_channels()
-        inp_channels[uhf] += qb.get_acq_inp_channels()
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
+        int_channels[uhf][qb.name] = qb.get_acq_int_channels()
+        inp_channels[uhf][qb.name] = qb.get_acq_inp_channels()
 
         if uhf not in acq_classifier_params:
             acq_classifier_params[uhf] = []
-        acq_classifier_params[uhf] += [qb.acq_classifier_params()]
+        param = 'acq_classifier_params'
+        acq_classifier_params[uhf] += [
+            qb.get(param) if param in qb.parameters else {}]
         if uhf not in acq_state_prob_mtxs:
             acq_state_prob_mtxs[uhf] = []
-        acq_state_prob_mtxs[uhf] += [qb.acq_state_prob_mtx()]
+        param = 'acq_state_prob_mtx'
+        acq_state_prob_mtxs[uhf] += [
+            qb.get(param) if param in qb.parameters else None]
 
     if add_channels is None:
         add_channels = {}
@@ -187,8 +195,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             uhfs.add(uhf)
             uhf_instances[uhf] = qubits[0].find_instrument(uhf)
             max_int_len[uhf] = 0
-            int_channels[uhf] = []
-            inp_channels[uhf] = []
+            int_channels[uhf] = {}
+            inp_channels[uhf] = {}
             acq_classifier_params[uhf] = []
             acq_state_prob_mtxs[uhf] = []
         for params in add_chs:
@@ -200,8 +208,8 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             #  but not both: we just add the extra channels to both lists to
             #  make sure that they will be passed to the detector function no
             #  matter which list the particular detector function gets.
-            int_channels[uhf] += params.get('acq_channels', [])
-            inp_channels[uhf] += params.get('acq_channels', [])
+            int_channels[uhf]['add_channels'] = params.get('acq_channels', [])
+            inp_channels[uhf]['add_channels'] = params.get('acq_channels', [])
 
             max_int_len[uhf] = max(max_int_len[uhf], params.get('acq_length',
                                                                 0))
@@ -250,6 +258,13 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             raise Exception('Multi qubit detector can not be created with '
                             'multiple pulsar instances')
         AWG = qbAWG
+    trigger_dev = None
+    for qb in qubits:
+        qb_trigger = qb.instr_trigger.get_instr()
+        if trigger_dev is not None and qb_trigger is not trigger_dev:
+            raise Exception('Multi qubit detector can not be created with '
+                            'multiple trigger device instances')
+        trigger_dev = qb_trigger
 
     if df_name == 'int_log_det':
         return det.MultiPollDetector([
@@ -276,15 +291,19 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
-        # FIXME AWG=AWG unnecessarily slow, should find a way to only
-        # restart the AcqDev and the main trigger to avoid restarting Pulsar
+        # Can be used to force a hard sweep by explicitly setting to False
+        kw['single_int_avg'] = kw.get('single_int_avg', True)
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG,
+                acq_dev=uhf_instances[uhf],
+                AWG=(AWG if enforce_pulsar_restart
+                     else uhf_instances[uhf].get_awg_control_object()[0]),
                 channels=int_channels[uhf],
+                prepare_and_finish_pulsar=(not enforce_pulsar_restart),
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
-                real_imag=False, single_int_avg=True, **kw)
-            for uhf in uhfs])
+                polar=False, **kw)
+            for uhf in uhfs],
+            AWG=trigger_dev if len(uhfs) > 1 and not enforce_pulsar_restart else None)
     elif df_name == 'dig_avg_det':
         return det.MultiPollDetector([
             det.IntegratingAveragingPollDetector(
@@ -327,6 +346,24 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 used_channels=used_channels[uhf],
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 correlations=correlations[uhf], data_type='digitized_corr',
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'timetrace_avg_ss_det':  # ss: single-shot
+        return det.MultiPollDetector([
+            det.ScopePollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
+                nr_shots=nr_shots,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
+                data_type='timedomain',
+                **kw)
+            for uhf in uhfs])
+    elif df_name == 'psd_avg_det':
+        return det.MultiPollDetector([
+            det.ScopePollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG, channels=int_channels[uhf],
+                nr_shots=nr_shots,
+                acquisition_length=max_int_len[uhf], nr_averages=nr_averages,
+                data_type='fft_power',
                 **kw)
             for uhf in uhfs])
 
@@ -444,7 +481,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
 def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                  preselection=True, all_states_combinations=False, upload=True,
                  exp_metadata=None, analyze=True, analysis_kwargs=None,
-                 delegate_plotting=False, update=True):
+                 delegate_plotting=False, update=True, df_name='int_log_det'):
     """
     Measures in single shot readout the specified states and performs
     a Gaussian mixture fit to calibrate the state classfier and provide the
@@ -478,12 +515,11 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         analysis_kwargs (dict): arguments for the analysis. Defaults to all qb names
         delegate_plotting (bool): Whether or not to create a job for an analysisDaemon
             and skip the plotting during the analysis.
-        update (bool): update readout classifier parameters.
-            Does not update the readout correction matrix (i.e. qb.acq_state_prob_mtx),
-            as we ended up using this a lot less often than the update for readout
-            classifier params. The user can still access the state_prob_mtx through
-            the analysis object and set the corresponding parameter manually if desired.
-
+        update (bool): update readout classifier parameters (qb.acq_classifier_params)
+            and the acquisition state probability matrix (qb.acq_state_prob_mtx).
+        df_name (str): name of the detector function to be used,
+            see docstring of get_multiplexed_readout_detector_functions
+            (default: 'int_log_det')
 
     Returns:
 
@@ -529,10 +565,11 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
-                         "data_to_fit": {}
+                         "data_to_fit": {},
+                         "rotate": False,
                          })
     df = get_multiplexed_readout_detector_functions(
-            'int_log_det', qubits, nr_shots=n_shots)
+            df_name, qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
@@ -579,10 +616,11 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
 
 
 def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
-                         acq_length=4096/1.8e9, exp_metadata=None,
+                         acq_length=None, exp_metadata=None,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
-                         update=True, measure=True, operation_dict=None):
+                         update=True, measure=True, operation_dict=None,
+                         df_kwargs=None):
     """
     Measures time traces for specified states and
     Args:
@@ -601,6 +639,8 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         upload: upload waveforms to AWG
         acq_length: length of timetrace to record
         exp_metadata: experimental metadata
+        analyze (bool): whether analysis should be run (default: True)
+        analysis_kwargs (dict or None): keyword arguments for the analysis class
         acq_weights_basis (list): shortcut for analysis parameter.
             list of basis vectors used for computing the weights.
             (see Timetrace Analysis). e.g. ["ge", "gf"] yields basis vectors e - g
@@ -610,10 +650,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         orthonormalize (bool): shortcut for analysis parameter. Whether or not to
             orthonormalize the optimal weights (see MultiQutrit Timetrace Analysis)
         update (bool): update weights
-
+        measure (bool): whether the measurement should be run (default: True)
+        operation_dict (dict or None): the operations dictionary of the (device
+            and) qubits. Will be obtained from the dev object if it is None
+            (default).
+        df_kwargs (dict or None): keyword arguments for the detector function
 
     Returns:
-
+        The analysis object if analze is True, and None otherwise.
     """
     # check whether timetraces can be compute simultaneously
     qubits = dev.get_qubits(qubits)
@@ -637,6 +681,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
 
         if exp_metadata is None:
             exp_metadata = dict()
+        if acq_length is None:
+            acq_length = qubits[0].instr_acq.get_instr().acq_weights_n_samples/\
+                qubits[0].instr_acq.get_instr().acq_sampling_rate
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
@@ -644,10 +691,12 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
             # acq_length as values
             samples = [(qb.instr_acq.get_instr(),
                         qb.instr_acq.get_instr().convert_time_to_n_samples(
-                            acq_length)) for qb in qubits]
+                            acq_length, align_acq_granularity=True)) for qb
+                       in qubits]
             # sort by nr samples
             samples.sort(key=lambda t: t[1])
-            sweep_points = samples[0][0].get_sweep_points_time_trace(acq_length)
+            sweep_points = samples[0][0].get_sweep_points_time_trace(
+                acq_length, align_acq_granularity=True)
             channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
                             for vn in qb.inp_avg_det.value_names]
                             for qb in qubits}
@@ -679,13 +728,38 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                         cp.create_segments(operation_dict,
                                                            **prep_params))
                 # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
+                if len(set(qb.instr_acq() for qb in qubits)) == 1:
+                    # No synchronization between AWGs is needed if only a single
+                    # acq device is used. We will keep other AWGs free running
+                    # and only start the acq device for repetitions or averages
+                    # of the timetrace measurement.
+                    single_acq_dev = qubits[0].instr_acq.get_instr()
+                    # FIXME: use df.prepare_and_finish_pulsar instead
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload, start_pulsar=True,
+                        start_exclude_awgs=[single_acq_dev.name]))
+                else:
+                    single_acq_dev = None
+                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                        sequence=seq, upload=upload))
+
                 MC.set_sweep_points(sweep_points)
+                if df_kwargs is None:
+                    df_kwargs = {}
                 df = get_multiplexed_readout_detector_functions(
-                    'inp_avg_det', qubits)
+                    'inp_avg_det', qubits, **df_kwargs)
+                if single_acq_dev is not None:
+                    df.AWG = single_acq_dev
                 MC.set_detector_function(df)
-                MC.run(name=name, exp_metadata=exp_metadata)
+                try:
+                    MC.run(name=name, exp_metadata=exp_metadata)
+                finally:
+                    try:
+                        if single_acq_dev is not None:
+                            # FIXME: use df.prepare_and_finish_pulsar instead
+                            ps.Pulsar.get_instance().stop()
+                    except Exception:
+                        pass
 
     if analyze:
         tps = [a_tools.latest_data(
@@ -1246,6 +1320,10 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
         sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
 
     MC.set_sweep_points(sweep_points)
+    if qbm.instr_ge_lo is None:
+        raise NotImplementedError('measure_J_coupling is not implemented '
+                                  'for non-mixer based drive pulse '
+                                  'generation.')
     MC.set_sweep_function_2D(swf.Offset_Sweep(
         qbm.instr_ge_lo.get_instr().frequency,
         -qbm.ge_mod_freq(),

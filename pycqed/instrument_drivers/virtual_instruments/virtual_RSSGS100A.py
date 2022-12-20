@@ -1,6 +1,7 @@
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import VisaInstrument, validators as vals
-from qcodes import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
+from qcodes.utils.helpers import create_on_off_val_mapping
 
 
 class virtualRohdeSchwarz_SGS100A(Instrument):
@@ -56,12 +57,16 @@ class virtualRohdeSchwarz_SGS100A(Instrument):
         self.add_parameter(
             'status',
             parameter_class=ManualParameter,
-            get_parser=self.parse_on_off,
+            initial_value='Off',
+            val_mapping=create_on_off_val_mapping(on_val='On',
+                                                  off_val='Off'),
             vals=vals.Strings())
         self.add_parameter(
             'pulsemod_state',
             parameter_class=ManualParameter,
-            get_parser=self.parse_on_off,
+            initial_value='Off',
+            val_mapping=create_on_off_val_mapping(on_val='On',
+                                                  off_val='Off'),
             vals=vals.Strings())
         self.add_parameter(
             'pulsemod_source',
