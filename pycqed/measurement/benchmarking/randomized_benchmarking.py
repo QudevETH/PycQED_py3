@@ -797,6 +797,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         Returns:
              list of strings with op codes
         """
+        append_2qb_gates = []
+        # append_2qb_gates = ['CZ180 qb_1 qb_2']
         def gen_random(cycles):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
@@ -811,9 +813,10 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                 sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
                 gates.append(s_gates[2][0:3] + sim_str + "qb_2")
                 gates.append(f"CZ{cphases[0]} " + "qb_1 qb_2")
+                gates += append_2qb_gates
                 if length > 0:
                     for i in range(length - 1):
-                        last_1_gate1 = gates[-3][0:4]
+                        last_1_gate1 = gates[-4][0:4]
 
                         choice1 = []
                         for gate in s_gates:
@@ -822,7 +825,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         gate1 = random.choice(choice1)
                         gates.append(gate1 + 'qb_1')
 
-                        last_1_gate2 = gates[-3][0:3] + ' '
+                        last_1_gate2 = gates[-4][0:3] + ' '
                         choice2 = []
                         for gate in s_gates:
                             choice2.append(gate)
@@ -831,6 +834,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         sim_str = ' ' if 'Z' in gate2[:3] else 's '
                         gates.append(gate2[:3] + sim_str + 'qb_2')
                         gates.append(f"CZ{cphases[i+1]} " + 'qb_1 qb_2')
+                        gates += append_2qb_gates
                 lis.append(gates)
             return lis
         return [gen_random(cycles) for _ in range(nr_seqs)]
