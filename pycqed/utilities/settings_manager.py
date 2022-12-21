@@ -395,7 +395,7 @@ class SettingsManager:
         snapshot_viewer = dict_viewer.SnapshotViewer(
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
-        snapshot_viewer.spawn_snapshot_viewer(new_process=new_process)
+        snapshot_viewer.spawn_viewer(new_process=new_process)
 
     def _compare_dict_instances(self, dict_list, name_list):
         """
@@ -576,7 +576,7 @@ class SettingsManager:
             snapshot_viewer = dict_viewer.SnapshotViewer(
                 snapshot=diff,
                 timestamp=ts_list)
-            snapshot_viewer.spawn_comparison_viewer(new_process=new_process)
+            snapshot_viewer.spawn_viewer(new_process=new_process)
 
 
 class Timestamp(str):

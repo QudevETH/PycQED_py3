@@ -381,8 +381,9 @@ class DictView(qt.QtWidgets.QWidget):
         layout.addWidget(find_button)
 
         layout2 = qt.QtWidgets.QHBoxLayout()
-        for key, check_box in self.find_check_box_dict.items():
-            layout2.addWidget(check_box)
+        if len(self.column_header) < 4:
+            for key, check_box in self.find_check_box_dict.items():
+                layout2.addWidget(check_box)
         # adding 30 pixels horizontally between the buttons to distinguish
         # visually between find_check_box_dict boxes and find_only_params_box
         layout2.addSpacing(30)
@@ -575,18 +576,9 @@ class DictView(qt.QtWidgets.QWidget):
 
 
 class ComparisonDictView(DictView):
-    def __init__(self, snap: dict, title: str = '', screen=None,
-                 timestamps=None):
-        super().__init__(snap, title, screen, timestamps)
 
-    def dict_to_titem(self, dictdata: dict,
-                      parent: qt.QtWidgets.QTreeWidgetItem,
-                      param=False):
-        for key, val in dictdata.items():
-            self.tree_add_row_mc(str(key), val, parent)
-
-    def tree_add_row_mc(self, key: str, val,
-                        tree_widget: qt.QtWidgets.QTreeWidgetItem):
+    def tree_add_row(self, key: str, val: dict,
+                        tree_widget: qt.QtWidgets.QTreeWidgetItem, param=False):
         from pycqed.utilities.settings_manager import Timestamp as Timestamp
         if isinstance(val, dict):
             values = [''] * len(self.column_header[1:])
@@ -631,36 +623,6 @@ class ComparisonDictView(DictView):
             cb.setText(str(data),
                        mode=cb.Mode.Clipboard)
 
-    def make_search_ui(self):
-        """
-        Creates the UI layout for the search bar and its options.
-
-        Returns: QLayout of search bar
-        """
-        # Text box
-        self.find_box = qt.QtWidgets.QLineEdit()
-        self.find_box.returnPressed.connect(self.find_button_clicked)
-
-        # Find Button
-        find_button = qt.QtWidgets.QPushButton("Find")
-        find_button.clicked.connect(self.find_button_clicked)
-
-        # 'Entries Found' QLabel
-        self.find_text = qt.QtWidgets.QLabel('Entries found:')
-
-        self.make_find_checkbox()
-
-        # adding widgets to layout
-        layout = qt.QtWidgets.QHBoxLayout()
-        layout.addWidget(self.find_box)
-        layout.addWidget(find_button)
-
-        layout3 = qt.QtWidgets.QVBoxLayout()
-        layout3.addLayout(layout)
-        layout3.addWidget(self.find_text)
-
-        return layout3
-
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
     """
@@ -669,7 +631,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
     - sorting alphabetically
     """
 
-    def __init__(self, treeitem, screen):
+    def __init__(self, treeitem, screen, column_header):
         """
         Initialization of the TreeItemViewer
         Args:
@@ -680,7 +642,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
 
         # Initialization of the tree widget
         self.tree_widget = qt.QtWidgets.QTreeWidget()
-        self.tree_widget.setHeaderLabels(["Key", "Value"])
+        self.tree_widget.setHeaderLabels(column_header)
         self.tree_widget.header().setSectionResizeMode(
             qt.QtWidgets.QHeaderView.ResizeMode.Interactive)
         screen_geom = screen.size()
@@ -767,7 +729,8 @@ class AdditionalWindow(qt.QtWidgets.QMainWindow):
         """
         super(AdditionalWindow, self).__init__()
         self.setCentralWidget(
-            TreeItemViewer(dict_view.tree_widget.currentItem(), screen))
+            TreeItemViewer(dict_view.tree_widget.currentItem(),
+                           screen, dict_view.column_header))
         self.setWindowTitle(
             dict_view.get_dirtext(dict_view.tree_widget.currentItem()))
         screen_geom = screen.size()
@@ -803,16 +766,21 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         super(DictViewerWindow, self).__init__()
         self.dialogs = list()  # list of additional windows
         self.screen = screen
-        dict_view = DictView(dic, title, screen, timestamps=timestamps)
+        if timestamps is None:
+            widget = DictView(dic, title, screen, timestamps=timestamps)
+        else:
+            widget = ComparisonDictView(dic, title, screen, timestamps)
+
+
 
         # open new window with double click
         # dict_view.tree_widget.itemDoubleClicked.connect(
         #   lambda: self.openNewWindow(dict_view))
         # open new window via content menu
-        dict_view.openContentAction.triggered.connect(
-            lambda: self.open_new_window(dict_view))
+        widget.openContentAction.triggered.connect(
+            lambda: self.open_new_window(widget))
 
-        self.setCentralWidget(dict_view)
+        self.setCentralWidget(widget)
         self.setWindowTitle("Snapshot Viewer")
         screen_geom = screen.size()
         # layout options (x-coordinate, y-coordinate, width, height) in px
@@ -846,26 +814,6 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
             self.close()
 
 
-class ComparisonViewerWindow(qt.QtWidgets.QMainWindow):
-    def __init__(self, dic: dict, title: str = '', screen=None,
-                 timestamps=None):
-        super(ComparisonViewerWindow, self).__init__()
-        self.screen = screen
-        comparison_view = ComparisonDictView(dic, title, screen,
-                                             timestamps=timestamps)
-
-        self.setCentralWidget(comparison_view)
-        self.setWindowTitle("Comparison Viewer")
-        screen_geom = screen.size()
-        # layout options (x-coordinate, y-coordinate, width, height) in px
-        self.setGeometry(int(0.1 * screen_geom.width()),
-                         int(0.1 * screen_geom.height()),
-                         int(0.4 * screen_geom.width()),
-                         int(0.7 * screen_geom.height()))
-
-        self.show()
-
-
 class SnapshotViewer:
     def __init__(self, snapshot: dict, timestamp):
         self.snapshot = snapshot
@@ -881,9 +829,11 @@ class SnapshotViewer:
             if mp.get_start_method() != 'spawn':
                 log.warning('Child process should be spawned')
 
-    def spawn_snapshot_viewer(self, new_process=False):
+    def spawn_viewer(self, new_process=False):
         """
-        Spawns the snapshot viewer
+        Spawns the dict viewer. Either spawns the snapshot viewer if
+        self.timestamps (timestamps is set to None) or the comparison viewer if
+        self.timestamps is a list if timestamps (timestamps set to this list)
         Args:
             new_process (bool): True if new process should be started, which
                 does not block the IPython kernel. False by default because
@@ -893,45 +843,25 @@ class SnapshotViewer:
             self._prepare_new_process()
             from pycqed.gui.gui_process import dict_viewer_process
             qt_lib = qt.QtWidgets.__package__
-            args = (self.snapshot, self.timestamp, qt_lib, )
+            args = (self.snapshot, self.timestamp, qt_lib,)
             process = mp.Process(target=dict_viewer_process,
                                  args=args)
             process.daemon = False
             process.start()
         else:
+            if isinstance(self.timestamp, list):
+                title = 'Comparison of %s snapshots' % len(self.timestamp)
+                timestamps = self.timestamp
+            else:
+                title = 'Snapshot timestamp: %s' % self.timestamp
+                timestamps = None
             qt_app = qt.QtWidgets.QApplication(sys.argv)
             screen = qt_app.primaryScreen()
-            snap_viewer = DictViewerWindow(
+            viewer = DictViewerWindow(
                 dic=self.snapshot,
-                title='Snapshot timestamp: %s' % self.timestamp,
-                screen=screen)
-            qt_app.exec_()
-
-    def spawn_comparison_viewer(self, new_process=True):
-        """
-        Spawns the comparison viewer.
-        Args:
-            new_process (bool): True if new process should be started, which
-                does not block the IPython kernel. False by default because
-                it takes some time to start the new process.
-        """
-        if new_process:
-            self._prepare_new_process()
-            from pycqed.gui.gui_process import comparison_viewer_process
-            qt_lib = qt.QtWidgets.__package__
-            args = (self.snapshot, self.timestamp, qt_lib,)
-            process = mp.Process(target=comparison_viewer_process,
-                                 args=args)
-            process.daemon = False
-            process.start()
-        else:
-            qt_app = qt.QtWidgets.QApplication(sys.argv)
-            screen = qt_app.primaryScreen()
-            comparison_viewer = ComparisonViewerWindow(
-                dic=self.snapshot,
-                title='Comparison of %s snapshots' % len(self.timestamp),
-                timestamps=self.timestamp,
-                screen=screen)
+                title=title,
+                screen=screen,
+                timestamps=timestamps)
             qt_app.exec_()
 
 
@@ -964,9 +894,10 @@ def get_snapshot_from_filepath(filepath):
         from pycqed.utilities.settings_manager import SettingsManager
         sm_tmp = SettingsManager()
         # timestamp needs to be set to some default value
-        sm_tmp.load_from_file(timestamp='19980128_000000', file_format='hdf5',
+        tsp = '19980128_000000'
+        sm_tmp.load_from_file(timestamp=tsp, file_format='hdf5',
                               filepath=filepath)
-        snap = sm_tmp.stations['19980128_000000'].snapshot()
+        snap = sm_tmp.stations[tsp].snapshot()
 
     else:
         raise NotImplementedError("Extension name is not known. "
@@ -977,6 +908,12 @@ def get_snapshot_from_filepath(filepath):
 
 
 if __name__ == "__main__":
+    """
+    The next lines are needed to open a the dict viewer via the command line.
+    E.g. "paython dict_viewer --filepath %filepath%"
+    This feature is used to open files via the context menu 
+    (see pycqedscripts/scripts/open_instrument_settings)
+    """
     import argparse
     import os
 
@@ -993,4 +930,5 @@ if __name__ == "__main__":
     snapshot_viewer = SnapshotViewer(
         snapshot=snap,
         timestamp=filepath)
-    snapshot_viewer.spawn_snapshot_viewer()
+    snapshot_viewer.spawn_viewer()
+    # snapshot_viewer.spawn_snapshot_viewer()
