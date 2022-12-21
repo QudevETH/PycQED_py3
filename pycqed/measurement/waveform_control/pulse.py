@@ -49,6 +49,12 @@ class Pulse:
 
     """
 
+    HASHABLE_TIME_ROUNDING_DIGITS = 12
+    """Specifies the precision of rounding when generating the hash entry for 
+    the difference between algorithm time and t_start. If this parameter has 
+    value n, then all differences will be rounded to the n-th decimal of 
+    s (second)."""
+
     def __init__(self, name, element_name, **kw):
 
         self.name = name
@@ -225,7 +231,8 @@ class Pulse:
             return []
         if self.pulse_off:
             return ['Offpulse', self.algorithm_time() - tstart, self.length]
-        return [type(self), round(self.algorithm_time() - tstart, 12),
+        return [type(self), round(self.algorithm_time() - tstart,
+                                  self.HASHABLE_TIME_ROUNDING_DIGITS),
                 self.truncation_length, self.truncation_decay_length,
                 self.truncation_decay_const]
 
