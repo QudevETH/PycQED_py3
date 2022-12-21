@@ -603,32 +603,33 @@ class DictView(qt.QtWidgets.QWidget):
 
 
 class ComparisonDictView(DictView):
-
+    """
+    QWidget class to display a given dictionary from a comparison of different
+     stations in multiple columns. Some functions of DictView need to be
+     overwritten.
+    """
     def tree_add_row(self, key: str, val: dict,
                         tree_widget: qt.QtWidgets.QTreeWidgetItem, param=False):
         from pycqed.utilities.settings_manager import Timestamp as Timestamp
-        if isinstance(val, dict):
-            values = [''] * len(self.column_header[1:])
-            if all((tsp in self.column_header[1:] and
-                   (isinstance(tsp, Timestamp)))
-                   for tsp in val.keys()):
-                for param in val.keys():
-                    if isinstance(val[param], dict):
-                        values[self.column_header[1:].index(param)] =\
-                            str(val[param].get('value', val[param]))
-                    else:
-                        values[self.column_header[1:].index(param)] = \
-                            str(val[param])
-                row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
-                for i in range(len(self.column_header) - 1):
-                    if not self.column_header[i+1] in val.keys():
-                        row_item.setBackground(i+1, qt.QtGui.QBrush(
-                            qt.QtGui.QColor('darkGrey')))
-            else:
-                row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
-                self.dict_to_titem(val, row_item)
+        values = [''] * len(self.column_header[1:])
+        if all((tsp in self.column_header[1:] and
+               (isinstance(tsp, Timestamp)))
+               for tsp in val.keys()):
+            for param in val.keys():
+                if isinstance(val[param], dict):
+                    values[self.column_header[1:].index(param)] =\
+                        str(val[param].get('value', val[param]))
+                else:
+                    values[self.column_header[1:].index(param)] = \
+                        str(val[param])
+            row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+            for i in range(len(self.column_header) - 1):
+                if not self.column_header[i+1] in val.keys():
+                    row_item.setBackground(i+1, qt.QtGui.QBrush(
+                        qt.QtGui.QColor('darkGrey')))
         else:
-            raise NotImplementedError('No Timestamp object encountered')
+            row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+            self.dict_to_titem(val, row_item)
 
         if any('\n' in row_item.data(i, 0)
                for i in range(len(self.column_header))):
@@ -935,6 +936,8 @@ def get_snapshot_from_filepath(filepath):
         from pycqed.utilities.settings_manager import SettingsManager
         sm_tmp = SettingsManager()
         # timestamp needs to be set to some default value
+        # this default value is needed because a station is added as an entry
+        # in the dictionary sm.stations and the timestamp is the respective key
         tsp = '19980128_000000'
         sm_tmp.load_from_file(timestamp=tsp, file_format='hdf5',
                               filepath=filepath)
