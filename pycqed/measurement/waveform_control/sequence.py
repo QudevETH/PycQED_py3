@@ -285,9 +285,11 @@ class Sequence:
         for awg_module in awg_modules:
             # harmonize_amplitude only affects AWGs whose command table wave
             # sequencing is enabled.
-            i_channel = awg_module.get_i_channel()
-            if not hasattr(self.pulsar, f"{i_channel}_use_command_table") \
-                    or not self.pulsar.get(f"{i_channel}_use_command_table"):
+            if not self.pulsar.check_channel_parameter(
+                awg=awg_interface.name,
+                channel=awg_module.get_i_channel(),
+                parameter_suffix="_use_command_table"
+            ):
                 continue
             # Only check analog channels
             channel_ids = awg_module.analog_channel_ids

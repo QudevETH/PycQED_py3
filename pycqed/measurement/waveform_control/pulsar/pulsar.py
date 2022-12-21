@@ -1643,3 +1643,33 @@ class Pulsar(Instrument):
         # channels for further processing, and we typically do not need to
         # process virtual pulses.
         return False
+
+    def check_channel_parameter(self, awg, channel, parameter_suffix):
+        """Check whether one parameter is set to True for the specified channel
+        on the specified AWG. If the awg-level parameter is set to True,
+        this function will return True and the channel-specific parameter
+        will be omitted. In the awg-level parameter is False or does not exist,
+        this method will try to return the channel-specific parameter,
+        and returns False if that does not exist.
+
+        Args:
+            awg: (str) AWG name.
+            channel: (str) Channel name.
+            parameter_suffix: (str) parameter name, in the form of suffix
+                after an AWG name or channel name.
+
+        Returns:
+            parameter: (bool) value of the parameter.
+        """
+
+        for name in [awg, channel]:
+            parameter = name + parameter_suffix
+            if hasattr(self, parameter):
+                if not isinstance(self.get(parameter), bool):
+                    raise RuntimeError(f"Please do not use this method for "
+                                       f"checking non-boolean parameter "
+                                       f"pulsar.{parameter}")
+                elif self.get(parameter):
+                    return True
+
+        return False

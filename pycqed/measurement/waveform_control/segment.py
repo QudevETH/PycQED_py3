@@ -526,9 +526,11 @@ class Segment:
             # Check if this channel supports internal modulation, and if
             # internal modulation is turned on for this channel. If not,
             # we will skip this channel.
-            enable_param = f"{channel}_internal_modulation"
-            if not hasattr(self.pulsar, enable_param) \
-                    or not self.pulsar.get(enable_param):
+            if not self.pulsar.check_channel_parameter(
+                awg=self.pulsar.get_channel_awg(channel),
+                channel=channel,
+                parameter_suffix="_internal_modulation"
+            ):
                 continue
 
             # check if all pulses types on this channel are compatible with
