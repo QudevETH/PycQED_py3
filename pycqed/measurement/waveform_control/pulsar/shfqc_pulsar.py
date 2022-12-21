@@ -66,7 +66,7 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
                       "this device. If set to False, pulsar "
                       "will check channel-specific settings "
                       "and programs command table on a "
-                      "per-sub-AWG basis."
+                      "per-AWG-module basis."
         )
         pulsar.add_parameter(
             f"{name}_use_command_table",
@@ -80,7 +80,7 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
                         "this device. If set to False, pulsar "
                         "will check channel-specific settings "
                         "and programs command table on a "
-                        "per-sub-AWG basis."
+                        "per-AWG-module basis."
         )
         pulsar.add_parameter(
             f"{name}_internal_modulation",
@@ -94,7 +94,7 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
                       "modules on this device. If set to "
                       "False, pulsar will check "
                       "channel-specific settings and programs "
-                      "command table on a per-sub-AWG basis."
+                      "command table on a per-AWG-module basis."
         )
 
         SHFAcquisitionModulesPulsar._create_all_channel_parameters(

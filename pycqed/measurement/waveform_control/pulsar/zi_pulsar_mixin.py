@@ -280,7 +280,7 @@ class ZIPulsarMixin:
             filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
             if os.path.exists(filename):
                 # Skip writing the CSV file. This happens if reuse_waveforms
-                # is True and the same hash appears on multiple sub-awgs.
+                # is True and the same hash appears on multiple AWG modules.
                 # Note that it does not happen in cases where
                 # use_sequence_cache is True and the same hash had appeared in
                 # earlier experiments (because we clear the waves dir before
@@ -506,9 +506,9 @@ class ZIMultiCoreCompilerMixin:
 
     def _init_mcc(self):
         if not len(self.awgs_mcc):
-            return  # no sub-AWG supports MCC
+            return  # no AWG module supports MCC
         try:
-            # add sub-AWGs to multi_core_compiler class variable
+            # add AWG modules to multi_core_compiler class variable
             for awg in self.awgs_mcc:
                 self.multi_core_compiler.add_awg(awg)
         except Exception as e:
@@ -791,7 +791,7 @@ class ZIGeneratorModule:
         self._update_awg_instrument_status()
 
         if not upload:
-            # program_awg_channel was called only to decide which sub-AWGs
+            # program_awg_channel was called only to decide which AWG modules
             # are active, and the rest of this loop can be skipped.
             return
 
@@ -1110,7 +1110,7 @@ class ZIGeneratorModule:
 
                 if not upload:
                     # _program_awg was called only to decide which
-                    # sub-AWGs are active, and the rest of this loop
+                    # AWG modules are active, and the rest of this loop
                     # can be skipped
                     continue
 
@@ -1152,7 +1152,7 @@ class ZIGeneratorModule:
 
                 if not upload:
                     # _program_awg was called only to decide which
-                    # sub-AWGs are active, and the rest of this loop
+                    # AWG modules are active, and the rest of this loop
                     # can be skipped
                     continue
 
@@ -1258,7 +1258,7 @@ class ZIGeneratorModule:
                         )
 
             if not upload:
-                # _program_awg was called only to decide which sub-AWGs are
+                # _program_awg was called only to decide which AWG modules are
                 # active, and the rest of this loop can be skipped.
                 continue
 
@@ -1359,7 +1359,8 @@ class ZIGeneratorModule:
         Returns:
             command_table (Dict):
         """
-        pass
+        raise NotImplementedError("This method should be rewritten in child "
+                                  "classes.")
 
     @staticmethod
     def _compare_command_table_entry(

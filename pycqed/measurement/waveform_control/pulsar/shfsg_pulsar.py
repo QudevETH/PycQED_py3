@@ -531,8 +531,14 @@ class SHFGeneratorModule(ZIGeneratorModule):
             self,
             mod_config,
     ):
-        # Configure internal modulation for each channel. For the SG modules we
-        # take config of the I channel and ignore the Q channel configuration
+        """ Uploads digital modulation configurations to the AWG module.
+
+        Args:
+            mod_config: digital modulation configurations passed from
+                element metadata. Note that only configurations with this
+                module's I-channel name as the key will be uploaded and all
+                other configurations will be ignored.
+        """
         enable = True if mod_config else False
         self._awg.configure_internal_mod(
             chid=self.pulsar.get(self.i_channel_name + '_id'),
@@ -549,8 +555,15 @@ class SHFGeneratorModule(ZIGeneratorModule):
             self,
             sine_config,
     ):
-        # Configure sine output for each channel. For the SG modules we
-        # take config of the I channel and ignore the Q channel configuration
+        """ Uploads sine wave generator configurations to the AWG
+        module.
+
+        Args:
+            sine_config: sine wave generator configurations passed from
+                element metadata. Note that only configurations with this
+                module's I-channel name as the key will be uploaded and all
+                other configurations will be ignored.
+        """
         config = sine_config.get(self.i_channel_name, dict())
         self._awg.configure_sine_generation(
             chid=self.pulsar.get(self.i_channel_name + '_id'),
@@ -758,6 +771,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
         return shfsg_command_table_entry
 
     def _upload_command_table(self):
+        """Uploads the command table saved in self._command_table attribute
+        to the AWG module."""
         # ZI data acquisition server
         daq = self._awg.session.daq_server
         device_id = self._awg.get_idn()['serial']

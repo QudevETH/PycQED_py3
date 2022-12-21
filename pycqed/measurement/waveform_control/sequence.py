@@ -184,8 +184,6 @@ class Sequence:
                         sequences[awg][elname]['metadata']['sine_config'] = \
                             seg.sine_config
                     # Pass command table scaling factors to element metadata
-                    # TODO: use the scaling factor to update command table
-                    #  entries
                     if elname in scaling_factors.keys():
                         sequences[awg][elname]['metadata']['scaling_factor'] \
                             = scaling_factors[elname]
@@ -255,7 +253,22 @@ class Sequence:
             seq.is_resolved = True
 
     def harmonize_amplitude(self, awg):
-        """Harmonize amplitude on one AWG."""
+        """Rescale waveform amplitudes such that the largest pulse amplitude
+        in an element is the same as the largest in that sequence. The 
+        scaling factor is saved in the dictionary scaling_factors and 
+        passed to element metadata, such that the original waveform can be 
+        retrieved when generating command table entries. This allows reusing 
+        waveforms to the largest extent based on wave hashes. Note that 
+        the rescaling will be skipped on the target AWG modules where command 
+        table is  not activated.
+        
+        Args:
+            awg: (str) AWG name to be processed.
+
+        Returns:
+            scaling_factors: (dict) factors to be passed to the command table
+                entries in order to retrieve the original pulse amplitude.
+        """
         scaling_factors = dict()
 
         # Command table wave sequencing is only implemented for

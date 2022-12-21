@@ -326,7 +326,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             else:
                 pass # raise NotImplementedError("Cannot set amp on marker channels.")
         elif param == "amplitude_scaling" and channel_type == "analog":
-            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            # ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG module 1, etc.
             awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
@@ -354,7 +354,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             else:
                 return 1
         elif param == "amplitude_scaling" and channel_type == "analog":
-            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            # ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG module 1, etc.
             awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
@@ -420,9 +420,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 # see pycqed\instrument_drivers\physical_instruments\
                 #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
                 # for description of the nodes used below.
-                # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
-                # etc. Mode 1 (2) means that the AWG Output is multiplied with
-                # Sine Generator signal 0 (1) of this sub-awg
+                # awg_nr: ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG
+                # module 1, etc. Mode 1 (2) means that the AWG Output is
+                # multiplied with Sine Generator signal 0 (1) of this AWG
+                # module.
                 if direct:
                     self.awg.set(f'sines_{awg_nr * 2}_enables_0', 1)
                     self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
@@ -768,10 +769,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     def _update_awg_instrument_status(self):
         # tell ZI_base_instrument that it should not compile a program on
-        # this sub AWG (because we already do it here)
+        # this AWG module (because we already do it here)
         self._awg._awg_needs_configuration[self._awg_nr] = False
-        # tell ZI_base_instrument.start() to start this sub AWG (The base
-        # class will start sub AWGs for which _awg_program is not None. Since
+        # tell ZI_base_instrument.start() to start this AWG module (The base
+        # class will start AWG modules for which _awg_program is not None. Since
         # we set _awg_needs_configuration to False, we do not need to put the
         # actual program here, but anything different from None is sufficient.)
         self._awg._awg_program[self._awg_nr] = True

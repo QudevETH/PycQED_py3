@@ -596,7 +596,8 @@ class Segment:
         """Check if pulse parameters on this channel allows internal
         modulation. This requires (1) I and Q channel of each pulse come
         from the same channel pair, and the index of I channel is smaller.
-        (2) mod_frequency, alpha and phi_skew are the same for all pulses.
+        (2) parameters in the class variable internal_mod_pulse_params_to_check
+        are the same for all pulses.
 
         Args:
             channel: name of the channel to check.
@@ -607,7 +608,7 @@ class Segment:
                 parameters are compatible with internal modulation. If the
                 first value is True, the second value will be a dictionary 
                 of check parameter values. If the first value is False,
-                the second value will be None.
+                the second value will be an empty dictionary.
         """
 
         # Create a dict with entries to record check parameter values for
@@ -639,7 +640,7 @@ class Segment:
 
                 # Check if I and Q channel of this pulse belong to the
                 # same channel pair and if they are in the correct order (the Q
-                # channel index being smaller than the I channel index).
+                # channel index being larger than the I channel index).
                 if not self.pulsar.is_channel_pair(
                         ch1=pulse.I_channel,
                         ch2=pulse.Q_channel,
@@ -656,7 +657,9 @@ class Segment:
         resets pulse parameters.
 
         Args:
-            channel: name of the channel to check.
+            channel: (str) name of the channel to check.
+            check_values: (dict) valid values collected from pulse parameter
+                check.
         """
         _, check_values = \
             self._internal_mod_check_pulse_params(channel=channel)
@@ -720,8 +723,9 @@ class Segment:
             channel: str,
             elname: str,
     ):
-        """Find the phase of the first pulse on the give channel within the
-        given element.
+        """Find the phase of the first pulse on the given channel within the
+        given element. Pass this initial phase to element metadata and
+        subtract this value from all pulses in this element.
 
         Args:
             channel (str): channel name.
