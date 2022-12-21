@@ -43,6 +43,16 @@ class Segment:
         "alpha"
     ]
 
+    PHASE_ROUNDING_DIGITS = 5
+    """Specifies the rounding precision when processing phases 
+    in resolve_Z_gates method. If this parameter has value n, then the 
+    waveform phase will be rounded to the n-th digit of degree."""
+
+    FREQUENCY_ROUNDING_DIGITS = 3
+    """Specifies the rounding precision when processing frequencies 
+    in _internal_mod_update_params method. If this parameter has value n, then 
+    the waveform frequency will be rounded to the n-th digit of Hz."""
+
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
                  fast_mode=False, **kw):
         """
@@ -711,7 +721,8 @@ class Segment:
                     awg_channel=channel,
                 ):
                     pulse.mod_frequency = round(
-                        pulse.mod_frequency - major_mod_frequency, 3)
+                        pulse.mod_frequency - major_mod_frequency,
+                        self.FREQUENCY_ROUNDING_DIGITS)
                     pulse.alpha = 1
                     pulse.phi_skew = 0
 
@@ -751,7 +762,8 @@ class Segment:
                     pulse=pulse,
                     awg_channel=channel
             ):
-                pulse.phase = round(pulse.phase - init_phase, 5)
+                pulse.phase = round(pulse.phase - init_phase,
+                                    self.PHASE_ROUNDING_DIGITS)
 
         return init_phase
 
@@ -1489,7 +1501,9 @@ class Segment:
             # Avoid creating repetitive waveforms due to small rounding errors
             if hasattr(pulse.pulse_obj, "phase"):
                 pulse.pulse_obj.phase = round(
-                    round(pulse.pulse_obj.phase, 5) % 360.0, 5)
+                    round(pulse.pulse_obj.phase,
+                          self.PHASE_ROUNDING_DIGITS) % 360.0,
+                    self.PHASE_ROUNDING_DIGITS)
 
     def element_start_length(self, element, trigger_group):
         """
