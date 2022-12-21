@@ -596,8 +596,7 @@ class Segment:
                     awg_channel=channel,
                 ):
                     continue
-                if not hasattr(pulse, "SUPPORT_INTERNAL_MOD") or \
-                        not pulse.SUPPORT_INTERNAL_MOD:
+                if not pulse.SUPPORT_INTERNAL_MOD:
                     return False
         return True
 

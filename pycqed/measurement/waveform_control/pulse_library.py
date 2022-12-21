@@ -44,13 +44,16 @@ class SSB_DRAG_pulse(pulse.Pulse):
             addition to the nominal 90 degrees. Defaults to 0.
     """
 
+    SUPPORT_INTERNAL_MOD = True
+    """Whether this pulse type supports to be played with digital modulation 
+    on ZI devices."""
+
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):
         super().__init__(name, element_name, **kw)
 
         self.I_channel = I_channel
         self.Q_channel = Q_channel
-        self.SUPPORT_INTERNAL_MOD = True
 
         self.phaselock = kw.pop('phaselock', True)
 
