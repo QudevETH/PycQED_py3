@@ -1942,20 +1942,19 @@ class MeasurementControl(Instrument):
                                                    instrument=ins)
             numpy.set_printoptions(**opt)
 
-        elif self.settings_file_format() == 'msgpack':
-            from pycqed.utilities.settings_manager import MsgDumper
-            dumper = MsgDumper(name=self.get_measurement_name(),
-                               datadir=self.datadir(),
-                               data=self.station.snapshot(),
-                               compression=self.settings_file_compression())
+        else:
+            if self.settings_file_format() == 'msgpack':
+                from pycqed.utilities.settings_manager \
+                    import MsgDumper as Dumper
+            else:
+                from pycqed.utilities.settings_manager \
+                    import PickleDumper as Dumper
+            dumper = Dumper(name=self.get_measurement_name(),
+                            datadir=self.datadir(),
+                            data=self.station.snapshot(),
+                            compression=self.settings_file_compression())
             dumper.dump()
-        elif self.settings_file_format() == 'pickle':
-            from pycqed.utilities.settings_manager import PickleDumper
-            dumper = PickleDumper(name=self.get_measurement_name(),
-                                  datadir=self.datadir(),
-                                  data=self.station.snapshot(),
-                                  compression=self.settings_file_compression())
-            dumper.dump()
+
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
                                   instrument):
