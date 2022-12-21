@@ -729,7 +729,7 @@ class Segment:
                     pulse.phi_skew = 0
 
             self.element_metadata[elname]["mod_config"][channel] = \
-                deepcopy(channel_metadata)
+                channel_metadata
 
     def _internal_mod_find_init_phase(
             self,

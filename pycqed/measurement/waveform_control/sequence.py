@@ -129,7 +129,7 @@ class Sequence:
         for awg in awgs:
             if awg not in self.awg_scaling_factors.keys():
                 self.awg_scaling_factors[awg] = \
-                    self.harmonize_amplitude(awg=awg)
+                    self.harmonize_amplitude(awg)
 
         for segname, seg in self.segments.items():
             for group in trigger_groups:

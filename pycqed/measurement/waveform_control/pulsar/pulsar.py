@@ -1177,9 +1177,10 @@ class Pulsar(Instrument):
                     for awg_module in awg_interface.awg_modules:
                         for s in generator_settings_to_check:
                             i_channel = awg_module.i_channel_name
-                            settings[awg][s.format(i_channel)] = \
-                                self.get(s.format(i_channel)) \
-                                if s.format(i_channel) in self.parameters \
+                            setting_name = s.format(i_channel)
+                            settings[awg][setting_name] = \
+                                self.get(setting_name) \
+                                if setting_name in self.parameters \
                                 else None
 
                 metadata[awg] = {

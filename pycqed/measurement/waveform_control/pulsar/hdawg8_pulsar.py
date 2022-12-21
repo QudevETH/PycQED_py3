@@ -678,7 +678,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew) * r)
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew) * r)
         self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
-        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1.0 / alpha * r)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", r / alpha)
 
         # Choose oscillators, set phases and modulation frequencies.
         mod_frequency = mod_config.get("mod_frequency", 0.0)
