@@ -110,9 +110,18 @@ class Client:
                 name=self.config.device_name)
 
     def check_setup(self):
-        """Checks if a setup exists in the database for the given names and stores it in a property of the client object"""
+        """Checks if a setup exists in the database for the given name and stores it in a property of the client object"""
         if self.setup_name is not None:
-            self.setup = self.get_api_instance().list_setups(name=self.setup_name)[0]
+            setups = self.get_api_instance().list_setups(name=self.setup_name)
+
+            if len(setups) == 0:
+                raise ValueError(f"No setup found for the provided name '{self.setup_name}'.")
+            elif len(setups) > 1:
+                raise ValueError(
+                    'More than one setup found for the provided name '
+                    f'\'{self.setup_name}\'.')
+            else: # Exactly one setup found as it should be the case
+                self.setup = setups[0]
 
     def get_api_instance(self):
         """Returns the internal API client's api instance, which can make direct calls to the database server
