@@ -1596,27 +1596,6 @@ class Pulsar(Instrument):
         else:
             return False
 
-    def is_pulse_on_awg(
-            self,
-            pulse,
-            awg: str,
-    ):
-        """Returns if a pulse is played solely on the specified AWG
-
-        Args:
-            pulse (Pulse): an instance of
-                pycqed.measurement.waveform_control.pulse.Pulse class.
-            awg (str): name of an AWG
-
-        Return:
-            is_pulse_on_awg (bool): a boolean value indicating whether all
-                channels of this pulse are on the specified AWG.
-        """
-        for ch in pulse.channels:
-            if self.get(f'{ch}_awg') != awg:
-                return False
-        return True
-
     @staticmethod
     def is_pulse_on_channel(
             pulse,
