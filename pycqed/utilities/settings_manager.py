@@ -15,6 +15,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# constant file extensions
+file_extensions = {'pickle': '.pickle',
+                   'pickle_comp': '.picklec',
+                   'msgpack': '.msg',
+                   'msgpack_comp': '.msgc',
+                   'hdf5': '.hdf5'}
+
 
 class DelegateAttributes:
     """
@@ -378,14 +385,17 @@ class SettingsManager:
         if file_format is None:
             # if no file format is given, the loader tries to get the file
             # format by the extension of the file
-            file_format, compression = Loader.get_file_format(timestamp)
-        if file_format == 'hdf5':
+            file_format = Loader.get_file_format(timestamp)
+            if 'comp' in file_format:
+                compression=True
+
+        if 'hdf5' in file_format:
             loader = HDF5Loader(timestamp=timestamp, h5mode='r',
                                 extension=extension, filepath=filepath)
-        elif file_format == 'pickle':
+        elif 'pickle' in file_format:
             loader = PickleLoader(timestamp=timestamp, compression=compression,
                                   extension=extension, filepath=filepath)
-        elif file_format == 'msgpack':
+        elif 'msgpack' in file_format:
             loader = MsgLoader(timestamp=timestamp, compression=compression,
                                extension=extension, filepath=filepath)
         else:
@@ -661,24 +671,12 @@ class Loader:
         else:
             file_name, file_extension = os.path.splitext(file_path[0])
 
-        if 'pickle' in file_extension:
-            if file_extension == '.picklec':
-                return "pickle", True
-            else:
-                return "pickle", False
+        for format, extension in file_extensions.items():
+            if file_extension == extension:
+                return format
 
-        elif 'msg' in file_extension:
-            if file_extension == '.msgc':
-                return "msgpack", True
-            else:
-                return "msgpack", False
-
-        elif 'hdf5' in file_extension:
-            return "hdf5", False
-
-        else:
-            raise KeyError(f"File extension '{file_extension}' not in "
-                           f"standard form (.hdf5, .pickle(c), .msg(c)")
+        raise KeyError(f"File extension '{file_extension}' not in "
+                       f"standard form '{file_extensions}'")
 
     @staticmethod
     def load_instrument(inst_name, inst_dict):
@@ -966,9 +964,12 @@ class MsgDumper(Dumper):
     def __init__(self, name: str, data: dict, datadir: str = None,
                  compression=False):
         super().__init__(name, data, datadir=datadir, compression=compression)
-        self.filepath = self.filepath.replace("hdf5", "msg")
         if self.compression:
-            self.filepath = self.filepath + "c"
+            self.filepath = self.filepath.replace(
+                ".hdf5", file_extensions['msgpack_comp'])
+        else:
+            self.filepath = self.filepath.replace(".hdf5",
+                                                  file_extensions['msgpack'])
 
     def dump(self):
         """
@@ -990,9 +991,12 @@ class PickleDumper(Dumper):
     def __init__(self, name: str, data: dict, datadir: str = None,
                  compression=False):
         super().__init__(name, data, datadir=datadir, compression=compression)
-        self.filepath = self.filepath.replace("hdf5", "pickle")
         if self.compression:
-            self.filepath = self.filepath + "c"
+            self.filepath = self.filepath.replace(
+                ".hdf5", file_extensions['pickle_comp'])
+        else:
+            self.filepath = self.filepath.replace(".hdf5",
+                                                  file_extensions['pickle'])
 
     def dump(self):
         """

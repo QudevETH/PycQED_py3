@@ -918,19 +918,26 @@ def get_snapshot_from_filepath(filepath):
     Returns: Snapshot as a dictionary
     """
     file_name, file_extension = os.path.splitext(filepath)
-    if 'pickle' in file_extension:
-        from pycqed.utilities.settings_manager import PickleLoader
-        if file_extension == '.picklec':
-            snap = PickleLoader._get_snapshot(filepath, compression=True)
-        else:
-            snap = PickleLoader._get_snapshot(filepath, compression=False)
+    from pycqed.utilities.settings_manager import file_extensions
+    file_format = None
+    for format, extension in file_extensions.items():
+        if file_extension == extension:
+            file_format = format
+    if file_format is None:
+        raise NotImplementedError("Extension name is not known. "
+                                  f"Known extensions: '{file_extensions}'")
 
-    elif 'msg' in file_extension:
+    compression = False
+    if 'comp' in file_format:
+        compression = True
+
+    if 'pickle' in file_format:
+        from pycqed.utilities.settings_manager import PickleLoader
+        snap = PickleLoader._get_snapshot(filepath, compression=compression)
+
+    elif 'msg' in file_format:
         from pycqed.utilities.settings_manager import MsgLoader
-        if file_extension == '.msgc':
-            snap = MsgLoader._get_snapshot(filepath, compression=True)
-        else:
-            snap = MsgLoader._get_snapshot(filepath, compression=False)
+        snap = MsgLoader._get_snapshot(filepath, compression=compression)
 
     elif 'hdf5' in file_extension:
         from pycqed.utilities.settings_manager import SettingsManager
@@ -945,8 +952,7 @@ def get_snapshot_from_filepath(filepath):
 
     else:
         raise NotImplementedError("Extension name is not known. "
-                                  "Known extensions: 'hdf5', 'pickle', "
-                                  "'picklec', 'msg', 'msgc'.")
+                                  f"Known extensions: '{file_extensions}'")
 
     return snap
 
