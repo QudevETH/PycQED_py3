@@ -545,9 +545,11 @@ class Segment:
 
             # Check if the configurations of all pulses are compatible with
             # each other when we turn on internal modulation. If not, we will
-            # print a warning message and disable internal modulation on this
-            # channel.
-            if not self._internal_mod_check_pulse_params(channel=channel)[0]:
+            # print a warning message and not configure internal modulation on
+            # this channel.
+            pulse_params_allow_internal_mod, check_values = \
+                self._internal_mod_check_pulse_params(channel=channel)
+            if not pulse_params_allow_internal_mod:
                 log.warning(f"In segment {self.name}: internal modulation "
                             f"parameters are not compatible among the pulses. "
                             f"This channel will not be internally modulated "
@@ -557,7 +559,10 @@ class Segment:
             # We have made sure that internal modulation is applicable to
             # this channel. We will change pulse settings and pass modulation
             # configuration to element metadata.
-            self._internal_mod_update_params(channel=channel)
+            self._internal_mod_update_params(
+                channel=channel,
+                check_values=check_values,
+            )
 
     def update_channel_elements(self):
         """Updates attribute self.elements_on_channel to a dictionary {
@@ -570,10 +575,7 @@ class Segment:
                     self.elements_on_channel[channel] = set()
                 self.elements_on_channel[channel].add(elname)
 
-    def _internal_mod_check_pulse_type(
-            self,
-            channel: str,
-    ):
+    def _internal_mod_check_pulse_type(self, channel: str,):
         """Check if all pulse types on this channel are compatible with
         internal modulation.
 
@@ -663,6 +665,7 @@ class Segment:
     def _internal_mod_update_params(
             self,
             channel: str,
+            check_values: dict,
     ):
         """Pass modulation-relevant pulse parameters to element metadata and
         resets pulse parameters.
@@ -672,8 +675,6 @@ class Segment:
             check_values: (dict) valid values collected from pulse parameter
                 check.
         """
-        _, check_values = \
-            self._internal_mod_check_pulse_params(channel=channel)
         if not (hasattr(self.mod_config, channel) or len(check_values)):
             # No internal modulation configuration for this channel.
             return
