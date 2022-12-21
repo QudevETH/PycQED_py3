@@ -6,6 +6,12 @@ from __future__ import annotations
 
 import logging
 import numpy as np
+import time
+from pycqed.measurement.hdf5_data import DateTimeGenerator \
+    as DateTimeGenerator
+import os
+import pycqed.gui.dict_viewer as dict_viewer
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +109,10 @@ class Parameter(DelegateAttributes):
     def snapshot(self, reduced=False) -> dict[any, any]:
         """
         Creates a dictionary out of value attribute
+        Args:
+            reduced (bool): returns a reduced (or light) snapshot where the
+                parameter value is (if possible) only the value instead of the
+                entire dictionary with metadata. Default is False.
         Returns: dictionary
         """
         if reduced:
@@ -163,7 +173,10 @@ class Instrument(DelegateAttributes):
         """
         Creates recursively a snapshot (dictionary) which has the same structure
         as the snapshot from QCodes instruments.
-
+        Args:
+            reduced (bool): returns a reduced (or light) snapshot where the
+                parameter value is (if possible) only the value instead of the
+                entire dictionary with metadata. Default is False.
         Returns (dict): Returns a snapshot as a dictionary with keys
             'functions', 'submodules', 'parameters', '__class__' and 'name'
 
@@ -253,6 +266,10 @@ class Station(DelegateAttributes):
         Returns a snapshot as a dictionary of the entire station based on the
         structure of QCodes.
         Instrument snapshots are saved in "instrument" key of the dictionary.
+        Args:
+            reduced (bool): returns a reduced (or light) snapshot where the
+                parameter value is (if possible) only the value instead of the
+                entire dictionary with metadata. Default is False.
         Returns (dict): snapshot of the station with keys
             'instruments', 'parameters', 'components' and 'config'
         """
@@ -391,7 +408,6 @@ class SettingsManager:
         Returns:
 
         """
-        import pycqed.gui.dict_viewer as dict_viewer
         snapshot_viewer = dict_viewer.SnapshotViewer(
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
@@ -572,7 +588,6 @@ class SettingsManager:
         elif output == 'dict':
             return diff
         elif output == 'viewer':
-            import pycqed.gui.dict_viewer as dict_viewer
             snapshot_viewer = dict_viewer.SnapshotViewer(
                 snapshot=diff,
                 timestamp=ts_list)
@@ -628,10 +643,8 @@ class Loader:
 
         """
         from pycqed.analysis import analysis_toolbox as a_tools
-        import os
-        from pathlib import Path
 
-        folder_dir = a_tools.get_folder(timestamp, suppress_printing=True)
+        folder_dir = a_tools.get_folder(timestamp)
         dirname = os.path.split(folder_dir)[1]
         if dirname[6:9] == '_X_':
             fn = dirname[0:7]+dirname[9:]
@@ -709,6 +722,11 @@ class Loader:
         Returns:
         """
         pass
+
+    @staticmethod
+    def decompress_file(file):
+        import blosc2
+        return blosc2.decompress(file)
 
     def get_station(self):
         """
@@ -814,12 +832,6 @@ class PickleLoader(Loader):
             else:
                 self.extension = 'pickle'
         self.filepath = self.get_filepath()
-        # if self.compression:
-        #     self.filepath = self.get_filepath(
-        #         timestamp, extension='picklec')
-        # else:
-        #     self.filepath = self.get_filepath(
-        #         timestamp, extension='pickle')
 
     def get_snapshot(self):
         return self._get_snapshot(self.filepath, self.compression)
@@ -834,8 +846,7 @@ class PickleLoader(Loader):
 
         with open(filepath, 'rb') as f:
             if compression:
-                import blosc2
-                byte_data = blosc2.decompress(f.read())
+                byte_data = Loader.decompress_file(f.read())
                 snap = pickle.loads(byte_data)
             else:
                 snap = pickle.load(f)
@@ -876,7 +887,7 @@ class MsgLoader(Loader):
         with open(filepath, 'rb') as f:
             if compression:
                 import blosc2
-                byte_data = blosc2.decompress(f.read())
+                byte_data = Loader.decompress_file(f.read())
             else:
                 byte_data = f.read()
             # To avoid problems with lists while unpacking use_list has to be
@@ -908,11 +919,6 @@ class Dumper:
             compression (bool): True if the file should be compressed with
                 blosc2
         """
-        import time
-        from pycqed.measurement.hdf5_data import DateTimeGenerator \
-            as DateTimeGenerator
-        import os
-
         self._name = name
         self.data = data
         self.compression = compression
@@ -947,6 +953,11 @@ class Dumper:
                 new_snap[key] = item
         return new_snap
 
+    @staticmethod
+    def compress_file(file):
+        import blosc2
+        return blosc2.compress(file)
+
 
 class MsgDumper(Dumper):
     """
@@ -970,8 +981,7 @@ class MsgDumper(Dumper):
         with open(self.filepath, 'wb') as file:
             packed = msgpack.packb(self.rdg_to_dict(self.data))
             if self.compression:
-                import blosc2
-                packed = blosc2.compress(packed)
+                packed = Dumper.compress_file(packed)
             file.write(packed)
 
 
@@ -992,6 +1002,5 @@ class PickleDumper(Dumper):
         with open(self.filepath, 'wb') as file:
             packed = pickle.dumps(self.rdg_to_dict(self.data))
             if self.compression:
-                import blosc2
-                packed = blosc2.compress(packed)
+                packed = Dumper.compress_file(packed)
             file.write(packed)
