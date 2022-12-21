@@ -3780,14 +3780,13 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         rdd = self.raw_data_dict
         pdd = self.proc_data_dict
 
-        pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
-        pdd['amps_reshaped'] = np.unique(self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
-        pdd['phases_reshaped'] = []
-        for amp in pdd['amps_reshaped']:
-            mask = self.metadata['hard_sweep_params']['ro_amp_scale']['values'] == amp
-            pdd['phases_reshaped'].append(self.metadata['hard_sweep_params']['phase']['values'][mask])
-            for qb in self.qb_names:
-                pdd['data_reshaped'][qb].append(pdd['data_to_fit'][qb][:len(mask)][mask])
+        pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
+            'amplitude'] for qbn in self.qb_names}
+        pdd['phases_reshaped'] = [pdd['sweep_points_dict'][self.qb_names[0]][
+                                      'msmt_sweep_points']] * len(
+            pdd['amps_reshaped'][self.qb_names[0]])
+        pdd['data_reshaped'] = {qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
+                                for qbn in self.qb_names}
 
     def prepare_fitting(self):
         pdd = self.proc_data_dict
@@ -3835,14 +3834,14 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fit_dicts[f'phase_contrast_fit_{qb}'] = {
                 'model': gauss_mod,
                 'guess_dict': {'center': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_contrast'][qb]}}
 
             quadratic_mod = lmfit.models.QuadraticModel()
             self.fit_dicts[f'phase_offset_fit_{qb}'] = {
                 'model': quadratic_mod,
                 'guess_dict': {'b': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_offset'][qb]}}
 
             self.run_fitting()
@@ -3878,7 +3877,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'plotfn': self.plot_colorxy,
                     'xvals': pdd['phases_reshaped'][0],
-                    'yvals': pdd['amps_reshaped'],
+                    'yvals': pdd['amps_reshaped'][qb],
                     'zvals': pdd['data_reshaped'][qb],
                     'xlabel': r'Pulse phase, $\phi$',
                     'xunit': 'deg',
@@ -3888,8 +3887,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
-            for i, amp in enumerate(pdd['amps_reshaped']):
-                color = colormap(i/(len(pdd['amps_reshaped'])-1))
+            for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                 label = f'cos_data_{qb}_{i}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -3909,8 +3908,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper left',
                 }
             if self.do_fitting:
-                for i, amp in enumerate(pdd['amps_reshaped']):
-                    color = colormap(i/(len(pdd['amps_reshaped'])-1))
+                for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                    color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                     label = f'cos_fit_{qb}_{i}'
                     self.plot_dicts[label] = {
                         'ax_id': f'amplitude_crossections_{qb}',
@@ -3927,7 +3926,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3941,7 +3940,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_fit_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*self.fit_res[f'phase_contrast_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3951,7 +3950,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_labels_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -3968,7 +3967,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3982,7 +3981,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_fit_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': self.fit_res[f'phase_offset_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3992,7 +3991,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_labels_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -8021,6 +8020,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                     for mu_j in means]).flatten().max()
 
             tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            tol = kw.pop("tol", tol)
             reg_covar = tol**2
 
             gm = GM(n_components=n_qb_states,
