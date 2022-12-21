@@ -54,15 +54,16 @@ EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
 
 
 class MeasurementControl(Instrument):
+
     '''
     New version of Measurement Control that allows for adaptively determining
     data points.
     '''
 
     def __init__(self, name: str,
-                 plotting_interval: float = 3,
-                 datadir: str = get_default_datadir(),
-                 live_plot_enabled: bool = True, verbose: bool = True):
+                 plotting_interval: float=3,
+                 datadir: str=get_default_datadir(),
+                 live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
         self.add_parameter('datadir',
@@ -161,7 +162,7 @@ class MeasurementControl(Instrument):
         self.add_parameter(
             'cfg_clipping_mode', vals=vals.Bool(),
             docstring='Clipping mode, when True ignores ValueErrors  when '
-                      'setting parameters. This can be useful when running optimizations',
+            'setting parameters. This can be useful when running optimizations',
             parameter_class=ManualParameter,
             initial_value=False)
 
@@ -239,10 +240,9 @@ class MeasurementControl(Instrument):
             self.set_sweep_points(np.tile(
                 sweep_points,
                 self.acq_data_len_scaling * self.soft_repetitions()))
-
     @Timer()
-    def run(self, name: str = None, exp_metadata: dict = None,
-            mode: str = '1D', disable_snapshot_metadata: bool = False,
+    def run(self, name: str=None, exp_metadata: dict=None,
+            mode: str='1D', disable_snapshot_metadata: bool=False,
             previous_attempts=0, **kw):
         '''
         Core of the Measurement control.
@@ -445,12 +445,10 @@ class MeasurementControl(Instrument):
                         # prepare in 2D sweeps is done in set_parameters (though not always
                         # for first upload). Therefore, a common checkpoint is used
                         # in the timer to collect upload times in a single place
-                        self.timer.checkpoint(
-                            "MeasurementControl.measure.prepare.start")
+                        self.timer.checkpoint("MeasurementControl.measure.prepare.start")
                         sweep_function.set_parameter(val)
-                        self.timer.checkpoint(
-                            "MeasurementControl.measure.prepare.end")
-                    sp = sweep_points[start_idx:start_idx + self.xlen, 0]
+                        self.timer.checkpoint("MeasurementControl.measure.prepare.end")
+                    sp = sweep_points[start_idx:start_idx+self.xlen, 0]
                     sp = sp[:len(sp) // self.soft_repetitions()]
                     # If the soft sweep function has the filtered_sweep
                     # attribute, the AWGs are programmed in a way that only
@@ -576,23 +574,24 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        len_new_data = stop_idx - start_idx
+        len_new_data = stop_idx-start_idx
         if len(np.shape(new_data)) == 1:
             old_vals = self.dset[start_idx:stop_idx,
-                       len(self.sweep_functions)]
-            new_vals = ((new_data + old_vals * self.soft_iteration) /
-                        (1 + self.soft_iteration))
+                                 len(self.sweep_functions)]
+            new_vals = ((new_data + old_vals*self.soft_iteration) /
+                        (1+self.soft_iteration))
 
             self.dset[start_idx:stop_idx,
-            len(self.sweep_functions)] = new_vals
+                      len(self.sweep_functions)] = new_vals
         else:
             old_vals = self.dset[start_idx:stop_idx,
-                       len(self.sweep_functions):]
+                                 len(self.sweep_functions):]
             new_vals = ((new_data + old_vals * self.soft_iteration) /
                         (1 + self.soft_iteration))
             self.dset[start_idx:stop_idx,
-            len(self.sweep_functions):] = new_vals
+                      len(self.sweep_functions):] = new_vals
         sweep_len = len(self.get_sweep_points().T) * self.acq_data_len_scaling
+
 
         ######################
         # DATA STORING BLOCK #
@@ -603,12 +602,12 @@ class MeasurementControl(Instrument):
             try:
                 if len(self.sweep_functions) != 1:
                     relevant_swp_points = self.get_sweep_points()[
-                                          start_idx:start_idx + len_new_data:]
+                        start_idx:start_idx+len_new_data:]
                     self.dset[start_idx:, 0:len(self.sweep_functions)] = \
                         relevant_swp_points
                 else:
                     self.dset[start_idx:, 0] = self.get_sweep_points()[
-                                               start_idx:start_idx + len_new_data:].T
+                        start_idx:start_idx+len_new_data:].T
             except Exception:
                 # There are some cases where the sweep points are not
                 # specified that you don't want to crash (e.g. on -off seq)
@@ -714,8 +713,8 @@ class MeasurementControl(Instrument):
         new_data = np.append(x, vals)
 
         old_vals = self.dset[start_idx:stop_idx, :]
-        new_vals = ((new_data + old_vals * self.soft_iteration) /
-                    (1 + self.soft_iteration))
+        new_vals = ((new_data + old_vals*self.soft_iteration) /
+                    (1+self.soft_iteration))
 
         self.dset[start_idx:stop_idx, :] = new_vals
         # update plotmon
@@ -746,7 +745,7 @@ class MeasurementControl(Instrument):
         '''
         if self.x_scale is not None:
             for i in range(len(x)):
-                x[i] = float(x[i]) / float(self.x_scale[i])
+                x[i] = float(x[i])/float(self.x_scale[i])
 
         vals = self.measurement_function(x)
         # This takes care of data that comes from a "single" segment of a
@@ -866,7 +865,6 @@ class MeasurementControl(Instrument):
     There are (will be) three kinds of plotmons, the regular plotmon,
     the 2D plotmon (which does a heatmap) and the adaptive plotmon.
     '''
-
     def _live_plot_enabled(self):
         if hasattr(self, 'detector_function') and \
                 not getattr(self.detector_function, 'live_plot_allowed', True):
@@ -1217,6 +1215,7 @@ class MeasurementControl(Instrument):
 
         return plotmon_axes_info
 
+
     def initialize_plot_monitor(self):
         # new code
         try:
@@ -1244,27 +1243,25 @@ class MeasurementControl(Instrument):
                                                          axes_info['units'])):
                     if persist:  # plotting persist first so new data on top
                         yp = self._persist_dat[
-                             :, yi + len(self.sweep_function_names)]
+                            :, yi+len(self.sweep_function_names)]
                         xp = self._persist_dat[:, xi]
                         # Update the sweep point values in the
                         # persist_data using the lookup table in the axis
                         # info dict
                         xp = [axes_info['lookup'][xi].get(xk, xk) for
-                              xk in xp]
+                             xk in xp]
                         if len(xp) < self.plotting_max_pts():
                             self.main_QtPlot.add(x=xp, y=yp,
-                                                 subplot=j + 1,
-                                                 color=0.75,
-                                                 # a grayscale value
+                                                 subplot=j+1,
+                                                 color=0.75,  # a grayscale value
                                                  symbol='o', symbolSize=5)
                     self.main_QtPlot.add(x=[0], y=[0],
                                          xlabel=xlabel,
                                          xunit=xunit,
                                          ylabel=ylabel,
                                          yunit=yunit,
-                                         subplot=j + 1,
-                                         color=color_cycle[
-                                             j % len(color_cycle)],
+                                         subplot=j+1,
+                                         color=color_cycle[j % len(color_cycle)],
                                          symbol='o', symbolSize=5)
                     self.curves.append(self.main_QtPlot.traces[-1])
                     j += 1
@@ -1360,7 +1357,7 @@ class MeasurementControl(Instrument):
                         ylabel=axes_info['labels_2D'][1],
                         yunit=axes_info['units_2D'][1],
                         zlabel=axes_info['zlabel'], zunit=axes_info['zunit'],
-                        subplot=j + 1, cmap='viridis'
+                        subplot=j+1, cmap='viridis'
                     )
             except Exception as e:
                 log.warning(traceback.format_exc())
@@ -1373,7 +1370,7 @@ class MeasurementControl(Instrument):
         '''
         if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
             try:
-                i = int((self.iteration) % (self.xlen * self.ylen))
+                i = int((self.iteration) % (self.xlen*self.ylen))
                 x_ind = int(i % self.xlen)
                 y_ind = int(i / self.xlen)
                 self.TwoD_array[y_ind, x_ind, :] = \
@@ -1383,9 +1380,9 @@ class MeasurementControl(Instrument):
                     self.secondary_QtPlot.traces[j]['config'][
                         'z'] = self.TwoD_array[:, :, j]
                 if (time.time() - self.time_last_2Dplot_update >
-                    self.plotting_interval()
-                    or self.iteration == len(self.sweep_points) or
-                    force_update) and (
+                        self.plotting_interval()
+                        or self.iteration == len(self.sweep_points) or
+                        force_update) and (
                         self.live_plot_2D_update() != 'row'
                         or (not (self.iteration + 1) % self.xlen)):
                     self.time_last_2Dplot_update = time.time()
@@ -1411,7 +1408,7 @@ class MeasurementControl(Instrument):
                                       xlabel='iteration',
                                       ylabel=zlabels[j],
                                       yunit=zunits[j],
-                                      subplot=j + 1,
+                                      subplot=j+1,
                                       symbol='o', symbolSize=5)
 
     def update_plotmon_adaptive(self, force_update=False):
@@ -1452,7 +1449,7 @@ class MeasurementControl(Instrument):
 
         j = 0
         if (self._persist_ylabs == ylabels and
-            self._persist_xlabs == xlabels) and self.persist_mode():
+                self._persist_xlabs == xlabels) and self.persist_mode():
             persist = True
         else:
             persist = False
@@ -1464,11 +1461,11 @@ class MeasurementControl(Instrument):
             for xi, xlab in enumerate(xlabels):
                 if persist:  # plotting persist first so new data on top
                     yp = self._persist_dat[
-                         :, yi + len(self.sweep_function_names)]
+                        :, yi+len(self.sweep_function_names)]
                     xp = self._persist_dat[:, xi]
                     if len(xp) < self.plotting_max_pts():
                         self.main_QtPlot.add(x=xp, y=yp,
-                                             subplot=j + 1,
+                                             subplot=j+1,
                                              color=0.75,  # a grayscale value
                                              symbol='o',
                                              pen=None,  # makes it a scatter
@@ -1479,7 +1476,7 @@ class MeasurementControl(Instrument):
                                      xunit=xunits[xi],
                                      ylabel=ylab,
                                      yunit=yunits[yi],
-                                     subplot=j + 1,
+                                     subplot=j+1,
                                      pen=None,
                                      color=color_cycle[0],
                                      symbol='o', symbolSize=5)
@@ -1490,7 +1487,7 @@ class MeasurementControl(Instrument):
                                      xunit=xunits[xi],
                                      ylabel=ylab,
                                      yunit=yunits[yi],
-                                     subplot=j + 1,
+                                     subplot=j+1,
                                      color=color_cycle[2],
                                      symbol='o', symbolSize=5)
                 self.curves_distr_mean.append(self.main_QtPlot.traces[-1])
@@ -1500,10 +1497,10 @@ class MeasurementControl(Instrument):
                                      xunit=xunits[xi],
                                      ylabel=ylab,
                                      yunit=yunits[yi],
-                                     subplot=j + 1,
+                                     subplot=j+1,
                                      pen=None,
                                      color=color_cycle[1],
-                                     symbol='star', symbolSize=10)
+                                     symbol='star',  symbolSize=10)
                 self.curves_best_ever.append(self.main_QtPlot.traces[-1])
 
                 j += 1
@@ -1526,7 +1523,7 @@ class MeasurementControl(Instrument):
                                       color=color_cycle[0],
                                       ylabel=ylabels[j],
                                       yunit=yunits[j],
-                                      subplot=j + 1,
+                                      subplot=j+1,
                                       symbol='o', symbolSize=5)
             self.iter_traces.append(self.secondary_QtPlot.traces[-1])
 
@@ -1538,7 +1535,7 @@ class MeasurementControl(Instrument):
                                       x_unit='#',
                                       ylabel=ylabels[j],
                                       yunit=yunits[j],
-                                      subplot=j + 1)
+                                      subplot=j+1)
             self.iter_bever_traces.append(self.secondary_QtPlot.traces[-1])
             self.secondary_QtPlot.add(x=[0], y=[0],
                                       color=color_cycle[2],
@@ -1548,7 +1545,7 @@ class MeasurementControl(Instrument):
                                       x_unit='#',
                                       ylabel=ylabels[j],
                                       yunit=yunits[j],
-                                      subplot=j + 1)
+                                      subplot=j+1)
             self.iter_mean_traces.append(self.secondary_QtPlot.traces[-1])
 
         # required for the first update call to work
@@ -1580,6 +1577,7 @@ class MeasurementControl(Instrument):
                         # Main plotmon
                         ##########################################
                         for x_ind in range(nr_sweep_funcs):
+
                             x = self.dset[:, x_ind]
                             y = self.dset[:, y_ind]
 
@@ -1590,12 +1588,11 @@ class MeasurementControl(Instrument):
                             best_y = y[best_index]
                             self.curves_best_ever[i]['config']['x'] = [best_x]
                             self.curves_best_ever[i]['config']['y'] = [best_y]
-                            mean_x = self.opt_res_dset[:, 2 + x_ind]
+                            mean_x = self.opt_res_dset[:, 2+x_ind]
                             # std_x is needed to implement errorbars on X
                             # std_x = self.opt_res_dset[:, 2+nr_sweep_funcs+x_ind]
                             # to be replaced with an actual mean
-                            mean_y = self.opt_res_dset[:,
-                                     2 + 2 * nr_sweep_funcs]
+                            mean_y = self.opt_res_dset[:, 2+2*nr_sweep_funcs]
                             mean_y = get_generation_means(
                                 self.opt_res_dset[:, 1], y)
                             # TODO: turn into errorbars
@@ -1619,10 +1616,9 @@ class MeasurementControl(Instrument):
                         # This plots the best ever measured value vs iteration
                         # number of evals column
                         best_evals_idx = (
-                                self.opt_res_dset[:, -1] - 1).astype(int)
+                            self.opt_res_dset[:, -1] - 1).astype(int)
                         best_func_val = y[best_evals_idx]
-                        self.iter_bever_traces[j]['config'][
-                            'x'] = best_evals_idx
+                        self.iter_bever_traces[j]['config']['x'] = best_evals_idx
                         self.iter_bever_traces[j]['config']['y'] = best_func_val
 
                     self.main_QtPlot.update_plot()
@@ -1647,14 +1643,13 @@ class MeasurementControl(Instrument):
                 cf = self.exp_metadata.get('compression_factor', 1)
                 data = self.detector_function.live_plot_transform(
                     self.dset[i * self.xlen:(i + 1) * self.xlen,
-                    len(self.sweep_functions):])
+                              len(self.sweep_functions):])
                 for j in range(len(self.detector_function.value_names)):
                     data_row = data[:, j]
                     if cf != 1:
                         # reshape data according to compression factor
-                        data_reshaped = data_row.reshape(
-                            (cf, int(len(data_row) / cf)))
-                        y_start = self.iteration * cf % self.TwoD_array.shape[0]
+                        data_reshaped = data_row.reshape((cf, int(len(data_row)/cf)))
+                        y_start = self.iteration*cf % self.TwoD_array.shape[0]
                         y_end = y_start + cf
                         self.TwoD_array[y_start:y_end, :, j] = data_reshaped
                     else:
@@ -1709,15 +1704,15 @@ class MeasurementControl(Instrument):
         self.sweep_par_units = []
 
         for sweep_function in self.sweep_functions:
-            self.column_names.append(sweep_function.parameter_name + ' (' +
-                                     sweep_function.unit + ')')
+            self.column_names.append(sweep_function.parameter_name+' (' +
+                                     sweep_function.unit+')')
 
             self.sweep_par_names.append(sweep_function.parameter_name)
             self.sweep_par_units.append(sweep_function.unit)
 
         for i, val_name in enumerate(self.detector_function.value_names):
             self.column_names.append(
-                val_name + ' (' + self.detector_function.value_units[i] + ')')
+                val_name+' (' + self.detector_function.value_units[i] + ')')
         return self.column_names
 
     def _get_experimentaldata_group(self):
@@ -1847,7 +1842,7 @@ class MeasurementControl(Instrument):
         generation = es.result.iterations
         evals = es.result.evaluations  # number of evals at start of each gen
         xfavorite = es.result.xfavorite  # center of distribution, best est
-        stds = es.result.stds  # stds of distribution, stds of xfavorite
+        stds = es.result.stds   # stds of distribution, stds of xfavorite
         fbest = es.result.fbest  # best ever measured
         xbest = es.result.xbest  # coordinates of best ever measured
         evals_best = es.result.evals_best  # index of best measurement
@@ -1870,12 +1865,12 @@ class MeasurementControl(Instrument):
             self.opt_res_dset.attrs['column_names'] = h5d.encode_to_utf8(
                 'generation, ' + 'evaluations, ' +
                 'xfavorite, ' * len(xfavorite) +
-                'stds, ' * len(stds) +
-                'fbest, ' + 'xbest, ' * len(xbest) +
+                'stds, '*len(stds) +
+                'fbest, ' + 'xbest, '*len(xbest) +
                 'best evaluation,')
 
         old_shape = self.opt_res_dset.shape
-        new_shape = (old_shape[0] + 1, old_shape[1])
+        new_shape = (old_shape[0]+1, old_shape[1])
         self.opt_res_dset.resize(new_shape)
         self.opt_res_dset[-1, :] = results_array
 
@@ -1890,8 +1885,8 @@ class MeasurementControl(Instrument):
         opt_res_grp = self.data_object.create_group('Optimization_result')
 
         if adaptive_function.__module__ == 'cma.evolution_strategy':
-            res_dict = {'xopt': result[0],
-                        'fopt': result[1],
+            res_dict = {'xopt':  result[0],
+                        'fopt':  result[1],
                         'evalsopt': result[2],
                         'evals': result[3],
                         'iterations': result[4],
@@ -1902,10 +1897,10 @@ class MeasurementControl(Instrument):
             # 'cmaes': result[-2],
             # 'logger': result[-1]}
         elif adaptive_function.__module__ == 'pycqed.measurement.optimization':
-            res_dict = {'xopt': result[0],
-                        'fopt': result[1]}
+            res_dict = {'xopt':  result[0],
+                        'fopt':  result[1]}
         else:
-            res_dict = {'opt': result}
+            res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
     def save_instrument_settings(self, data_object=None, *args):
@@ -1963,6 +1958,7 @@ class MeasurementControl(Instrument):
                             data=self.station.snapshot(),
                             compression=self.settings_file_compression())
             dumper.dump()
+
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
                                   instrument):
@@ -2117,6 +2113,7 @@ class MeasurementControl(Instrument):
                 log.warning(
                     f'Could not run parameter check for {p}: {e}')
 
+
     def get_percdone(self, current_acq=0):
         """
         Determine the current progress (in percent) based on how much data
@@ -2141,8 +2138,7 @@ class MeasurementControl(Instrument):
             percdone = np.nan
         else:
             percdone = (self.total_nr_acquired_values + current_acq) / (
-                    np.shape(self.get_sweep_points())[
-                        0] * self.soft_avg()) * 100
+                np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
         try:
             now = time.time()
             if percdone != np.nan and percdone != self._last_percdone_value:
@@ -2191,7 +2187,7 @@ class MeasurementControl(Instrument):
             t_left = round((100. - percdone) / (percdone) *
                            elapsed_time, 1) if percdone != 0 else '??'
             t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
-                                                             + t_left)) if percdone != 0 else '??'
+                                  + t_left)) if percdone != 0 else '??'
             # The trailing spaces are to overwrite some characters in case the
             # previous progress message was longer. (Due to \r, the string
             # output will start at the beginning of the current line and
@@ -2201,11 +2197,11 @@ class MeasurementControl(Instrument):
                 "\r{timestamp}\t{percdone}% completed \telapsed time: "
                 "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
                 "").format(
-                timestamp=time.strftime('%H:%M:%S', time.localtime()),
-                percdone=int(percdone),
-                t_elapsed=round(elapsed_time, 1),
-                t_left=t_left,
-                t_end=t_end, )
+                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
+                    percdone=int(percdone),
+                    t_elapsed=round(elapsed_time, 1),
+                    t_left=t_left,
+                    t_end=t_end,)
 
             if percdone != 100 or current_acq:
                 end_char = ''
@@ -2254,12 +2250,12 @@ class MeasurementControl(Instrument):
 
         start_idx = int(self.total_nr_acquired_values % max_sweep_points)
         self.soft_iteration = int(
-            self.total_nr_acquired_values // max_sweep_points)
+            self.total_nr_acquired_values//max_sweep_points)
 
         return start_idx
 
     def get_datawriting_indices_update_ctr(self, new_data,
-                                           update: bool = True):
+                                           update: bool=True):
         """
         Calculates the start and stop indices required for
         storing a hard measurement.
