@@ -687,7 +687,7 @@ class Segment:
 
             # Find the phase of the first pulse on this channel. Pass this
             # channel initial phase to element metadata.
-            channel_metadata["phase"] = self._internal_mod_find_init_phase(
+            channel_metadata["phase"] = self._internal_mod_update_init_phase(
                 channel=channel,
                 elname=elname,
             )
@@ -731,7 +731,7 @@ class Segment:
             self.element_metadata[elname]["mod_config"][channel] = \
                 channel_metadata
 
-    def _internal_mod_find_init_phase(
+    def _internal_mod_update_init_phase(
             self,
             channel: str,
             elname: str,
