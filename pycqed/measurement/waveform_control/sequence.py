@@ -21,6 +21,10 @@ class Sequence:
     """
 
     RENAMING_SEPARATOR = "+"
+    AMPLITUDE_ROUNDING_DIGITS = 7
+    """Specifies the rounding precision when processing waveform amplitudes 
+    in harmonize_amplitude method. If this parameter has value n, then the 
+    waveform amplitudes will be rounded to the n-th digit of V (volt)."""
 
     def __init__(self, name, segments=()):
         """
@@ -348,15 +352,12 @@ class Sequence:
                             continue
                         # Round amplitude to allow reusing waveform in
                         # the presence of finite numerical precision.
-                        # Rounding to the 9th digit, which is nV
-                        # level, will have no observable effect on
-                        # AWG channel outputs because this is more than
-                        # three orders of magnitude smaller than the AWG
-                        # output precision.
                         pulse.amplitude = round(
-                            pulse.amplitude / element_scaling_factor, 7
+                            pulse.amplitude / element_scaling_factor,
+                            self.AMPLITUDE_ROUNDING_DIGITS
                         ) if element_scaling_factor != 0 else \
-                            round(sequence_max_amp, 7)
+                            round(sequence_max_amp,
+                                  self.AMPLITUDE_ROUNDING_DIGITS)
 
         return scaling_factors
 
