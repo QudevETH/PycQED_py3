@@ -125,11 +125,11 @@ class DictView(qt.QtWidgets.QWidget):
         Function which creates all the actions for the context menu and
         menu bars
         """
-        self.copyKeyAction = qt.QAction("Copy key")
-        self.copyValueAction = qt.QAction("Copy value")
-        self.openContentAction = qt.QAction("Open in new window")
+        self.copyKeyAction = qt.QAction("Copy Key")
+        self.copyValueAction = qt.QAction("Copy Value")
+        self.openContentAction = qt.QAction("Open in New Window")
         self.hideAction = qt.QAction("Hide Key")
-        self.hideAllAction = qt.QAction("Hide all empty")
+        self.hideAllAction = qt.QAction("Hide all Empty")
         self.showAllAction = qt.QAction("Show all")
         self.collapseAction = qt.QAction("Collapse all")
         self.expandBranchAction = qt.QAction("Expand Branch")
@@ -137,6 +137,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.closeAction = qt.QAction("Close Window")
         self.resetWindowAction = qt.QAction("Reset Window")
         self.expandParametersAction = qt.QAction("Expand Parameters")
+        self.copyStationPathAction = qt.QAction("Copy Station Path")
 
     def _connect_actions(self):
         """
@@ -169,6 +170,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.resetWindowAction.triggered.connect(self.reset_window)
         self.expandParametersAction.triggered.connect(
             lambda: self.expand_parameters(root_item))
+        self.copyStationPathAction.triggered.connect(self.copy_station_path)
 
     def _set_menu_bar(self):
         """
@@ -184,6 +186,7 @@ class DictView(qt.QtWidgets.QWidget):
 
         editMenu.addAction(self.copyKeyAction)
         editMenu.addAction(self.copyValueAction)
+        editMenu.addAction(self.copyStationPathAction)
         editMenu.addSeparator()  # for better organization of the menu bar
         editMenu.addAction(self.openContentAction)
 
@@ -207,6 +210,7 @@ class DictView(qt.QtWidgets.QWidget):
 
         menu.addAction(self.copyKeyAction)
         menu.addAction(self.copyValueAction)
+        menu.addAction(self.copyStationPathAction)
         menu.addSeparator()
         menu.addAction(self.openContentAction)
         menu.addSeparator()
@@ -355,6 +359,29 @@ class DictView(qt.QtWidgets.QWidget):
         if column == 1:
             cb.setText(self.tree_widget.currentItem().data(1, 0),
                        mode=cb.Mode.Clipboard)
+
+    def get_station_path(self, titem: qt.QtWidgets.QTreeWidgetItem):
+        key_list = []
+        while titem.parent() is not None:
+            key_list.append(str(titem.data(0, 0)))
+            titem = titem.parent()
+        key_list.reverse()
+
+        if len(key_list) > 3:
+            return key_list[1]+'.'+key_list[3]
+        elif len(key_list) > 1:
+            return key_list[1]
+        else:
+            return ''
+
+    def copy_station_path(self):
+        cb = qt.QtWidgets.QApplication.clipboard()
+        cb.clear(mode=cb.Mode.Clipboard)
+        station_path = 'sm.stations[''].' + \
+                       self.get_station_path(self.tree_widget.currentItem()) + \
+                       '()'
+
+        cb.setText(station_path, mode=cb.Mode.Clipboard)
 
     def make_search_ui(self):
         """
@@ -622,6 +649,20 @@ class ComparisonDictView(DictView):
                 for i in range(len(self.column_header[1:]))}
             cb.setText(str(data),
                        mode=cb.Mode.Clipboard)
+
+    def get_station_path(self, titem: qt.QtWidgets.QTreeWidgetItem):
+        key_list = []
+        while titem.parent() is not None:
+            key_list.append(str(titem.data(0, 0)))
+            titem = titem.parent()
+        key_list.reverse()
+
+        if len(key_list) > 2:
+            return key_list[0]+'.'+key_list[2]
+        elif len(key_list) > 0:
+            return key_list[0]
+        else:
+            return ''
 
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
