@@ -745,10 +745,10 @@ class SHFGeneratorModule(ZIGeneratorModule):
                 generator channels.
         """
 
-        if isinstance(amplitude, float):
+        if isinstance(amplitude, float) or isinstance(amplitude, int):
             # if 'amplitude' is a scalar, the same scaling is used for all
             # amplitude factors in the digital up-conversion unit.
-            amplitude = [amplitude] * 4
+            amplitude = [float(amplitude)] * 4
             amplitude[1] *= -1
 
         elif not ((isinstance(amplitude, np.ndarray) or
