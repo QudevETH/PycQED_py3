@@ -42,8 +42,7 @@ class VC707(VC707_core, AcquisitionDevice):
         "avg": [], # averaged raw input (time trace) in V
         "int_avg": [
             "raw",
-            "digitized", # Single-shot qubit readout
-            "digitized_qutrit",  # Single-shot qutrit readout
+            "digitized", # state discrimination
         ],
         "hist": [
             "raw",
@@ -150,19 +149,14 @@ class VC707(VC707_core, AcquisitionDevice):
                 self.averager_nb_segments.set(n_results)
             self.averager.configure()
         elif module in ["histogrammer", "state_discriminator"]:
-            if module == 'histogrammer':
-                self._acquisition_nodes = ['histogram']
-                nb_states = 3  # use two integrators
-            elif module == 'state_discriminator':
-                nb_states = (
-                    3 if self._acq_data_type == 'digitized_qutrit' else 2)
-
             module_obj = self._get_current_fpga_module()
             nb_samples = self.convert_time_to_n_samples(self._acq_length, True)
             self.state_discriminator.NB_STATE_ASSIGN_UNITS = 8
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in self._acq_channels}
             pairs = OrderedDict({k: None for k in pair_lookup.values()})
-            if self._acq_data_type == 'digitized_qutrit':
+            if module == 'histogrammer':
+                self._acquisition_nodes = ['histogram']
+            else:
                 self._acquisition_nodes = list(pairs)
             for pair_id in pairs:
                 if pair_id[0] != 0:
@@ -170,7 +164,9 @@ class VC707(VC707_core, AcquisitionDevice):
                         'Histogrammer can only be used on physical channel 0 '
                         'until someone fixes a bug in the FPGA.')
                 unit = DiscriminationUnit()
-                unit.nb_states = nb_states
+                # Use 2 integrators for hist (will be overwritten below for
+                # state disc.):
+                unit.nb_states = 3
                 unit.weights = [np.zeros(nb_samples) for i in range(
                     4 if unit.nb_states == 3 else 2)]
                 unit.delay = self.get(f'acq_delay_{pair_id[0]}_{pair_id[1]}')
@@ -187,6 +183,7 @@ class VC707(VC707_core, AcquisitionDevice):
                 n_ch_in_pair[pair_id] += 1
             if module == 'state_discriminator':
                 for pair_id in pairs:
+                    pairs[pair_id].nb_states = n_ch_in_pair[pair_id] + 1
                     channels = [ch for ch in self._acq_channels
                                 if pair_lookup[ch] == pair_id]
                     pairs[pair_id].center_coordinates = tuple(
@@ -389,12 +386,17 @@ class VC707(VC707_core, AcquisitionDevice):
             return self.state_discriminator
 
     def get_int_channels_value_names_map(self, channels, data_type='raw'):
-        if data_type == 'digitized_qutrit':
+        if data_type == 'digitized':
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in channels}
+            n_ch_in_pair = {v: sum([pair_lookup[c] == v for c in channels])
+                            for v in pairs.values()}
             ch_vn_map = OrderedDict()
             for ch in channels:
                 pair = pair_lookup[ch]
-                chs = '_'.join([c[1] for c, p in pair_lookup if p == pair])
+                if n_ch_in_pair[pair] == 2:
+                    chs = '_'.join([c[1] for c, p in pair_lookup if p == pair])
+                else:
+                    chs = ch[1]
                 vn = f'{self.name}_{ch[0]}_{data_type} w{chs}'
                 ch_vn_map[ch] = vn
             return ch_vn_map
