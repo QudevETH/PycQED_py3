@@ -547,7 +547,8 @@ class SweepPoints(list):
             obj._reversed = True
             obj.reverse()
 
-        # compare the current number of dimensions to the target
+        # compare the current number of dimensions to the target and ends
+        # the recursion if ndim <= target_ndim.
         ndim = len(obj)
         if ndim <= target_ndim:
             # if sweep points were reversed for reducing the dimensions,
