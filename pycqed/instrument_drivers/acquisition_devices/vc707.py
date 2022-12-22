@@ -300,20 +300,28 @@ class VC707(VC707_core, AcquisitionDevice):
 
     def _adapt_state_discriminator_results(self, raw_results) -> dict:
         """Format the FPGA state discriminator results as expected by PycQED."""
+        def raw_to_list(data, nb_states, nb_units=0):
+            """
+            Interpets a decimal int in the basis indicated by nb_states (e.g.,
+            binary/ternary for qubit/qutrit readout) and returns the digits
+            as a list with the least-significant digit first (so that the
+            order of the returned results corresponds to the order in
+            self.state_discriminator.settings.units).
+            """
+            nums = []
+            while data:
+                data, r = divmod(data, nb_states)
+                nums.append(r)
+            nums += [0] * max(0, nb_units - len(nums))
+            return nums
 
-        dataset = {}
-
-        # FIXME: revisit this code if state disc with second physical
-        #  input is fixed at some point
-        for i in self._acq_units_used:
-            # FIXME: the following only works for a single qubit/qutrit.
-            #   If there are, e.g., 2 qubits, the states 00, 01, 10, 11 are
-            #   represented as 0, ..., 3 and this needs to be split up here
-            dataset.update({
-                pair: [raw_results]
-                for pair in self._acquisition_nodes if pair[0] == i})
-
-        return dataset
+        units = self.state_discriminator.settings.units
+        nb_states = units[0].nb_states
+        assert all([u.nb_states == nb_states for u in units])
+        data = [raw_to_list(r, nb_states, nb_units=len(units))
+                for r in raw_results]
+        return {pair: [d[i] for d in data]
+                for i, pair in enumerate(self._acquisition_nodes)}
 
     def _perform_integrated_averager(self, averager_results) -> dict:
         """Emulates integrated averager in software."""
