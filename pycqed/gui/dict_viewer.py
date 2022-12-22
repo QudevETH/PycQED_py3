@@ -897,7 +897,10 @@ class SnapshotViewer:
             else:
                 title = 'Snapshot timestamp: %s' % self.timestamp
                 timestamps = None
-            qt_app = qt.QtWidgets.QApplication(sys.argv)
+            if not qt.QtWidgets.QApplication.instance():
+                qt_app = qt.QtWidgets.QApplication(sys.argv)
+            else:
+                qt_app = qt.QtWidgets.QApplication.instance()
             screen = qt_app.primaryScreen()
             viewer = DictViewerWindow(
                 dic=self.snapshot,
