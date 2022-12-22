@@ -1006,7 +1006,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'mirror_pattern': None,
         }
         return params
 

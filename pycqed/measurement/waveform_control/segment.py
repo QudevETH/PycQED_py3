@@ -1132,7 +1132,14 @@ class Segment:
             pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
             # interpret string pattern ('none'/'all'/'odd'/'even')
             if pattern is None or pattern == 'none':
-                continue  # do not mirror
+                # check if pulse has a child flux pulse with non trivial
+                # mirror pattern
+                if hasattr(p.pulse_obj, 'fp') and \
+                    getattr(p.pulse_obj.fp, 'mirror_pattern', None) is not None:
+                    # replace pattern by mirror pattern of Flux pulse
+                    pattern = getattr(p.pulse_obj.fp, 'mirror_pattern', None)
+                else:
+                    continue  # do not mirror
             for pa1, pa2 in [('all', [1]), ('even', [0, 1]), ('odd', [1, 0])]:
                 if pattern == pa1:
                     pattern = pa2
