@@ -573,7 +573,7 @@ class SweepPoints(list):
         # recursive call to go through all other dimensions
         return self.reduce_dim(target_ndim=target_ndim)
 
-    def val_length(self, dimension=-1):
+    def number_sweep_points(self, dimension=-1):
         """
         Gets the number of sweep values for `dimension`.
         Args:
@@ -582,9 +582,9 @@ class SweepPoints(list):
 
 
         """
-        if len(self.get_sweep_dimension(dimension).keys()) != 0:
-            return len(self.get_values(
-                list(self.get_sweep_dimension(-1).keys())[0]))
+        sweep_params = list(self.get_sweep_dimension(dimension).keys())
+        if len(sweep_params) != 0:
+            return len(self[sweep_params[0]])
         else:
             return 0
 
