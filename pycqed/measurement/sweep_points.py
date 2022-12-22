@@ -494,7 +494,7 @@ class SweepPoints(list):
         else:
             del self[dim][param_name]
 
-    def reduce_dim(self, target_ndim=2, reverse=False):
+    def reduce_dim(self, target_ndim=2, reverse=False, inplace=False):
         """
         Reduces the dimensions of a N-dimensional sweep to a `target_ndim`-
         dimensional sweep. Sweep values a duplicated in the lower dimensions
@@ -506,6 +506,9 @@ class SweepPoints(list):
                 dimensions starts with last dimension (see Example 1).
                 If True, then reduction of dimensions starts with first
                 dimension (see Example 2).
+            inplace (bool): Default = False. If False, a new sweep point
+                object is returned with reduced dimensions. If True, the
+                current object is modified.
 
         Returns:
             self
@@ -536,42 +539,48 @@ class SweepPoints(list):
              {'third_dim': ([3, 4, 5], '', 'third_dim')}]
 
         """
+        if inplace:
+            obj = self
+        else:
+            obj = deepcopy(self)
         if reverse:
-            self._reversed = True
-            self.reverse()
+            obj._reversed = True
+            obj.reverse()
 
         # compare the current number of dimensions to the target
-        ndim = len(self)
+        ndim = len(obj)
         if ndim <= target_ndim:
             # if sweep points were reversed for reducing the dimensions,
             # reverse back to get the original dimension order after reduction
-            if hasattr(self, "_reversed") and self._reversed:
-                self.reverse()
-                delattr(self, "_reversed")
-            return self
+            if hasattr(obj, "_reversed") and obj._reversed:
+                obj.reverse()
+                delattr(obj, "_reversed")
+            return obj
 
         # remove last dimension
-        nvals_last_dim = self.val_length(-1)
-        last_dim = self.get_sweep_dimension(-1, True)
-        del self[-1]
-        nvals_prev_dim = self.val_length(-1)
+        nvals_last_dim = obj.number_sweep_points(-1)
+        last_dim = obj.get_sweep_dimension(-1, True)
+        del obj[-1]
+        nvals_prev_dim = obj.number_sweep_points(-1)
 
         # repeat sweep points of the previous dimension as many times as there
         # are values in the last dimension
-        sweep_params = list(self.get_sweep_dimension(-1).keys())
-        values = [self.get_values(sp) for sp in sweep_params]
+        sweep_params = list(obj.get_sweep_dimension(-1).keys())
+        values = [obj[sp] for sp in sweep_params]
         if nvals_last_dim:
-            self.update_property(sweep_params,
+            obj.update_property(sweep_params,
                 values=[np.repeat(vals, nvals_last_dim) for vals in values])
 
         # add sweep parameters of the last dimension in the previous one, tiled
         # as many times as there were sweep values in the previous dimension
         for k, (vals, label, unit) in last_dim.items():
-            self.add_sweep_parameter(k, np.tile(vals, max(1,nvals_prev_dim)),
+            obj.add_sweep_parameter(k, np.tile(vals, max(1, nvals_prev_dim)),
                                      label, unit)
 
         # recursive call to go through all other dimensions
-        return self.reduce_dim(target_ndim=target_ndim)
+        # this call can always use inplace=True to avoid deepcopying at all
+        # layers (the copying can be done once in the beginning).
+        return obj.reduce_dim(target_ndim=target_ndim, inplace=True)
 
     def number_sweep_points(self, dimension=-1):
         """
