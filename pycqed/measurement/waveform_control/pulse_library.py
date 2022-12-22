@@ -455,6 +455,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
                     cphase=self.cphase,
                     cphase_calib_dict=self.cphase_calib_dict,
                     cphase_ctrl_params=self.cphase_ctrl_params,
+                    target=getattr(self, self.cphase_ctrl_params[0])
                 )
             for param_name, param_value in param_dict.items():
                 setattr(self, param_name, param_value)
