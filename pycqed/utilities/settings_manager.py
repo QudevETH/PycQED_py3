@@ -515,33 +515,36 @@ class SettingsManager:
 
             # marker if all stations contain component
             component_not_in_all_stations = False
-            for i, tsp in enumerate(timestamps):
+            comp_dict = {}
+            for tsp in timestamps:
                 if component not in self.stations[tsp].components.keys():
                     all_msg.append(
                         f'\nComponent/Instrument "{component}" missing in dict '
                         f'{tsp}.\n')
                     component_not_in_all_stations = True
+                else:
+                    comp_dict[Timestamp(tsp)] = 'exists'
             if component_not_in_all_stations:
                 # if one of the stations does not have the component, the
                 # comparison of this component cannot be done
                 # (You have to compare like with like)
-                continue
-
-            # snapshots of the components
-            if reduced_compare:
-                component_snaps = \
-                    [self.stations[tsp].components[component].snapshot(
-                        reduced=reduced_compare)
-                        for tsp in timestamps]
+                all_diff[component] = comp_dict
             else:
-                component_snaps = \
-                    [self.stations[tsp].components[component].snapshot()
-                        for tsp in timestamps]
+                # snapshots of the components
+                if reduced_compare:
+                    component_snaps = \
+                        [self.stations[tsp].components[component].snapshot(
+                            reduced=reduced_compare)
+                            for tsp in timestamps]
+                else:
+                    component_snaps = \
+                        [self.stations[tsp].components[component].snapshot()
+                            for tsp in timestamps]
 
-            # comparison of the snapshots
-            diff = self._compare_dict_instances(component_snaps, timestamps)
-            if diff != {}:
-                all_diff[component] = diff
+                # comparison of the snapshots
+                diff = self._compare_dict_instances(component_snaps, timestamps)
+                if diff != {}:
+                    all_diff[component] = diff
 
         return all_diff, all_msg
 
