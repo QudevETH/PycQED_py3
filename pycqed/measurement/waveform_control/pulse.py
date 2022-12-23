@@ -239,6 +239,17 @@ class Pulse:
         raise NotImplementedError('chan_wf() not implemented for {}'
                                   .format(str(type(self))[1:-1]))
 
+    def mirror_amplitudes(self):
+        """TODO docstring
+        """
+        mirror_correction = getattr(self, 'mirror_correction', None) or {}
+        for k in self.__dict__:
+            if 'amplitude' in k:
+                amp = -getattr(self, k)
+                if k in mirror_correction:
+                    amp += mirror_correction[k]
+                setattr(self, k, amp)
+
     @classmethod
     def pulse_params(cls):
         """

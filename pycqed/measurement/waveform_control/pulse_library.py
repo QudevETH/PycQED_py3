@@ -1050,6 +1050,9 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         hashlist += [self.alpha, self.phi_skew, phase]
         return hashlist
 
+    def mirror_amplitudes(self):
+        pass  # disabled for RO pulses to avoid confusion (TODO explain)
+
 
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
@@ -1116,6 +1119,9 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return self.fp.hashables(tstart, channel)
         else:
             return []  # empty list if neither of the conditions is satisfied
+
+    def mirror_amplitudes(self):
+        return self.fp.mirror_amplitudes()  # TODO comment
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
