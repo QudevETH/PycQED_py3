@@ -1094,7 +1094,8 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
-            'flux_gaussian_filter_sigma': 0.5e-9
+            'flux_gaussian_filter_sigma': 0.5e-9,
+            'mirror_pattern': None,  # interpreted as mirroring the flux pulse
         }
         return params
 
