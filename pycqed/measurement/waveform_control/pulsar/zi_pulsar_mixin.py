@@ -29,6 +29,8 @@ class ZIPulsarMixin:
 
     key zi_waves_clean: Flag indicating whether the waves dir is clean."""
 
+    WAVEDIR_SIZE_LIMIT = 10 * 1024 * 1024 * 1024  # 10 GiB
+
     @staticmethod
     def _zi_wave_dir():
         if os.name == "nt":
@@ -62,6 +64,21 @@ class ZIPulsarMixin:
             return cls._status_ZIPulsarMixin['zi_waves_clean']
         else:
             cls._status_ZIPulsarMixin['zi_waves_clean'] = val
+
+    @classmethod
+    def zi_cleanup_needed(cls):
+        """Checks whether the ZI wave dir (csv files) should be cleaned up.
+
+        Currently, the check returns True if:
+          - the total size of the waveforms is larger than the class constant
+            WAVEDIR_SIZE_LIMIT
+        """
+        paths = [cls._zi_wave_dir()]
+        paths.append(os.path.join(paths[0], '.cache'))
+        files = [os.path.join(p, f) for p in paths if os.path.exists(p)
+                 for f in os.listdir(p)]
+        size = sum(os.path.getsize(f) for f in files if os.path.isfile(f))
+        return size > cls.WAVEDIR_SIZE_LIMIT
 
     @classmethod
     def _zi_clear_waves(cls):
@@ -228,12 +245,12 @@ class ZIPulsarMixin:
         for h, wf in waveforms.items():
             filename = os.path.join(wave_dir, self.pulsar._hash_to_wavename(h)+".csv")
             if os.path.exists(filename):
-                # Skip writing the CSV file. This happens if reuse_waveforms
-                # is True and the same hash appears on multiple sub-awgs.
-                # Note that it does not happen in cases where
-                # use_sequence_cache is True and the same hash had appeared in
-                # earlier experiments (because we clear the waves dir before
-                # starting programming the AWGs).
+                # Skip writing the CSV file. This happens if:
+                # - reuse_waveforms is True and the same hash appears on
+                #   multiple sub-awgs.
+                # - use_sequence_cache is True and the same hash had appeared
+                #   in earlier experiment (after the last reset of the
+                #   sequence cache)
                 continue
             fmt = "%.18e" if wf.dtype == np.float else "%d"
             np.savetxt(filename, wf, delimiter=",", fmt=fmt)
