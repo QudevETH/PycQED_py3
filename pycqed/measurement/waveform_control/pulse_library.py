@@ -391,7 +391,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         possible_cp = np.arange(min(cp_list)+(cphase-min(cp_list))%360,
                                  max(cp_list), 360)
         # Get corresponding control parameter
-        f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]])
+        f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]],
+                     kind='quadratic')
         possible_param_vals = f(possible_cp)
         # Choose the cphase with trans_amplitude2 closest to ta_target
         id_closest = np.abs(possible_param_vals-target).argmin()
