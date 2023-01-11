@@ -802,10 +802,10 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                 f"automatically.")
                 qb.acq_weights_basis(a.proc_data_dict['analysis_params_dict'
                     ]['optimal_weights_basis_labels'][qb.name])
-                # TODO: add this line after implementing it in the analysis
                 # TODO: find out whether this line will annoy ZI users
-                # qb.acq_classifier_params().update({'means_': a.proc_data_dict[
-                #     'analysis_params_dict']['means'][qb.name]})
+                qb.acq_classifier_params().update({'means_': np.array(
+                    a.proc_data_dict['analysis_params_dict']['means'][qb.name]
+                )})
         return a
 
 

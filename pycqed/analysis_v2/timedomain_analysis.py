@@ -7559,6 +7559,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['timetraces'] = defaultdict(dict)
         ana_params['optimal_weights'] = defaultdict(dict)
         ana_params['optimal_weights_basis_labels'] = defaultdict(dict)
+        ana_params['means'] = defaultdict(dict)
         for qbn in self.qb_names:
             # retrieve time traces
             for i, rdd in enumerate(self.raw_data_dict):
@@ -7621,8 +7622,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
 
-            # TODO add calculation for centroids here
-            # ana_params['means'][qbn] = ...
+            # calculation of centroids
+            ana_params['means'][qbn] = [[
+                np.sum(np.real(timetraces[state]) * np.real(basis[i,:]))
+                + np.sum(np.imag(timetraces[state]) * np.imag(basis[i,:]))
+                for i, _ in enumerate(basis_labels)]
+                for state in 'gef'[:n_labels + 1]]
 
             self.save_processed_data()
 
