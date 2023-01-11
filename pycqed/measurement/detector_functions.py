@@ -879,9 +879,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         movnm = {}
         for mobj, chs in self.meas_obj_channel_map.items():
             movnm[mobj] = []
-            for ch, vn in self._channels_value_names_map.items():
-                if ch in chs and vn not in movnm[mobj]:
-                    movnm[mobj].append(vn)
+            for ch, vns in self._channels_value_names_map.items():
+                if not isinstance(vns, tuple):
+                    vns = (vns,)
+                for vn in vns:
+                    if ch in chs and vn not in movnm[mobj]:
+                        movnm[mobj].append(vn)
         return movnm
 
 
@@ -1303,7 +1306,8 @@ class IntegratingAveragingPollDetector(PollDetector):
         self.value_names, self.value_units = self._add_value_name_suffix(
             value_names=self.value_names, value_units=self.value_units,
             values_per_point=values_per_point,
-            values_per_point_suffix=values_per_point_suffix)
+            values_per_point_suffix=values_per_point_suffix,
+            channels_value_names_map=self._channels_value_names_map)
 
         self._acq_mode = 'int_avg'
         self.single_int_avg = single_int_avg
@@ -1327,7 +1331,8 @@ class IntegratingAveragingPollDetector(PollDetector):
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
-                               values_per_point_suffix: list):
+                               values_per_point_suffix: list,
+                               channels_value_names_map=None):
         """
         For use with multiple values_per_point. Adds the strings provided in
         the values_per_point_suffix list.
@@ -1341,9 +1346,15 @@ class IntegratingAveragingPollDetector(PollDetector):
                 values_per_point_suffix = ascii_uppercase[:values_per_point]
 
             for vn, vu in zip(value_names, value_units):
+                _new_value_names = []
                 for val_suffix in values_per_point_suffix:
-                    new_value_names.append('{} {}'.format(vn, val_suffix))
+                    _new_value_names.append('{} {}'.format(vn, val_suffix))
                     new_value_units.append(vu)
+                new_value_names += _new_value_names
+                if channels_value_names_map is not None:
+                    for k in [k for k, v in channels_value_names_map.items()
+                              if v == vn]:
+                        channels_value_names_map[k] = tuple(_new_value_names)
             return new_value_names, new_value_units
 
     def set_polar(self, polar=True):
