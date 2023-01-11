@@ -2227,10 +2227,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if xunit is None:
             xunit = xu
 
+        value_units = deepcopy(self.raw_data_dict['value_units'])
+        if not isinstance(value_units, list):
+            value_units = [value_units]
+        value_units = {vn: vu for vn, vu in zip(
+            self.raw_data_dict['measured_data'], value_units)}
+
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', False)
         prep_1d_plot = True
         for ax_id, ro_channel in enumerate(raw_data_dict):
+            ro_unit = value_units.get(ro_channel, 'a.u.')
             if TwoD:
                 sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
                 if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
@@ -2256,7 +2263,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             'plotsize': (plotsize[0]*numplotsx,
                                          plotsize[1]*numplotsy),
                             'title': fig_title,
-                            'clabel': '{} (Vpeak)'.format(ro_channel)}
+                            'clabel': f'{ro_channel} ({ro_unit})'}
 
             if prep_1d_plot:
                 yvals = raw_data_dict[ro_channel]
@@ -2282,7 +2289,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'xlabel': xlabel,
                     'xunit': xunit,
                     'yvals': yvals,
-                    'ylabel': '{} (Vpeak)'.format(ro_channel),
+                    'ylabel': f'{ro_channel} ({ro_unit})',
                     'yunit': '',
                     'numplotsx': numplotsx,
                     'numplotsy': numplotsy,
