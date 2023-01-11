@@ -25,7 +25,6 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
-import traceback
 import logging
 
 from pycqed.utilities import math
@@ -186,7 +185,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     """
     Base class for multi-qubit time-domain analyses.
 
-    Parameters that can be specified in the options dict:
+    Parameters that can be specified in the options_dict:
      - rotation_type: type of rotation to be done on the raw data.
        Types of rotations supported by this class:
         - 'cal_states' (default, no need to specify): rotation based on
@@ -215,6 +214,26 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             Stored in self.measurement_strings which specify the plot title.
             The selected parameter must also be part of the split_params for
             that qubit.
+     - functionality to plot 1d slices from a 2D plot: enabled by passing the
+        following parameters:
+         - slice_idxs_1d_raw_plot (dict; default: None): slices indices of the
+            raw data. If None, no slices are plotted.
+         - slice_idxs_1d_proj_plot (dict; default: None): slices indices of the
+            projected data. If None, no slices are plotted.
+         The two dicts above are of the form {qb_name: [(idxs, axis)]}, where
+            - axis (str) can be either 'row' or 'col', specifying whether idxs
+                are row or column indices
+            - idxs can be an int (data index) or a str of the form
+                'idx_start:idx_end' interpreted as standard list/array indexing
+                arr[idx_start:idx_end]
+            Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
+        Note:
+            - to plot only 1D slices of 2D data, the standard plotting of raw
+            and projected data can be disabled via the flags `plot_raw_data` and
+            `plot_proj_data.`
+            - to plot 1D slices of 2D data using an instance of this class that
+            has already run self.process_data(), use the methods
+            'plot_raw_1d_slices' and 'plot_projected_1d_slices'
 
     If an instance of SweepPoints (or its repr) is provided, then the
     corresponding meas_obj_sweep_points_map must also be specified in
@@ -1718,6 +1737,40 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 return '{} state population'.format(
                         self.get_latex_prob_label(data_key))
 
+    def get_soft_sweep_label_unit(self, param_name):
+        """
+        Finds the label and unit of a soft sweep parameter.
+
+        If a SweepPoints instance exists, takes the soft sweep parameter
+        corresponding to param_name. Otherwise, takes the first soft sweep
+        parameter.
+
+        Args:
+            param_name (str): name of a soft sweep parameter in SweepPoints
+
+        Returns:
+            label and unit of a soft sweep parameter
+        """
+        if self.sp is not None:
+            unit = self.sp.get_sweep_params_property(
+                'unit', dimension=1, param_names=param_name)
+            label = self.sp.get_sweep_params_property(
+                'label', dimension=1, param_names=param_name)
+        else:
+            soft_sweep_params = self.get_param_value(
+                'soft_sweep_params')
+            if soft_sweep_params is not None:
+                label = list(soft_sweep_params.values())[0]['label']
+                unit = list(soft_sweep_params.values())[0]['unit']
+            else:
+                label = self.raw_data_dict['sweep_parameter_names'][1]
+                unit = self.raw_data_dict['sweep_parameter_units'][1]
+            if np.ndim(label) > 0:
+                label = label[0]
+            if np.ndim(unit) > 0:
+                unit = unit[0]
+        return label, unit
+
     def _get_single_shots_per_qb(self, raw=False):
         """
         Gets single shots from the proc_data_dict and arranges
@@ -1834,7 +1887,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def process_single_shots(self, predict_proba=True,
                              classifier_params=None,
-                             states_map=None):
+                             states_map=None,
+                             thresholding=True):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -1859,6 +1913,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             states_map (dict):
                 list of states corresponding to the different integers output
                 by the classifier. Defaults to  {0: "g", 1: "e", 2: "f", 3: "h"}
+            thresholding (bool):
+                whether or not to threshold (i.e. classify) the shots. If True,
+                it will transform [0.01, 0.97, 0.02] into [0, 1, 0].
 
         Other parameters taken from self.get_param_value:
             use_preselection (bool): whether or not preselection should be used
@@ -1970,14 +2027,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' a different number of channels than in the'
                               f' current measurement): {e}')
                     raise e
-                if not 'single_shots_per_qb_probs' in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_probs'] = {}
-                self.proc_data_dict['single_shots_per_qb_probs'][qbn] = shots
 
+            if thresholding:
+                # shots become one-hot encoded arrays with length n_states
+                # shots has shape (n_shots, n_states)
 
-            # TODO: Nathan: if predict_proba is activated then we should
-            #  first classify, then do a count table and thereby estimate
-            #  average proba
+                shots = a_tools.threshold_shots(shots)
+
+                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
+                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
+                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
+                    shots
+
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             for ro in range(n_readouts*n_seqs):
@@ -2020,176 +2081,272 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     def prepare_raw_data_plots(self):
         """
-        Calls _prepare_raw_data_plots if plot_raw_data (passed in the
-        options_dict, metadata, or default_options) is True.
+        Prepares plots of the raw data for each qubit, stored in
+        proc_data_dict['meas_results_per_qb(_raw)'].
+
+        Calls
+            - _prepare_raw_data_plots if plot_raw_data (passed in the
+             options_dict, metadata, or default_options) is True.
+            - _prepare_raw_1d_slices_plots if the data is TwoD and
+             slice_idxs_1d_raw_plot was passed in options_dict, metadata, or
+             default_options
 
         If the measurement had active reset readouts (specified in
-        preparation_params), _prepare_raw_data_plots is called again with
-        plot_filtered=False (see docstring there) in order to create plots both
-        with and without the data points corresponding to the active reset
-        readouts.
+        preparation_params), the two functions above are called twice: once
+        for the data in meas_results_per_qb (data points corresponding to
+        active reset readouts are filtered out), and once for the data in
+        meas_results_per_qb_raw (active reset readouts included).
         """
-        if self.get_param_value('plot_raw_data', default_value=True):
-            self._prepare_raw_data_plots(plot_filtered=False)
+        TwoD = self.get_param_value('TwoD', False)
+        slice_idxs_1d_raw_plot = self.get_param_value(
+            'slice_idxs_1d_raw_plot', {})
+        plot_raw_data = self.get_param_value('plot_raw_data', True)
+        for qb_name in self.qb_names:
+            slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
+            # Plot all raw data (including potential active reset readouts)
+            key = 'meas_results_per_qb_raw'
+            raw_data_dict = self.proc_data_dict[key][qb_name]
+            sweep_points = self.raw_data_dict['hard_sweep_points']
+            if plot_raw_data:
+                # standard raw data plot
+                self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                             xvals=sweep_points)
+            if TwoD and len(slice_idxs_list) > 0:
+                # plot slices of the 2D raw data
+                self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
+                                                  slice_idxs_list)
+
             if 'preparation_params' in self.metadata:
                 if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait'):
-                    # plot raw data without the active reset readouts
-                    self._prepare_raw_data_plots(plot_filtered=True)
+                        'preparation_type', 'wait') or \
+                        not self.data_with_reset:
+                    # Plot raw data without the active reset readouts
+                    key = 'meas_results_per_qb'
+                    raw_data_dict = self.proc_data_dict[key][qb_name]
+                    fig_suffix = 'filtered' if self.data_with_reset else ''
+                    sweep_points = self.proc_data_dict[
+                        'sweep_points_dict'][qb_name]['sweep_points']
+                    if plot_raw_data:
+                        # standard raw data plot
+                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                     xvals=sweep_points,
+                                                     fig_suffix=fig_suffix)
+                    if TwoD and len(slice_idxs_list) > 0:
+                        # plot slices of the 2D raw data
+                        self._prepare_raw_1d_slices_plots(qb_name,
+                                                          raw_data_dict,
+                                                          slice_idxs_list)
 
-    def _prepare_raw_data_plots(self, plot_filtered=False):
+    def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
+                                     slice_idxs_list):
         """
-        Prepares plots of the raw data stored in
-        proc_data_dict['meas_results_per_qb'] or
-        proc_data_dict['meas_results_per_qb_raw'].
+        Prepares 1d plots of slices from a TwoD raw data plot.
 
         Args:
-            plot_filtered: specifies whether to plot the raw data from
-                meas_results_per_qb (True) or meas_results_per_qb_raw (False)
-                The former case is useful for measurements that contain active
-                reset readouts, which will be not be shown in the plot if
-                plot_filtered == False.
+            qb_name (str): name of the qubit
+            raw_data_dict (dict): the dictionary containing the raw data, with
+                qubit names as keys.
+                Typically proc_data_dict['meas_results_per_qb(_raw)'].
+            slice_idxs_list (list): list of tuples of the form (idxs, axis)
+                (see class docstring).
+                Example: [('8:13', 'row'), (0, 'col')]
         """
-        if plot_filtered or not self.data_with_reset:
-            key = 'meas_results_per_qb'
-            suffix = 'filtered' if self.data_with_reset else ''
-            func_for_swpts = lambda qb_name: self.proc_data_dict[
-                'sweep_points_dict'][qb_name]['sweep_points']
+        for slice_idxs in slice_idxs_list:
+            idxs, axis, xvals, xlabel, xunit = \
+                self.get_1d_slice_params(qb_name, slice_idxs)
+            for idx in idxs:
+                fig_suffix = \
+                    f'{"_row" if axis == 0 else "_col"}_{idx}'
+                self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                             xvals, idx, axis,
+                                             fig_suffix=fig_suffix,
+                                             TwoD=False,
+                                             xlabel=xlabel, xunit=xunit)
+
+    def _prepare_raw_data_plots(self, qb_name, raw_data_dict, xvals,
+                                twod_data_idx=None, twod_data_axis=None,
+                                fig_name='raw_plot', fig_suffix='',
+                                xlabel=None, xunit=None, TwoD=None):
+        """
+        Prepares plots of the raw data in raw_data_dict.
+
+        Args:
+            qb_name (str): qubit name
+            raw_data_dict (dict): the dictionary containing the raw data, where
+                the keys are names of acquisition channels (usually the value
+                names created by the detector functions).
+                Typically, this dict corresponds to
+                proc_data_dict['meas_results_per_qb(_raw)'].
+            xvals (list/array): x-axis values. Typically, the hard/1d sweep
+                points
+            twod_data_idx (int): index of a slice in a 2D data array. Will be
+                ignored if `None`. More details below argument list. Defaults
+                to `None`.
+            twod_data_axis (int): axis of a 2D data array (0 for row, 1 for
+                col). Will be ignored if `None`. More details below argument
+                list. Defaults to `None`.
+            fig_name (str): name of the figure
+            fig_suffix (str): suffix to the figure name. qb_name is
+                automatically inserted between fig_name and fig_suffix.
+            xlabel (str): x-axis label, typically corresponding to the hard/1d
+                sweep parameter
+            xunit (str): x-axis unit, typically corresponding to the hard/1d
+                sweep parameter
+            TwoD (bool): whether to prepare a 2D plot
+
+        If the data is 2D, and twod_data_idx and twod_data_axis are passed,
+        this function will prepare a 1D plot of the slice in the 2D data
+        at index twod_data_idx along axis twod_data_axis. Parameter "TwoD"
+        should be False in this case in order to avoid preparing a 2D plot
+        in addition.
+
+        If xlabel, xunit are None, they are taken from the SweepPoints or from
+        the metadata as the ones corresponding to the hard/1d sweep parameter.
+        They can also correspond to a soft sweep parameter if twod_data_idx and
+        twod_data_axis are passed, and twod_data_axis is 1 (column).
+        """
+        if len(raw_data_dict) == 1:
+            numplotsx = 1
+            numplotsy = 1
+        elif len(raw_data_dict) == 2:
+            numplotsx = 1
+            numplotsy = 2
         else:
-            key = 'meas_results_per_qb_raw'
-            suffix = ''
-            func_for_swpts = lambda qb_name: self.raw_data_dict[
-                'hard_sweep_points']
-        for qb_name, raw_data_dict in self.proc_data_dict[key].items():
-            if qb_name not in self.qb_names:
-                continue
-            sweep_points = func_for_swpts(qb_name)
-            if len(raw_data_dict) == 1:
-                numplotsx = 1
-                numplotsy = 1
-            elif len(raw_data_dict) == 2:
-                numplotsx = 1
-                numplotsy = 2
-            else:
-                numplotsx = 2
-                numplotsy = len(raw_data_dict) // 2 + len(raw_data_dict) % 2
+            numplotsx = 2
+            numplotsy = len(raw_data_dict) // 2 + len(raw_data_dict) % 2
 
-            plotsize = self.get_default_plot_params(set=False)['figure.figsize']
-            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
-                         self.raw_data_dict['measurementstring'] +
-                         '\nRaw data ' + suffix + ' ' + qb_name)
-            plot_name = 'raw_plot_' + qb_name + suffix
-            xlabel, xunit = self.get_xaxis_label_unit(qb_name)
+        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                     self.raw_data_dict['measurementstring'] +
+                     '\nRaw data ' + fig_suffix + ' ' + qb_name)
+        plot_name = f'{fig_name}_{qb_name}_{fig_suffix}'
+        xl, xu = self.get_xaxis_label_unit(qb_name)
+        if xlabel is None:
+            xlabel = xl
+        if xunit is None:
+            xunit = xu
 
-            prep_1d_plot = True
-            for ax_id, ro_channel in enumerate(raw_data_dict):
-                if self.get_param_value('TwoD', default_value=False):
-                    sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-                    if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                        # Only prepare 2D plots when there is more than one soft
-                        # sweep points. When there is only one soft sweep point
-                        # we want to do 1D plots which are more meaningful
-                        prep_1d_plot = False
-                        if self.sp is None:
-                            soft_sweep_params = self.get_param_value(
-                                'soft_sweep_params')
-                            if soft_sweep_params is not None:
-                                yunit = list(soft_sweep_params.values())[0]['unit']
-                            else:
-                                yunit = self.raw_data_dict[
-                                    'sweep_parameter_units'][1]
-                            if np.ndim(yunit) > 0:
-                                yunit = yunit[0]
-                        for pn, ssp in sp2dd.items():
-                            ylabel = pn
-                            if self.sp is not None:
-                                yunit = self.sp.get_sweep_params_property(
-                                    'unit', dimension=1, param_names=pn)
-                                ylabel = self.sp.get_sweep_params_property(
-                                    'label', dimension=1, param_names=pn)
-                            self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                                'fig_id': plot_name + '_' + pn,
-                                'ax_id': ax_id,
-                                'plotfn': self.plot_colorxy,
-                                'xvals': sweep_points,
-                                'yvals': ssp,
-                                'zvals': raw_data_dict[ro_channel].T,
-                                'xlabel': xlabel,
-                                'xunit': xunit,
-                                'ylabel': ylabel,
-                                'yunit': yunit,
-                                'numplotsx': numplotsx,
-                                'numplotsy': numplotsy,
-                                'plotsize': (plotsize[0]*numplotsx,
-                                             plotsize[1]*numplotsy),
-                                'title': fig_title,
-                                'clabel': '{} (Vpeak)'.format(ro_channel)}
+        if TwoD is None:
+            TwoD = self.get_param_value('TwoD', False)
+        prep_1d_plot = True
+        for ax_id, ro_channel in enumerate(raw_data_dict):
+            if TwoD:
+                sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
+                if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
+                    # Only prepare 2D plots when there is more than one soft
+                    # sweep point. When there is only one soft sweep point
+                    # we want to do 1D plots which are more meaningful
+                    prep_1d_plot = False
+                    for pn, ssp in sp2dd.items():
+                        ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                            'fig_id': plot_name + '_' + pn,
+                            'ax_id': ax_id,
+                            'plotfn': self.plot_colorxy,
+                            'xvals': xvals,
+                            'yvals': ssp,
+                            'zvals': raw_data_dict[ro_channel].T,
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': ylabel,
+                            'yunit': yunit,
+                            'numplotsx': numplotsx,
+                            'numplotsy': numplotsy,
+                            'plotsize': (plotsize[0]*numplotsx,
+                                         plotsize[1]*numplotsy),
+                            'title': fig_title,
+                            'clabel': '{} (Vpeak)'.format(ro_channel)}
 
-                if prep_1d_plot:
-                    yvals = raw_data_dict[ro_channel]
-                    if len(yvals.shape) > 1 and yvals.shape[1] == 1:
-                        # only one soft sweep point: prepare 1D plot which is
-                        # more meaningful
-                        yvals = np.squeeze(yvals, axis=1)
-                    self.plot_dicts[plot_name + '_' + ro_channel] = {
-                        'fig_id': plot_name,
-                        'ax_id': ax_id,
-                        'plotfn': self.plot_line,
-                        'xvals': sweep_points,
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'yvals': yvals,
-                        'ylabel': '{} (Vpeak)'.format(ro_channel),
-                        'yunit': '',
-                        'numplotsx': numplotsx,
-                        'numplotsy': numplotsy,
-                        'plotsize': (plotsize[0]*numplotsx,
-                                     plotsize[1]*numplotsy),
-                        'title': fig_title}
-            if len(raw_data_dict) == 1:
-                self.plot_dicts[
-                    plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
+            if prep_1d_plot:
+                yvals = raw_data_dict[ro_channel]
+                if len(yvals.shape) > 1 and yvals.shape[1] == 1:
+                    # only one soft sweep point: prepare 1D plot which is
+                    # more meaningful
+                    yvals = np.squeeze(yvals, axis=1)
+                elif yvals.ndim == 2:
+                    # Plot 1D slice of raw data at data_idx along data_axis
+                    if twod_data_idx is None or twod_data_axis is None:
+                        raise ValueError('Both "twod_data_idx" and '
+                                         '"twod_data_axis" must be specified '
+                                         'in order to plot 1D a slice of the '
+                                         'TwoD raw data.')
+                    yvals = np.take_along_axis(
+                        yvals.T,
+                        np.array([[twod_data_idx]]), twod_data_axis).flatten()
+                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    'fig_id': plot_name,
+                    'ax_id': ax_id,
+                    'plotfn': self.plot_line,
+                    'xvals': xvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': '{} (Vpeak)'.format(ro_channel),
+                    'yunit': '',
+                    'numplotsx': numplotsx,
+                    'numplotsy': numplotsy,
+                    'plotsize': (plotsize[0]*numplotsx,
+                                 plotsize[1]*numplotsy),
+                    'title': fig_title}
+        if len(raw_data_dict) == 1:
+            self.plot_dicts[
+                plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
 
     def prepare_projected_data_plots(self):
         """
-        If plot_proj_data  is True (passed in the options_dict, metadata, or
-        default_options), calls prepare_projected_data_plot with the correct
-        input parameters for each key in proc_data_dict['projected_data_dict'].
+        Prepares plots of the projected data for each qubit, stored in
+        proc_data_dict['projected_data_dict'].
+
+        Calls
+            - prepare_projected_data_plot if plot_proj_data (passed in the
+             options_dict, metadata, or default_options) is True.
+            - prepare_projected_1d_slices_plots if the data is TwoD and
+             slice_idxs_1d_proj_plot was passed in options_dict, metadata, or
+             default_options
         """
-        if self.get_param_value('plot_proj_data', default_value=True):
-            select_split = self.get_param_value('select_split')
-            fig_name_suffix = self.get_param_value('fig_name_suffix', '')
-            title_suffix = self.get_param_value('title_suffix', '')
-            for qb_name, corr_data in self.proc_data_dict[
-                    'projected_data_dict'].items():
-                fig_name = f'projected_plot_{qb_name}'
-                title_suf = title_suffix
-                if select_split is not None:
-                    param, idx = select_split[qb_name]
-                    # remove qb_name from param
-                    p = '_'.join([e for e in param.split('_') if e != qb_name])
-                    # create suffix
-                    suf = f'({p}, {str(np.round(idx, 3))})'
-                    # add suffix
-                    fig_name += f'_{suf}'
-                    title_suf = f'{suf}_{title_suf}' if \
-                        len(title_suf) else suf
-                if isinstance(corr_data, dict):
-                    for data_key, data in corr_data.items():
-                        fn = f'{fig_name}_{data_key}'
-                        if not self.rotate:
-                            data_label = ''
-                            plot_name_suffix = data_key
-                            plot_cal_points = False
-                        else:
-                            data_label = 'Data'
-                            plot_name_suffix = ''
-                            plot_cal_points = (
-                                not self.get_param_value('TwoD', False))
-                        data_axis_label = self.get_yaxis_label(qb_name,
-                                                               data_key)
-                        tf = f'{data_key}_{title_suf}' if \
-                            len(title_suf) else data_key
+        plot_proj_data = self.get_param_value('plot_proj_data', True)
+        select_split = self.get_param_value('select_split')
+        fig_name_suffix = self.get_param_value('fig_name_suffix', '')
+        title_suffix = self.get_param_value('title_suffix', '')
+        TwoD = self.get_param_value('TwoD', False)
+        slice_idxs_1d_proj_plot = self.get_param_value(
+            'slice_idxs_1d_proj_plot', {})
+        for qb_name, corr_data in self.proc_data_dict[
+                'projected_data_dict'].items():
+            slice_idxs_list = slice_idxs_1d_proj_plot.get(qb_name, [])
+            fig_name = f'projected_plot_{qb_name}'
+            title_suf = title_suffix
+            if select_split is not None:
+                param, idx = select_split[qb_name]
+                # remove qb_name from param
+                p = '_'.join([e for e in param.split('_') if e != qb_name])
+                # create suffix
+                suf = f'({p}, {str(np.round(idx, 3))})'
+                # add suffix
+                fig_name += f'_{suf}'
+                title_suf = f'{suf}_{title_suf}' if \
+                    len(title_suf) else suf
+            if isinstance(corr_data, dict):
+                # the most typical case, where we have data for 'pg', 'pe'
+                # (and 'pf')
+                for data_key, data in corr_data.items():
+                    # data_key is usually 'pg', 'pe', 'pf'
+                    fn = f'{fig_name}_{data_key}'
+                    if not self.rotate:
+                        data_label = ''
+                        plot_name_suffix = data_key
+                        plot_cal_points = False
+                    else:
+                        data_label = 'Data'
+                        plot_name_suffix = ''
+                        plot_cal_points = (
+                            not self.get_param_value('TwoD', False))
+                    data_axis_label = self.get_yaxis_label(qb_name,
+                                                           data_key)
+                    tf = f'{data_key}_{title_suf}' if \
+                        len(title_suf) else data_key
+                    if plot_proj_data:
+                        # standard projected data plot
                         self.prepare_projected_data_plot(
                             fn, data, qb_name=qb_name,
                             data_label=data_label,
@@ -2198,20 +2355,66 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             fig_name_suffix=fig_name_suffix,
                             data_axis_label=data_axis_label,
                             plot_cal_points=plot_cal_points)
-
-                else:
-                    fig_name = 'projected_plot_' + qb_name
+                    if TwoD and len(slice_idxs_list) > 0:
+                        # plot slices of the 2D projected data
+                        self.prepare_projected_1d_slices_plots(
+                            fn, data, qb_name, slice_idxs_list,
+                            title_suffix=tf, data_label=data_label,
+                            fig_name_suffix=fig_name_suffix,
+                            data_axis_label=data_axis_label)
+            else:
+                fig_name = 'projected_plot_' + qb_name
+                if plot_proj_data:
+                    # standard projected data plot
                     self.prepare_projected_data_plot(
                         fig_name, corr_data, qb_name=qb_name,
-                        plot_cal_points=(
-                            not self.get_param_value('TwoD', False)))
+                        plot_cal_points=(not TwoD))
+                if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D projected data
+                    self.prepare_projected_1d_slices_plots(
+                        fig_name, qb_name, corr_data, slice_idxs_list)
+
+    def prepare_projected_1d_slices_plots(self, fig_name, data, qb_name,
+                                          slice_idxs_list, title_suffix='',
+                                          **kw):
+        """
+        Prepares 1d plots of slices from a TwoD projected data plot.
+
+        Args:
+            fig_name (str): figure name
+            data (array): 2D array of the projected data
+            qb_name (str): qubit name
+            slice_idxs_list (list): list of tuples of the form (idxs, axis)
+                referring to slices of the 2D data array (see class docstring).
+                Example: [('8:13', 'row'), (0, 'col')]
+            title_suffix (str): suffix to add to the plot title which is created
+                automatically in prepare_projected_data_plot
+            **kw: passed to prepare_projected_data_plot
+        """
+        for slice_idxs in slice_idxs_list:
+            idxs, axis, xvals, xlabel, xunit = self.get_1d_slice_params(
+                qb_name, slice_idxs)
+            for idx in idxs:
+                data_slice = np.take_along_axis(
+                    data, np.array([[idx]]), axis).flatten()
+                plot_name_suffix = \
+                    f'{"_row" if axis == 0 else "_col"}_{idx}'
+                fn_slice = f'{fig_name}{plot_name_suffix}'
+                ts_slice = f'{title_suffix}{plot_name_suffix}'
+                self.prepare_projected_data_plot(
+                    fn_slice, data_slice, qb_name=qb_name,
+                    sweep_points=xvals,
+                    title_suffix=ts_slice, TwoD=False,
+                    plot_name_suffix=plot_name_suffix,
+                    xlabel=xlabel, xunit=xunit,
+                    plot_cal_points=axis == 0, **kw)
 
     def prepare_projected_data_plot(
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None,
-            linestyle='none'):
+            linestyle='none', xlabel=None, xunit=None):
         """
         Prepares one projected data plot, typically one of the keys in
         proc_data_dict['projected_data_dict'].
@@ -2248,6 +2451,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             linestyle: string with recognised matplotlib linestyle. If not set,
                 only markers for the data points will be shows. Only has an
                 effects if TwoD is False.
+            xlabel: string with the x-axis label, typically corresponding to the
+                hard/1d sweep parameter
+            xunit: string with the x-axis unit, typically corresponding to the
+                hard/1d sweep parameter
         """
         if len(fig_name_suffix):
             fig_name = f'{fig_name}_{fig_name_suffix}'
@@ -2313,7 +2520,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             ' ' + qb_name
 
         plot_dict_name = f'{fig_name}_{plot_name_suffix}'
-        xlabel, xunit = self.get_xaxis_label_unit(qb_name)
+        xl, xu = self.get_xaxis_label_unit(qb_name)
+        if xlabel is None:
+            xlabel = xl
+        if xunit is None:
+            xunit = xu
 
         prep_1d_plot = True
         if TwoD is None:
@@ -2325,22 +2536,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 # sweep points. When there is only one soft sweep point
                 # we want to do 1D plots which are more meaningful
                 prep_1d_plot = False
-                if self.sp is None:
-                    soft_sweep_params = self.get_param_value(
-                        'soft_sweep_params')
-                    if soft_sweep_params is not None:
-                        yunit = list(soft_sweep_params.values())[0]['unit']
-                    else:
-                        yunit = self.raw_data_dict['sweep_parameter_units'][1]
-                    if np.ndim(yunit) > 0:
-                        yunit = yunit[0]
                 for pn, ssp in sp2dd.items():
-                    ylabel = pn
-                    if self.sp is not None:
-                        yunit = self.sp.get_sweep_params_property(
-                            'unit', dimension=1, param_names=pn)
-                        ylabel = self.sp.get_sweep_params_property(
-                            'label', dimension=1, param_names=pn)
+                    ylabel, yunit = self.get_soft_sweep_label_unit(pn)
                     self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
                         'plotfn': self.plot_colorxy,
                         'fig_id': fig_name + '_' + pn,
@@ -2375,7 +2572,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': linestyle,
-                'do_legend': do_legend_data,
+                'do_legend': do_legend_data and len(data_label),
                 'legend_bbox_to_anchor': (1, 0.5),
                 'legend_pos': 'center left'}
 
@@ -2389,6 +2586,132 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 for plot_name in plot_names_cal:
                     plot_dict_cal = self.plot_dicts.pop(plot_name)
                     self.plot_dicts[plot_name] = plot_dict_cal
+
+    def _plot_1d_slices_of_2d_data(self, plot_type, slice_idxs_1d_plot):
+        """
+        Prepares figures for 1D slices of 2D data, and plots them.
+
+        Args:
+            plot_type (str): can be either "raw" or "proj", indicating whether
+                to plot 1D slices of raw data or projected data
+            slice_idxs_1d_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        if plot_type == 'raw':
+            key1, key2 = 'slice_idxs_1d_raw_plot', 'plot_raw_data'
+            prepare_plots_func = self.prepare_raw_data_plots
+        elif plot_type == 'proj':
+            key1, key2 = 'slice_idxs_1d_proj_plot', 'plot_proj_data'
+            prepare_plots_func = self.prepare_projected_data_plots
+        else:
+            raise ValueError(f'Unrecognized plot_type "{plot_type}." Please '
+                             f'use either "raw" or "proj."')
+        # Store self.default_options
+        default_options = deepcopy(self.default_options)
+        # Update self.default_options to ensure that only 1D slice plots
+        # are prepared. It is important to update this attribute instead of
+        # overwriting it, since the TwoD flag is added there by BaseDataAnalysis
+        self.default_options.update({key1: slice_idxs_1d_plot, key2: False})
+        # Store self.plot_dicts (deepcopy not allowed here because the plot
+        # dicts contain functions)
+        plot_dicts = {}
+        plot_dicts.update(self.plot_dicts)
+        # Remove existing entries from self.plot_dicts such that we only plot
+        # the 1D slices
+        self.plot_dicts = {}
+        # Prepare the 1D slice plots
+        prepare_plots_func()
+        # Plot 1D slices
+        self.plot()
+        # Save the figures
+        self.save_figures(close_figs=self.options_dict.get('close_figs', False))
+        # Update the self.plot_dicts with what was there originally
+        self.plot_dicts.update(plot_dicts)
+        # Reset the self.default_options
+        self.default_options = default_options
+
+    def plot_raw_1d_slices(self, slice_idxs_1d_raw_plot):
+        """
+        Helper function to prepare and plot figures of 1D slices of
+        2D raw data.
+
+        'projected_data_dict' must exist in self.proc_data_dict.
+
+        Args:
+            slice_idxs_1d_raw_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        self._plot_1d_slices_of_2d_data('raw', slice_idxs_1d_raw_plot)
+
+    def plot_projected_1d_slices(self, slice_idxs_1d_proj_plot):
+        """
+        Helper function to prepare and plot figures of 1D slices of
+        2D projected data.
+
+        'meas_results_per_qb_raw' or 'meas_results_per_qb' must exist
+        in self.proc_data_dict.
+
+        Args:
+            slice_idxs_1d_proj_plot (dict): slices indices of the 2D data. See
+                class docstring for more details.
+        """
+        self._plot_1d_slices_of_2d_data('proj', slice_idxs_1d_proj_plot)
+
+    def get_1d_slice_params(self, qb_name, slice_idxs):
+        """
+        Translates the information in slice_idxs into the relevant plot
+        parameters used by the functions that prepare plots.
+
+        Args:
+            qb_name (str): qubit name
+            slice_idxs (tuple): of the form (idxs, axis) referring to slices
+                of a 2D data array (see class docstring).
+                Examples: ('8:13', 'row'), (0, 'col')
+
+        Returns:
+            idx (list): list of indices of the 2D data array
+            axis (int): axis along which to take indices (0 for row, 1 for col)
+            xvals (array): x-axis values
+            xlabel (str): x-axis label
+            xunit (str): x-axis unit
+        """
+        axis = 0 if slice_idxs[1] == 'row' else 1
+        if axis == 0:
+            xvals = self.proc_data_dict[
+                'sweep_points_dict'][qb_name][
+                'sweep_points']
+            yvals = list(
+                self.proc_data_dict[
+                    'sweep_points_2D_dict'][
+                    qb_name].values())[0]
+            xlabel, xunit = None, None
+        else:
+            param_name = list(self.proc_data_dict[
+                                  'sweep_points_2D_dict'][qb_name])[0]
+            xvals = list(
+                self.proc_data_dict[
+                    'sweep_points_2D_dict'][
+                    qb_name].values())[0]
+            yvals = self.proc_data_dict[
+                'sweep_points_dict'][qb_name][
+                'sweep_points']
+            xlabel, xunit = \
+                self.get_soft_sweep_label_unit(
+                    param_name)
+
+        idxs = slice_idxs[0]
+        if isinstance(idxs, str):
+            if idxs == ':':
+                # take all slices along axis
+                idxs = np.arange(len(yvals))
+            else:
+                # idxs of the form 'int:int' or ':'
+                idxs = np.arange(int(idxs.split(':')[0]),
+                                 int(idxs.split(':')[-1]))
+        else:
+            idxs = [idxs]
+
+        return idxs, axis, xvals, xlabel, xunit
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
         """
@@ -2419,6 +2742,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             'values', dimension=dimension, param_names=param_name)
         return label, unit, vals
 
+    @staticmethod
+    def get_qbs_from_task_list(task_list):
+    # TODO: there is a more elaborate method find_qubits_in_tasks in MultiTaskingExperiment.
+    #  We could consider moving it to a place where it can be used from both measurement and analysis classes and
+    #  then remove this function here
+        all_qubits = set()
+        for task in task_list:
+            all_qubits.update([v for k,v in task.items() if 'qb' in k])
+        return list(all_qubits)
 
 class StateTomographyAnalysis(ba.BaseDataAnalysis):
     """
@@ -3251,8 +3583,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # make matrix out of vector
         data_reshaped_no_cp = {qb: np.reshape(
-            deepcopy(pdd['data_to_fit'][qb][
-                     :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
+            deepcopy(pdd['data_to_fit'][qb][:-nr_cp]).flatten(),
             (nr_amps, nr_lengths, nr_phases)) for qb in self.qb_names}
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
@@ -3294,29 +3625,47 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
+        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
+                                       decay=dict(value=1e-6),
+                                       ) for qb in self.qb_names}
+
+        gaussian_decay_func = \
+            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
+
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
-            exp_mod = fit_mods.ExponentialModel()
+            exp_mod = self.get_param_value('exp_fit_mod',
+                                           lmfit.Model(gaussian_decay_func))
+            guess_pars_dict = self.get_param_value("guess_pars_dict",
+                                                   guess_pars_dict_default)[qb]
             for i in range(nr_amps):
                 pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])
+                for par, params in guess_pars_dict.items():
+                    exp_mod.set_param_hint(par, **params)
+                guess_pars = exp_mod.make_params()
 
                 self.fit_dicts[f'exp_fit_{qb}_{i}'] = {
-                    'model': exp_mod,
-                    'fit_xvals': {'x': self.metadata['flux_lengths']},
+                    'fit_fn': exp_mod.func,
+                    'guess_pars': guess_pars,
+                    'fit_xvals': {'x': self.get_param_value('flux_lengths')},
                     'fit_yvals': {'data': np.array([self.fit_res[
                                                         f'cos_fit_{qb}_{i}_{j}'
                                                     ].best_values['amplitude']
                                                     for j in
                                                     range(nr_lengths)])}}
 
+
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
                 abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
+                for i in range(len(self.metadata['amplitudes']))])
+            pdd['T2_err'][qb] = np.array([
+                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
                 for i in range(len(self.metadata['amplitudes']))])
 
             pdd['mask'][qb] = []
@@ -3324,9 +3673,11 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 try:
                     if self.fit_res[f'exp_fit_{qb}_{i}']\
                                             .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb][i] = False
+                        pdd['mask'][qb].append(False)
+                    else:
+                        pdd['mask'][qb].append(True)
                 except TypeError:
-                    pdd['mask'][qb][i] = False
+                    pdd['mask'][qb][i].append(False)
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
@@ -3346,6 +3697,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 'linestyle': '-',
                 'xvals': xvals,
                 'yvals': pdd['T2'][qb][mask],
+                'yerr': pdd['T2_err'][qb][mask],
                 'xlabel': xlabel,
                 'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
                 'ylabel': r'T2',
@@ -3354,16 +3706,16 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
             # Plot all fits in single figure
-            if not self.get_param_value('all_fits', False):
+            if not self.get_param_value('all_fits', True):
                 continue
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
-                color = colormap(i/(len(self.metadata['frequencies'])-1))
-                label = f'exp_fit_{qb}_amp_{i}'
-                freqs = self.metadata['frequencies'] is not None
-                fitid = self.metadata.get('frequencies',
-                                          self.metadata['amplitudes'])[i]
+                color = colormap(i/(len(self.metadata['amplitudes'])-1))
+                label = f'exp_fit_{qb}_{i}'
+                freqs = self.get_param_value('frequencies')
+                fitid = self.metadata['amplitudes'][i] if freqs is None else \
+                        self.get_param_value('frequencies')[i]
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
@@ -3381,10 +3733,36 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_bbox_to_anchor': (1, 1),
                     'legend_pos': 'upper left',
                     }
-
-                label = f'freq_scatter_{qb}_{i}'
-                self.plot_dicts[label] = {
+                delays = self.get_param_value('flux_lengths')
+                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
+                                            ].best_values['amplitude']
+                                            for j in
+                                            range(len(delays))])
+                phase_contrasts_stderr = \
+                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
+                              ].params['amplitude'].stderr
+                              for j in
+                              range(len(delays))])
+                self.plot_dicts[label + 'data'] = {
                     'ax_id': f'T2_fits_{qb}',
+                    'plotfn': self.plot_line,
+                    "xvals": delays,
+                    "yvals": phase_contrasts,
+                    "yerr": phase_contrasts_stderr,
+                    "marker": "o",
+                    'plot_init': self.options_dict.get('plot_init', False),
+                    'color': color,
+                    'setlabel': f'freq={fitid:.4f}' if freqs
+                    else f'amp={fitid:.4f}',
+                    'do_legend': False,
+                    'legend_bbox_to_anchor': (1, 1),
+                    'legend_pos': 'upper left',
+                    'linestyle': "none",
+                }
+
+                label = f'phases_{qb}_ampl{i}'
+                self.plot_dicts[label] = {
+                    'ax_id': f'T2_fits_{qb}_phases',
                     'plotfn': self.plot_line,
                     'xvals': self.metadata['phases'],
                     'linestyle': '',
@@ -3402,14 +3780,13 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         rdd = self.raw_data_dict
         pdd = self.proc_data_dict
 
-        pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
-        pdd['amps_reshaped'] = np.unique(self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
-        pdd['phases_reshaped'] = []
-        for amp in pdd['amps_reshaped']:
-            mask = self.metadata['hard_sweep_params']['ro_amp_scale']['values'] == amp
-            pdd['phases_reshaped'].append(self.metadata['hard_sweep_params']['phase']['values'][mask])
-            for qb in self.qb_names:
-                pdd['data_reshaped'][qb].append(pdd['data_to_fit'][qb][:len(mask)][mask])
+        pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
+            'amplitude'] for qbn in self.qb_names}
+        pdd['phases_reshaped'] = [pdd['sweep_points_dict'][self.qb_names[0]][
+                                      'msmt_sweep_points']] * len(
+            pdd['amps_reshaped'][self.qb_names[0]])
+        pdd['data_reshaped'] = {qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
+                                for qbn in self.qb_names}
 
     def prepare_fitting(self):
         pdd = self.proc_data_dict
@@ -3457,14 +3834,14 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fit_dicts[f'phase_contrast_fit_{qb}'] = {
                 'model': gauss_mod,
                 'guess_dict': {'center': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_contrast'][qb]}}
 
             quadratic_mod = lmfit.models.QuadraticModel()
             self.fit_dicts[f'phase_offset_fit_{qb}'] = {
                 'model': quadratic_mod,
                 'guess_dict': {'b': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_offset'][qb]}}
 
             self.run_fitting()
@@ -3500,7 +3877,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'plotfn': self.plot_colorxy,
                     'xvals': pdd['phases_reshaped'][0],
-                    'yvals': pdd['amps_reshaped'],
+                    'yvals': pdd['amps_reshaped'][qb],
                     'zvals': pdd['data_reshaped'][qb],
                     'xlabel': r'Pulse phase, $\phi$',
                     'xunit': 'deg',
@@ -3510,8 +3887,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
-            for i, amp in enumerate(pdd['amps_reshaped']):
-                color = colormap(i/(len(pdd['amps_reshaped'])-1))
+            for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                 label = f'cos_data_{qb}_{i}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -3531,8 +3908,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper left',
                 }
             if self.do_fitting:
-                for i, amp in enumerate(pdd['amps_reshaped']):
-                    color = colormap(i/(len(pdd['amps_reshaped'])-1))
+                for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                    color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                     label = f'cos_fit_{qb}_{i}'
                     self.plot_dicts[label] = {
                         'ax_id': f'amplitude_crossections_{qb}',
@@ -3549,7 +3926,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3563,7 +3940,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_fit_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*self.fit_res[f'phase_contrast_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3573,7 +3950,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_labels_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -3590,7 +3967,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3604,7 +3981,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_fit_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': self.fit_res[f'phase_offset_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3614,7 +3991,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_labels_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -4651,6 +5028,118 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                     'colors': 'k'}
 
 
+class ThermalPopulationAnalysis(RabiAnalysis):
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        for qbn in self.qb_names:
+            s = 'Instrument settings.'+qbn
+            params_dict[f'ge_freq_'+qbn] = \
+                s + '.ge_freq'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
+    def _get_default_data_to_fit(self):
+        return {qbn: 'pf' for qbn in self.qb_names}
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+
+        for qbn in self.qb_names:
+            # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+            # replace k with qbn_i or qbn
+            fit_res_th = self.fit_dicts[f'cos_fit_{qbn}_0']['fit_res']
+            fit_res_prep = self.fit_dicts[f'cos_fit_{qbn}_1']['fit_res']
+            self.proc_data_dict['analysis_params_dict'][qbn] = \
+                self.get_thermal_population(qbn, fit_res_th, fit_res_prep)
+        self.save_processed_data(key='analysis_params_dict')
+
+    def get_thermal_population(self, qbn, fit_res_th, fit_res_prep):
+        ratio = fit_res_th.best_values['amplitude'] \
+                    / fit_res_prep.best_values['amplitude']
+        peth = ratio / (1 + ratio)
+        ge_freq = self.raw_data_dict[f'ge_freq_'+qbn]
+        # We set E_g = 0 and assume p_fth = 0. This implies
+        # 1 = p_gth + p_eth + p_fth = 1/Z exp(0) + p_eth = 1/Z + p_eth,
+        # where Z is the partition function, Z=\sum_j exp(- E_j/(k_B T)).
+        # => Z = 1/(1-p_eth) => p_eth = (1 - p_eth) * exp(- h * f_ge / (k * T))
+        # and therefore:
+        T = ge_freq * sp.constants.h / (sp.constants.k * np.log(1/peth-1))
+        return {'peth': peth, 'temperature': T}
+
+    def prepare_plots(self):
+        if self.do_fitting:
+            for k, fit_dict in self.fit_dicts.items():
+                # k is of the form cos_fit_qbn_i if TwoD else cos_fit_qbn
+                # replace k with qbn_i or qbn
+                k = k.replace('cos_fit_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                        'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x : f'{x:0.4f}')))
+                    daa = self.metadata.get('drive_amp_adaptation', {}).get(
+                        qbn, None)
+                    if daa is not None:
+                        sweep_points = sweep_points * daa[int(i)]
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = f'Rabi_{k}_{self.data_to_fit[qbn]}'
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
+                plot_cal_pts=int(i) if i != '' else True
+                data=dtf[int(i)] if i != '' else dtf
+                self.prepare_projected_data_plot(
+                    fig_name=base_plot_name,
+                    data=data if plot_cal_pts else data[:-self.num_cal_points],
+                    sweep_points=sweep_points if plot_cal_pts else sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qbn+'fit',
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix,
+                    plot_cal_points=plot_cal_pts,
+                )
+
+                self.plot_dicts['fit_' + k] = {
+                    'fig_id': base_plot_name,
+                    'plotfn': self.plot_fit,
+                    'fit_res': fit_res,
+                    'setlabel': 'cosine fit',
+                    'color': 'r',
+                    'do_legend': True,
+                    'legend_ncol': 2,
+                    'legend_bbox_to_anchor': (1, -0.15),
+                    'legend_pos': 'upper right'}
+
+                ana_params_qb = self.proc_data_dict['analysis_params_dict'][qbn]
+                textstr = ('amplitude = {:.2f} %'.format(
+                    fit_dict['fit_res'].best_values['amplitude'] * 1e2) +
+                           '\noffset = {:.2f} %'.format(
+                    fit_dict['fit_res'].best_values['offset'] * 1e2) +
+                           '\n$P_{e, th.}$' + ' = {:.2f} %'.format(
+                    ana_params_qb['peth'] * 1e2) +
+                           '\n$T$ = {:.2f} mK'.format(
+                    ana_params_qb['temperature'] * 1e3))
+                self.plot_dicts['text_msg_' + k] = {
+                    'fig_id': base_plot_name,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
+
+
 class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
@@ -4873,9 +5362,10 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         if self.do_fitting:
             apd = self.proc_data_dict['analysis_params_dict']
             for outer_key, ramsey_pars_dict in apd.items():
-                if outer_key in ['qubit_frequencies', 'reparking_params']:
-                    # This is only for ReparkingRamseyAnalysis.
-                    # It is handled by prepare_fitting_qubit_freqs of that class
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # This is only for ReparkingRamseyAnalysis and
+                    # ResidualZZAnalysis. It is handled those classes directly.
                     continue
                 # outer_key is of the form qbn_i if TwoD else qbn.
                 # split into qbn and i. (outer_key + '_') is needed because if
@@ -5197,6 +5687,175 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
                     'linestyle': ''}
+
+
+class ResidualZZAnalysis(RamseyAnalysis):
+    """
+    Analysis for a ResidualZZ measurement.
+
+    Extracts the residual ZZ couling by comparing the frequencies of two Ramsey
+    measurements and adds one additional plot for each residual ZZ measurement
+    to display the extracted residual ZZ couling.
+    """
+
+    def __init__(self, echo=False, **kwargs):
+        """
+        Args:
+            echo (bool, optional): Whether the Ramsey sequence included an echo
+                pulse or not. This is relevant for the analysis as this causes a
+                factor of 1/2 in the frequency difference between the two Ramsey
+                measurements compared to the measurements without echo pulse.
+                Defaults to False.
+        """
+        self.echo = echo
+        super().__init__(**kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        task_list = self.get_param_value('task_list', default_value=[])
+        for task in task_list:
+            params_dict[f'qbc_of_' + task['qb']] = task['qbc']
+        self.raw_data_dict.update(params_dict)
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        residual_ZZs_dicts = OrderedDict()
+        for qbn in self.qb_names:
+            residual_ZZs_dicts[qbn] = OrderedDict()
+            for fk in self.fit_keys:
+                fit_res_base = self.fit_dicts[f'{fk}{qbn}_0']['fit_res']
+                fit_res_prep = self.fit_dicts[f'{fk}{qbn}_1']['fit_res']
+                residual_ZZs_dicts[qbn][f'{fk}'] = \
+                    self.get_residual_zz(fit_res_base, fit_res_prep)
+        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
+            residual_ZZs_dicts
+        hdf_group_name_suffix = self.get_param_value(
+            'hdf_group_name_suffix', '')
+        self.save_processed_data(key='analysis_params_dict' +
+                                     hdf_group_name_suffix)
+
+    def get_residual_zz(self, fit_res_base, fit_res_prep):
+        """Compute the residual ZZ coupling from the two Ramsey fits.
+
+        Args:
+            fit_res_base (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit in the ground state the whole time.
+            fit_res_prep (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit excited.
+
+        Returns:
+            dict with the individual detunings ('freq_g', 'freq_e') and the
+            extracted residual ZZ ('shift_Hz') and its standard error
+            ('shift_Hz_stderr').
+        """
+        freq_g = fit_res_base.best_values['frequency']
+        freq_e = fit_res_prep.best_values['frequency']
+        shift = freq_e - freq_g
+        stderr = np.sqrt(fit_res_prep.params['frequency'].stderr**2
+                         + fit_res_base.params['frequency'].stderr**2)
+        # When the measurement was implemented using an echo pulse, the control
+        # qubit only got excited during the second half of the Ramsey sequence.
+        # The resulting shift between the fitted detuning frequencies therefore
+        # corresponds to only half the residual ZZ coupling. This is compensated
+        # by the following factor:
+        x = 2 if self.echo else 1
+        return {'freq_g': freq_g, 'freq_e': freq_e,
+                'shift_Hz': x*shift, 'shift_Hz_stderr': x*stderr}
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting:
+            apd = self.proc_data_dict['analysis_params_dict']
+            for qb, residual_zz_dict in apd['residual_ZZs'].items():
+                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                plot_name = f'ResidualZZ_{qb}_{qbc}'
+
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
+                    'sweep_points']
+                dtf = self.proc_data_dict['data_to_fit'][qb]
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[0],
+                    data_label=f'{qbc} in g',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qb+'fit0',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[1][:-self.num_cal_points],
+                    plot_cal_points=False,
+                    data_label=f'{qbc} in e',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qb+'fit1',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+
+                textstr = ''
+                for fk, residual_zz in residual_zz_dict.items():
+                    key = fk.split('_')[0]
+                    textstr += f'$\Delta f_{{0_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_g"]:.3f} kHz\n'
+                    textstr += f'$\Delta f_{{1_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
+                    textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
+                               + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
+                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} ' \
+                               + f'kHz\n'
+                textstr += f'target: {qb}, control: {qbc}'
+                self.plot_dicts['text_msg'] = {
+                    'fig_id': plot_name,
+                    'ypos': -0.2,
+                    'xpos': -0.025,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'color': 'black',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr,}
+
+
+            # helper variable to prevent having labels twice in the legend
+            labels_set = False
+            for outer_key, ramsey_pars_dict in apd.items():
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # We only care about the fit types saved in the apd.
+                    continue
+                # outer_key is of the form qbn_i if TwoD else qbn.
+                # split into qbn and i. (outer_key + '_') is needed because if
+                # outer_key = qbn doing outer_key.split('_') will only have one
+                # output and assignment to two variables will fail.
+                qbn = (outer_key + '_').split('_')[0]
+
+                qbc = self.raw_data_dict[f'qbc_of_{qbn}']
+                plot_name = f'ResidualZZ_{qbn}_{qbc}'
+
+                for i, fit_type in enumerate(ramsey_pars_dict):
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}'][
+                        'fit_res']
+                    label = 'exp decay fit' if i == 0 else 'gauss decay fit'
+                    self.plot_dicts[
+                        f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
+                            'fig_id': plot_name,
+                            'plotfn': self.plot_fit,
+                            'fit_res': fit_res,
+                            'color': 'r' if i == 0 else 'C4',
+                            'setlabel': label if not labels_set else '',
+                        }
+                    if not labels_set:
+                        self.plot_dicts[
+                            f'ResidualZZ_fit_{outer_key}_{fit_type}'].update({
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1.0, -0.15),
+                                'legend_pos': 'upper right',
+                            })
+                labels_set = True
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -7364,6 +8023,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                     for mu_j in means]).flatten().max()
 
             tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            tol = kw.pop("tol", tol)
             reg_covar = tol**2
 
             gm = GM(n_components=n_qb_states,
@@ -8735,8 +9395,15 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
+        self.nr_averages = self._extract_nr_averages()
+
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
+            ref_time=self.get_param_value("ref_time")
+        )
+
+        # Extract bare experiment timer
+        self.timers['BareExperiment'] = self.bare_experiment_timer(
             ref_time=self.get_param_value("ref_time")
         )
 
@@ -8744,14 +9411,23 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         pass
 
     def plot(self, **kwargs):
-        timers = [t for t in self.timers.values() if len(t)]
+        timers = [t for t in self.timers.values()]
         plot_kws = self.get_param_value('plot_kwargs', {})
         for t in timers:
             try:
-                self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                if len(t):
+                    self.figs["timer_" + t.name] = t.plot(**plot_kws)
+                # plot combined plot of children
+                if self.get_param_value('children_timer', True) and len(t.children):
+                    self.figs['timer_' + t.name + "_children"] = \
+                        tm_mod.multi_plot(list(t.children.values()), **plot_kws)
+                    # recursive plot
+                    for n, subtimer in t.children.items():
+                        if len(subtimer.children):
+                            self.figs[f'timer_{n}'] = subtimer.plot(**plot_kws)
             except Exception as e:
                 if self.raise_exceptions:
-                    raise
+                    raise e
                 log.error(f'Could not plot Timer: {t.name}: {e}')
 
         if self.get_param_value('combined_timer', True):
@@ -8760,6 +9436,18 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
     def bare_measurement_timer(self, ref_time=None,
                                checkpoint='bare_measurement', **kw):
+        """
+        Creates and returns an additional timer for the bare measurement time,
+        which is defined as the repetition period between two master triggers
+        times the total number of runs
+
+        Args:
+            ref_time: Reference time for the start of the bare measurement timer.
+                If None, the earliest time found in self.timers is used.
+            checkpoint (str): name of the bare measurement checkpoint
+            **kw: remaining keywords are passed to bare_measurement_time
+
+        """
         bmtime = self.bare_measurement_time(**kw)
         bmtimer = tm_mod.Timer('BareMeasurement', auto_start=False)
         if ref_time is None:
@@ -8776,7 +9464,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 raise e
 
         # TODO add more options of how to distribute the bm time in the timer
-        #  (not only start stop but e.g. distribute it)
+        #  (not only start stop to get the correct duration but
+        #  add it when the acquisition device is actually acquiring data)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.start",
                            values=[ref_time], log_init=False)
         bmtimer.checkpoint(f"BareMeasurement.{checkpoint}.end",
@@ -8785,21 +9474,83 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return bmtimer
 
-    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
-                              count_nan_measurements=False):
+    def bare_experiment_timer(self, ref_time=None,
+                                   checkpoint='bare_experiment', **kw):
+        tot_sec = self.bare_experiment_time(**kw)
+        tm = tm_mod.Timer('BareExperiment', auto_start=False)
+        if ref_time is None:
+            try:
+                ts = [t.find_earliest() for t in self.timers.values()]
+                ts = [t[-1] for t in ts if len(t)]
+                arg_sorted = sorted(range(len(ts)),
+                                    key=list(ts).__getitem__)
+                ref_time = ts[arg_sorted[0]]
+            except Exception as e:
+                log.error('Failed to extract reference time for bare'
+                          f'Experiment timer. Please fix the error'
+                          f'or pass in a reference time manually.')
+                raise e
+
+        # TODO add more options of how to distribute the bm time in the timer
+        #  (not only start stop but e.g. distribute it)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.start",
+                           values=[ref_time], log_init=False)
+        tm.checkpoint(f"BareExperiment.{checkpoint}.end",
+                           values=[ref_time + dt.timedelta(seconds=tot_sec)],
+                           log_init=False)
+
+        return tm
+
+    def _extract_nr_averages(self):
+        try:
+            sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
+            if sa is not None and sa != 1:
+                log.warning('Currently, soft averages are not taken into account'
+                          'when extracting the number of averages. This might lead'
+                          'to unexpected timings.')
+            sr = self.get_hdf_param_value('Instrument settings/MC', "soft_repetitions")
+            if sr is not None and sr != 1:
+                log.warning('Currently, soft repetitions are not taken into account'
+                          'when extracting the number of shots. This might lead'
+                          'to unexpected timings.')
+        except:
+            # in case some of the attributes do not exist
+            pass
+        #TODO Currently does not support soft averages or soft repetitions
         det_metadata = self.metadata.get("Detector Metadata", None)
-        if nr_averages is None:
-            nr_averages = self.get_param_value('nr_averages', None)
+        nr_averages = self.get_param_value('nr_averages', None)
         if det_metadata is not None and nr_averages is None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            det = list(det_metadata.get('detectors', {}).values())[0]
-            nr_averages = det.get('nr_averages', det.get('nr_shots', None))
+            nr_averages = det_metadata.get('nr_averages',
+                                           det_metadata.get('nr_shots', None))
+            if nr_averages is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
         if nr_averages is None:
             raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
                              'Please specify "nr_averages" in options_dict.')
-        self.nr_averages = nr_averages
+        return nr_averages
+
+    def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
+                              count_nan_measurements=False):
+        """
+        Computes the measurement time i.e. the number of segments * the repetition rate
+        * number of averages.
+        Args:
+            nr_averages: number of averages for each segment
+            repetition_rate: time interval between two main triggers of
+                subsequent segments
+            count_nan_measurements: whether or not to account for segments in
+                unfinished measurements.
+
+        Returns:
+
+        """
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        det_metadata = self.metadata.get("Detector Metadata", None)
         # metadata['detectors'] is a dict for MultiPollDetector and else a list
         df_names = list(det_metadata['detectors'])
         # Testing the first detector, since detectors in a MultiPollDetector
@@ -8821,6 +9572,44 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             perc_meas = 1 - np.sum(np.isnan(vals)) / np.prod(vals.shape)
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
+
+    def bare_experiment_time(self, nr_averages=None):
+        """
+        Computes the bare experiment time from the segments durations,
+        which are extracted from the segment timers.
+        Note: unlike bare_measurement_time,
+            for now this function always accounts for the full experiment time
+            even if the measurement was interrupted.
+        Args:
+            nr_averages: Number of averages for each segment.
+                Defaults to self.nr_averages, which is extracted by
+                self._extract_nr_averages()
+
+        Returns:
+            Total experiment time (in seconds)
+        """
+
+        if nr_averages is None:
+            nr_averages = self.nr_averages
+        try:
+            # duration of segments are stored with the .dt checkpoint end
+            ckpts = self.timers['Sequences'].find_keys('.dt',
+                                                       search_children=True)
+            # since ns are not supported by datetime, the durations are stored
+            # in micro seconds, so we need to set them back to nanoseconds
+            segment_durations = [
+                (self.timers['Sequences'][ck][0] -
+                 dt.datetime.utcfromtimestamp(0)).total_seconds() / 1e3
+                for ck in ckpts]
+            self.proc_data_dict["segment_durations"] = \
+                {ck:d for ck, d in zip(ckpts, segment_durations)}
+
+            tot_secs = np.sum(segment_durations) * nr_averages
+            return tot_secs
+        except Exception as e:
+            log.error(f'Could not compute bare experiment time : {e}.'
+                      f'Returning timer with 0s duration.')
+            return 0
 
     @staticmethod
     def _bare_measurement_time(n_ssp, n_hsp, repetition_rate, nr_averages,
@@ -10256,6 +11045,355 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                     'marker': ''}
 
 
+class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """ Class for automated chevron analysis
+
+    For this function a model for the Hamiltonian of the qubits is required. The function will use the fit_ge_from_...
+    parameters to calculate the frequencies for the given amplitudes.
+    Saves the fit parameters and the optimal CZ time in self.proc_data_dict['analysis_params_dict']:
+        J: coupling between |20> and |11> in Hz
+        offset_freq: frequency by which the two energy levels were off from the calculation in Hz
+    Options_dict options:
+        'num_curves': number of curves of full state recovery that should be plotted using the fit results, default: 5
+        'model': model used to calculate voltage to qubit frequency
+        'J_guess_boundary_scale': the limits for the fit of J are: (default: 2)
+            [J_fft/J_guess_boundary_scale, J_fft*J_guess_boundary_scale], where J_fft is obtained by the function J_fft
+        'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 2e8)
+        'steps': number of evaulations used for the fitting, default 1e8, dual_annealing default 1e7
+    """
+    def extract_data(self):
+        super().extract_data()
+        self.task_list = self.get_param_value('task_list')
+        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
+                  'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
+        for qbn in self.qb_names:
+            self.raw_data_dict.update({f"{p}_{qbn}":
+                                           self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
+                                       for p in params})
 
 
+    def prepare_fitting(self):
+        self.fit_dicts = OrderedDict()
+        self.proc_data_dict['Delta'] = OrderedDict()
 
+        def pe_function(t, Delta, J=10e6, offset_freq=0):
+            # From Nathan's master's thesis Eq. 2.6 - fitting function
+            t = t*1e9
+            J = 2*np.pi*J/1e9
+            offset_freq = offset_freq/1e9
+            Delta = Delta/1e9
+            Delta_off = 2 * np.pi * (
+                    Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
+                    4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
+
+        def J_fft(t, Delta, data):
+            # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
+            # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
+            J_min = None
+            for Delta_index in range(len(Delta)):
+                S = sp.fft.fft(data[Delta_index])
+                S[0] = 0 # Ignore DC component
+                xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
+                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
+                if J_min == None or J_min > J_fft:
+                    J_min = J_fft
+            return J_min
+
+        def calculate_voltage_from_flux(vfc, flux):
+            return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude, vfc,
+                                      model='transmon_res', bias = None):
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
+            if flux_amplitude_bias_ratio is None:
+                if np.ndim(amplitude) > 0:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude.any() != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+                else:
+                    if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
+                            (model == ['approx'] and bias is not None and bias != 0)):
+                        raise ValueError('flux_amplitude_bias_ratio is None, but is '
+                                         'required for this calculation.')
+
+
+            if model == 'approx':
+                ge_freq = fit_mods.Qubit_dac_to_freq(
+                    amplitude + (0 if bias is None or np.all(bias == 0) else
+                                 bias * flux_amplitude_bias_ratio), **vfc)
+            elif model == 'transmon':
+                kw = deepcopy(vfc)
+                kw.pop('coupling', None)
+                kw.pop('fr', None)
+                ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **kw)
+            elif model == 'transmon_res':
+                ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
+                    0 if np.all(amplitude == 0)
+                    else amplitude / flux_amplitude_bias_ratio), **vfc)
+            else:
+                raise NotImplementedError(
+                    "Currently, only the models 'approx', 'transmon', and"
+                    "'transmon_res' are implemented.")
+            return ge_freq
+
+        def add_fit_dict(qbH_name, qbL_name, data, key):
+            """ Creates the dictionary used for fitting
+
+             The dictionary includes the fitting-model, the function be fitted to, the x and y data, the method used for
+             fitting and the guess parameters. First extracts the relevant data from the raw_data_dict.
+             Converts the amplitude to frequencies and the swept frequency (amplitude) to a detuning (Delta) of the
+             qubits. Additionally removes all data points with NaN excited state population. The fit parameters are
+             the coupling of the qubits J and the frequency offset of the actual detuning compared to what was
+             calculated. J is obtained from doing a FFT on all measured detunings and taking the minimum of it, which
+             corresponds to the smallest detuning (ideally 0). Finally flattens the data for the fit.
+
+
+            Parameters
+            ----------
+            qbH_name: Higher-frequency qubit
+            qbL_name: Lower-frequency qubit
+            data: excited state population
+            key: key for the dictionary
+
+            Returns
+            -------
+            A fit-dictionary
+            """
+            model = self.get_param_value('model', 'transmon_res')
+            J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
+            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            hdf_file_index = self.get_param_value('hdf_file_index', 0)
+
+            qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
+            qbL_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbL_name}']
+            qbH_flux = self.raw_data_dict[f'flux_parking_{qbH_name}']
+            qbL_flux = self.raw_data_dict[f'flux_parking_{qbL_name}']
+
+            if model in ['transmon', 'transmon_res']:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
+                qbH_bias = calculate_voltage_from_flux(qbH_vfc, qbH_flux)
+                qbL_bias = calculate_voltage_from_flux(qbL_vfc, qbL_flux)
+            else:
+                qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
+                qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
+                qbH_bias = None
+                qbL_bias = None
+
+            if self.num_cal_points != 0:
+                data = np.array([element[:-self.num_cal_points] for element in data])
+
+            t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points']
+
+            # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
+            sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
+            if sweep_point_name in self.proc_data_dict['sweep_points_2D_dict'][qbL_name]:
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            else:
+                sweep_point_name = qbL_name + '_' + qbH_name + '_amplitude2'
+                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+
+            cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
+            device_name = self.get_param_value('device_name')
+            if device_name is None:
+                try:
+                    device_name = self.get_instruments_by_class(
+                        'pycqed.instrument_drivers.meta_instrument.device.Device',
+                        hdf_file_index)[0]
+                except KeyError:
+                    raise KeyError('For old data, the device name has to be given as an input "device_name" ')
+
+            amp = self.get_hdf_param_value("Instrument settings/" + device_name,
+                                           f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
+
+            qbL_tuned_freq_arr = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
+                vfc=qbL_vfc, model= model, bias=qbL_bias)
+            qbH_tuned_ef_freq = calculate_qubit_frequency(
+                flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
+                vfc=qbH_vfc, model= model, bias=qbH_bias) + self.raw_data_dict[f'anharmonicity_{qbH_name}']
+
+            Delta = qbL_tuned_freq_arr - qbH_tuned_ef_freq
+
+            reduction_arr = np.invert(np.isnan(data))
+            indices = np.where(reduction_arr == False)
+            reduction_arr[indices[0]] = False # All columns with the faulty fields get set false
+            for element in reduction_arr:
+                element[indices[1]] = False # All rows with the faulty fields get set false
+
+            # Remove faulty fields
+            t_mod = np.delete(t, indices[1])
+            Delta_mod = np.delete(Delta, indices[0])
+            pe = data[reduction_arr].reshape(len(Delta_mod), len(t_mod))
+
+            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
+
+            J_guess = J_fft(t_mod, Delta_mod, pe)
+            pe_model.set_param_hint('J', value=J_guess, min=J_guess/J_guess_boundary_scale,
+                                    max=J_guess_boundary_scale*J_guess)
+            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
+                                    max=offset_guess_boundary)
+            guess_pars = pe_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            # Data needs to be flat for fitting
+            t_mod_flat = np.tile(t_mod, len(Delta_mod))
+            Delta_mod_flat = np.repeat(Delta_mod, len(t_mod))
+            pe_flat = pe.flatten()
+
+            self.proc_data_dict['Delta'][qbH_name] = Delta
+
+
+            self.fit_dicts[key] = {
+                'model' : pe_model, # if this is missing, Model is None and Delta is assigned as parameter..
+                'fit_fn': pe_model.func,
+                'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
+                'fit_yvals': {'data': pe_flat},
+                'method': 'dual_annealing',
+                'guess_pars': guess_pars,
+                'steps': self.get_param_value('steps', 1e8), # default for dual annealing is 1e7
+            }
+
+        for task in self.get_param_value('task_list'):
+            qbH_name, qbL_name = self._get_qbH_qbL(task)
+            if qbH_name is not None:
+                data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
+                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data, key= f'chevron_fit_{qbH_name}_{qbL_name}')
+
+    def _get_qbH_qbL(self, task):
+        qbH_name, qbL_name = task['qbc'], task['qbt']
+
+        if qbH_name not in self.qb_names or qbL_name not in self.qb_names:
+            return None, None
+
+        # Safety check on whether the above qbH/L assignment is correct
+        if self.raw_data_dict[f'ge_freq_{qbH_name}'] < self.raw_data_dict[
+                f'ge_freq_{qbL_name}']:
+            qbH_name, qbL_name = qbL_name, qbH_name
+
+        return qbH_name, qbL_name
+
+    def analyze_fit_results(self):
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form chevron_fit_qbH_qbL
+            # Replace k with qbH_qbL
+            k = k.replace('chevron_fit_', '')
+            qbH = k.split('_')[0]
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][k] = \
+                fit_res.best_values
+            self.proc_data_dict['analysis_params_dict'][k]['t_CZ_'+self.measurement_strings[qbH].partition('_')[0]] = \
+                self.t_CARB(fit_res.best_values['J'], 0, 1) # could e.g. be changed to t_CZ_up with if statements
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        num_curves = self.options_dict.get('num_curves', 5)
+        steps = 500 # How many plotting points you want for the fit
+
+        if self.do_fitting:
+            for task in self.get_param_value('task_list'):
+                qbH, qbL = self._get_qbH_qbL(task)
+                if qbH is not None:
+                    for actual_detuning in [True, False]:
+                        base_plot_name = f'Chevron_{qbH}_{qbL}_pe_actual' if actual_detuning else \
+                            f'Chevron_{qbH}_{qbL}_pe_expected'
+                        xlabel, xunit = self.get_xaxis_label_unit(qbH)
+                        ylabel = r'Detuning $\Delta$' if actual_detuning else r'Expected detuning $\Delta_{exp}$'
+                        yunit = 'Hz'
+                        # ylabel = self.get_yaxis_label(qbH)
+                        xvals = self.proc_data_dict['sweep_points_dict'][qbH][
+                            'msmt_sweep_points']
+                        Delta = self.proc_data_dict['Delta'][qbH]
+                        offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
+                        Delta_fine = np.linspace(-2*abs(min(Delta)-abs(
+                            offset_freq)), 2*(max(Delta)+offset_freq),
+                                                 steps) # for fit plotting
+                        J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
+                        offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
+                        mmt_string = self.measurement_strings[
+                                        qbH].partition('_')[0]
+                        t_CZ = self.proc_data_dict['analysis_params_dict'][
+                                f'{qbH}_{qbL}']['t_CZ_'+mmt_string]
+                        textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
+                        textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
+                        textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
+                        self.plot_dicts[f'{base_plot_name}_main'] = {
+                            'plotfn': self.plot_colorxy,
+                            'fig_id': base_plot_name,
+                            'xvals': xvals,
+                            'yvals': Delta+offset_freq if actual_detuning else Delta,
+                            'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': ylabel,
+                            'yunit': yunit,
+                            'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                      self.measurement_strings[qbH]),
+                            'clabel': self.get_yaxis_label(qb_name=qbH, data_key='e'),}
+                        for n in range(num_curves+1):
+                            fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
+                                f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
+                            J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
+                            xvals_fit = self.t_CARB(J, Delta_fine, n) if actual_detuning else \
+                                self.t_CARB(J, Delta_fine + offset_freq, n)
+                            self.plot_dicts[f'{fit_plot_name}_main'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': xvals_fit,
+                                'yvals': Delta_fine,
+                                'color': 'red',
+                                'marker': 'None',
+                                # 'datalabel': None,
+                                         }
+                        self.plot_dicts[f'text_msg_Chevron_{base_plot_name}]'] = {
+                            'fig_id': base_plot_name,
+                            'ypos': -0.2,
+                            'xpos': -0.025,
+                            'horizontalalignment': 'left',
+                            'verticalalignment': 'top',
+                            'color': 'k',
+                            'plotfn': self.plot_text,
+                            'text_string': textstr}
+
+                        for negative_J in [True, False]:
+                            self.plot_dicts[f'{fit_plot_name}_plot_J_{negative_J}'] = {
+                                'plotfn': self.plot_line,
+                                'fig_id': base_plot_name,
+                                'xvals': [0, 2*xvals[-1]-xvals[-2]], # make
+                                # sure the horizontal lines indicating J are
+                                # wide enough to cover the entire plot
+                                'yvals': J*np.ones(2) * (-1) ** negative_J - \
+                                         offset_freq * (1-actual_detuning),
+                                'color': 'white',
+                                'marker': 'None',
+                                # 'setlabel': 'J',
+                                # 'do_legend': True, #FIXME: this also makes a legend for the fit lines
+                            }
+
+    @staticmethod
+    def t_CARB(J, Delta, n):
+        """
+        Function to calculate the time needed for an arbitrary C-Phase gate.
+
+        The mathemtical description of this function can be found in Nathan's master thesis for example.
+        Parameters
+        ----------
+        J: coupling of the 20 and 11 transition in Hz
+        Delta: Detuning of the qubits during the interaction in Hz
+        n: Number of oscillation for which the interaction time should be calculated (usually you want the shortest
+        (n=1)). This is mainly used to allow to plot the different traces in Delta-t-plane
+
+        Returns
+        -------
+        The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
+        """
+        return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)

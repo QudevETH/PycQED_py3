@@ -75,16 +75,9 @@ class AcquisitionDevice():
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
         self.timer = None
-        self.extra_data_callback = None
-        if 'timeout' not in self.parameters:
-            # The underlying qcodes driver has not created a parameter
-            # timeout. In that case, we add the parameter here.
-            self.add_parameter(
-                'timeout',
-                unit='s',
-                initial_value=30,
-                parameter_class=ManualParameter,
-                vals=validators.Ints())
+        self.extra_data = []
+        """List of dicts representing additional data to be stored. Keys
+        in the dicts correspond to kwargs of save_extra_data."""
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
@@ -163,10 +156,9 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). By default, only removes the extra_data_callback and the
-        timer. Can be overridden in child classes to add further functionality.
+        sweeps). By default, only removes the timer. Can be overridden in
+        child classes to add further functionality.
         """
-        self.extra_data_callback = None
         self.timer = None
 
     def _reset_n_acquired(self):
@@ -208,12 +200,12 @@ class AcquisitionDevice():
         repetitions for averaging), i.e., 100% progress corresponds to the
         this method reporting self._acq_n_results * self._acq_loop_cnt.
 
-        The method always returns 0 indicating that no intermediate progress
+        The method always returns None indicating that no intermediate progress
         information is available. If the child class does not overwrite the
         method with a concrete implementation, progress will be stuck during
         hard sweeps and will only be updated by MC after the hard sweep.
         """
-        return 0
+        return None
 
     def prepare_poll_before_AWG_start(self):
         """Final preparations for an acquisition before starting AWGs.
@@ -225,8 +217,12 @@ class AcquisitionDevice():
         triggers) if it does not rely on first-trigger detection. Unlike
         acquisition_initialize, this function is called multiple times in a
         soft sweep.
+
+        The method in this base class resets self.extra_data, which can then
+        be filled by calling save_extra_data from the poll method of child
+        classes.
         """
-        pass
+        self.pop_extra_data()
 
     def prepare_poll_after_AWG_start(self):
         """Final preparations for an acquisition after starting AWGs.
@@ -258,13 +254,7 @@ class AcquisitionDevice():
                                   f'for {self.__class__.__name__}')
 
     def save_extra_data(self, dataset_name, data, column_names=None):
-        """Store additional data via self.extra_data_callback
-
-        This method calls self.extra_data_callback if it is not None. It is
-        expected that the callback function accepts the arguments described
-        in the docstring of MC.save_extra_data, see therein for details
-        about the args. The name of the acquisition device is passed
-        group_name.
+        """Store additional data to provide it to the detector function
 
         Args:
             dataset_name (str): The name of the dataset in which the data
@@ -273,9 +263,15 @@ class AcquisitionDevice():
             column_names (None or list of str): names of the columns of the
                 data array.
         """
-        if self.extra_data_callback is not None:
-            self.extra_data_callback(self.name, dataset_name, data,
-                                     column_names=column_names)
+        self.extra_data.append(dict(
+            dataset_name=dataset_name, data=data, column_names=column_names))
+
+    def pop_extra_data(self):
+        """Return stored additional data and reset extra data storage
+        """
+        ed = self.extra_data
+        self.extra_data = []
+        return ed
 
     def start(self, **kw):
         """ Start the built-in AWG (if present).
@@ -336,7 +332,8 @@ class AcquisitionDevice():
         """
         return data
 
-    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+    def get_lo_sweep_function(self, acq_unit, ro_mod_freq,
+                              get_closest_lo_freq=(lambda x: x)):
         """Return a sweep function for sweeping the internal LO
 
         Needs to be implemented in the child class for acquisition devices
@@ -353,6 +350,10 @@ class AcquisitionDevice():
                 sweep of LO and IF in a way that the IF is as close as
                 possible to the provided value, while accounting for
                 hardware limitations of the internal LO.
+            get_closest_lo_freq (function): a function that takes an LO
+                frequency as argument and returns the closest allowed LO
+                frequency. This can be used to provide limitations imposed
+                by higher-layer settings to the driver.
 
         Returns:
             A sweep function object for the frequency sweep.
@@ -455,6 +456,19 @@ class AcquisitionDevice():
 
         raise NotImplementedError("Not implemented in class "
                                  f"'{self.__class__.__name__}'")
+
+    def get_awg_control_object(self):
+        """
+        To be overloaded by children to return the AWG control object and its
+        name. The AWG control object will be passed as the AWG parameters of
+        the PollingDetector functions, and it will be called in poll to start
+        and stop acquisition.
+
+        Returns:
+            class instance, name of class instance (or None, None if no
+            awg control is needed for the acquisition device)
+        """
+        return None, None
 
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,

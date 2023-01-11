@@ -5,11 +5,15 @@ This file contains the Spectroscopy class that forms the basis analysis of all
 the spectroscopy measurement analyses.
 """
 
+from copy import copy
 import logging
+import re
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
+import pycqed.analysis_v2.timedomain_analysis as tda
 import pycqed.analysis.fitting_models as fit_mods
+from itertools import combinations
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1667,3 +1671,299 @@ class QubitTrackerSpectroscopy(Spectroscopy):
         y = fr.model.func(x, **fr.best_values)
         f_next = (y.min() - freq_slack, y.max() + freq_slack)
         return v2d_next, f_next
+
+
+class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
+    """Base class for the analysis of `MultiTaskingSpectroscopyExperiment`.
+
+    Transforms the IQ data provided by the detector function into magnitude and
+    phase and overwrites specific methods of tda.MultiQubit_TimeDomain_Analysis.
+    """
+    def process_data(self):
+        super().process_data()
+
+        mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
+        self.proc_data_dict['projected_data_dict'] = {
+            qb: self._transform(raw_data, True) for qb, raw_data in mdata_per_qb.items()
+        }
+
+    def _transform(self, data, transpose=True):
+        polar_data = dict()
+        values = list(data.values())
+        S21 = values[0] + 1j * values[1] # vector in complex plane
+        polar_data["Magnitude"] = np.abs(S21).T if transpose else np.abs(S21)
+        polar_data["Phase"] = np.angle(S21).T if transpose else np.angle(S21)
+        return polar_data
+
+    def get_yaxis_label(self, qb_name, data_key=None):
+        if data_key is None:
+            return 'Measured Data (arb.)'
+        if data_key == 'Phase':
+            # FIXME a cleaner version would be to implemented this via yunit
+            #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
+            return 'Phase (rad)'
+        if data_key == 'Magnitude':
+            # FIXME a cleaner version would be to implemented this via yunit
+            #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
+            return 'Magnitude (Vpeak)'
+        return data_key
+
+    def fit_and_plot_ro_params(self, guess_vals=None, qb_names=None, **kw):
+        """Fit spectroscopy data of a qubit, readout res. and a Purcell filter.
+
+        The fitting model is the one derived in [1] with the following
+        modifications:
+            * We allow an empirical slope on the background amplitude
+            * To more generally account for the phase of the signal reflected
+              from the input capacitor, we write the complex interference
+              amplitude complex amplitude of the signal emitted from the Purcell
+              filter into the feedline as (1 + Γ) = r exp(i φ). The modulus r
+              of this term is absorbed into the total amplitude of the spectrum.
+              For constructive interference of the signals directly emitted and
+              reflected from the input side, we target φ = 0, in which case also
+              the coupling between the Purcell filter and the feedline is
+              maximized.
+        [1] J. Heinsoo et al., Phys. Rev. Applied 10, 034040 (2018)
+
+        All parameters with frequency units are in standard (not angular) MHz
+
+        Parameters of the fitting model:
+            A and k (unitless, 1/MHz): amplitude and slope of the spectrum
+            phi (rad): interference phase of signal reflected from input cap.
+            kP (MHz): effective coupling rate between Purc. filter and feedline
+            wP (MHz): frequency of the Purcell filter
+            gP (MHz): internal loss rate of the Purcell filter
+            J (MHz): coupling rate between Purc. filter and readotu resonator
+            wRg (MHz): frequency of readout res. when qubit is in ground state
+            gR: (MHz): internal loss rate of the readout resonator
+            chige (MHz): dispersive shift of the readout resonator. Equal to
+                half the frequency shift of the readout res. when changing qubit
+                from |g⟩ to |e⟩ state.
+            chigf (MHz): dispersive shift of the readout resonator for second
+                excited state of the qubit. Equal to half the frequency shift of
+                the readout res. when changing qubit from |g⟩ to |f⟩ state.
+
+        Args:
+            guess_vals (dict[str, float], optional):
+                guess values for the fit. It is usually necessary to pass good
+                guesses for the frequencies wRg and wP.
+            qb_names (list[str], optional):
+                qubits whose readout parameters should be fitted
+            **kw: Other keyword arguments are passed to `self.plot` and to
+                `self.save_figures`
+        """
+
+        def purcell_readout_qb_transmission_model(f, A, k, phi, kP, wP, gP,
+                J, wRg, gR, chige=None, chigf=None):
+            ys = []
+            for chi in (0, chige, chigf):
+                if chi is None:
+                    continue
+                wR = wRg + 2 * chi
+                detR = gR - 2j * (f - wR)
+                detP = kP + gP - 2j * (f - wP)
+                amp = A + k * (f - np.mean(f))
+                y = amp * np.abs(np.cos(phi) -
+                                 np.exp(1j * phi) * kP * detR / (
+                                         4 * J * J + detP * detR))
+                ys.append(y)
+            return np.concatenate(ys)
+
+        if qb_names is None:
+            qb_names = self.qb_names
+        fig_key_list = []
+        plt_key_list = []
+        res = {}
+        for qbn in qb_names:
+            s21s = self.proc_data_dict['projected_data_dict'][qbn][
+                       'Magnitude'] * np.exp(
+                1j * self.proc_data_dict['projected_data_dict'][qbn]['Phase'])
+            freq = self.proc_data_dict['sweep_points_dict'][qbn][
+                       'sweep_points'] / 1e6
+            s21s = s21s / np.max(np.abs(s21s))
+
+            model = lmfit.Model(purcell_readout_qb_transmission_model)
+            def_guessvals = {
+                'A': 1,
+                'J': 20,
+                'chige': -5,
+                'chigf': -5,
+                'gR': 1,
+                'gP': 1,
+                'k': 0,
+                'kP': 30,
+                'phi': 1,
+                'wRg': np.mean(freq),
+                'wP': np.mean(freq) + 40,
+            }
+            def_guessvals.update(guess_vals)
+            if len(s21s) != 3:
+                def_guessvals.pop('chigf')
+                if len(s21s) != 2:
+                    def_guessvals.pop('chige')
+                    assert len(s21s) == 1
+            pars = model.make_params(**def_guessvals)
+            pars['kP'].min = 0
+            pars['gR'].min = 0
+            pars['J'].min = 0
+            pars['wP'].min = freq.min()
+            pars['wRg'].min = freq.min()
+            pars['wP'].max = freq.max()
+            pars['wRg'].max = freq.max()
+            fit = model.fit(
+                np.concatenate([np.abs(s21) for s21 in s21s]),
+                f=freq, params=pars)
+            res[qbn] = fit.best_values
+
+            fig_key_list.append(f'ro_params_fit_{qbn}')
+            for i, (state, _), in enumerate(zip('gef', s21s)):
+                plt_key_list.append(f'ro_params_fit_data_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(s21s[i]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': 'o',
+                    'linestyle': '',
+                    'color': f'C{i}',
+                    'setlabel': '',
+                    'title': ' '.join(self.timestamps) + ' Readout params '
+                                                         'fit ' + qbn,
+                }
+                plt_key_list.append(f'ro_params_fit_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(
+                        fit.best_fit[i * len(freq):(i + 1) * len(freq)]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': '',
+                    'linestyle': '-',
+                    'color': f'C{i}',
+                    'setlabel': f'|{state}>',
+                    'do_legend': True,
+                }
+        self.plot(key_list=plt_key_list, **kw)
+        self.save_figures(key_list=fig_key_list, **kw)
+        return res
+
+
+class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
+    """Analysis to find the RO frequency that maximizes distance in IQ plane.
+
+    Compatible with `MultiTaskingSpectroscopyExperiment`.
+    """
+    def process_data(self):
+        super().process_data()
+
+        mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
+        for qb, raw_data in mdata_per_qb.items():
+            sp2d_key = f'{qb}_initialize'
+            if sp2d_key not in self.proc_data_dict['sweep_points_2D_dict'][qb].keys():
+                sp2d_key = 'initialize'
+            states = self.proc_data_dict['sweep_points_2D_dict'][qb][sp2d_key]
+            self.proc_data_dict['projected_data_dict'][qb]['distance'] = \
+                self._compute_s21_distance(raw_data, states)
+
+    def _compute_s21_distance(self, data, states):
+        distances = dict()
+        if len(states) < 2:
+            log.error('At least two states need to be measured to compute a'
+                      'distance in transmission.')
+        state_index_map = {state: i for i, state in enumerate(states)}
+        for state_1, state_2 in combinations(states, 2):
+            ind_1 = state_index_map[state_1]
+            ind_2 = state_index_map[state_2]
+            I, Q = list(data.values())
+            S21_1 = I[:, ind_1] + 1j * Q[:, ind_1]
+            S21_2 = I[:, ind_2] + 1j * Q[:, ind_2]
+            distance = np.abs(S21_1-S21_2)
+            argmax = np.argmax(distance)
+            distances[f'{state_1}-{state_2}'] = (distance, argmax)
+        return distances
+
+    def prepare_plots(self):
+        pdd = self.proc_data_dict
+        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        for qb_name in self.qb_names:
+            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                         self.raw_data_dict['measurementstring'] +
+                         '\nMagnitude and Phase Plot ' + qb_name)
+            plot_name = f'raw_mag_phase_{qb_name}'
+            frequency = pdd['sweep_points_dict'][qb_name]['sweep_points']
+            for ax_id, key in enumerate(['Magnitude', 'Phase']):
+                data = pdd['projected_data_dict'][qb_name][key]
+                sp2d_key = f'{qb_name}_initialize'
+                if sp2d_key not in pdd['sweep_points_2D_dict'][qb_name].keys():
+                    sp2d_key = 'initialize'
+                for i, state in enumerate(pdd['sweep_points_2D_dict'][qb_name] \
+                                             [sp2d_key]):
+                    yvals = data[i, :]
+                    self.plot_dicts[f'raw_{key}_{state}_{qb_name}'] = {
+                            'fig_id': plot_name,
+                            'ax_id': ax_id,
+                            'plotfn': self.plot_line,
+                            'xvals': frequency,
+                            'xlabel': 'RO frequency',
+                            'xunit': 'Hz',
+                            'yvals': yvals,
+                            'ylabel': key,
+                            'yunit': 'rad' if key == 'Phase' else 'Vpeak',
+                            'line_kws': {'color': self.get_state_color(state)},
+                            'numplotsx': 1,
+                            'numplotsy': 2,
+                            'plotsize': (plotsize[0],
+                                        plotsize[1]*2),
+                            'title': fig_title if not ax_id else None,
+                            'setlabel': f'|{state}>',
+                            'do_legend': ax_id == 0,
+                    }
+            plot_name = f's21_distance_{qb_name}'
+            fig_title = (self.raw_data_dict['timestamp'] + ' ' +
+                         self.raw_data_dict['measurementstring'] +
+                         '\nS21 distance ' + qb_name)
+            for dkey, val in pdd['projected_data_dict'][qb_name]['distance'].items():
+                distance, argmax = val
+                self.plot_dicts[f's21_distance_{dkey}_{qb_name}'] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': frequency,
+                        'xlabel': 'RO frequency',
+                        'xunit': 'Hz',
+                        'yvals': distance,
+                        'ylabel': 'S21 distance',
+                        'yunit': 'Vpeak',
+                        'label': dkey,
+                        'title': fig_title,
+                        'setlabel': f'S21 distance {dkey}',
+                }
+                self.plot_dicts[f's21_distance_{dkey}_{qb_name}_max'] = {
+                        'fig_id': plot_name,
+                        'plotfn': self.plot_line,
+                        'xvals': frequency[argmax] * np.ones(2),
+                        'yvals': [0.95 * np.min(distance),
+                                  1.05 * np.max(distance)],
+                        'color': 'red',
+                        'linestyle': 'dotted',
+                        'marker': 'None',
+                        'setlabel': '$f_{RO}$ = ' \
+                                    + f'{(frequency[argmax]/1e9):.3f} GHz',
+                        'do_legend': True,
+                }
+
+    def get_state_color(self, state, cmap=plt.get_cmap('tab10')):
+        state_colors = {'g': cmap(0), 'e': cmap(1), 'f': cmap(2)}
+        INT_TO_STATE = 'gef'
+        if isinstance(state, int):
+            state = INT_TO_STATE[state]
+        if state not in state_colors.keys():
+            state = INT_TO_STATE[int(state)]
+        return state_colors[state]

@@ -1,11 +1,11 @@
 import os
 import sys
-import ast
 import numpy as np
 import h5py
 import json
+import time
 import datetime
-from contextlib import contextmanager
+import pickle
 from pycqed.measurement import hdf5_data as h5d
 from pycqed.analysis import analysis_toolbox as a_tools
 import errno
@@ -18,8 +18,11 @@ import subprocess
 from functools import reduce  # forward compatibility for Python 3
 import operator
 import string
-from collections import OrderedDict  # for eval in load_settings
 import functools
+from zipfile import ZipFile
+
+
+from copy import deepcopy
 log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -739,29 +742,44 @@ def temporary_value(*param_value_pairs):
 
 
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):
-    mwgs_set = set()
+    """Configure qubits for multiplexed drive.
+
+    This helper function configures the given qubits for multiplexed drive
+    as follows:
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
+
+    By passing a list with only a single qubit, the function can also be
+    used to ensure that a given LO frequency is used for a qubit, even in a
+    non-multiplexed drive setting.
+
+    Args:
+        qubits (list of qubit objects): The qubits for which the drive
+            should be configured.
+        lo_freqs_dict (dict): A dict where each key identifies a drive LO
+            in one of the formats as returned by qb.get_ge_lo_identifier,
+            and the corresponding value determines the LO frequency that
+            this LO should use.
+    """
     for qb in qubits:
-        qb_ge_mwg = qb.instr_ge_lo()
+        qb_ge_mwg = qb.get_ge_lo_identifier()
         if qb_ge_mwg not in lo_freqs_dict:
-            raise ValueError(
-                f'{qb_ge_mwg} for {qb.name} not found in lo_freqs_dict.')
-        else:
-            qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
-            if qb_ge_mwg not in mwgs_set:
-                qb.instr_ge_lo.get_instr().frequency(lo_freqs_dict[qb_ge_mwg])
-                mwgs_set.add(qb_ge_mwg)
+            log.info(f'{qb.name}: {qb_ge_mwg} not'
+                     f'found in lo_freqs_dict.')
+            continue
+        qb.ge_mod_freq(qb.ge_freq()-lo_freqs_dict[qb_ge_mwg])
 
 
-def configure_qubit_mux_readout(qubits, lo_freqs_dict):
+def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
     """Configure qubits for multiplexed readout.
 
     This helper function configures the given qubits for multiplexed readout
     as follows:
-    - set the readout IF of the qubits such that the LO frequency of qubits
-      sharing an LO is compatible.
     - assign unique acquisition channels for qubits sharing an LO. This
       assumes that qubits sharing an LO also share an acquisition unit of an
       acquisition decvice.
+    - set the readout IF of the qubits such that the LO frequency of qubits
+      sharing an LO is compatible.
 
     By passing a list with only a single qubit, the function can also be
     used to ensure that a given LO frequency is used for a qubit, even in a
@@ -772,28 +790,24 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict):
         qubits (list of qubit objects): The qubits for which the readout
             should be configured.
         lo_freqs_dict (dict): A dict where each key identifies a readout LO
-            in one of the following formats, and the corresponding value
-            determines the LO frequency that this LO should use. Keys can be:
-            - str indicating the instrument name of an external LO
-            - tuple of acquisition device name (str) and acquisition
-              unit index (int), identifying the internal LO in an
-              acquisition unit of an acquisition device
+            in one of the formats as returned by qb.get_ro_lo_identifier,
+            and the corresponding value determines the LO frequency that
+            this LO should use.
+        set_mod_freq (bool): Specifies whether the qubits modulation frequency
+            is adjusted according to the Lo freq. in lo_freqs_dict or not.
+            Defaults to True.
     """
-    idx = {lo: 0 for lo in lo_freqs_dict}
+    idx = {}
     for qb in qubits:
-        # try whether the external LO name is found in the lo_freqs_dict
-        qb_ro_mwg = qb.instr_ro_lo()
-        if qb_ro_mwg not in lo_freqs_dict:
-            # try whether the acquisition device & unit is in the lo_freqs_dict
-            qb_ro_mwg2 = (qb.instr_acq(), qb.acq_unit())
-            if qb_ro_mwg2 not in lo_freqs_dict:
-                raise ValueError(f'{qb.name}: Neither {qb_ro_mwg} nor '
-                                 f'{qb_ro_mwg2} found in lo_freqs_dict.')
-            qb_ro_mwg = qb_ro_mwg2
-        qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
+        qb_ro_mwg = qb.get_ro_lo_identifier()
+        idx[qb_ro_mwg] = idx.setdefault(qb_ro_mwg, -1) + 1
         qb.acq_I_channel(2 * idx[qb_ro_mwg])
         qb.acq_Q_channel(2 * idx[qb_ro_mwg] + 1)
-        idx[qb_ro_mwg] += 1
+        if qb_ro_mwg not in lo_freqs_dict:
+            log.info(f'{qb.name}: {qb_ro_mwg} not found in lo_freqs_dict.')
+            continue
+        if set_mod_freq:
+            qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
 
 
 def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
@@ -903,6 +917,292 @@ def write_warning_message_to_text_file(destination_path, message, filename=None)
     file = open(os.path.join(destination_path, filename), 'a+')
     file.writelines(message)
     file.close()
+
+
+def write_logfile(filename, content, directory):
+    """
+
+    Creates a file filename.log in directory.
+
+    Args:
+        filename (str): name of .log file
+        content (str): content of the .log file
+        directory (str): path where the .log file will be created
+
+    Returns:
+        full path to the .log file
+    """
+    logfile = os.path.join(directory, f"{filename}.log")
+    f = open(logfile, 'a+')
+    f.write(content)
+    f.write("\n")
+    f.close()
+    return logfile
+
+
+def zipfolder(zip_filename, folder, directory):
+    """
+    Creates a compressed file from folder.
+
+    Args:
+        zip_filename (str): name of the compressed file
+        folder (str): path to folder that will be compressed
+        directory (str): path where the compressed file will be created
+    """
+    with ZipFile(os.path.join(directory, f'{zip_filename}.zip'), 'w') as zipObj:
+        for folderName, subfolders, filenames in os.walk(folder):
+            for filename in filenames:
+                filePath = os.path.join(folderName, filename)
+                zipObj.write(filePath, os.path.relpath(filePath, folder))
+
+
+def save_zibugreport(interactive=True, save_folder=None):
+    """
+    Saves a detailed bug report of ZI devices.
+
+    For each ZI device in the running kernel, it saves the following:
+        - firmware git revision
+        - bitstream git revision
+        - awg source string
+        - compiler status string
+        - errors on the device
+        - device snapshot
+    In addition, the following are saved:
+        - current firmware and fpga versions running on each ZI device
+        - current versions of installed zhinst modules. These are typically
+            - zhinst-core
+            - zhinst-deviceutils
+            - zhinst-qcodes
+            - zhinst-toolkit
+            - zhinst-utils
+        - last sequence in pulsar
+        - csv files with the last programmed waves
+
+    Args:
+        interactive (bool): if True, opens a notepad file and prompts the user
+            to paste the error message reported by pycqed.
+        save_folder (str or None): location where the bug report will be saved.
+            If None, the latest measurement timestamp is taken.
+
+    Returns:
+        exceptions (dict): exceptions raised while trying to dump the bug report
+    """
+    exceptions = {}
+
+    # get the pulsar instance
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    # create the save folder
+    if save_folder is None:
+        save_folder = a_tools.latest_data()
+    brdir = os.path.join(
+        save_folder,
+        f"bugreport_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
+    os.mkdir(brdir)
+
+    # save the waveform files
+    try:
+        zipfolder('waves', pulsar.awg_interfaces[
+            list(pulsar.awg_interfaces)[0]]._zi_wave_dir(), brdir)
+    except Exception as e:
+        exceptions['waves'] = e
+
+    # get all connected ZI instruments
+    instruments = get_all_connected_zi_instruments()
+
+    # save versions of zhinst modules
+    versions_zhinst, exceps = get_zhinst_modules_versions()
+    exceptions.update(exceps)
+    write_logfile('versions_zhinst', repr(versions_zhinst), brdir)
+
+    # save firmware and fpgs versions
+    versions_devs, exceps = get_zhinst_firmware_versions(instruments)
+    exceptions.update(exceps)
+    write_logfile('versions', repr(versions_devs), brdir)
+
+    # save the firmware git revision
+    for dev in instruments:
+        try:
+            fw_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/firmware"
+            fw_git_revision_string = \
+                dev.daq.get(fw_git_revision_node, flat=True)[
+                    fw_git_revision_node][0]['vector']
+            fw_git_revision_dict = json.loads(fw_git_revision_string)
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_firmware_revision'),
+                repr(fw_git_revision_dict), brdir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
+
+    # save the bitstream git revision
+    for dev in instruments:
+        try:
+            bs_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/bitstream"
+            bs_git_revision_string = \
+                dev.daq.get(bs_git_revision_node, flat=True)[
+                    bs_git_revision_node][0]['vector']
+            bs_git_revision_dict = json.loads(bs_git_revision_string)
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_bitstream_revision'),
+                repr(bs_git_revision_dict), brdir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
+
+    # save awg_source_strings
+    for dev in instruments:
+        try:
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_awg_source_strings'),
+                repr(getattr(dev, '_awg_source_strings', {})), brdir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_awg_source_strings'] = e
+
+    # save compiler status strings
+    for dev in instruments:
+        try:
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
+                getattr(dev, 'compiler_statusstring', ''), brdir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
+
+    # save snapshots
+    for dev in instruments:
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
+                repr(dev.snapshot()), brdir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
+
+    # save errors reported by the devices
+    for dev in instruments:
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
+                repr(json.loads(dev.getv('raw/error/json/errors'))), brdir)
+        except Exception as e:
+            try:
+                # for QCodes-based devices
+                err_dict = dev.daq.get(f'{dev.devname}/raw/error/json/errors',
+                                       settingsonly=False)
+                err_str = err_dict[dev.devname][
+                    'raw']['error']['json']['errors'][0]['vector']
+                write_logfile(
+                    os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
+                    repr(json.loads(err_str)), brdir)
+            except Exception as e:
+                exceptions[f'{dev.name}_{dev.devname}_errors'] = e
+
+    # save last sequence from pulsar
+    try:
+        seq = deepcopy(pulsar.last_sequence)
+        if seq is not None:
+            seq.pulsar = None
+            for seg in seq.segments.values():
+                seg.pulsar = None
+        with open(os.path.join(brdir, "last_sequence.p"), "wb") as pf:
+            pickle.dump(seq, pf)
+    except Exception as e:
+        exceptions['last_sequence'] = e
+
+    # prompt user to save std output into a textfile
+    if interactive:
+        try:
+            f = write_logfile('stdout', 'COPY AND PASTE STDOUT HERE', brdir)
+            print(
+                'Please look for the open notepad window and paste the output '
+                'of the last running cell.')
+            os.system(f'notepad {f}')
+        except Exception as e:
+            exceptions['stdout'] = e
+
+    # print in kernel
+    print(f'Bug report files saved to {brdir}')
+    from pprint import pprint
+    pprint(versions_zhinst)
+    pprint(versions_devs)
+
+    if len(exceptions):
+        print('\n' +
+              f'Not all elements of the bugreport could be saved. '
+              f'Exceptions occurred during: {list(exceptions.keys())}')
+    return exceptions
+
+
+def get_all_connected_zi_instruments():
+    """
+    Gets all the Zurich Instruments devices that have been instantiated in
+    the running kernel.
+
+    Returns:
+        list with instances of ZI device drivers
+    """
+    from qcodes.station import Station
+    if Station.default is not None:
+        all_inst = Station.default.components
+    else:
+        from pycqed.instrument_drivers.instrument import Instrument
+        all_inst = Instrument._all_instruments
+    return [inst for inst in all_inst.values()
+            if inst.get_idn().get('vendor', '') in
+            ['ZurichInstruments', 'Zurich Instruments']]
+
+def get_zhinst_modules_versions():
+    """
+    Gets the current versions of the installed zhinst packages.
+
+    Returns:
+        versions (dict): module names as keys, version numbers as values
+        exceptions (dict): module names as keys, errors as values if an error
+            has occurred when trying to get the version number of a module
+    """
+    versions, exceptions = {}, {}
+    import zhinst
+    submodules = [sm for sm in dir(zhinst) if not sm.startswith('__')]
+    for sm in submodules:
+        try:
+            versions[f'zhinst-{sm}'] = zhinst.__dict__[sm].__version__
+        except Exception as e:
+            exceptions[sm] = e
+    return versions, exceptions
+
+
+def get_zhinst_firmware_versions(zi_instruments=None):
+    """
+    Gets the firmware and fpga versions of ZI instruments.
+
+    Args:
+        zi_instruments (list or None): instances of ZI instrument drivers
+
+    Returns:
+        versions (dict): ZI instrument drivers as keys, dict with
+            version numbers as values
+        exceptions (dict): ZI instrument drivers as keys, errors as values if
+            an error has occurred when trying to get a version number for a
+            ZI device
+    """
+    if zi_instruments is None:
+        zi_instruments = get_all_connected_zi_instruments()
+
+    versions, exceptions = {}, {}
+    for node in ['system/fwrevision', 'system/fpgarevision']:
+        versions[node] = {}
+        for dev in zi_instruments:
+            try:
+                versions[node][f'{dev.name} - {dev.devname}'] = dev.geti(node)
+            except Exception:
+                try:
+                    # for QCodes-based devices
+                    versions[node][f'{dev.name} - {dev.devname}'] = \
+                        dev.daq.getInt(f'{dev.devname}/system/fwrevision')
+                except Exception as e:
+                    exceptions[f'{node} for {dev.devname}'] = e
+    return versions, exceptions
+
 
 class TempLogLevel:
     """
