@@ -224,6 +224,9 @@ class VC707(VC707_core, AcquisitionDevice):
             self.preprocessing_down_scaling(0)
             # TODO does the order of configure and upload matter?
             module_obj.configure()
+            # FIXME: It is inefficient to always upload even if nothing
+            #  changed. We could introduce a caching mechanism (similarly to
+            #  the sequence caching in pulsar) to only upload if needed.
             self.state_discriminator.upload_weights(discriminate=(
                 module == "state_discriminator"))
 
@@ -248,7 +251,6 @@ class VC707(VC707_core, AcquisitionDevice):
         elif module == "state_discriminator":
             return self._adapt_state_discriminator_results(res)
 
-    # TODO: Should take in list of tuple (acq_unit, quadrature)
     def set_classifier_params(self, channels, params):
         self._acq_classifier_params[tuple(channels)] = params
 
@@ -335,10 +337,7 @@ class VC707(VC707_core, AcquisitionDevice):
             return "averager"
         elif self._acq_mode == "int_avg":
             if self._acq_data_type == "raw":
-                # if self._acq_averages > 1:
                 return "averager"
-                # else:
-                #     return "histogrammer"
             elif self._acq_data_type.startswith("digitized"):
                 return "state_discriminator"
         raise ValueError(f"Unknown FPGA mode for mode '{self._acq_mode}' "
