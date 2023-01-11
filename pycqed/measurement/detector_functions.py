@@ -1338,7 +1338,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             new_value_names = []
             new_value_units = []
             if values_per_point_suffix is None:
-                values_per_point_suffix = ascii_uppercase[:len(value_names)]
+                values_per_point_suffix = ascii_uppercase[:values_per_point]
 
             for vn, vu in zip(value_names, value_units):
                 for val_suffix in values_per_point_suffix:
