@@ -1392,9 +1392,10 @@ class IntegratingAveragingPollDetector(PollDetector):
             data = self.convert_to_polar(data)
 
         if reshape_data:
-            n_virtual_channels = len(self.value_names) // len(self.channels)
+            n_channels = len(set(self._channels_value_names_map.values()))
+            n_virtual_channels = len(self.value_names) // n_channels
             data = np.reshape(
-                data.T, (-1, n_virtual_channels, len(self.channels))).T
+                data.T, (-1, n_virtual_channels, n_channels)).T
             data = data.reshape((len(self.value_names), -1))
 
         return data
