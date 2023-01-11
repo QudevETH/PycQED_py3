@@ -556,9 +556,9 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         qb.prepare(drive='timedomain')
     label = f"SSRO_calibration_{states}{get_multi_qubit_msmt_suffix(qubits)}" if \
         label is None else label
-    channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
-                             for vn in qb.int_log_det.value_names]
-                   for qb in qubits}
+    df = get_multiplexed_readout_detector_functions(
+            df_name, qubits, nr_shots=n_shots)
+    channel_map = df.get_meas_obj_value_names_map()
     if exp_metadata is None:
         exp_metadata = {}
     exp_metadata.update({"cal_points": repr(cp),
@@ -569,8 +569,6 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "data_to_fit": {},
                          "rotate": False,
                          })
-    df = get_multiplexed_readout_detector_functions(
-            df_name, qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
