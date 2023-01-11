@@ -882,7 +882,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.process_single_shots(
                 predict_proba=self.predict_proba,
                 classifier_params=self.get_param_value("classifier_params"),
-                states_map=self.get_param_value("states_map"))
+                states_map=self.get_param_value("states_map"),
+                thresholding=self.get_param_value("thresholding"),)
 
         # create projected_data_dict
         if self.rotate:
