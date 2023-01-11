@@ -49,9 +49,6 @@ class VC707(VC707_core, AcquisitionDevice):
         ]
         # "scope": [],
     }
-    res_logging_indices = {#"raw": 1,  # raw integrated+averaged results
-                           #"digitized": 3,  # thresholded results (0 or 1)
-                           }
 
     def __init__(self, *args, devidx:int=None, clockmode:int=None,
                  verbose=False, **kwargs):
@@ -84,11 +81,6 @@ class VC707(VC707_core, AcquisitionDevice):
                     f'acq_delay_{i}_{j}', initial_value=0,
                     vals=vals.Ints(), parameter_class=ManualParameter,
                     docstring="TODO (in number of samples)")
-        # self.add_parameter(
-        #     'acq_use_histogrammer', initial_value=False,
-        #     vals=vals.Bool(), parameter_class=ManualParameter,
-        #     docstring="Use the histogrammer module when acquiring in int_avg"
-        #               "mode.")
         self._acq_progress_prev = 0
 
     @property
@@ -115,10 +107,7 @@ class VC707(VC707_core, AcquisitionDevice):
         if module == "averager":
             self.averager.run()
         elif module == "histogrammer":
-            self.histogrammer.run(
-                # progress_callback=lambda p: print(
-                #     f"Processed triggers: {p:.1f}% -- {self.histogrammer.has_finished()}")
-            )
+            self.histogrammer.run()
         elif module == "state_discriminator":
             self.state_discriminator.run()
 
@@ -240,21 +229,11 @@ class VC707(VC707_core, AcquisitionDevice):
 
     def acquisition_progress(self):
         return self._fpga.fpga_interface.trigger_counter()
-        # self._acq_progress_prev = counter
-        # # return counter
-        # if self._get_current_fpga_module_name() == "averager":
-        #     return self.averager.trigger_counter()
-        # else:
-        #     # FIXME: implement trigger_counter for other modules
-        #     return 0
-        return None
 
     def poll(self, poll_time=0.1) -> dict:
         # Return empty data if FPGA still running
         module_obj = self._get_current_fpga_module()
-        # if not (self._acq_progress_prev > 0 and self.acquisition_progress() == 0):
         if not module_obj.has_finished():
-        # if not (self._acq_progress_prev > 0 and self._fpga.fpga_interface.trigger_counter() == 0):
             return {}
         # Read results and update dataset
         res = module_obj.read_results()
@@ -272,10 +251,6 @@ class VC707(VC707_core, AcquisitionDevice):
     # TODO: Should take in list of tuple (acq_unit, quadrature)
     def set_classifier_params(self, channels, params):
         self._acq_classifier_params[tuple(channels)] = params
-        # if params is not None and 'means_' in params:
-        #     for qubit in self.state_discriminator_qubits.get():
-        #         if qubit.source_adc in [c[0] for c in channels]:
-        #             qubit.center_coordinates = params['means_'].ravel()
 
     def _adapt_averager_results(self, raw_results) -> dict:
         """Format the FPGA averager results as expected by PycQED."""
@@ -350,13 +325,8 @@ class VC707(VC707_core, AcquisitionDevice):
         return dataset
 
     def _acquisition_set_weight(self, channel, weight):
-        # Store a copy for software-emulated integration
+        # Store a copy for software-emulated integration and to upload later
         self._acq_integration_weights[channel] = weight
-
-        return  # FIXME: following code not compatible with current driver
-        for qubit in self.state_discriminator_qubits.get():
-            if qubit.source_adc == channel:
-                qubit.weights = weight
 
     def _get_current_fpga_module_name(self) -> str:
         """Helper function that checks which FPGA module must be used."""
