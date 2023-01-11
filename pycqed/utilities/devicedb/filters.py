@@ -1,7 +1,7 @@
 import logging
 from enum import Enum
 
-from .validator import PropertyValuesDictValidator
+from .validator import DevicePropertyValuesDictValidator
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class FilterMode(Enum):
 class BaseFilter:
     """A base class for filtering nodes in a property values dictionary"""
     def __init__(self):
-        self.validator = PropertyValuesDictValidator()
+        self.validator = DevicePropertyValuesDictValidator()
 
     def filtered_out(self, node: dict):
         """Returns whether `node` should be filtered out by this filter instance
