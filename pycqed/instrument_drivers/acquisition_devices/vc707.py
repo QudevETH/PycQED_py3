@@ -317,7 +317,7 @@ class VC707(VC707_core, AcquisitionDevice):
         assert all([u.nb_states == nb_states for u in units])
         data = [raw_to_list(r, nb_states, nb_units=len(units))
                 for r in raw_results]
-        return {pair: [d[i] for d in data]
+        return {pair: [[d[i] for d in data]]
                 for i, pair in enumerate(self._acquisition_nodes)}
 
     def _perform_integrated_averager(self, averager_results) -> dict:
@@ -389,12 +389,13 @@ class VC707(VC707_core, AcquisitionDevice):
         if data_type == 'digitized':
             pair_lookup = {(i, j): (i, j // 2) for (i, j) in channels}
             n_ch_in_pair = {v: sum([pair_lookup[c] == v for c in channels])
-                            for v in pairs.values()}
+                            for v in pair_lookup.values()}
             ch_vn_map = OrderedDict()
             for ch in channels:
                 pair = pair_lookup[ch]
                 if n_ch_in_pair[pair] == 2:
-                    chs = '_'.join([c[1] for c, p in pair_lookup if p == pair])
+                    chs = '_' + '_'.join([f'{c[1]}' for c, p
+                                          in pair_lookup.items() if p == pair])
                 else:
                     chs = ch[1]
                 vn = f'{self.name}_{ch[0]}_{data_type} w{chs}'
