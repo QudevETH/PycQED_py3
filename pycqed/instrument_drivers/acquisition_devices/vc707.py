@@ -415,5 +415,7 @@ class VC707(VC707_core, AcquisitionDevice):
             properties['value_unit'] = 'Vpeak'
             properties['scaling_factor'] = 1 / (self.acq_sampling_rate
                                                 * acquisition_length)
+        elif 'digitized' in data_type:
+            properties['value_unit'] = 'state'
         return properties
 
