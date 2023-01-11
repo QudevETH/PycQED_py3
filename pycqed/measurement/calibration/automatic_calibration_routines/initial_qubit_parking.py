@@ -297,16 +297,12 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         expected_dips_width = self.get_param_value(
             'expected_dips_width', default=self.routine.NotFound())
         if type(expected_dips_width) != self.routine.NotFound:
-            try:
-                # Add expected_dips_width to analysis_kwargs if it already
-                # exists
+            if 'analysis_kwargs' in kwargs.keys():
                 kwargs['analysis_kwargs'][
                     'expected_dips_width'] = expected_dips_width
-            except KeyError:
-                # Otherwise create the analysis_kwargs dictionary
+            else:
                 kwargs['analysis_kwargs'] = {
-                    "expected_dips_width": expected_dips_width
-                }
+                    'expected_dips_width': expected_dips_width}
 
         return kwargs
 
