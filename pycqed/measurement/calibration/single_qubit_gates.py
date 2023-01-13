@@ -2331,6 +2331,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+                if task["transition_name_input"] == 'ef':
+                    qubit.set('anharmonicity', qb_freq - qubit.get('ge_freq'))
 
     @classmethod
     def gui_kwargs(cls, device):
