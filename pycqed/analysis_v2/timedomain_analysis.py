@@ -718,6 +718,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.proc_data_dict['sweep_points_dict'] = {}
                 for qbn, p in main_sp.items():
                     dim = self.sp.find_parameter(p)
+                    if dim is None:
+                        raise KeyError(
+                            f'Main sweep point {p} for {qbn} not found.')
                     if dim == 1:
                         log.warning(f"main_sp is only implemented for sweep "
                                     f"dimension 0, but {p} is in dimension 1.")
