@@ -430,117 +430,13 @@ def prepend_pulses(pulse_list, pulses_to_prepend):
 
 
 def add_preparation_pulses(pulse_list, operation_dict, qb_names,
-                           preparation_type='wait', post_ro_wait=1e-6,
-                           ro_separation=1.5e-6,
-                           reset_reps=1, final_reset_pulse=True,
-                           threshold_mapping=None):
-    """
-    Prepends to pulse_list the preparation pulses corresponding to preparation
-
-    preparation:
-        for active reset on |e>: ('active_reset_e', nr_resets)
-        for active reset on |e> and |f>: ('active_reset_ef', nr_resets)
-        for preselection: ('preselection', nr_readouts)
-    """
-
-    if threshold_mapping is None:
-        threshold_mapping = {qbn: {0: 'g', 1: 'e'} for qbn in qb_names}
-
-    # Calculate the length of a ge pulse, assumed the same for all qubits
-    state_ops = dict(g=["I "], e=["X180 "], f=["X180_ef ", "X180 "])
-
-    if 'ref_pulse' not in pulse_list[0]:
-        first_pulse = deepcopy(pulse_list[0])
-        first_pulse['ref_pulse'] = 'segment_start'
-        pulse_list[0] = first_pulse
-
-    if preparation_type == 'wait':
-        return pulse_list
-    elif 'active_reset' in preparation_type:
-        reset_ro_pulses = []
-        ops_and_codewords = {}
-        for i, qbn in enumerate(qb_names):
-            reset_ro_pulses.append(deepcopy(operation_dict['RO ' + qbn]))
-            reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
-
-            if preparation_type == 'active_reset_e':
-                ops_and_codewords[qbn] = [
-                    (state_ops[threshold_mapping[qbn][0]], 0),
-                    (state_ops[threshold_mapping[qbn][1]], 1)]
-            elif preparation_type == 'active_reset_ef':
-                assert len(threshold_mapping[qbn]) == 4, \
-                    "Active reset for the f-level requires a mapping of length 4" \
-                    f" but only {len(threshold_mapping)} were given: " \
-                    f"{threshold_mapping}"
-                ops_and_codewords[qbn] = [
-                    (state_ops[threshold_mapping[qbn][0]], 0),
-                    (state_ops[threshold_mapping[qbn][1]], 1),
-                    (state_ops[threshold_mapping[qbn][2]], 2),
-                    (state_ops[threshold_mapping[qbn][3]], 3)]
-            else:
-                raise ValueError(f'Invalid preparation type {preparation_type}')
-
-        reset_pulses = []
-        for i, qbn in enumerate(qb_names):
-            for ops, codeword in ops_and_codewords[qbn]:
-                for j, op in enumerate(ops):
-                    reset_pulses.append(deepcopy(operation_dict[op + qbn]))
-                    reset_pulses[-1]['codeword'] = codeword
-                    if j == 0:
-                        reset_pulses[-1]['ref_point'] = 'start'
-                        reset_pulses[-1]['pulse_delay'] = post_ro_wait
-                    else:
-                        reset_pulses[-1]['ref_point'] = 'start'
-                        pulse_length = 0
-                        for jj in range(1, j+1):
-                            if 'pulse_length' in reset_pulses[-1-jj]:
-                                pulse_length += reset_pulses[-1-jj]['pulse_length']
-                            else:
-                                pulse_length += reset_pulses[-1-jj]['sigma'] * \
-                                                reset_pulses[-1-jj]['nr_sigma']
-                        reset_pulses[-1]['pulse_delay'] = post_ro_wait+pulse_length
-
-        prep_pulse_list = []
-        for rep in range(reset_reps):
-            ro_list = deepcopy(reset_ro_pulses)
-            ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
-
-            for pulse in ro_list:
-                pulse['element_name'] = 'reset_ro_element_{}'.format(rep)
-            if rep == 0:
-                ro_list[0]['ref_pulse'] = 'segment_start'
-                ro_list[0]['pulse_delay'] = -reset_reps * ro_separation
-            else:
-                ro_list[0]['ref_pulse'] = 'refpulse_reset_element_{}'.format(
-                    rep-1)
-                ro_list[0]['pulse_delay'] = ro_separation
-                ro_list[0]['ref_point'] = 'start'
-
-            rp_list = deepcopy(reset_pulses)
-            for j, pulse in enumerate(rp_list):
-                pulse['element_name'] = 'reset_pulse_element_{}'.format(rep)
-                pulse['ref_pulse'] = 'refpulse_reset_element_{}'.format(rep)
-            prep_pulse_list += ro_list
-            prep_pulse_list += rp_list
-
-        if final_reset_pulse:
-            rp_list = deepcopy(reset_pulses)
-            for pulse in rp_list:
-                pulse['element_name'] = f'reset_pulse_element_{reset_reps}'
-            pulse_list += rp_list
-
-        return prep_pulse_list + pulse_list
-
-    elif preparation_type == 'preselection':
-        preparation_pulses = []
-        for i, qbn in enumerate(qb_names):
-            preparation_pulses.append(deepcopy(operation_dict['RO ' + qbn]))
-            preparation_pulses[-1]['ref_point'] = 'start'
-            preparation_pulses[-1]['element_name'] = 'preselection_element'
-        preparation_pulses[0]['ref_pulse'] = 'segment_start'
-        preparation_pulses[0]['pulse_delay'] = -ro_separation
-
-        return preparation_pulses + pulse_list
+                           **prep_params):
+    from pycqed.measurement.waveform_control import circuit_builder as cb_mod
+    cb = cb_mod.CircuitBuilder(qubits=qb_names, operation_dict=operation_dict,
+                               prep_params=prep_params)
+    init_pulses = cb.initialize().build()
+    init_pulses[0]['ref_pulse'] = 'init_start'
+    return init_pulses + pulse_list
 
 
 def sweep_pulse_params(pulses, params, pulse_not_found_warning=True):
