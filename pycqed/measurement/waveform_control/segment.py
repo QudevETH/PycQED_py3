@@ -520,7 +520,7 @@ class Segment:
             # Only look at I channel internal modulation configurations. Q
             # channel configurations will be the corresponding I channel
             # configurations.
-            if not self.pulsar.is_i_channel(ch=channel):
+            if not self.pulsar.is_i_channel(cname=channel):
                 continue
 
             # Check if this channel supports internal modulation, and if
@@ -655,8 +655,8 @@ class Segment:
                 # same channel pair and if they are in the correct order (the Q
                 # channel index being larger than the I channel index).
                 if not self.pulsar.is_channel_pair(
-                        ch1=pulse.I_channel,
-                        ch2=pulse.Q_channel,
+                        cname1=pulse.I_channel,
+                        cname2=pulse.Q_channel,
                         require_ordered=True,
                 ):
                     return False, {}

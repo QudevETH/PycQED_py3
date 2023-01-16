@@ -582,17 +582,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             wave_hashes=wave_hashes
         )
 
-    @staticmethod
     def is_channel_pair(
-            ch1: str,
-            ch2: str,
+            self,
+            cname1: str,
+            cname2: str,
             require_ordered: bool,
     ):
         """Returns if the two input channels belongs to the same channel pair.
 
         Args:
-            ch1 (str): channel of the AWG
-            ch2 (str): channel of the AWG
+            cname1 (str): name of an analog channel.
+            cname2 (str): name of another analog channel.
             require_ordered (bool): whether ch1 is required to have a smaller
                 index than ch2
 
@@ -600,11 +600,15 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        if require_ordered and ch1 > ch2:
+        ch1id = self.pulsar.get(f"{cname1}_id")
+        ch2id = self.pulsar.get(f"{cname2}_id")
+
+        ch_idx_1 = int(ch1id[-1])
+        ch_idx_2 = int(ch2id[-1])
+
+        if require_ordered and ch_idx_1 > ch_idx_2:
             return False
 
-        ch_idx_1 = int(ch1[-1])
-        ch_idx_2 = int(ch2[-1])
         ch_idx_smaller = min(ch_idx_1, ch_idx_2)
         ch_idx_larger = max(ch_idx_1, ch_idx_2)
 
@@ -615,21 +619,21 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         else:
             return False
 
-    @staticmethod
-    def is_i_channel(ch: str):
+    def is_i_channel(self, cname: str):
         """Returns if this channel has the smaller number in its analog channel
         pair.
 
         Args:
-            ch: channel of an HDAWG.
+            cname: channel of an HDAWG.
 
         Returns:
             is_i_channel (str): whether this channel has the smaller number
             in its analog channel pair.
         """
-        if ch[-1] == 'm':
+        chid = self.pulsar.get(f"{cname}_id")
+        if chid[-1] == 'm':
             return False
-        ch_idx = int(ch[-1])
+        ch_idx = int(chid[-1])
         return ch_idx <= 8 and ch_idx % 2 == 1
 
 

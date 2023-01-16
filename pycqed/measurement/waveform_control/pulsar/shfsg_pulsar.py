@@ -393,17 +393,17 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             wave_hashes=wave_hashes
         )
 
-    @staticmethod
     def is_channel_pair(
-            ch1: str,
-            ch2: str,
+            self,
+            cname1: str,
+            cname2: str,
             require_ordered: bool,
     ):
         """Checks if the two input channels belongs to the same channel pair.
 
         Args:
-            ch1 (str): name of channel 1
-            ch2 (str): name of channel 2
+            cname1 (str): name of an analog channel
+            cname2 (str): name of another analog channel
             require_ordered (bool): whether ch1(ch2) is required to represent
                 I(Q) generator of this channel.
 
@@ -411,12 +411,15 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
+        ch1id = self.pulsar.get(f"{cname1}_id")
+        ch2id = self.pulsar.get(f"{cname2}_id")
+
         # Note that alphabetically 'i' is smaller than 'q'
-        if require_ordered and ch1 > ch2:
+        if require_ordered and ch1id > ch2id:
             return False
 
-        channel_index_smaller = min(ch1, ch2)
-        channel_index_larger = max(ch1, ch2)
+        channel_index_smaller = min(ch1id, ch2id)
+        channel_index_larger = max(ch1id, ch2id)
         if channel_index_smaller[-1] == 'i' and \
                 channel_index_larger[-1] == 'q' and \
                 channel_index_smaller[0:-1] == channel_index_larger[0:-1]:
@@ -424,18 +427,18 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
         else:
             return False
 
-    @staticmethod
-    def is_i_channel(ch: str):
+    def is_i_channel(self, cname: str):
         """Returns if this channel is the I channel (AWG 1) of this signal
         generator module.
 
         Args:
-            ch: channel of an SHFSG.
+            cname: channel of an SHFSG.
 
         Returns:
             is_i_channel (str): whether this channel is the I channel.
         """
-        return ch[-1] == 'i'
+        chid = self.pulsar.get(f"{cname}_id")
+        return chid == 'i'
 
 
 class SHFSGPulsar(SHFGeneratorModulesPulsar):

@@ -1542,8 +1542,8 @@ class Pulsar(Instrument):
 
     def is_channel_pair(
             self,
-            ch1: str,
-            ch2: str,
+            cname1: str,
+            cname2: str,
             require_ordered: bool,
     ):
         """Returns if the two input channels belongs to the same channel
@@ -1551,8 +1551,8 @@ class Pulsar(Instrument):
         corresponding awg interface.
 
         Args:
-            ch1 (str): channel of the AWG
-            ch2 (str): channel of the AWG
+            cname1 (str): name of an analog channel.
+            cname2 (str): name of another analog channel.
             require_ordered (bool): whether (ch1, ch2) is required to be the
                 (first, second) analog generator of this channel pair.
 
@@ -1560,16 +1560,16 @@ class Pulsar(Instrument):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        awg_1 = self.get(f'{ch1}_awg')
-        awg_2 = self.get(f'{ch2}_awg')
+        awg_1 = self.get(f'{cname1}_awg')
+        awg_2 = self.get(f'{cname2}_awg')
 
         if awg_1 != awg_2:
             return False
 
         if hasattr(self.awg_interfaces[awg_1], 'is_channel_pair'):
             return self.awg_interfaces[awg_1].is_channel_pair(
-                ch1=ch1,
-                ch2=ch2,
+                cname1=cname1,
+                cname2=cname2,
                 require_ordered=require_ordered
             )
         else:
@@ -1577,22 +1577,22 @@ class Pulsar(Instrument):
 
     def is_i_channel(
             self,
-            ch: str,
+            cname: str,
     ):
         """Returns if this channel is the I (smaller number) channel in its
         channel pair. Returns False if is_i_channel method is not implemented
         in the corresponding awg interface.
 
         Args:
-            ch (str): channel of an AWG.
+            cname (str): channel of an AWG.
 
         Returns:
             is_i_channel (bool): Boolean variable indicating if this channel
                 is the I channel in its channel pair.
         """
-        awg = self.get(f'{ch}_awg')
+        awg = self.get(f'{cname}_awg')
         if hasattr(self.awg_interfaces[awg], 'is_i_channel'):
-            return self.awg_interfaces[awg].is_i_channel(ch=ch)
+            return self.awg_interfaces[awg].is_i_channel(cname=cname)
         else:
             return False
 
