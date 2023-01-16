@@ -45,8 +45,7 @@ class SSB_DRAG_pulse(pulse.Pulse):
     """
 
     SUPPORT_INTERNAL_MOD = True
-    """Whether this pulse type supports to be played with digital modulation 
-    on ZI devices."""
+    SUPPORT_HARMONIZING_AMPLITUDE = True
 
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):

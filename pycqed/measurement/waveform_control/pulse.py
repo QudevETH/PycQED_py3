@@ -55,6 +55,22 @@ class Pulse:
     value n, then all differences will be rounded to the n-th decimal of 
     s (second)."""
 
+    # This parameter is set to False by default for the robustness of the
+    # code. Individual pulse types that support internal modulation should
+    # rewrite this class parameter to True.
+    SUPPORT_INTERNAL_MOD = False
+    """Indicating whether this pulse is supposed to use hardware 
+    modulation of generator AWGs. """
+
+    # This parameter is set to False by default for the robustness of the
+    # code. For most of the pulses, like DRAG pulse, one can set this
+    # parameter to True as long as the pulse shape is proportional to the
+    # pulse.amplitude parameter. Developers can rewrite this parameter for
+    # individual pulses in pulse_library.py to True if needed.
+    SUPPORT_HARMONIZING_AMPLITUDE = False
+    """Indicating whether this pulse allows re-scaling its amplitude during 
+    upload and retrieve the original amplitude with AWG hardware commands."""
+
     def __init__(self, name, element_name, **kw):
 
         self.name = name
@@ -71,10 +87,6 @@ class Pulse:
         self.channel_mask = kw.pop('channel_mask', set())
         self.trigger_channels = kw.pop('trigger_channels', []) or []
         self.trigger_pars = kw.pop('trigger_pars', {}) or {}
-
-        self.SUPPORT_INTERNAL_MOD = False
-        """Indicating whether this pulse is supposed to use hardware 
-        modulation of generator AWGs."""
 
         # Set default pulse_params and overwrite with params in keyword argument
         # list if applicable

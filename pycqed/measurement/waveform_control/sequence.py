@@ -328,6 +328,16 @@ class Sequence:
                                          in channel_ids
                                          for channel in pulse.channels]):
                             continue
+                        if not pulse.SUPPORT_HARMONIZING_AMPLITUDE:
+                            # Harmonizing amplitude is not allowed for this
+                            # pulse type
+                            raise RuntimeError(
+                                f"On {awg_module.name}: pulse {pulse.name} "
+                                f"does not allow harmonizing amplitude. "
+                                f"Please disable \"_harmonize_amplitude\" "
+                                f"parameter for this AWG module."
+                            )
+
                         if abs(getattr(pulse, "amplitude", 0)) > \
                                 abs(current_max_amp):
                             current_max_amp = getattr(pulse, "amplitude", 0.0)
