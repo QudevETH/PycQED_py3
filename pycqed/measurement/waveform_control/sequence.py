@@ -319,15 +319,32 @@ class Sequence:
                 for elname in elements_on_channel[segname]:
                     current_max_amp = 0
                     for pulse in seg.elements[elname]:
-                        # Check if all channels of this pulse belongs to
-                        # the current channel pair. If not, skip this pulse.
-                        # TODO: check if this sanity check makes sense in
-                        #  actual setups.
-                        if len(pulse.channels) == 0 or \
-                                not all([self.pulsar.get(f'{channel}_id')
-                                         in channel_ids
-                                         for channel in pulse.channels]):
+                        # boolean parameter indicating whether one pulse
+                        # overlaps with the current AWG module
+                        pulse_overlaps_with_channel = any([
+                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            for channel in pulse.channels])
+                        # boolean parameter indicating whether one pulse
+                        # is played solely on the current AWG module
+                        pulse_only_on_channel = all([
+                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            for channel in pulse.channels])
+
+                        if not pulse_overlaps_with_channel:
                             continue
+                        elif not pulse_only_on_channel:
+                            # The pulse only partially overlaps with the
+                            # current AWG module. It is currently not
+                            # supported to harmonize amplitude across
+                            # multiple AWG modules.
+                            raise RuntimeError(
+                                f"On element {elname}: Harmonizing amplitude "
+                                f"does not support pulse played across "
+                                f"multiple AWG modules. Please disable "
+                                f"harmonizing amplitude for all AWG modules "
+                                f"relevant to this pulse."
+                            )
+
                         if not pulse.SUPPORT_HARMONIZING_AMPLITUDE:
                             # Harmonizing amplitude is not allowed for this
                             # pulse type
