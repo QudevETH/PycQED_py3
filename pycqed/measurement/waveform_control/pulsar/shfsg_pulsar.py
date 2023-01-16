@@ -438,7 +438,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             is_i_channel (str): whether this channel is the I channel.
         """
         chid = self.pulsar.get(f"{cname}_id")
-        return chid == 'i'
+        return chid[-1] == 'i'
 
 
 class SHFSGPulsar(SHFGeneratorModulesPulsar):
