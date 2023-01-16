@@ -1596,34 +1596,6 @@ class Pulsar(Instrument):
         else:
             return False
 
-    @staticmethod
-    def is_pulse_on_channel(
-            pulse,
-            awg_channel: str,
-    ):
-        """Returns if this pulse is played on the specified channel.
-
-        Args:
-            pulse (Pulse): an instance of
-                pycqed.measurement.waveform_control.pulse.Pulse class.
-            awg_channel (str): channel name.
-
-        Return:
-            is_pulse_on_channel (bool): a boolean value indicating
-                whether this pulse is played on the specified channel.
-        """
-        for channel in pulse.channels:
-            if channel == awg_channel:
-                return True
-
-        # Note a special case here: a virtual pulse has an empty list for its
-        # 'channels' attribute. Consequently, the loop above will be skipped
-        # and this method will return False. This is usually desirable,
-        # since this method is used to select pulses related to specified
-        # channels for further processing, and we typically do not need to
-        # process virtual pulses.
-        return False
-
     def check_channel_parameter(self, awg, channel, parameter_suffix):
         """Check whether one parameter is set to True for the specified channel
         on the specified AWG. If the awg-level parameter is set to True,

@@ -593,10 +593,7 @@ class Segment:
                 # An element can include pulses that are played in different
                 # AWG channels. Here we only process the pulses that are
                 # played on the current channel.
-                if not self.pulsar.is_pulse_on_channel(
-                    pulse=pulse,
-                    awg_channel=channel,
-                ):
+                if channel not in pulse.channels:
                     continue
                 if not pulse.SUPPORT_INTERNAL_MOD:
                     return False
@@ -636,10 +633,7 @@ class Segment:
                 # An element can include pulses that are played in different
                 # AWG channels. Here we only process the pulses that are
                 # played on the current channel.
-                if not self.pulsar.is_pulse_on_channel(
-                    pulse=pulse,
-                    awg_channel=channel,
-                ):
+                if channel not in pulse.channels:
                     continue
 
                 # Records check parameter values of the first pulse on this
@@ -718,10 +712,7 @@ class Segment:
             # Resets pulse parameters that are already passed to element
             # metadata.
             for pulse in self.elements[elname]:
-                if self.pulsar.is_pulse_on_channel(
-                    pulse=pulse,
-                    awg_channel=channel,
-                ):
+                if channel in pulse.channels:
                     pulse.mod_frequency = round(
                         pulse.mod_frequency - major_mod_frequency,
                         self.FREQUENCY_ROUNDING_DIGITS)
@@ -750,20 +741,14 @@ class Segment:
         """
         init_phase = 0.0
         for pulse in self.elements[elname]:
-            if self.pulsar.is_pulse_on_channel(
-                    pulse=pulse,
-                    awg_channel=channel
-            ):
+            if channel in pulse.channels:
                 init_phase = pulse.phase
                 break
 
         # init_phase will be included in the command table entries when internal
         # modulation is on.
         for pulse in self.elements[elname]:
-            if self.pulsar.is_pulse_on_channel(
-                    pulse=pulse,
-                    awg_channel=channel
-            ):
+            if channel in pulse.channels:
                 pulse.phase = round(pulse.phase - init_phase,
                                     self.PHASE_ROUNDING_DIGITS)
 
@@ -789,10 +774,7 @@ class Segment:
             for pulse in self.elements[elname]:
                 # Round frequency to Hz to avoid duplicates due to floating
                 # point rounding errors.
-                if self.pulsar.is_pulse_on_channel(
-                        pulse=pulse,
-                        awg_channel=channel
-                ):
+                if channel in pulse.channels:
                     rounded_freq = round(pulse.mod_frequency, 4)
                     if rounded_freq in frequency_bin.keys():
                         frequency_bin[rounded_freq] += 1
