@@ -687,6 +687,7 @@ class Pulsar(Instrument):
         self._sequence_cache['metadata'] = {}  # for segment/element metadata
         self._sequence_cache['hashes'] = {}  # for waveform hashes
         self._sequence_cache['length'] = {}  # for element lengths
+        ZIPulsarMixin.zi_waves_clean(False)
 
     def check_for_other_pulsar(self) -> bool:
         """Returns true if another pulsar has programmed the AWGs.
@@ -1307,7 +1308,8 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        ZIPulsarMixin.zi_waves_clean(False)
+        if not self.use_sequence_cache() or ZIPulsarMixin.zi_cleanup_needed():
+            ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
         for awg in awg_sequences.keys():

@@ -34,12 +34,12 @@ class Sequence:
             segments (list, tuple): list of segments to add to the sequence
         """
         self.name = name
+        self.timer = Timer(self.name)
         self.pulsar = ps.Pulsar.get_instance()
         self.segments = odict()
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
-        self.timer = Timer(self.name)
         self.is_resolved = False
         self.awg_scaling_factors = dict()
         """A list of AWG names whose pulse amplitudes has processed with 

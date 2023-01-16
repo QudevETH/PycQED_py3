@@ -66,7 +66,7 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def sweep_block(self, mobj):
+    def sweep_block(self, mobj, **kw):
         """
         Generates an acquisition Block for a NoisePower measurement
 
@@ -87,7 +87,10 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
          functionalities, this should be cleaned up and unified after
          refactoring QuDev_Transmon to inherit from MeasurementObject
         """
-        super(twoqbcal.MultiTaskingExperiment, self).create_meas_objs_list(**kw)
+
+        meas_objs = kw.get('meas_objs', None)
+        self.meas_objs = self.qubits if meas_objs is None else meas_objs
+        self.meas_obj_names = [m.name for m in self.meas_objs]
         if task_list is None:
             task_list = self.task_list
         if task_list is None:
