@@ -290,6 +290,17 @@ class Sequence:
                 channel=awg_module.get_i_channel(),
                 parameter_suffix="_use_command_table"
             ):
+                if self.pulsar.check_channel_parameter(
+                        awg=awg_interface.name,
+                        channel=awg_module.get_i_channel(),
+                        parameter_suffix="_harmonize_amplitude"
+                ):
+                    logging.warning(
+                        f"On {awg_module}: PyeQED will automatically ignore "
+                        f"\"_harmonize_amplitude\" being turned on because "
+                        f"it only works together with command table. Please "
+                        f"enable \"_use_command_table\" on this AWG module if "
+                        f"you want to allow harmonizing amplitude.")
                 continue
             # Only check analog channels
             channel_ids = awg_module.analog_channel_ids

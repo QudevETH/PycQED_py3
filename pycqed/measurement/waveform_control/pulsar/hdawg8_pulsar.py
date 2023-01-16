@@ -152,6 +152,24 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                                        "will check channel-specific settings "
                                        "and program command table on a "
                                        "per-AWG-module basis.")
+        pulsar.add_parameter(f"{name}_harmonize_amplitude",
+                             initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to rescale "
+                                       "waveform amplitudes before uploading "
+                                       "and retrieve the original values with "
+                                       "hardware playback commands. This "
+                                       "allows reusing waveforms and "
+                                       "reduces the number of waveforms "
+                                       "to be uploaded. "
+                                       "If set to True, this feature "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and executes on a "
+                                       "per-AWG-module basis. Note that "
+                                       "this feature has to be used in "
+                                       "combination with command table.")
         pulsar.add_parameter(f"{name}_internal_modulation", initial_value=False,
                              vals=vals.Bool(), parameter_class=ManualParameter,
                              docstring="Configures whether to use digital "
@@ -283,6 +301,25 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                               "sequencing on this AWG module. Note that this "
                               "parameter will be ignored if the device-level "
                               "{dev_name}_use_command_table is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use command table irrespective "
+                              "of the channel-specific setting."
+                )
+
+                param_name = f"{ch_name}_harmonize_amplitude"
+                self.pulsar.add_parameter(
+                    param_name,
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to rescale waveform "
+                              "amplitudes before uploading and retrieve the "
+                              "original values with hardware playback "
+                              "commands. This allows reusing waveforms and "
+                              "reduces the number of waveforms to be uploaded. "
+                              "Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_harmonize_amplitude is set to "
                               "True. In that case, all AWG modules on the "
                               "device will use command table irrespective "
                               "of the channel-specific setting."
