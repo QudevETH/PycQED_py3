@@ -286,21 +286,24 @@ class Sequence:
             # harmonize_amplitude only affects AWGs whose command table wave
             # sequencing is enabled.
             if not self.pulsar.check_channel_parameter(
-                awg=awg_interface.name,
+                    awg=awg_module.awg.name,
+                    channel=awg_module.get_i_channel(),
+                    parameter_suffix="_harmonize_amplitude"
+            ):
+                continue
+
+            if not self.pulsar.check_channel_parameter(
+                awg=awg_module.awg.name,
                 channel=awg_module.get_i_channel(),
                 parameter_suffix="_use_command_table"
             ):
-                if self.pulsar.check_channel_parameter(
-                        awg=awg_interface.name,
-                        channel=awg_module.get_i_channel(),
-                        parameter_suffix="_harmonize_amplitude"
-                ):
-                    logging.warning(
-                        f"On {awg_module}: PyeQED will automatically ignore "
-                        f"\"_harmonize_amplitude\" being turned on because "
-                        f"it only works together with command table. Please "
-                        f"enable \"_use_command_table\" on this AWG module if "
-                        f"you want to allow harmonizing amplitude.")
+                logging.warning(
+                    f"On {awg_module.awg.name}: PyeQED will "
+                    f"not harmonize amplitude for this AWG module "
+                    f"because this feature only works when command table "
+                    f"is enabled. Please set \"_use_command_table\" "
+                    f"parameter to true for this AWG module if you want "
+                    f"to allow harmonizing amplitude.")
                 continue
             # Only check analog channels
             channel_ids = awg_module.analog_channel_ids
@@ -349,7 +352,7 @@ class Sequence:
                             # Harmonizing amplitude is not allowed for this
                             # pulse type
                             raise RuntimeError(
-                                f"On {awg_module.name}: pulse {pulse.name} "
+                                f"On {awg_module.awg.name}: pulse {pulse.name} "
                                 f"does not allow harmonizing amplitude. "
                                 f"Please disable \"_harmonize_amplitude\" "
                                 f"parameter for this AWG module."

@@ -527,7 +527,7 @@ class Segment:
             # internal modulation is turned on for this channel. If not,
             # we will skip this channel.
             if not self.pulsar.check_channel_parameter(
-                awg=self.pulsar.get_channel_awg(channel),
+                awg=self.pulsar.get_channel_awg(channel).name,
                 channel=channel,
                 parameter_suffix="_internal_modulation"
             ):
@@ -537,10 +537,12 @@ class Segment:
             # internal modulation. If not, we will print a warning message
             # and disable internal modulation on this channel.
             if not self._internal_mod_check_pulse_type(channel=channel):
-                log.warning(f"In segment {self.name}: not all pulses supports "
-                            f"internal modulation on channel {channel}. This "
-                            f"channel will not be internally modulated in the "
-                            f"current sequence.")
+                logging.warning(
+                    f"In segment {self.name}: not all pulses supports "
+                    f"internal modulation on channel {channel}. This channel "
+                    f"will not be internally modulated in the current "
+                    f"sequence."
+                )
                 continue
 
             # Check if the configurations of all pulses are compatible with
@@ -550,10 +552,12 @@ class Segment:
             pulse_params_allow_internal_mod, check_values = \
                 self._internal_mod_check_pulse_params(channel=channel)
             if not pulse_params_allow_internal_mod:
-                log.warning(f"In segment {self.name}: internal modulation "
-                            f"parameters are not compatible among the pulses. "
-                            f"This channel will not be internally modulated "
-                            f"in the current sequence.")
+                logging.warning(
+                    f"In segment {self.name}: internal modulation "
+                    f"parameters are not compatible among the pulses. This "
+                    f"channel will not be internally modulated in the current "
+                    f"sequence."
+                )
                 continue
 
             # We have made sure that internal modulation is applicable to
