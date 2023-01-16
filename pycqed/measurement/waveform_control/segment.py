@@ -673,11 +673,11 @@ class Segment:
             # No internal modulation configuration for this channel.
             return
 
-        major_mod_frequency = self._internal_mod_find_major_frequency(
+        mod_frequency = self._internal_mod_find_maximum_frequency(
             channel=channel)
         for elname in self.elements_on_channel[channel]:
             channel_metadata = dict()
-            channel_metadata["mod_frequency"] = major_mod_frequency
+            channel_metadata["mod_frequency"] = mod_frequency
 
             # Find the phase of the first pulse on this channel. Pass this
             # channel initial phase to element metadata.
@@ -714,7 +714,7 @@ class Segment:
             for pulse in self.elements[elname]:
                 if channel in pulse.channels:
                     pulse.mod_frequency = round(
-                        pulse.mod_frequency - major_mod_frequency,
+                        pulse.mod_frequency - mod_frequency,
                         self.FREQUENCY_ROUNDING_DIGITS)
                     pulse.alpha = 1
                     pulse.phi_skew = 0
@@ -754,7 +754,7 @@ class Segment:
 
         return init_phase
 
-    def _internal_mod_find_major_frequency(
+    def _internal_mod_find_maximum_frequency(
             self,
             channel: str,
     ):
@@ -766,7 +766,7 @@ class Segment:
             channel (str): channel name.
 
         Returns:
-            major_freq (float): max modulation frequency.
+            max_freq (float): max modulation frequency.
         """
         # Use a dictionary as a counter for modulation frequencies
         frequency_bin = dict()
