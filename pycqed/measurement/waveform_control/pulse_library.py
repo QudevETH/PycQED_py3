@@ -1335,12 +1335,17 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Applies single sideband modulation, requires tvals to make sure the
     phases are correct.
 
-    The modulation and predistortion is calculated as
+    If alpha >= 1.0: The modulation and predistortion is calculated as
     [I_mod] = [cos(phi_skew)  sin(phi_skew)] [ cos(wt)  sin(wt)] [I_env]
     [Q_mod]   [0              1/alpha      ] [-sin(wt)  cos(wt)] [Q_env],
     where wt = 360 * mod_frequency * (tvals - tval_phaseref) + phase
 
-    The output is normalized such that the determinatnt of the transformation
+    If alpha < 1.0: I_mod and Q_mod will be multiplied with alpha on top of
+    the expression above. This is to make sure that all elements of the
+    predistortion matrix is not larger than 1, in order to be compatible with
+    mixer_calib modulation mode of ZI HDAWG.
+
+    The output is normalized such that the determinant of the transformation
     matrix is +-1.
 
     Args:
@@ -1363,12 +1368,15 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     phii = phi + phi_skew
     phiq = phi + 90
 
+    # Deprecated scaling factors. Kept here in case we want to retrieve them
+    # in the future.
     # k = 1 / np.cos(np.pi * phi_skew / 180) #  old normalization
-    k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
+    # k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
 
-    imod = k * (ienv * np.cos(np.deg2rad(phii)) +
+    r = alpha if alpha < 1.0 else 1.0
+    imod = r * (ienv * np.cos(np.deg2rad(phii)) +
                 qenv * np.sin(np.deg2rad(phii)))
-    qmod = k * (ienv * np.cos(np.deg2rad(phiq)) +
+    qmod = r * (ienv * np.cos(np.deg2rad(phiq)) +
                 qenv * np.sin(np.deg2rad(phiq))) / alpha
 
     return imod, qmod

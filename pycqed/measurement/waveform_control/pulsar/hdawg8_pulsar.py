@@ -713,7 +713,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         phi_skew = mod_config.get("phi_skew", 0.0) / 180 * np.pi
 
         # Because ZI devices does not accept gain matrix elements that are
-        # larger than 1, we will eed to rescale the gain matrix if alpha is
+        # larger than 1, we will need to rescale the gain matrix if alpha is
         # smaller than 1.
         r = alpha if alpha < 1.0 else 1.0
         self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew) * r)
