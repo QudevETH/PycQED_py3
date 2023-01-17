@@ -267,7 +267,7 @@ class QuDev_transmon(Qubit):
                 'acq', acq_mod_freq=f),
             vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
             docstring='Acquitision intermediate frequency. '
-                      'If None, ro_freq is used.')
+                      'If None, ro_mod_freq is used.')
         self.add_parameter('acq_IQ_angle', initial_value=0,
                            docstring='The phase of the integration weights '
                                      'when using SSB, DSB or square_rot '
