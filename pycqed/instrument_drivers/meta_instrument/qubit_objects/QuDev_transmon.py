@@ -71,6 +71,11 @@ class QuDev_transmon(Qubit):
         self.add_parameter('instr_ro_lo',
             parameter_class=InstrumentRefParameter,
             vals=vals.MultiType(vals.Enum(None), vals.Strings()))
+        self.add_parameter(
+            'instr_acq_lo', parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()),
+            docstring='Downconversion local oscillator for acquisistion. Set '
+                      'only if different from upconversion LO instr_ro_lo.')
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
@@ -244,6 +249,25 @@ class QuDev_transmon(Qubit):
                            vals=vals.Numbers(min_value=1e-8,
                                              max_value=100e-6),
                            parameter_class=ManualParameter)
+        self.add_parameter(
+            'acq_fixed_lo_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_fixed_lo_freq=f),
+            docstring='Fix the acq LO to a single frequency or to a set of '
+                      'allowed frequencies. For allowed options, see the '
+                      'argument fixed_lo in the docstring of '
+                      'get_closest_lo_freq.')
+        self.add_parameter(
+            'acq_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs('acq', acq_freq=f),
+            docstring='Acquitision frequency. If None, ro_freq is used.')
+        self.add_parameter(
+            'acq_mod_freq', initial_value=None,
+            set_parser=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_mod_freq=f),
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            docstring='Acquitision intermediate frequency. '
+                      'If None, ro_freq is used.')
         self.add_parameter('acq_IQ_angle', initial_value=0,
                            docstring='The phase of the integration weights '
                                      'when using SSB, DSB or square_rot '
@@ -1124,6 +1148,10 @@ class QuDev_transmon(Qubit):
         # Provide the ro_lo_freq to the acquisition device to allow
         # configuring an internal LO if needed.
         self.instr_acq.get_instr().set_lo_freq(self.acq_unit(), ro_lo_freq)
+        # configure the downconversion LO for acquisition if needed
+        if self.instr_acq_lo() is not None:
+            _, acq_lo_freq = self.get_acq_mod_and_lo_freq()
+            self.instr_acq_lo.get_instr().frequency(acq_lo_freq)
 
         # configure qubit drive local oscillator
         if ge_lo() is not None:
@@ -1239,6 +1267,19 @@ class QuDev_transmon(Qubit):
         else:
             return self.instr_ro_lo()
 
+    def get_acq_mod_and_lo_freq(self):
+        """Returns the required IF and LO frequency for acquisition
+
+        The Acq LO freq is calculated from the acq_mod_freq (intermediate
+        frequency) and the acq_freq stored in the qubit object. If any of them
+        is None, it is replaced by ro_mod_freq or ro_freq, respectively.
+        """
+        if acq_freq := self.acq_freq() is None:
+            acq_freq = self.ro_freq()
+        if acq_mod_freq := self.acq_mod_freq() is None:
+            acq_mod_freq = self.ro_mod_freq()
+        return acq_mod_freq, acq_freq - acq_mod_freq
+
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this qubit in the acquisition device.
 
@@ -1248,7 +1289,8 @@ class QuDev_transmon(Qubit):
         AcquisitionDevice._acquisition_generate_weights):
         - instr_acq, acq_unit, acq_I_channel, acq_Q_channel
         - acq_weights_type (if not overridden with the arg weights_type)
-        - ro_mod_freq (if not overridden with the arg f_mod)
+        - acq_mod_freq if not None, or otherwise ro_mod_freq (if not
+          overridden with the arg f_mod)
         - acq_IQ_angle
         - acq_weights_I, acq_weights_I2, acq_weights_Q, acq_weights_Q2
 
@@ -1264,7 +1306,7 @@ class QuDev_transmon(Qubit):
         if weights_type is None:
             weights_type = self.acq_weights_type()
         if f_mod is None:
-            f_mod = self.ro_mod_freq()
+            f_mod, _ = self.get_acq_mod_and_lo_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
@@ -2970,6 +3012,12 @@ class QuDev_transmon(Qubit):
         relevant paramter changes, or without kw as a sanity check, in which
         case it shows a warning when updating an IF.
 
+        Special behavior if {op} is 'acq':
+        - if acq_freq is None, ro_freq is used
+        - if acq_fixed_lo_freq is not None while acq_mod_freq is None,
+          acq_mod_freq gets set to the value calculated based on
+          acq_fixed_lo_freq and ro_mod_freq.
+
         Args:
             operation (str, None): configure the IF only for the operation
                 indicated by the string or for all operations for which a
@@ -2985,6 +3033,9 @@ class QuDev_transmon(Qubit):
         def get_param(param):
             if param in kw:
                 return kw[param]
+            elif param in ['acq_freq',
+                           'acq_mod_freq'] and self.get(param) is None:
+                return self.get(param.replace('acq_', 'ro_'))
             else:
                 return self.get(param)
 
