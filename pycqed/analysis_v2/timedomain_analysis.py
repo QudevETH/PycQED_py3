@@ -1152,11 +1152,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             do_PCA = 'pca' in self.rotation_type[qbn].lower()
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
             cal_states_rot_qb = cal_states_rotations.get(qbn, {})
-            for i in list(cal_states_rot_qb.values()):
-                # cal state corresponding to transmon level i
-                cal_state = \
-                    [k for k, idx in cal_states_rot_qb.items()
-                     if idx == i][0]
+            cal_states = list(cal_states_rot_qb)
+            # sort cal_states
+            cal_states.sort(key=lambda s: cal_states_rot_qb[s])
+            for cal_state in cal_states:
                 if do_PCA or not len(self.cal_states_dict[qbn]):
                     # rotation_type is some form of pca or no cal points
                     # information was given --> do pca
