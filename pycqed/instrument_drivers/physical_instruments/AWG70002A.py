@@ -81,13 +81,12 @@ class AWG70002A(AWG70002A.AWG70002A):
             event_jump_to: Jump target in case of event. 1-indexed,
                 0 means next. Must be specified for all elements.
             go_to: Which element to play next. 1-indexed, 0 means next.
-            wfms: TODO numpy arrays describing each waveform plus two markers,
-                packed like np.array([wfm, m1, m2]). These numpy arrays
-                are then again packed in lists according to:
-                [[wfmch1pos1, wfmch1pos2, ...], [wfmch2pos1, ...], ...]
+            wfms: A dictionary of waveforms with the key being a waveform name
+                and the value -- numpy array describing the waveform.
             seqname: The name of the sequence. This name will appear in the
                 sequence list. Note that all spaces are converted to '_'
-            sequence: TODO
+            sequence: The sequence to be played on the AWG. Contains waveform
+                names for each channel of the AWG for each element of the seq.
 
         Returns:
             The binary .seqx file, ready to be sent to the instrument.
@@ -111,9 +110,11 @@ class AWG70002A(AWG70002A.AWG70002A):
         zipfile.writestr(f'Sequences/{seqname}.sml', sml_file)
 
         for (name, wfm) in wfms.items():
-            zipfile.writestr(f'Waveforms/{name}.wfmx', AWG70002A.makeWFMXFile(wfm, 2.0))
-                #We don't want to normalize the waveform as PycQED already takes care of that.
-                #So we send the amplitude vpp to be 2.0, meaning the qcodes driver normalization scale of 1.
+            zipfile.writestr(f'Waveforms/{name}.wfmx',
+                             AWG70002A.makeWFMXFile(wfm, 2.0))
+        # We don't want to normalize the waveform as PycQED already
+        # takes care of that. Therefore, we send the amplitude vpp to be 2.0,
+        # meaning the qcodes driver normalization scale of 1.
 
         zipfile.writestr('setup.xml', setup_file)
         zipfile.writestr('userNotes.txt', user_file)
