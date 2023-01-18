@@ -7,11 +7,10 @@ import qcodes.utils.validators as vals
 import time
 
 try:
-    from pycqed.instrument_drivers.physical_instruments.AWG70002A import AWG70002A
+    from pycqed.instrument_drivers.physical_instruments.AWG70002A \
+        import AWG70002A
 except Exception:
     AWG70002A = type(None)
-#from pycqed.instrument_drivers.virtual_instruments.virtual_AWG70002A import \
- #   VirtualAWG70002A
 
 from .pulsar import PulsarAWGInterface
 
@@ -24,21 +23,20 @@ class AWG70kPulsar(PulsarAWGInterface):
         Currently supports the way SuperQuLAN uses the 70k:
         Slow trigger mode, no marker channels."""
 
-    #AWG_CLASSES = [Tektronix_AWG5014, VirtualAWG5014]
     AWG_CLASSES = [AWG70002A]
 
     GRANULARITY = 160
     ELEMENT_START_GRANULARITY = 160 / 25e9
     MIN_LENGTH_SAMPLES = 160
-    MIN_LENGTH = MIN_LENGTH_SAMPLES / 25e9  # Cannot be triggered faster than ?? ns, no info in the manual
+    MIN_LENGTH = MIN_LENGTH_SAMPLES / 25e9
     INTER_ELEMENT_DEADTIME = 0.0
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.125, 0.25),
         "marker": (-1.4,1.4),
     }
     CHANNEL_OFFSET_BOUNDS = {
-        "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
-        "marker": tuple(), # Is there even an offset option for 70k?
+        "analog": tuple(),  # Nonzero offset is not supported currently
+        "marker": tuple(),
     }
 
     def __init__(self, pulsar, awg):
@@ -65,7 +63,8 @@ class AWG70kPulsar(PulsarAWGInterface):
             self.create_channel_parameters(id, ch_name, "analog")
             pulsar.channels.add(ch_name)
             group.append(ch_name)
-            #We are using the 70k without markers, otherwise their definitions would go here
+            # We are using the 70k without markers,
+            # otherwise their definitions would go here
 
         # all channels are considered as a single group
         for ch_name in group:
@@ -129,10 +128,11 @@ class AWG70kPulsar(PulsarAWGInterface):
             offset_mode = self.pulsar.parameters[f"{ch_name}_offset_mode"].get()
             if param == 'offset':
                 return 0
-                #Nonzero offset is not supported currently
+                # Nonzero offset is not supported currently
             elif param == 'amp':
                 if self.pulsar.awgs_prequeried:
-                    amp = self.awg.submodules[id].parameters['awg_amplitude'].get_latest() / 2
+                    amp = self.awg.submodules[id].parameters['awg_amplitude']\
+                              .get_latest() / 2
                 else:
                     amp = self.awg.submodules[id].awg_amplitude.get() / 2
                 if scale_param is not None and self.pulsar.get(scale_param) is \
@@ -209,7 +209,8 @@ class AWG70kPulsar(PulsarAWGInterface):
         filename = 'pycqed_pulsar_sequence.seqx'
         trigger_dict = {'TrigA': 1, 'TrigB': 2, 'Internal': 3}
 
-        trig_waits = [trigger_dict[self.pulsar.get(f'{self.awg.name}_trigger_source')]] * len(wfname_l)
+        trig_waits = [trigger_dict[self.pulsar.get(
+            f'{self.awg.name}_trigger_source')]] * len(wfname_l)
         nreps = [1] * len(wfname_l)
         event_jumps = [0]* len(wfname_l)
         event_jump_to = [0]* len(wfname_l)
@@ -233,7 +234,7 @@ class AWG70kPulsar(PulsarAWGInterface):
         self.awg.ch2.setSequenceTrack('Pulsar_Sequence', 2)
 
         time.sleep(.1)
-        # Waits for AWG to be ready
+        # Waits for AWG to be ready. FIXME Possibly remove it and re-test
         self.awg.wait_for_operation_to_complete()
 
         for grp in ['ch1', 'ch2']:
