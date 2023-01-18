@@ -1263,24 +1263,33 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
     def rotate_data(qb_name, meas_results_per_qb, channel_map,
                     cal_states_dict, storing_keys, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        if 'pca' not in storing_keys[qb_name].lower():
+        main_cs = storing_keys[qb_name]
+        if 'pca' not in main_cs.lower():
             # Add the other state probability
-            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
+            # ex if main_cs == 'pe' add data for 'pg' as 1-pe
             qb_cal_states = cal_states_dict[qb_name].keys()
             if len(qb_cal_states) != 2:
                 raise ValueError(f'Expected two cal states for {qb_name} but '
                                  f'found {len(qb_cal_states)}: {qb_cal_states}')
-            other_cs = [cs for cs in qb_cal_states
-                        if cs != storing_keys[qb_name][-1]]
+            other_cs = [cs for cs in qb_cal_states if cs != main_cs[-1]]
             if len(other_cs) == 0:
                 raise ValueError(f'There are no other cal states except for '
-                                 f'{storing_keys[qb_name][-1]} from '
-                                 f'storing_keys.')
+                                 f'{main_cs[-1]} from storing_keys.')
             elif len(other_cs) > 1:
                 raise ValueError(f'There is more than one other cal state in '
-                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f'addition to {main_cs[-1]} from'
                                  f' storing_keys. Not clear which one to use.')
             other_cs = f'p{other_cs[0]}'
+
+            # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
+            # return the qubit population corresponding to the highest cal state
+            # (f>e>g). So the main_cs must be higher than the other_cs.
+            states = list(cal_states_dict[qb_name])[::-1]  # order f, e, g
+            probs = [main_cs, other_cs]
+            # sort probs by order pf, pe, pg
+            probs.sort(key=lambda p: states.index(p[-1]))
+            # reassign to main_cs, other_cs
+            main_cs, other_cs = probs[0], probs[1]
 
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
@@ -1301,16 +1310,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 data = (data - np.min(data))/(np.max(data) - np.min(data))
                 data = a_tools.set_majority_sign(
                     data, -1 if data_mostly_g else 1)
-                rotated_data_dict[qb_name][storing_keys[qb_name]] = data
+                rotated_data_dict[qb_name][main_cs] = data
             else:
-                rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+                rotated_data_dict[qb_name][main_cs] = \
                     a_tools.rotate_and_normalize_data_1ch(
                         data=meas_res_dict[list(meas_res_dict)[0]],
                         cal_zero_points=cal_zero_points,
                         cal_one_points=cal_one_points)
-            if 'pca' not in storing_keys[qb_name].lower():
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             data, _, _ = a_tools.rotate_and_normalize_data_IQ(
@@ -1320,10 +1329,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             if cal_zero_points is None:
                 data = a_tools.set_majority_sign(
                     data, -1 if data_mostly_g else 1)
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+            rotated_data_dict[qb_name][main_cs] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1341,11 +1350,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         data = (data - np.min(data))/(np.max(data) - np.min(data))
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]] = data
+                        rotated_data_dict[qb_name][ro_suf][main_cs] = data
                     else:
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]] = \
+                        rotated_data_dict[qb_name][ro_suf][main_cs] = \
                             a_tools.rotate_and_normalize_data_1ch(
                                 data=meas_res_dict[list(meas_res_dict)[i]],
                                 cal_zero_points=cal_zero_points,
@@ -1364,12 +1371,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][ro_suf][
-                        storing_keys[qb_name]] = data
-                if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = data
+                if 'pca' not in main_cs.lower():
                     rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                        1 - rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]]
+                        1 - rotated_data_dict[qb_name][ro_suf][main_cs]
         return rotated_data_dict
 
     @staticmethod
@@ -1438,24 +1443,34 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                          cal_states_dict, storing_keys,
                          column_PCA=False, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        if 'pca' not in storing_keys[qb_name].lower():
+        main_cs = storing_keys[qb_name]
+        if 'pca' not in main_cs.lower():
             # Add the other state probability
-            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
+            # ex if main_cs == 'pe' add data for 'pg' as 1-pe
             qb_cal_states = cal_states_dict[qb_name].keys()
             if len(qb_cal_states) != 2:
                 raise ValueError(f'Expected two cal states for {qb_name} but '
                                  f'found {len(qb_cal_states)}: {qb_cal_states}')
-            other_cs = [cs for cs in qb_cal_states
-                        if cs != storing_keys[qb_name][-1]]
+            other_cs = [cs for cs in qb_cal_states if cs != main_cs[-1]]
             if len(other_cs) == 0:
                 raise ValueError(f'There are no other cal states except for '
-                                 f'{storing_keys[qb_name][-1]} from '
+                                 f'{main_cs[-1]} from '
                                  f'storing_keys.')
             elif len(other_cs) > 1:
                 raise ValueError(f'There is more than one other cal state in '
-                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f'addition to {main_cs[-1]} from'
                                  f' storing_keys. Not clear which one to use.')
             other_cs = f'p{other_cs[0]}'
+
+            # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
+            # return the qubit population corresponding to the highest cal state
+            # (f>e>g). So the main_cs must be higher than the other_cs.
+            states = list(cal_states_dict[qb_name])[::-1]  # order f, e, g
+            probs = [main_cs, other_cs]
+            # sort probs by order pf, pe, pg
+            probs.sort(key=lambda p: states.index(p[-1]))
+            # reassign to main_cs, other_cs
+            main_cs, other_cs = probs[0], probs[1]
 
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
@@ -1472,7 +1487,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if len(meas_res_dict) == 1:
             # one RO channel per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+            rotated_data_dict[qb_name][main_cs] = \
                 deepcopy(raw_data_arr.transpose())
             if column_PCA:
                 for row in range(raw_data_arr.shape[0]):
@@ -1482,7 +1497,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         cal_one_points=cal_one_points)
                     data = a_tools.set_majority_sign(
                         data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][
+                    rotated_data_dict[qb_name][main_cs][
                         :, row] = data
             else:
                 for col in range(raw_data_arr.shape[1]):
@@ -1493,14 +1508,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][col] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][main_cs][col] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+            rotated_data_dict[qb_name][main_cs] = \
                 deepcopy(raw_data_arr.transpose())
             if column_PCA:
                 for row in range(raw_data_arr.shape[0]):
@@ -1513,8 +1528,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             cal_one_points=cal_one_points)
                     data = a_tools.set_majority_sign(
                         data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][
-                        :, row] = data
+                    rotated_data_dict[qb_name][main_cs][:, row] = data
             else:
                 for col in range(raw_data_arr.shape[1]):
                     data_array = np.array(
@@ -1526,11 +1540,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][
-                        storing_keys[qb_name]][col] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][main_cs][col] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1546,7 +1559,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if len(ro_suffixes) == len(meas_res_dict):
                     # one RO ch per qubit
                     raw_data_arr = meas_res_dict[list(meas_res_dict)[i]]
-                    rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]] = \
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = \
                         deepcopy(raw_data_arr.transpose())
                     for col in range(raw_data_arr.shape[1]):
                         data = a_tools.rotate_and_normalize_data_1ch(
@@ -1556,12 +1569,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         if cal_zero_points is None:
                             data = a_tools.set_majority_sign(
                                 data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]][col] = data
+                        rotated_data_dict[qb_name][ro_suf][main_cs][col] = data
                 else:
                     # two RO ch per qubit
                     raw_data_arr = meas_res_dict[list(meas_res_dict)[i]]
-                    rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]] = \
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = \
                         deepcopy(raw_data_arr.transpose())
                     for col in range(raw_data_arr.shape[1]):
                         data_array = np.array(
@@ -1574,12 +1586,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         if cal_zero_points is None:
                             data = a_tools.set_majority_sign(
                                 data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]][col] = data
-                if 'pca' not in storing_keys[qb_name].lower():
+                        rotated_data_dict[qb_name][ro_suf][main_cs][col] = data
+                if 'pca' not in main_cs.lower():
                     rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                        1 - rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]]
+                        1 - rotated_data_dict[qb_name][ro_suf][main_cs]
         return rotated_data_dict
 
     @staticmethod
