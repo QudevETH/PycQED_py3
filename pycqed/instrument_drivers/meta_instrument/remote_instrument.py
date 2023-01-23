@@ -3,7 +3,6 @@ import pickle
 import traceback
 import qcodes as qc
 import time
-import weakref
 
 import logging
 log = logging.getLogger(__name__)
@@ -39,7 +38,6 @@ class RemoteInstrument():
     def __init__(self, name,
                  host, port=PORT,
                  id=None,
-                 # instr_ref=None
                  ):
         self._name = name
         self.host = host
@@ -50,12 +48,7 @@ class RemoteInstrument():
             self._id = self.remote_call([self._name, 'id', '', [], []])
         self._remote_instruments[self._id] = self
         self._submodules = (None, 0)
-        # qc.Instrument._all_instruments[name] = weakref.ref(self)
         Instrument._all_instruments[name] = self
-        # self.instr_ref = instr_ref
-
-    #         if self.instr_ref:
-    #             self.__repr__ = self.__str__
 
     def _create_instr(self, name, id=None):
         if id is None:
@@ -65,10 +58,7 @@ class RemoteInstrument():
         return RemoteInstrument(name, self.host, self.port, id=id)
 
     def __getattr__(self, p):
-        # # print(self._name, 'get', p, flush=True)
-        # if self._name in qc.Instrument._all_instruments:
-        #     return getattr(qc.Instrument._all_instruments[self._name](), p)
-        if p == 'submodules' and  time.time() - self._submodules[1] < \
+        if p == 'submodules' and time.time() - self._submodules[1] < \
                 SUBMODULE_CACHE_TIME:
             return self._submodules[0]
         if p == '__getstate__':
@@ -80,12 +70,9 @@ class RemoteInstrument():
 
             return f
         result = self.remote_call([self._name, 'type', p, [], []])
-        # print(result)
         if result.startswith('submodule'):
             return self._create_instr(f'{self._name}.{p}',
                                        id=int(result.split(' ')[1]))
-        #         elif result == 'instr_ref':
-        #             return RemoteInstrument(f'{self._name}.{p}', p)
         elif result.startswith('channellist '):
             submods = self.submodules
             if p in submods:
@@ -99,20 +86,13 @@ class RemoteInstrument():
 
             def get_instr(p=p):
                 remote_instr = self.remote_call([self._name, None, p, [], {}])
-                # print(remote_instr)
-                # if remote_instr in Instrument._all_instruments:
-                #     return Instrument._all_instruments[remote_instr]
-                # else:
                 return self._create_instr(remote_instr)
 
             f.get_instr = get_instr
             return f
         else:
             result = self.remote_call([self._name, None, p])
-            #             print(result)
             if p == 'parameters':
-                # result_new = {k: lambda *args, k=k: self.__getattr__(k)(*args)
-                #           for k in result}
                 result_new = {k: RemoteParameter(self, k) for k in result}
                 for param, param_dict in result.items():
                     for k, v in param_dict.items():
@@ -131,63 +111,22 @@ class RemoteInstrument():
                 result = {k: self._create_instr(k) for k in result}
             return result
 
-    #     @property
-    #     def _instance(self):
-    #         return self
-
-    # def get_instance(self):
-    #     if self._name in Instrument._all_instruments:
-    #         return Instrument._all_instruments[self._name].get_instance()
-    #     return self
-
-    #     def get_instr(self):
-    #         print(self._name)
-    #         if self.instr_ref:
-    #             remote_instr = self.remote_call([self._name, None, self.instr_ref])
-    #             print(remote_instr)
-    #             all_ins = qc.instrument.base.Instrument._all_instruments
-    #             if remote_instr in all_ins:
-    #                 return all_ins[remote_instr]
-    #             else:
-    #                 return RemoteInstrument(remote_instr)
-    #         else:
-    #             super().get_instr()
-
     def __setattr__(self, p, v):
-        if p not in ['_name', 'host', 'port', '_id', '_submodules'
-                     # 'instr_ref'
-                     ]:
-            # if self._name in qc.Instrument._all_instruments:
-            #     return setattr(qc.Instrument._all_instruments[self._name](), p, v)
-            # print('x', p)
+        if p not in ['_name', 'host', 'port', '_id', '_submodules']:
             self.remote_call([self._name, 'set', p, v, []])
         else:
             super().__setattr__(p, v)
 
-    #     def __str__(self):
-    #         if self.instr_ref:
-    #             return self.instr_ref
-    #         else:
-    #             super().__str__()
-
     def __getitem__(self, item):
-        # result = self.remote_call([self._name, '', '_channels', [], []])
-        # if item not in result:
-        #     raise KeyError(f'Channel {item} not found in remote instrument '
-        #                    f'{self._name}.')
         return self._create_instr(f'{self._name}.{item}')
-        # if result == 'value':
-
 
     def remote_call(self, cmd):
-        # print(cmd, flush=True)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.host, self.port))
             data = pickle.dumps(cmd)
             step = 1024
             for i in range(0, len(data), step):
                 new_data = data[i:i+step]
-                # print(new_data, flush=True)
                 s.sendall(new_data)
             s.sendall(b'done')
             data = b''
@@ -213,10 +152,7 @@ class RemoteInstrument():
                     raise AttributeError(str(data))
                 raise data
             else:
-                # print(f"data = {data}")
                 return data
-
-    # print(f"Received {data!r}")
 
 
 def server(port=PORT, host='127.0.0.1'):
@@ -233,7 +169,6 @@ def server(port=PORT, host='127.0.0.1'):
                     data = b''
                     while True:
                         new_data = conn.recv(1024)
-                        # print(new_data, flush=True)
                         if new_data == b'quit':
                             print('quit')
                             conn.sendall(b'Exiting')
@@ -243,21 +178,7 @@ def server(port=PORT, host='127.0.0.1'):
                             data = data[:-4]
                             break
 
-                    # if len(data) > 1000:
-                    #     time.sleep(1)
-                    #     print('test', flush=True)
-                    #     time.sleep(1)
-                    #     print('test2', flush=True)
-                    #     time.sleep(1)
-                    #
                     cmd = pickle.loads(data)
-                    #
-                    # if len(data) > 1000:
-                    #     time.sleep(1)
-                    #     print('test3', flush=True)
-                    #     time.sleep(1)
-                    #     print('test4', flush=True)
-                    #     time.sleep(1)
 
                     try:
                         instr = cmd[0].split('.')
@@ -278,29 +199,25 @@ def server(port=PORT, host='127.0.0.1'):
                         if cmd[1] == 'id':
                             result = id(attr)
                         elif cmd[1] == 'type':
-                            # print('type')
                             if (isinstance(attr, qc.utils.metadata.Metadatable)
                                     and not isinstance(attr,
-                                                       qc.instrument.parameter.Parameter)):
+                                        qc.instrument.parameter.Parameter)):
                                 if isinstance(attr, qc.instrument.ChannelList):
                                     result = f'channellist {len(attr)}'
                                 else:
                                     result = f'submodule {id(attr)}'
-                            #                                 elif isinstance(attr, qc.instrument.parameter.InstrumentRefParameter):
-                            #                                     result = 'instr_ref'
                             elif callable(attr):
                                 result = 'callable'
                             else:
                                 result = 'value'
                         elif cmd[1] == 'set':
-                            # print('set')
                             result = setattr(obj, cmd[2], cmd[3])
                         elif callable(attr):
-                            # print('method')
                             result = attr(*cmd[3], **cmd[4])
                         elif cmd[2] in ['parameters']:
                             attrs_to_copy = ['label', 'vals', 'unit']
-                            result = {k: {a: getattr(p, a) for a in attrs_to_copy} for k, p in attr.items()}
+                            result = {k: {a: getattr(p, a) for a
+                                    in attrs_to_copy} for k, p in attr.items()}
                         elif cmd[2] in ['submodules']:
                             attrs_to_copy = []
                             result = {
@@ -314,10 +231,7 @@ def server(port=PORT, host='127.0.0.1'):
                                       for k in attr}
                         elif cmd[2] in ['_all_instruments', 'components']:
                             result = list(attr)
-                        #                             elif isinstance(attr, qc.instrument.parameter.InstrumentRefParameter):
-                        #                                 result = attr()
                         else:
-                            # print('property', attr)
                             result = attr
                         data_out = pickle.dumps(result)
                     except Exception as e:
@@ -329,6 +243,3 @@ def server(port=PORT, host='127.0.0.1'):
                 pass
             except:
                 raise
-
-
-
