@@ -1336,6 +1336,9 @@ class IntegratingAveragingPollDetector(PollDetector):
         """
         For use with multiple values_per_point. Adds the strings provided in
         the values_per_point_suffix list.
+
+        Note that this function modifies the provided channels_value_names_map
+        (if provided) in order to reflect the updated value names.
         """
         if values_per_point == 1:
             return value_names, value_units
@@ -1403,10 +1406,18 @@ class IntegratingAveragingPollDetector(PollDetector):
             data = self.convert_to_polar(data)
 
         if reshape_data:
-            n_channels = len(set(self._channels_value_names_map.values()))
-            n_virtual_channels = len(self.value_names) // n_channels
+            # The following variable counts the number of values per
+            # acquisition delivers by the hardware, which is equivalent to the
+            # number of channels with unique (tuples of) value names. In
+            # particular, the values of the dict are either str (single value
+            # name corresponding a value provided by the acquisition device) or
+            # tuple of str (multiple value names created due to
+            # values_per_point). If this str or tuple is the same for multiple
+            # channels, only one channel is counted.
+            n_val_per_acq = len(set(self._channels_value_names_map.values()))
+            n_virtual_channels = len(self.value_names) // n_val_per_acq
             data = np.reshape(
-                data.T, (-1, n_virtual_channels, n_channels)).T
+                data.T, (-1, n_virtual_channels, n_val_per_acq)).T
             data = data.reshape((len(self.value_names), -1))
 
         return data
