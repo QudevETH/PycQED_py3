@@ -509,6 +509,16 @@ class Segment:
                             .get(calibration_key, None)
 
     def resolve_internal_modulation(self):
+        """Processes internal-modulation-relevant information for this
+        segment. For every channel (AWG module) that this segment distributes
+        over, this method will:
+        1. Check if internal modulation for this channel is turned on in PycQED.
+        2. Check if all pulses types on this channel are compatible with
+        internal modulation.
+        3. Check if the configurations of all pulses on this channel are
+        compatible with each other for internal modulation.
+        4. If all checks above pass, updates pulse parameter and pass
+        modulation parameters to element metadata."""
 
         # Update dictionary {channel: element_name} to attribute
         # self.elements_on_channel
@@ -776,10 +786,11 @@ class Segment:
         frequency_bin = dict()
         for elname in self.elements_on_channel[channel]:
             for pulse in self.elements[elname]:
-                # Round frequency to Hz to avoid duplicates due to floating
-                # point rounding errors.
+                # Round frequency to avoid duplicates due to floating
+                # point rounding granularity.
                 if channel in pulse.channels:
-                    rounded_freq = round(pulse.mod_frequency, 4)
+                    rounded_freq = round(pulse.mod_frequency,
+                                         self.FREQUENCY_ROUNDING_DIGITS)
                     if rounded_freq in frequency_bin.keys():
                         frequency_bin[rounded_freq] += 1
                     else:

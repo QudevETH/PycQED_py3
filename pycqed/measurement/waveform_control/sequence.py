@@ -264,7 +264,7 @@ class Sequence:
         retrieved when generating command table entries. This allows reusing 
         waveforms to the largest extent based on wave hashes. Note that 
         the rescaling will be skipped on the target AWG modules where command 
-        table is  not activated.
+        table is not activated.
         
         Args:
             awg: (str) AWG name to be processed.
@@ -298,7 +298,7 @@ class Sequence:
                 parameter_suffix="_use_command_table"
             ):
                 logging.warning(
-                    f"On {awg_module.awg.name}: PyeQED will "
+                    f"On {awg_module.awg.name}: PycQED will "
                     f"not harmonize amplitude for this AWG module "
                     f"because this feature only works when command table "
                     f"is enabled. Please set \"_use_command_table\" "
