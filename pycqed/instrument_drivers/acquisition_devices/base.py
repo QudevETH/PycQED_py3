@@ -457,11 +457,11 @@ class AcquisitionDevice():
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
 
-    def set_classifier_params(self, acquisition_channel, params):
+    def set_classifier_params(self, channels, params):
         """Set the classifier parameters on the acquisition device.
 
         Arguments:
-            acquisition_channel: Channel for which to set the parameters.
+            channels (list of tuple): Channels for which to set the parameters.
             params: A dictionnary containing various classifier parameters that
                 can be used by children classes:
                 * ``centroids``: ``N x 2`` (or ``N x 1``) array containing the
