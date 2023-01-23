@@ -1080,7 +1080,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
                                       gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
-                                      mirror_pattern=kw.get("mirror_pattern",
+                                      mirror_pattern=kw.get("flux_mirror_pattern",
                                                             None))
 
     @classmethod
@@ -1120,8 +1120,8 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
         else:
             return []  # empty list if neither of the conditions is satisfied
 
-    def mirror_amplitudes(self):
-        return self.fp.mirror_amplitudes()  # TODO comment
+    def get_mirror_pulse_obj_and_pattern(self):
+        return self.fp.get_mirror_pulse_obj_and_pattern()  # TODO comment
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):

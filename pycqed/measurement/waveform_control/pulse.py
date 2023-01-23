@@ -250,6 +250,11 @@ class Pulse:
                     amp += mirror_correction[k]
                 setattr(self, k, amp)
 
+    def get_mirror_pulse_obj_and_pattern(self):
+        """TODO docstring
+        """
+        return self, getattr(self, 'mirror_pattern', None)
+
     @classmethod
     def pulse_params(cls):
         """

@@ -213,7 +213,7 @@ class QuDev_transmon(Qubit):
         self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
                                  initial_value=0.5e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_mirror_pattern',
-                                 'mirror_pattern',
+                                 'flux_mirror_pattern',
                                  initial_value=None, vals=vals.Enum(None,
                                                                     "none",
                                                                     "all",
