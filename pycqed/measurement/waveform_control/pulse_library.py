@@ -1345,9 +1345,6 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     predistortion matrix is not larger than 1, in order to be compatible with
     mixer_calib modulation mode of ZI HDAWG.
 
-    The output is normalized such that the determinant of the transformation
-    matrix is +-1.
-
     Args:
         ienv (np.ndarray): In-phase envelope waveform.
         qenv (np.ndarray): Quadrature envelope waveform.
@@ -1367,11 +1364,6 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     phi = 360 * mod_frequency * (tvals - tval_phaseref) + phase
     phii = phi + phi_skew
     phiq = phi + 90
-
-    # Deprecated scaling factors. Kept here in case we want to retrieve them
-    # in the future.
-    # k = 1 / np.cos(np.pi * phi_skew / 180) #  old normalization
-    # k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
 
     r = alpha if alpha < 1.0 else 1.0
     imod = r * (ienv * np.cos(np.deg2rad(phii)) +
