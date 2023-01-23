@@ -179,6 +179,7 @@ def load_settings(instrument,
             that should be set for the instrument
     '''
     from numpy import array  # DO not remove. Used in eval(array(...))
+    from collections import OrderedDict  # DO NOT remove. Used in eval()
     if folder is None:
         folder_specified = False
     else:
