@@ -172,7 +172,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                                        "combination with command table.")
         pulsar.add_parameter(f"{name}_internal_modulation", initial_value=False,
                              vals=vals.Bool(), parameter_class=ManualParameter,
-                             docstring="Configures whether to use digital "
+                             docstring="Configures whether to use internal "
                                        "modulation for waveform generation on "
                                        "this device. If set to True, internal "
                                        "modulation will be enabled on all AWG "
@@ -297,12 +297,12 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     initial_value=False,
                     vals=vals.Bool(),
                     parameter_class=ManualParameter,
-                    docstring="Configures whether to use command table for wave"
-                              "sequencing on this AWG module. Note that this "
-                              "parameter will be ignored if the device-level "
-                              "{dev_name}_use_command_table is set to "
-                              "True. In that case, all AWG modules on the "
-                              "device will use command table irrespective "
+                    docstring="Configures whether to use command table for "
+                              "wave sequencing on this AWG module. Note that "
+                              "this parameter will be ignored if the "
+                              "device-level {dev_name}_use_command_table is "
+                              "set to True. In that case, all AWG modules on "
+                              "the device will use command table irrespective "
                               "of the channel-specific setting."
                 )
 
@@ -330,7 +330,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     initial_value=False,
                     vals=vals.Bool(),
                     parameter_class=ManualParameter,
-                    docstring="Configures whether to use digital modulation "
+                    docstring="Configures whether to use internal modulation "
                               "on this AWG module. Note that this "
                               "parameter will be ignored if the device-level "
                               "{dev_name}_internal_modulation is set to "
@@ -339,8 +339,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                               "of the channel-specific setting."
                 )
 
-
-        else: # ch_type == "marker"
+        else:  # ch_type == "marker"
             # So far no additional parameters specific to marker channels
             pass
 

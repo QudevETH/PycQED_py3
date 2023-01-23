@@ -60,12 +60,12 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
             parameter_class=ManualParameter,
             docstring="Configures whether to use placeholder "
                       "waves in combination with binary "
-                      "waveform uploadon this device. If set "
+                      "waveform upload on this device. If set "
                       "to True, placeholder waves "
                       "will be enabled on all AWG modules on "
                       "this device. If set to False, pulsar "
                       "will check channel-specific settings "
-                      "and programs command table on a "
+                      "and use placeholder waves on a "
                       "per-AWG-module basis."
         )
         pulsar.add_parameter(
@@ -73,14 +73,14 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
             initial_value=False,
             vals=vals.Bool(),
             parameter_class=ManualParameter,
-            docstring = "Configures whether to use command table"
-                        "for waveform sequencing on this "
-                        "device. If set to True, command table "
-                        "will be enabled on all AWG modules on "
-                        "this device. If set to False, pulsar "
-                        "will check channel-specific settings "
-                        "and programs command table on a "
-                        "per-AWG-module basis."
+            docstring="Configures whether to use command table "
+                      "for waveform sequencing on this "
+                      "device. If set to True, command table "
+                      "will be enabled on all AWG modules on "
+                      "this device. If set to False, pulsar "
+                      "will check channel-specific settings "
+                      "and programs command table on a "
+                      "per-AWG-module basis."
         )
 
         pulsar.add_parameter(
@@ -105,14 +105,12 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
             initial_value=False,
             vals=vals.Bool(),
             parameter_class=ManualParameter,
-            docstring="Configures whether to use digital "
-                      "modulation for waveform generation on "
-                      "this device. If set to True, internal "
-                      "modulation will be enabled on all AWG "
-                      "modules on this device. If set to "
-                      "False, pulsar will check "
-                      "channel-specific settings and programs "
-                      "command table on a per-AWG-module basis."
+            docstring="Configures whether to use internal modulation for "
+                      "waveform generation on this device. If set to True, "
+                      "internal modulation will be enabled on all AWG modules "
+                      "on this device. If set to False, pulsar will check "
+                      "channel-specific settings and configures internal "
+                      "modulation on a per-AWG-module basis."
         )
 
         SHFAcquisitionModulesPulsar._create_all_channel_parameters(

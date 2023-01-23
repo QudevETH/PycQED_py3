@@ -146,9 +146,9 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 docstring="Configures whether to use placeholder waves and "
                           "binary upload on this AWG module. Note that this "
                           "parameter will be ignored if the device-level "
-                          "{dev_name}_internal_modulation is set to "
+                          "{dev_name}_use_placeholder_waves is set to "
                           "True. In that case, all AWG modules on the "
-                          "device will use internal modulation irrespective"
+                          "device will use placeholder waves irrespective"
                           "of the channel-specific setting."
             )
 
@@ -176,12 +176,11 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                           "with hardware playback commands. This allows "
                           "reusing waveforms and reduces the number of "
                           "waveforms to be uploaded. "
-                          "Note that this "
-                          "parameter will be ignored if the device-level "
-                          "{dev_name}_harmonize_amplitude is set to "
-                          "True. In that case, all AWG modules on the "
-                          "device will use command table irrespective "
-                          "of the channel-specific setting."
+                          "Note that this parameter will be ignored if the "
+                          "device-level {dev_name}_harmonize_amplitude is set "
+                          "to True. In that case, all AWG modules on the "
+                          "device will try to harmonize pulse amplitudes "
+                          "irrespective of the channel-specific setting."
             )
             param_name = f"{ch_name}_internal_modulation"
             self.pulsar.add_parameter(
@@ -189,12 +188,12 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 initial_value=False,
                 vals=vals.Bool(),
                 parameter_class=ManualParameter,
-                docstring="Configures whether to use command table for wave"
-                          "sequencing on this AWG module. Note that this "
+                docstring="Configures whether to use internal modulation for "
+                          "waveform generation on this device. Note that this "
                           "parameter will be ignored if the device-level "
-                          "{dev_name}_use_command_table is set to "
+                          "{dev_name}_internal_modulation is set to "
                           "True. In that case, all AWG modules on the "
-                          "device will use command table irrespective "
+                          "device will use internal modulation irrespective "
                           "of the channel-specific setting."
             )
 
@@ -499,14 +498,15 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
         pulsar.add_parameter(f"{name}_internal_modulation",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
-                             docstring="Configures whether to use digital "
+                             docstring="Configures whether to use internal "
                                        "modulation for waveform generation on "
                                        "this  device. If set to True, internal "
                                        "modulation will be enabled on all AWG "
                                        "modules on this device. If set to "
                                        "False, pulsar will check "
-                                       "channel-specific settings and programs "
-                                       "command table on a per-sub-AWG basis.")
+                                       "channel-specific settings and enables "
+                                       "internal modulation on a per-sub-AWG "
+                                       "basis.")
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "DIO", "ZSync"),
