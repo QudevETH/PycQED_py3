@@ -176,7 +176,8 @@ class VC707(VC707_core, AcquisitionDevice):
                     channels = [ch for ch in self._acq_channels
                                 if pair_lookup[ch] == pair_id]
                     pairs[pair_id].center_coordinates = tuple(
-                        self._acq_classifier_params[tuple(channels)]['means_'])
+                        self._acq_classifier_params[tuple(channels)][
+                            'centroids'])
 
             self.state_discriminator.settings.units = list(pairs.values())
             self.state_discriminator.settings.nb_samples = nb_samples

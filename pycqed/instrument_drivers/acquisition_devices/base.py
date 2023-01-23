@@ -464,8 +464,8 @@ class AcquisitionDevice():
             acquisition_channel: Channel for which to set the parameters.
             params: A dictionnary containing various classifier parameters that
                 can be used by children classes:
-                * ``means_`` (sic): ``N x 2`` array containing the centroids for
-                  2D clustering of states
+                * ``centroids``: ``N x 2`` (or ``N x 1``) array containing the
+                  centroids for 2D (or 1D) clustering of states
                 * ``thresholds``: OrderedDict containing the thresholds for
                   state discrimination.
         """

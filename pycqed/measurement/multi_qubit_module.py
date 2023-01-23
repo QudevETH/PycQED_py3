@@ -809,8 +809,12 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                 f"automatically.")
                 qb.acq_weights_basis(a.proc_data_dict['analysis_params_dict'
                     ]['optimal_weights_basis_labels'][qb.name])
-                # TODO: find out whether this line will annoy ZI users
-                qb.acq_classifier_params().update({'means_': np.array(
+                # We intentionally use the key 'centroids' instead of using
+                # the same key 'means_' as used by the GMM classifier. This is
+                # in order to allow storing both information independently and
+                # to avoid unintentionally overwriting one kind of information
+                # with the other.
+                qb.acq_classifier_params().update({'centroids': np.array(
                     a.proc_data_dict['analysis_params_dict']['means'][qb.name]
                 )})
         return a
