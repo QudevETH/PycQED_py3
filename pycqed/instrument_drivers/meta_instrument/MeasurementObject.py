@@ -2,6 +2,7 @@ import logging
 log = logging.getLogger(__name__)
 import numpy as np
 from copy import deepcopy
+from collections import OrderedDict
 
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
@@ -12,51 +13,6 @@ from pycqed.measurement import sweep_functions as swf
 
 
 class MeasurementObject(Instrument):
-
-    def _get_operations(self):
-        return self._operations
-
-    def add_operation(self, operation_name):
-        self._operations[operation_name] = {}
-
-    def add_pulse_parameter(self,
-                            operation_name,
-                            parameter_name,
-                            argument_name,
-                            initial_value=None,
-                            vals=vals.Numbers(),
-                            **kwargs):
-        """
-        Add a pulse parameter to the measurement object.
-
-        Args:
-            operation_name (str): The operation of which this parameter is an
-                argument. e.g. mw_control or CZ
-            parameter_name (str): Name of the parameter
-            argument_name  (str): Name of the arugment as used in the sequencer
-            **kwargs get passed to the add_parameter function
-        Raises:
-            KeyError: if this instrument already has a parameter with this
-                name.
-        """
-        if parameter_name in self.parameters:
-            raise KeyError(
-                'Duplicate parameter name {}'.format(parameter_name))
-
-        if operation_name in self.operations().keys():
-            self._operations[operation_name][argument_name] = parameter_name
-        else:
-            raise KeyError('Unknown operation {}, add '.format(operation_name) +
-                           'first using add operation')
-
-        self.add_parameter(parameter_name,
-                           initial_value=initial_value,
-                           vals=vals,
-                           parameter_class=ManualParameter, **kwargs)
-
-        # for use in RemoteInstruments to add parameters to the server
-        # we return the info they need to construct their proxy
-        return
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
@@ -109,7 +65,41 @@ class MeasurementObject(Instrument):
                                              max_value=100e-6),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_weights_type', parameter_class=ManualParameter,
-                           vals=vals.Enum('DSB', 'SSB'), initial_value='SSB')
+                           vals=vals.Enum('DSB', 'SSB', 'DSB2', 'square_rot',
+                                          'manual', 'custom', 'custom_2D'),
+                           initial_value='SSB',
+                           docstring=('Determines what type of integration '
+                                      'weights to use: \n\tSSB: Single '
+                                      'sideband demodulation\n\tDSB: Double '
+                                      'sideband demodulation\n\tcustom: '
+                                      'waveforms specified in "acq_weights_I"'
+                                      'and "acq_weights_Q"\n\tcustom_2D: '
+                                      'waveforms specified in '
+                                      '"acq_weights_I/I2" and '
+                                      '"acq_weights_Q/Q2"\n\tsquare_rot: '
+                                      'uses a single integration channel '
+                                      'with boxcar weights\n\tmanual: keeps '
+                                      'the weights already set in the '
+                                      'acquisition device.'))
+
+        self.add_parameter('acq_weights_I', vals=vals.Arrays(),
+                           label='Optimized weights for I channel',
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_Q', vals=vals.Arrays(),
+                           label='Optimized weights for Q channel',
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_I2', vals=vals.Arrays(),
+                           label='Optimized weights for second integration '
+                                 'channel I',
+                           docstring=("Used for double weighted integration "
+                                      "during qutrit readout"),
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_Q2', vals=vals.Arrays(),
+                           label='Optimized weights for second integration '
+                                 'channel Q',
+                           docstring=("Used for double weighted integration "
+                                      "during qutrit readout"),
+                           parameter_class=ManualParameter)
         self.add_parameter('acq_IQ_angle', initial_value=0,
                            docstring='The phase of the integration weights '
                                      'when using SSB, DSB or square_rot '
@@ -142,8 +132,7 @@ class MeasurementObject(Instrument):
         self.add_operation('RO')
         self.add_pulse_parameter('RO', 'ro_pulse_type', 'pulse_type',
                                  vals=vals.Enum('GaussFilteredCosIQPulse',
-                                                'GaussFilteredCosIQPulseMultiChromatic',
-                                                'GaussFilteredCosIQPulseWithFlux'),
+                                 'GaussFilteredCosIQPulseMultiChromatic'),
                                  initial_value='GaussFilteredCosIQPulse')
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
@@ -189,7 +178,7 @@ class MeasurementObject(Instrument):
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
 
         # switch parameters
-        DEFAULT_SWITCH_MODES = {'modulated': {}}
+        DEFAULT_SWITCH_MODES = OrderedDict({'default': {}})
         self.add_parameter(
             'switch_modes', parameter_class=ManualParameter,
             initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
@@ -197,10 +186,53 @@ class MeasurementObject(Instrument):
             "A dictionary whose keys are identifiers of switch modes and "
             "whose values are dicts understood by the set_switch method of "
             "the SwitchControls instrument specified in the parameter "
-            "instr_switch. The keys must include 'modulated' (for routing "
-            "the upconverted IF signal to the experiment output of the "
-            "upconversion board, used for all experiments that do not "
-            "specify a different mode).")
+            "instr_switch.")
+
+    def _get_operations(self):
+        return self._operations
+
+    def add_operation(self, operation_name):
+        self._operations[operation_name] = {}
+
+    def add_pulse_parameter(self,
+                            operation_name,
+                            parameter_name,
+                            argument_name,
+                            initial_value=None,
+                            vals=vals.Numbers(),
+                            **kwargs):
+        """
+        Add a pulse parameter to the measurement object.
+
+        Args:
+            operation_name (str): The operation of which this parameter is an
+                argument. e.g. mw_control or CZ
+            parameter_name (str): Name of the parameter
+            argument_name  (str): Name of the arugment as used in the sequencer
+            **kwargs get passed to the add_parameter function
+        Raises:
+            KeyError: if this instrument already has a parameter with this
+                name.
+        """
+        if parameter_name in self.parameters:
+            raise KeyError(
+                'Duplicate parameter name {}'.format(parameter_name))
+
+        if operation_name in self.operations().keys():
+            self._operations[operation_name][argument_name] = parameter_name
+        else:
+            raise KeyError(
+                'Unknown operation {}, add '.format(operation_name) +
+                'first using add operation')
+
+        self.add_parameter(parameter_name,
+                           initial_value=initial_value,
+                           vals=vals,
+                           parameter_class=ManualParameter, **kwargs)
+
+        # for use in RemoteInstruments to add parameters to the server
+        # we return the info they need to construct their proxy
+        return
 
     def get_acq_int_channels(self, n_channels=None):
         """Get a list of tuples with the integration channels.
@@ -296,8 +328,11 @@ class MeasurementObject(Instrument):
         # set switches to the mode required for the measurement
         self.set_switch(switch)
 
-    def _get_default_readout_weights(self):
-        return dict()
+    def _get_custom_readout_weights(self):
+        return dict(
+            weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
+            weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+        )
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this measurement object in the
@@ -330,10 +365,10 @@ class MeasurementObject(Instrument):
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
-            **self._get_default_readout_weights()
+            **self._get_custom_readout_weights()
         )
 
-    def set_switch(self, switch_mode='modulated'):
+    def set_switch(self, switch_mode=None):
         """
         Sets the switch control (given in the qcodes parameter instr_switch)
         to the given mode.
@@ -344,12 +379,15 @@ class MeasurementObject(Instrument):
         """
         if self.instr_switch() is None:
             return
+        if switch_mode is None:
+            switch_mode = list(self.switch_modes)[0]
         switch = self.instr_switch.get_instr()
         mode = self.switch_modes().get(switch_mode, None)
         if mode is None:
             log.warning(f'Switch mode {switch_mode} not configured for '
                         f'{self.name}.')
-        switch.set_switch(mode)
+        else:
+            switch.set_switch(mode)
 
     def get_operation_dict(self, operation_dict=None):
         self.configure_mod_freqs()
@@ -567,3 +605,31 @@ class MeasurementObject(Instrument):
         self.configure_offsets()
         # set flux distortion
         self.set_distortion_in_pulsar()
+
+    def link_param_to_operation(self, operation_name, parameter_name,
+                                argument_name):
+        """
+        Links an existing param to an operation for use in the operation dict.
+
+        An example of where to use this would be the flux_channel.
+        Only one parameter is specified but it is relevant for multiple flux
+        pulses. You don't want a different parameter that specifies the channel
+        for the iSWAP and the CZ gate. This can be solved by linking them to
+        your operation.
+
+        Args:
+            operation_name (str): The operation of which this parameter is an
+                argument. e.g. mw_control or CZ
+            parameter_name (str): Name of the parameter
+            argument_name  (str): Name of the arugment as used in the sequencer
+            **kwargs get passed to the add_parameter function
+        """
+        if parameter_name not in self.parameters:
+            raise KeyError('Parameter {} needs to be added first'.format(
+                parameter_name))
+
+        if operation_name in self.operations().keys():
+            self._operations[operation_name][argument_name] = parameter_name
+        else:
+            raise KeyError('Unknown operation {}, add '.format(operation_name) +
+                           'first using add operation')

@@ -4,6 +4,7 @@ import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
 from copy import deepcopy
+from collections import OrderedDict
 
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
@@ -134,36 +135,14 @@ class QuDev_transmon(MeasurementObject):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
+        self.ro_pulse_type.vals=vals.Enum('GaussFilteredCosIQPulse',
+                                          'GaussFilteredCosIQPulseMultiChromatic',
+                                          'GaussFilteredCosIQPulseWithFlux'),
 
-        self.add_parameter('acq_weights_I', vals=vals.Arrays(),
-                           label='Optimized weights for I channel',
-                           parameter_class=ManualParameter)
-        self.add_parameter('acq_weights_Q', vals=vals.Arrays(),
-                           label='Optimized weights for Q channel',
-                           parameter_class=ManualParameter)
-        self.acq_weights_type.vals=vals.Enum('SSB', 'DSB', 'DSB2', 'optimal',
-                                          'square_rot', 'manual',
-                                          'optimal_qutrit')
-        self.acq_weights_type.docstring=(
-                               'Determines what type of integration weights to '
-                               'use: \n\tSSB: Single sideband demodulation\n\t'
-                               'DSB: Double sideband demodulation\n\toptimal: '
-                               'waveforms specified in "ro_acq_weight_func_I" '
-                               'and "ro_acq_weight_func_Q"\n\tsquare_rot: uses '
-                               'a single integration channel with boxcar '
-                               'weights')
-        self.add_parameter('acq_weights_I2', vals=vals.Arrays(),
-                           label='Optimized weights for second integration '
-                                 'channel I',
-                           docstring=("Used for double weighted integration "
-                                      "during qutrit readout"),
-                           parameter_class=ManualParameter)
-        self.add_parameter('acq_weights_Q2', vals=vals.Arrays(),
-                           label='Optimized weights for second integration '
-                                 'channel Q',
-                           docstring=("Used for double weighted integration "
-                                      "during qutrit readout"),
-                           parameter_class=ManualParameter)
+        self.acq_weights_type.vals = vals.Enum('DSB', 'SSB', 'DSB2',
+                                               'square_rot', 'manual',
+                                               'custom', 'custom_2D',
+                                               'optimal', 'optimal_qutrit')
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
                            docstring=("Used to log the weights basis for "
@@ -442,7 +421,8 @@ class QuDev_transmon(MeasurementObject):
                            vals=vals.Dict())
 
         # switch parameters
-        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        DEFAULT_SWITCH_MODES = OrderedDict({'modulated': {}, 'spec': {},
+                                            'calib': {}})
         self.switch_modes.initial_value=DEFAULT_SWITCH_MODES
         self.switch_modes.docstring=(
             "A dictionary whose keys are identifiers of switch modes and "
@@ -1041,12 +1021,6 @@ class QuDev_transmon(MeasurementObject):
             return (self.instr_acq(), self.acq_unit())
         else:
             return self.instr_ro_lo()
-
-    def _get_default_readout_weights(self):
-        return dict(
-            weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
-            weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
-        )
 
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
