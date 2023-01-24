@@ -50,7 +50,6 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
         self._remote_instruments[self._id] = self
         self._further_instruments[name] = self
         self._submodules = (None, 0)
-        Instrument._all_instruments[name] = self
 
     def _create_instr(self, name, id=None):
         if id is None:
@@ -60,6 +59,8 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
         return RemoteInstrument(name, self.host, self.port, id=id)
 
     def __getattr__(self, p):
+        if self._name in Instrument._all_instruments:
+            return getattr(Instrument._all_instruments[self._name], p)
         if p == 'submodules' and time.time() - self._submodules[1] < \
                 SUBMODULE_CACHE_TIME:
             return self._submodules[0]
@@ -88,7 +89,10 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
 
             def get_instr(p=p):
                 remote_instr = self.remote_call([self._name, None, p, [], {}])
-                return self._create_instr(remote_instr)
+                if remote_instr in Instrument._all_instruments:
+                    return Instrument._all_instruments[remote_instr]
+                else:
+                    return self._create_instr(remote_instr)
 
             f.get_instr = get_instr
             return f
