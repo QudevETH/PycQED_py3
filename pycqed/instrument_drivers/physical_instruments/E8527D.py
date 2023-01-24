@@ -70,6 +70,23 @@ class Agilent_E8527D(E8527D.Agilent_E8527D):
             set_cmd="OUTP:MOD {}",
             val_mapping=create_on_off_val_mapping(on_val="1", off_val="0")
         )
+        self.add_parameter(
+            "pulsemod_source",
+            label="Pulse Modulation Source",
+            get_cmd=":PULM:SOUR?",
+            set_cmd="PULM:SOUR {}",
+            vals=vals.Enum('INT', 'EXT', 'SCAL')
+        )
+        self.add_parameter(
+            "pulsemod_state_status",
+            label="Pulse Modulation Enabled",
+            get_cmd=":PULM:STAT?",
+            set_cmd="PULM:STAT {}",
+            val_mapping=create_on_off_val_mapping(on_val="1", off_val="0"),
+            docstring=('Command for setting turning on and off the pulse '
+                       'modulation. Should always be on since the pulse '
+                       'modulation can be turned off by turning off only the '
+                       'command pulsemod_state'))
 
     def ask_raw(self, cmd: str) -> str:
         """Override to bypass visa logic for virtual instruments.
@@ -122,3 +139,11 @@ class Agilent_E8527D(E8527D.Agilent_E8527D):
             return cmd.split(" ")
         else:
             return cmd
+
+    def enable_pulse_modulation(self):
+        """"Util that enables pulse modulation for time-domain measurements.
+        To turn on the modulation, both pulsemod_state and
+        pulsemod_state_status should be turned on."""
+        self.pulsemod_state(1)
+        self.pulsemod_source('EXT')
+        self.pulsemod_state_status(1)
