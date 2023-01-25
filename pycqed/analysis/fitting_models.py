@@ -1716,12 +1716,11 @@ def mixer_lo_leakage_guess(model, **kwargs):
         The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
         descibed in the documentation of :py:func:'.mixer_lo_leakage'.
     """
-    pi_half = np.pi/2
     model.set_param_hint('li', value=0.0, min=0, max=1)
     model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
-    model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
-    model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
-                         max=pi_half, vary=False
+    model.set_param_hint('theta_i', value=0.0, min=-np.pi, max=np.pi)
+    model.set_param_hint('theta_q', value=0.0, min=-np.pi,
+                         max=np.pi, vary=False
                          )
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)

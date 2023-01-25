@@ -277,7 +277,8 @@ class QuDev_transmon(MeasurementObject):
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_Q_channel',
                                          'Q_channel',
                                          initial_value=None,
-                                         vals=vals.Strings())
+                                         vals=vals.MultiType(
+                                             vals.Enum(None), vals.Strings()))
                 self.add_pulse_parameter(
                     f'X180{tn}', f'{tr_name}_mod_freq',
                     'mod_frequency', initial_value=-100e6,
@@ -2589,9 +2590,8 @@ class QuDev_transmon(MeasurementObject):
         pulsar = self.instr_pulsar.get_instr()
         offset_list = []
         if set_ro_offsets:
-            offset_list += [('ro_I_channel', 'ro_I_offset')]
-            if self.ro_Q_channel() is not None:
-                offset_list += [('ro_Q_channel', 'ro_Q_offset')]
+            offset_list += [('ro_I_channel', 'ro_I_offset'),
+                            ('ro_Q_channel', 'ro_Q_offset')]
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
@@ -2614,7 +2614,7 @@ class QuDev_transmon(MeasurementObject):
 
         for channel_par, offset_par in offset_list:
             ch = self.get(channel_par)
-            if ch + '_offset' in pulsar.parameters:
+            if ch is not None and ch + '_offset' in pulsar.parameters:
                 pulsar.set(ch + '_offset', self.get(offset_par))
                 pulsar.sigout_on(ch)
 
