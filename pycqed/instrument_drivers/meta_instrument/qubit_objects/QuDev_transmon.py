@@ -143,6 +143,9 @@ class QuDev_transmon(MeasurementObject):
                                                'square_rot', 'manual',
                                                'custom', 'custom_2D',
                                                'optimal', 'optimal_qutrit')
+        self._acq_weights_type_aliases = {
+            'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
+        }
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
                            docstring=("Used to log the weights basis for "
