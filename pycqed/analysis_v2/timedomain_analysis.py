@@ -3780,13 +3780,33 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         rdd = self.raw_data_dict
         pdd = self.proc_data_dict
 
-        pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
-            'amplitude'] for qbn in self.qb_names}
-        pdd['phases_reshaped'] = [pdd['sweep_points_dict'][self.qb_names[0]][
-                                      'msmt_sweep_points']] * len(
-            pdd['amps_reshaped'][self.qb_names[0]])
-        pdd['data_reshaped'] = {qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
-                                for qbn in self.qb_names}
+        try: # Extract data
+            pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
+                'amplitude'] for qbn in self.qb_names}
+            pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
+                self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
+                    'amps_reshaped'][self.qb_names[0]])
+            pdd['data_reshaped'] = {
+                qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
+                for qbn in self.qb_names}
+        except Exception:
+            # If a problem occurred, this might come from old data
+            # incompatible with the QuantumExperiment framework, for instance
+            # missing SweepPoints per qubit. In this case, try to extract
+            # data the old way:
+            pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
+            pdd['amps_reshaped'] = {qb: np.unique(
+                self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
+                                    for qb in pdd['data_to_fit']}
+            pdd['phases_reshaped'] = []
+            for amp in pdd['amps_reshaped'][self.qb_names[0]]:
+                mask = self.metadata['hard_sweep_params']['ro_amp_scale'][
+                           'values'] == amp
+                pdd['phases_reshaped'].append(
+                    self.metadata['hard_sweep_params']['phase']['values'][mask])
+                for qb in self.qb_names:
+                    pdd['data_reshaped'][qb].append(
+                        pdd['data_to_fit'][qb][:len(mask)][mask])
 
     def prepare_fitting(self):
         pdd = self.proc_data_dict

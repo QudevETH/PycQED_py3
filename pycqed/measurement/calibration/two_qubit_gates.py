@@ -1479,7 +1479,7 @@ class MeasurementInducedDephasing(DynamicPhase):
             qb = task.pop('qb')
             task['qubits_to_measure'] = [qb]
             qb_name = qb.name if not isinstance(qb, str) else qb
-            p_mod_key = f'op_code=RO {qb_name}, occurrence={0}'
+            p_mod_key = f'op_code=RO {qb_name}, occurrence=0'
             task.update(dict(
                 op_code=f'RO {qb_name}',
                 pulse_modifs={  # Applied in parallel_sweep to the first RO
