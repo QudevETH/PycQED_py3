@@ -13,7 +13,6 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.instrument_drivers.meta_instrument.qubit_objects import qubit_object
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes

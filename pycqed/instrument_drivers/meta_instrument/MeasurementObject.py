@@ -383,13 +383,14 @@ class MeasurementObject(Instrument):
         to the given mode.
 
         :param switch_mode: (str) the name of a switch mode that is defined in
-            the qcodes parameter self.switch_modes (default: 'modulated').
+            the qcodes parameter self.switch_modes. If None, uses the first
+            entry of self.switch_modes.
             See the docstring of switch_modes for more details.
         """
         if self.instr_switch() is None:
             return
         if switch_mode is None:
-            switch_mode = list(self.switch_modes)[0]
+            switch_mode = list(self.switch_modes())[0]
         switch = self.instr_switch.get_instr()
         mode = self.switch_modes().get(switch_mode, None)
         if mode is None:
