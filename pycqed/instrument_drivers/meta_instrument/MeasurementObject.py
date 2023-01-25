@@ -81,7 +81,7 @@ class MeasurementObject(Instrument):
                                       'with boxcar weights\n\tmanual: keeps '
                                       'the weights already set in the '
                                       'acquisition device.'))
-
+        self._acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
         self.add_parameter('acq_weights_I', vals=vals.Arrays(),
                            label='Optimized weights for I channel',
                            parameter_class=ManualParameter)
@@ -234,24 +234,33 @@ class MeasurementObject(Instrument):
         # we return the info they need to construct their proxy
         return
 
+    def get_acq_weights_type(self):
+        """Returns the value of acq_weights_type after resolving alias names
+
+        Alias names are specified in self._acq_weights_type_aliases.
+        """
+        wt = self.acq_weights_type()
+        return self._acq_weights_type_aliases.get(wt, wt)
+
     def get_acq_int_channels(self, n_channels=None):
         """Get a list of tuples with the integration channels.
 
         Args:
             n_channels (int): number of integration channels; if this is None,
-                it will be chosen as follows:
-                2 for ro_weights_type in ['SSB', 'DSB', 'DSB2',
-                    'optimal_qutrit', 'manual']
-                1 otherwise (in particular for ro_weights_type in
-                    ['optimal', 'square_rot'])
+                it will be chosen as follows (after resolving aliases according
+                to self._acq_weights_type_aliases):
+                - 2 for acq_weights_type in ['SSB', 'DSB', 'DSB2',
+                    'custom_2D', 'manual']
+                - 1 otherwise (in particular for acq_weights_type in
+                    ['custom', 'square_rot'])
 
         Returns
             list with n_channels tuples, where the first entry in each tuple is
             the acq_unit and the second is an integration channel index
         """
         if n_channels is None:
-            n_channels = 2 if (self.acq_weights_type() in [
-                'SSB', 'DSB', 'DSB2', 'optimal_qutrit', 'manual']
+            n_channels = 2 if (self.get_acq_weights_type() in [
+                'SSB', 'DSB', 'DSB2', 'custom_2D', 'manual']
                                and self.acq_Q_channel() is not None) else 1
         return [(self.acq_unit(), self.acq_I_channel()),
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
@@ -358,7 +367,7 @@ class MeasurementObject(Instrument):
                 parameter ro_mod_freq is used.
         """
         if weights_type is None:
-            weights_type = self.acq_weights_type()
+            weights_type = self.get_acq_weights_type()
         if f_mod is None:
             f_mod = self.ro_mod_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
