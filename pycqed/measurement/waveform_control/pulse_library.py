@@ -1098,7 +1098,13 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
             'flux_gaussian_filter_sigma': 0.5e-9,
-            'mirror_pattern': None,  # interpreted as mirroring the flux pulse
+            # Note that the mirror pattern is included in the pulse parameters
+            # to ensure consistency (other flux_* parameters are also stored as
+            # attributes of the Pulse object). However, the value of
+            # self.fp.mirror_pattern (which should be identical to
+            # self.flux_mirror_pattern unless someone messes with it)
+            # is the one used by the code to retrieve the pattern to apply.
+            'flux_mirror_pattern': None,
         }
         return params
 
