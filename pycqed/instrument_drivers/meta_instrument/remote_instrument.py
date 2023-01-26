@@ -136,7 +136,6 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
                 s.sendall(new_data)
             s.sendall(b'done')
             data = b''
-            more_data = False
             while True:
                 data += s.recv(1024 * 1024)
                 more_data = False
@@ -150,7 +149,6 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
                     break
                 else:
                     print('more data')
-                    print(data)
             if isinstance(data, Exception):
                 if str(data).endswith('QCoDeS instruments can not be pickled.'):
                     log.warning(f'Error while accessing remote parameter '
