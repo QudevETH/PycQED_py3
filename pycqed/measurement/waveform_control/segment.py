@@ -1104,7 +1104,7 @@ class Segment:
         decides which pulses within a category get mirrored. The mirroring
         is performed by multiplying all pulse parameters that contain
         'amplitude' in their name by -1 (and adding a mirror_correction if
-        it is provided).
+        it is provided), see Pulse.mirror_amplitudes().
 
         mirror_pattern:
         - 'none'/'all': no/all pulses are mirrored

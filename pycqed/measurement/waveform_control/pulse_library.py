@@ -1121,7 +1121,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return []  # empty list if neither of the conditions is satisfied
 
     def get_mirror_pulse_obj_and_pattern(self):
-        return self.fp.get_mirror_pulse_obj_and_pattern()  # TODO comment
+        # For flux pulse assisted readout, we currently return the mirror pattern
+        # of the flux pulse.
+        # FIXME: note that this prevents the user to enable mirror pattern on
+        #  the readout drive pulse at the moment when using this pulse type.
+        #  A better long term solution consists in refactoring the Pulse
+        #  abstraction layer in which a clearer separation
+        #  is made between pulses and operations (which can contain several pulses).
+        return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
