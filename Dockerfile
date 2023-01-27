@@ -1,5 +1,6 @@
 FROM python:3.9-buster
 
+# Copy requirements file from the repository inside the docker container
 COPY requirements.txt requirements.txt
 
 # ============================================================================
@@ -18,8 +19,8 @@ RUN pip list
 # ============================================================================
 RUN which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )
 RUN eval $(ssh-agent -s)
-RUn mkdir -p ~/.ssh
-RUn chmod 700 ~/.ssh
-RUn ssh-keyscan gitlab.ethz.ch >> ~/.ssh/known_hosts
-RUn ssh-keyscan documentation.qudev.phys.ethz.ch >> ~/.ssh/known_hosts
-RUn chmod 644 ~/.ssh/known_hosts
+RUN mkdir -p ~/.ssh
+RUN chmod 700 ~/.ssh
+RUN ssh-keyscan gitlab.ethz.ch >> ~/.ssh/known_hosts
+RUN ssh-keyscan documentation.qudev.phys.ethz.ch >> ~/.ssh/known_hosts
+RUN chmod 644 ~/.ssh/known_hosts
