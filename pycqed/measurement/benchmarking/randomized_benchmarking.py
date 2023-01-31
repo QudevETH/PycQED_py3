@@ -816,7 +816,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                 gates += append_2qb_gates
                 if length > 0:
                     for i in range(length - 1):
-                        last_1_gate1 = gates[-4][0:4]
+                        last_1_gate1 = gates[-3-len(append_2qb_gates)][0:4]
 
                         choice1 = []
                         for gate in s_gates:
@@ -825,7 +825,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         gate1 = random.choice(choice1)
                         gates.append(gate1 + 'qb_1')
 
-                        last_1_gate2 = gates[-4][0:3] + ' '
+                        last_1_gate2 = gates[-3-len(append_2qb_gates)][0:3] +' '
                         choice2 = []
                         for gate in s_gates:
                             choice2.append(gate)
