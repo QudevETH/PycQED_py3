@@ -13,6 +13,7 @@ from pycqed.measurement import sweep_functions as swf
 
 
 class MeasurementObject(Instrument):
+    _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
@@ -64,24 +65,24 @@ class MeasurementObject(Instrument):
                            vals=vals.Numbers(min_value=1e-8,
                                              max_value=100e-6),
                            parameter_class=ManualParameter)
+        awt_docstring = 'Determines what type of integration weights to ' +\
+                        'use:\n\tSSB: Single sideband demodulation\n\tDSB: ' +\
+                        'Double sideband demodulation\n\tcustom: waveforms ' +\
+                        'specified in "acq_weights_I" and "acq_weights_Q"' +\
+                        '\n\tcustom_2D: waveforms specified in ' +\
+                        '"acq_weights_I/I2" and "acq_weights_Q/Q2"\n\t' +\
+                        'square_rot: uses a single integration channel with ' +\
+                        'boxcar weights\n\tmanual: keeps the weights ' +\
+                        'already set in the acquisition device' +\
+                        ''.join([f'\n\t{k}: alias for {v}' for k, v
+                                 in self._acq_weights_type_aliases.items()])
         self.add_parameter('acq_weights_type', parameter_class=ManualParameter,
-                           vals=vals.Enum('DSB', 'SSB', 'DSB2', 'square_rot',
-                                          'manual', 'custom', 'custom_2D'),
+                           vals=vals.Enum(
+                               'DSB', 'SSB', 'DSB2', 'square_rot', 'manual',
+                               'custom', 'custom_2D',
+                               *list(self._acq_weights_type_aliases)),
                            initial_value='SSB',
-                           docstring=('Determines what type of integration '
-                                      'weights to use: \n\tSSB: Single '
-                                      'sideband demodulation\n\tDSB: Double '
-                                      'sideband demodulation\n\tcustom: '
-                                      'waveforms specified in "acq_weights_I"'
-                                      'and "acq_weights_Q"\n\tcustom_2D: '
-                                      'waveforms specified in '
-                                      '"acq_weights_I/I2" and '
-                                      '"acq_weights_Q/Q2"\n\tsquare_rot: '
-                                      'uses a single integration channel '
-                                      'with boxcar weights\n\tmanual: keeps '
-                                      'the weights already set in the '
-                                      'acquisition device.'))
-        self._acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
+                           docstring=awt_docstring)
         self.add_parameter('acq_weights_I', vals=vals.Arrays(),
                            label='Optimized weights for I channel',
                            parameter_class=ManualParameter)

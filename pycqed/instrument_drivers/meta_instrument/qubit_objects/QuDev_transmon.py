@@ -54,6 +54,9 @@ class QuDev_transmon(MeasurementObject):
         compensation_pulse_delay=100e-9,
         compensation_pulse_gaussian_filter_sigma=0,
     )
+    _acq_weights_type_aliases = {
+        'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
+    }
 
     def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
@@ -139,13 +142,6 @@ class QuDev_transmon(MeasurementObject):
                                           'GaussFilteredCosIQPulseMultiChromatic',
                                           'GaussFilteredCosIQPulseWithFlux'),
 
-        self.acq_weights_type.vals = vals.Enum('DSB', 'SSB', 'DSB2',
-                                               'square_rot', 'manual',
-                                               'custom', 'custom_2D',
-                                               'optimal', 'optimal_qutrit')
-        self._acq_weights_type_aliases = {
-            'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
-        }
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
                            docstring=("Used to log the weights basis for "
