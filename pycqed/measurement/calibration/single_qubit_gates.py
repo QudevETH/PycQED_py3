@@ -60,6 +60,8 @@ class T1FrequencySweep(CalibBuilder):
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - the entry "qb" in each task should contain one qubit name.
+         - if force_2D_sweep is False and the first sweep dim is empty or has
+           only 1 point, the flux pulse amplitude will be swept as a 1D sweep.
 
         """
         try:
@@ -84,6 +86,9 @@ class T1FrequencySweep(CalibBuilder):
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
+                self.sweep_points.reduce_dim(1, inplace=True)
+                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -214,6 +219,9 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
+        if len(self.sweep_points) == 1:
+            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
+            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(
