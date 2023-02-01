@@ -2576,18 +2576,19 @@ class QuDev_transmon(MeasurementObject):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=False)
 
-    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True):
+    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True,
+                          offset_list=None):
         """
         Set AWG channel DC offsets and switch sigouts on.
 
         :param set_ro_offsets: whether to set offsets for RO channels
         :param set_ge_offsets: whether to set offsets for drive channels
+        :param offset_list: additional offsets to set
         """
         pulsar = self.instr_pulsar.get_instr()
-        offset_list = []
-        if set_ro_offsets:
-            offset_list += [('ro_I_channel', 'ro_I_offset'),
-                            ('ro_Q_channel', 'ro_Q_offset')]
+        if offset_list is None:
+            offset_list = []
+
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
@@ -2608,11 +2609,8 @@ class QuDev_transmon(MeasurementObject):
                 lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
                                             qb_lo_cal['Q_offsets'])
 
-        for channel_par, offset_par in offset_list:
-            ch = self.get(channel_par)
-            if ch is not None and ch + '_offset' in pulsar.parameters:
-                pulsar.set(ch + '_offset', self.get(offset_par))
-                pulsar.sigout_on(ch)
+        super().configure_offsets(set_ro_offsets=set_ro_offsets,
+                                  offset_list=offset_list)
 
     def set_distortion_in_pulsar(self, datadir=None):
         """
