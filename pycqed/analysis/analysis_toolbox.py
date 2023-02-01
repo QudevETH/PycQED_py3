@@ -357,7 +357,8 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
-            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
+            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'custom_2D',
+                                      'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
             if acq_unit is None:
                 vn_string = uhf+'_'+ro_type
