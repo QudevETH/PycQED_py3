@@ -1101,31 +1101,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # self.no_cp_but_cp_in_data created in get_num_cal_points
             cp_obj = CalibrationPoints
 
-        sweep_points_dict = {}
         for qbn in self.qb_names:
-            sweep_points_dict[qbn] = {}
+            spd_qb = self.proc_data_dict['sweep_points_dict'][qbn]
             if cp_obj is not None:
-                sweep_points_dict[qbn]['sweep_points'] = \
+                spd_qb['sweep_points'] = \
                     cp_obj.extend_sweep_points_by_n_cal_pts(
                         self.num_cal_points,
-                        self.proc_data_dict['sweep_points_dict'][qbn][
-                            'sweep_points'])
+                        spd_qb['sweep_points'])
                 # slicing with aux variable ind to be robust to the case
                 # of 0 cal points
-                ind = len(sweep_points_dict[qbn]['sweep_points']) - \
-                      self.num_cal_points
-                sweep_points_dict[qbn]['msmt_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][:ind]
-                sweep_points_dict[qbn]['cal_points_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points'][ind:]
+                ind = len(spd_qb['sweep_points']) - self.num_cal_points
+                spd_qb['msmt_sweep_points'] = spd_qb['sweep_points'][:ind]
+                spd_qb['cal_points_sweep_points'] = \
+                    spd_qb['sweep_points'][ind:]
             else:
-                sweep_points_dict[qbn]['sweep_points'] = \
-                    self.proc_data_dict['sweep_points_dict'][qbn]['sweep_points']
-                sweep_points_dict[qbn]['msmt_sweep_points'] = \
-                    sweep_points_dict[qbn]['sweep_points']
-                sweep_points_dict[qbn]['cal_points_sweep_points'] = []
-
-        self.proc_data_dict['sweep_points_dict'] = sweep_points_dict
+                spd_qb['msmt_sweep_points'] = spd_qb['sweep_points']
+                spd_qb['cal_points_sweep_points'] = []
 
     def get_cal_states_dict_for_rotation(self):
         """
