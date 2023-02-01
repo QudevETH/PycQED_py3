@@ -14,6 +14,8 @@ from pycqed.measurement import sweep_functions as swf
 
 class MeasurementObject(Instrument):
     _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
+    _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
+                           'GaussFilteredCosIQPulseMultiChromatic']
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
@@ -132,8 +134,7 @@ class MeasurementObject(Instrument):
                            label='Readout pulse upconversion mixer LO power')
         self.add_operation('RO')
         self.add_pulse_parameter('RO', 'ro_pulse_type', 'pulse_type',
-                                 vals=vals.Enum('GaussFilteredCosIQPulse',
-                                 'GaussFilteredCosIQPulseMultiChromatic'),
+                                 vals=vals.Enum(*self._ro_pulse_type_vals),
                                  initial_value='GaussFilteredCosIQPulse')
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())

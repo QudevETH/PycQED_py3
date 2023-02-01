@@ -57,6 +57,9 @@ class QuDev_transmon(MeasurementObject):
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
+    _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
+                           'GaussFilteredCosIQPulseMultiChromatic',
+                           'GaussFilteredCosIQPulseWithFlux']
 
     def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
@@ -138,9 +141,6 @@ class QuDev_transmon(MeasurementObject):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
-        self.ro_pulse_type.vals=vals.Enum('GaussFilteredCosIQPulse',
-                                          'GaussFilteredCosIQPulseMultiChromatic',
-                                          'GaussFilteredCosIQPulseWithFlux'),
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
