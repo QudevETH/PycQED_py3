@@ -1,7 +1,11 @@
-from qcodes.instrument_drivers.agilent import Agilent_E8257D
 from typing import Union, Tuple
 from qcodes.utils import validators as vals
 from qcodes.utils.helpers import create_on_off_val_mapping
+try:
+    from qcodes.instrument_drivers.agilent import Agilent_E8257D
+except (ImportError, ModuleNotFoundError):
+    # older qcodes versions (pre 0.37)
+    from qcodes.instrument_drivers.agilent import E8257D as Agilent_E8257D
 
 
 class Agilent_E8527D(Agilent_E8257D.AgilentE8257D):
@@ -63,13 +67,15 @@ class Agilent_E8527D(Agilent_E8257D.AgilentE8257D):
         self._max_power = 25
         self.power.vals = vals.Numbers(self._min_power, self._max_power)
 
-        # add parameter status to assure compatibility of the driver with the
-        # public repository qcodes
-        self.add_parameter('status',
-                           get_cmd=':OUTP?',
-                           set_cmd='OUTP {}',
-                           val_mapping=create_on_off_val_mapping(on_val='1',
-                                                                 off_val='0'))
+        if 'status' not in self.parameters:
+            # add parameter status to assure compatibility of the driver with
+            # the qcodes 0.37
+            self.add_parameter(
+                'status',
+                get_cmd=':OUTP?',
+                set_cmd='OUTP {}',
+                val_mapping=create_on_off_val_mapping(on_val='1',
+                                                      off_val='0'))
         # Add parameter pulsemod_state
         self.add_parameter(
             "pulsemod_state",
