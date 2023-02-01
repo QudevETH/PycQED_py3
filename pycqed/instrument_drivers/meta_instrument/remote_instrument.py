@@ -10,6 +10,16 @@ log = logging.getLogger(__name__)
 
 
 Instrument = qc.instrument.base.Instrument
+try:
+    Metadatable = qc.metadatable.Metadatable
+except AttributeError:
+    # older qcode versions (pre 0.37)
+    Metadatable = qc.utils.metadata.Metadatable
+try:
+    Parameter = qc.instrument.parameter.Parameter
+except AttributeError:
+    # older qcode versions (pre 0.37)
+    Parameter = qc.parameters.Parameter
 
 PORT = 65432
 SUBMODULE_CACHE_TIME = 60  # second
@@ -17,7 +27,7 @@ SUBMODULE_CACHE_TIME = 60  # second
 class RemoteParameter():
     @property
     def __class__(self):
-        return qc.instrument.parameter.Parameter
+        return Parameter
 
     def __init__(self, instr, param):
         self.instrument = instr
@@ -203,9 +213,8 @@ def server(port=PORT, host='127.0.0.1'):
                         if cmd[1] == 'id':
                             result = id(attr)
                         elif cmd[1] == 'type':
-                            if (isinstance(attr, qc.utils.metadata.Metadatable)
-                                    and not isinstance(attr,
-                                        qc.instrument.parameter.Parameter)):
+                            if (isinstance(attr, Metadatable)
+                                    and not isinstance(attr, Parameter)):
                                 if isinstance(attr, qc.instrument.ChannelList):
                                     result = f'channellist {len(attr)}'
                                 else:
