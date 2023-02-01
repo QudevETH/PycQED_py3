@@ -16,6 +16,9 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
+import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
+    as qb_mod
+
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -497,7 +500,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
-            if isinstance(candidate, qubit_object.Qubit):
+            if isinstance(candidate, qb_mod.QuDev_transmon):
                 if candidate.name in qbs_dict:
                     # avoid duplicates by adding it exactly in the form
                     # contained in the qbs_dict
@@ -632,7 +635,7 @@ class MultiTaskingExperiment(QuantumExperiment):
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
                 'cal_states': (str, 'auto'),
-                'ro_qubits': ((qubit_object.Qubit, 'multi_select'), None),
+                'ro_qubits': ((qb_mod.QuDev_transmon, 'multi_select'), None),
             })
         })
         d['task_list_fields'].update({
