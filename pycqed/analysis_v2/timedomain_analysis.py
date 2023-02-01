@@ -714,25 +714,24 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 raise ValueError('When providing "sweep_points", '
                                  '"meas_obj_sweep_points_map" has to be '
                                  'provided in addition.')
-            if main_sp is not None:
-                self.proc_data_dict['sweep_points_dict'] = {}
-                for qbn, p in main_sp.items():
+            self.proc_data_dict['sweep_points_dict'] = {}
+            for qbn in self.qb_names:
+                param_names = self.mospm[qbn]
+                if main_sp is not None and (p := main_sp.get(qbn)):
                     dim = self.sp.find_parameter(p)
                     if dim is None:
-                        raise KeyError(
+                        log.warning(
                             f'Main sweep point {p} for {qbn} not found.')
-                    if dim == 1:
+                    elif dim == 1:
                         log.warning(f"main_sp is only implemented for sweep "
                                     f"dimension 0, but {p} is in dimension 1.")
-                    self.proc_data_dict['sweep_points_dict'][qbn] = \
-                        {'sweep_points': sp1d_filter(
-                            self.sp.get_sweep_params_property('values', dim, p))}
-            else:
-                self.proc_data_dict['sweep_points_dict'] = \
-                    {qbn: {'sweep_points': sp1d_filter(
-                        self.sp.get_sweep_params_property(
-                        'values', 0, self.mospm[qbn])[0])}
-                     for qbn in self.qb_names}
+                    else:
+                        param_names = [p]
+                sp_qb = self.sp.get_sweep_params_property(
+                    'values', 0, param_names)[0]
+                self.proc_data_dict['sweep_points_dict'][qbn] = \
+                    {'sweep_points': sp1d_filter(sp_qb),
+                     'param_names': param_names}
         elif sweep_points_dict is not None:
             # assumed to be of the form {qbn1: swpts_array1, qbn2: swpts_array2}
             self.proc_data_dict['sweep_points_dict'] = \
@@ -1664,11 +1663,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         sweep_name = self.get_param_value('sweep_name')
         sweep_unit = self.get_param_value('sweep_unit')
         if self.sp is not None:
-            main_sp = self.get_param_value('main_sp', None)
-            if main_sp is not None and qb_name in main_sp:
-                param_names = [main_sp[qb_name]]
-            else:
-                param_names = self.mospm[qb_name]
+            param_names = self.proc_data_dict['sweep_points_dict'][qb_name][
+                'param_names']
             _, xunit, xlabel = self.sp.get_sweep_params_description(
                 param_names=param_names, dimension=0)[0]
         elif hard_sweep_params is not None:
